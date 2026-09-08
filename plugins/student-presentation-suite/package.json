@@ -7,7 +7,7 @@
     "smoke": "node scripts/run_with_pptxgenjs.js --probe"
   },
   "dependencies": {
-    "image-size": "^1.2.1",
+    "image-size": "^2.0.2",
     "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
