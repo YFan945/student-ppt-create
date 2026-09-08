@@ -109,6 +109,20 @@ def validate_completion_manifest(
             errors.append("PPTX package validation 未通过。")
         if delivery.get("visual_reviewed") is not True:
             errors.append("未确认完成全页视觉检查。")
+        if delivery.get("generation_core_version") != "0.7.1":
+            errors.append("当前 sp-deck 简化交付必须使用 generation_core_version=0.7.1。")
+        if delivery.get("actual_content_check_passed") is not True:
+            errors.append("Actual Artifact readback 未通过。")
+        if delivery.get("quality_check_passed") is not True:
+            errors.append("v0.7.1 quality gate 未通过。")
+        for hash_key, label in (
+            ("quality_report_sha256", "quality report"),
+            ("slide_spec_sha256", "frozen Slide Spec"),
+            ("spec_lock_sha256", "Slide Spec lock"),
+        ):
+            value = delivery.get(hash_key)
+            if not isinstance(value, str) or len(value) != 64:
+                errors.append(f"简化交付报告缺少有效的 {label} hash。")
         if slide_count is None or delivery.get("preview_page_coverage") != f"{slide_count}/{slide_count}":
             errors.append("渲染预览未覆盖全部页面。")
         return errors
