@@ -22,11 +22,13 @@ SEQUENCE = (
     "complete",
 )
 TERMINAL = {"incomplete", "blocked"}
+MAX_REWORK_CYCLES = 3
 
 # 返工边：qa 阶段发现 blocker 后回到 producing 重建，无需 reset 重跑
 # 「confirm → 环境检查 → 规划」全流程。
 # 恢复边：incomplete 补齐缺失门禁后回到 qa 重做交付检查。
 REWORK_EDGES = {("qa", "producing"), ("incomplete", "qa")}
+
 
 def project_root(cwd: Path | None = None) -> Path:
     """优先使用 CLAUDE_PROJECT_DIR，其次使用调用时的 cwd。"""
@@ -79,6 +81,41 @@ def count_slides(pptx: Path) -> int | None:
         return None
 
 
+def _validate_delivery_bound_report(
+    delivery: dict[str, Any],
+    pptx: Path,
+    *,
+    path_key: str,
+    hash_key: str,
+    passed_key: str,
+    expected_profile: str,
+    label: str,
+) -> list[str]:
+    errors: list[str] = []
+    if delivery.get(passed_key) is not True:
+        return [f"{label} 未通过。"]
+    value = delivery.get(path_key)
+    if not isinstance(value, str) or not value:
+        return [f"简化交付报告缺少 {label} 路径。"]
+    path = Path(value)
+    if not path.is_file():
+        return [f"{label} 文件不存在。"]
+    if delivery.get(hash_key) != sha256_file(path):
+        errors.append(f"{label} hash 绑定无效。")
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        errors.append(f"无法读取 {label}: {exc}")
+        return errors
+    if not isinstance(data, dict) or data.get("ok") is not True:
+        errors.append(f"{label} 内容未通过。")
+    if data.get("profile") != expected_profile:
+        errors.append(f"{label} profile 不受支持。")
+    if data.get("pptx_sha256") != sha256_file(pptx):
+        errors.append(f"{label} 与当前 PPTX 不一致。")
+    return errors
+
+
 def validate_completion_manifest(
     manifest_path: Path | None,
     pptx: Path | None,
@@ -96,15 +133,37 @@ def validate_completion_manifest(
         if not isinstance(delivery, dict):
             return ["简化交付报告根节点必须是对象。"]
         slide_count = count_slides(pptx)
-        errors = []
-        if delivery.get("gate_profile") != "simplified-v1":
-            errors.append("缺少 QA manifest 时必须使用 simplified-v1 交付报告。")
+        errors: list[str] = []
+        if delivery.get("gate_profile") != "simplified-v2":
+            errors.append("缺少 QA manifest 时必须使用 artifact-aware simplified-v2 交付报告。")
         if delivery.get("ok") is not True or delivery.get("status") != "complete":
             errors.append("简化交付报告未通过。")
         if not pptx.is_file() or delivery.get("pptx_sha256") != sha256_file(pptx):
             errors.append("简化交付报告与当前 PPTX 不一致。")
         if delivery.get("slide_spec_validation_passed") is not True:
             errors.append("Slide Spec 规划门禁未通过。")
+        errors.extend(
+            _validate_delivery_bound_report(
+                delivery,
+                pptx,
+                path_key="static_report",
+                hash_key="static_report_sha256",
+                passed_key="static_artifact_passed",
+                expected_profile="actual-pptx-static-v1",
+                label="actual PPTX static analysis",
+            )
+        )
+        errors.extend(
+            _validate_delivery_bound_report(
+                delivery,
+                pptx,
+                path_key="plan_actual_report",
+                hash_key="plan_actual_report_sha256",
+                passed_key="plan_actual_passed",
+                expected_profile="plan-vs-actual-v1",
+                label="plan-vs-actual analysis",
+            )
+        )
         if delivery.get("package_validation_passed") is not True or delivery.get("package_blockers") != 0:
             errors.append("PPTX package validation 未通过。")
         if delivery.get("visual_reviewed") is not True:
@@ -112,6 +171,7 @@ def validate_completion_manifest(
         if slide_count is None or delivery.get("preview_page_coverage") != f"{slide_count}/{slide_count}":
             errors.append("渲染预览未覆盖全部页面。")
         return errors
+
     errors: list[str] = []
     if delivery_report_path is None:
         errors.append("转换到 complete 必须提供 --delivery-report。")
@@ -200,7 +260,7 @@ def state_command(args: argparse.Namespace) -> int:
         save_state(
             state_path,
             {
-                "workflow_version": "1.0",
+                "workflow_version": "1.1",
                 "state": "intake_pending",
                 "topic": args.topic,
                 "summary_sha256": None,
@@ -212,7 +272,7 @@ def state_command(args: argparse.Namespace) -> int:
         save_state(
             state_path,
             {
-                "workflow_version": "1.0",
+                "workflow_version": "1.1",
                 "state": "intake_pending",
                 "topic": args.topic,
                 "summary_sha256": None,
@@ -232,7 +292,6 @@ def state_command(args: argparse.Namespace) -> int:
                 f"当前状态为 '{before}'，只有 'blocked' 状态才能 unblock。"
                 f"如需强制重置，请使用 'reset' 命令。"
             )
-        # unblock 必须重新走确认门禁，不能留在无 hash 的 intake_confirmed。
         current["state"] = "intake_pending"
         current["summary_sha256"] = None
         save_state(state_path, current)
@@ -248,7 +307,7 @@ def state_command(args: argparse.Namespace) -> int:
                 f"请提供有效的 Production Summary 文件路径。"
             )
         summary_hash = hashlib.sha256(args.summary_file.read_bytes()).hexdigest()
-        base = current or {"workflow_version": "1.0", "topic": args.topic}
+        base = current or {"workflow_version": "1.1", "topic": args.topic}
         allowed_from = {None, "intake_pending"}
         if base.get("state") not in allowed_from:
             if not args.force:
@@ -309,7 +368,6 @@ def state_command(args: argparse.Namespace) -> int:
                 f"从 '{before}' 只能转换到: {', '.join(valid_next) if valid_next else '无法转换，请使用 reset'}"
             )
         if args.to == "complete":
-            # 轻量防线：complete 必须基于已确认且未变更的 Production Summary。
             summary_file = current.get("summary_file")
             summary_hash = current.get("summary_sha256")
             if not summary_file or not summary_hash:
@@ -338,8 +396,15 @@ def state_command(args: argparse.Namespace) -> int:
         )
         if is_rework and not args.reason:
             raise SystemExit("返工/恢复必须提供 --reason 记录 blocker 摘要")
-        if before == "qa" and args.to == "producing" and current.get("rework_count", 0) >= 1:
-            raise SystemExit("只允许一次完整重建返工；修复后仍有 blocker 时必须转为 incomplete。")
+        if (
+            before == "qa"
+            and args.to == "producing"
+            and current.get("rework_count", 0) >= MAX_REWORK_CYCLES
+        ):
+            raise SystemExit(
+                f"最多允许 {MAX_REWORK_CYCLES} 次完整重建返工；"
+                "达到上限后仍有 blocker 时必须转为 incomplete。"
+            )
         current["state"] = args.to
         if before == "qa" and args.to == "producing":
             current["rework_count"] = current.get("rework_count", 0) + 1
@@ -401,7 +466,7 @@ def main() -> None:
     transition.add_argument(
         "--delivery-report",
         type=Path,
-        help="转换到 complete 所需的交付报告；默认 simplified-v1，旧流程可配合 QA manifest",
+        help="转换到 complete 所需的交付报告；默认 simplified-v2，旧流程可配合 QA manifest",
     )
     transition.add_argument("--pptx", type=Path, help="转换到 complete 所需的交付 PPTX")
 
