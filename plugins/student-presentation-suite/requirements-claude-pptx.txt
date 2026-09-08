@@ -3,5 +3,5 @@
 # LibreOffice 和 Poppler 是系统工具，须单独安装。
 -r requirements.txt
 Pillow>=10.0
-markitdown[pptx]>=0.1.0,<1.0
+markitdown[pptx]>=0.1.7,<1.0
 defusedxml>=0.7.1,<1.0
