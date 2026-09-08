@@ -2,6 +2,8 @@
 
 默认 QA 采用四道门禁：Plan、Actual Artifact、Render Critic、Delivery。普通任务仍不生成冗长审计链，但必须保存最小的 package、actual-content 和 delivery 报告。
 
+兼容性说明：v0.6 文档中的“默认只使用三道门禁”和旧命令 `--simple --strict --visual-reviewed` 仅用于历史回归识别；v0.7 已升级为四道门禁，不能把旧三门禁或单独的 `--visual-reviewed` 布尔值当作完整质量证明。
+
 ## Gate 1 — Plan
 
 用一个命令完成 Slide Spec schema、跨字段语义和 Brief 交接检查：
@@ -88,7 +90,8 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_delivery_check_v07.py"
   --notes <speaker-notes.md> --output <delivery-report.json> --json
 ```
 
-每页必须对应一张有效 PNG/JPEG 预览；缺预览或未完成逐页视觉复核时状态只能是 `incomplete`。用户明确不需要 notes 时可传 `--allow-missing-notes`。
+每页必须对应一张有效 PNG/JPEG 预览；缺预览或未完成逐页视觉复核时状态只能是
+`incomplete`。用户明确不需要 notes 时可传 `--allow-missing-notes`。仍有 blocker 时交付 `incomplete`，不得把部分通过的报告升级为 complete。
 
 交付报告通过后：
 
