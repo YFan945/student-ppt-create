@@ -112,8 +112,10 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("safety preflight", production)
         self.assertIn("QA 和 delivery 绑定", production)
         self.assertIn("package validation", qa)
-        self.assertIn("默认只使用三道门禁", qa)
-        self.assertIn("--simple --strict --visual-reviewed", qa)
+        self.assertIn("四个阶段", qa)
+        self.assertIn("slide_spec_guard.py", qa)
+        self.assertIn("pptx_quality_gate_v071.py", qa)
+        self.assertIn("pptx_delivery_check_v071.py", qa)
         self.assertIn("Advanced evidence mode", qa)
 
     def test_cross_skill_handoff_is_deterministic(self) -> None:
@@ -169,9 +171,10 @@ class SkillBehaviorContractTests(unittest.TestCase):
 
     def test_missing_preview_never_qualifies_for_complete(self) -> None:
         qa = self.read("skills/sp-deck/references/pptx-qa.md")
-        self.assertIn("状态只能是\n`incomplete`", qa)
+        self.assertIn("缺预览", qa)
+        self.assertIn("状态只能是 `incomplete`", qa)
         self.assertNotIn("代码允许 complete", qa)
-        self.assertIn("仍有 blocker 时交付 `incomplete`", qa)
+        self.assertIn("quality gate", qa)
 
     def test_review_and_outline_use_intake_without_overreaching(self) -> None:
         planning = self.read("skills/sp-outline/SKILL.md")

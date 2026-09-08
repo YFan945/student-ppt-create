@@ -18,7 +18,6 @@ version: 0.7.1
 - 低层命令、安全规则、编辑和 QA 分别由 `references/pptx-runtime.md`、`references/pptxgenjs-safety.md`、`references/pptx-editing.md`、`references/pptx-qa.md` 负责。
 
 ## State gate
-
 状态按
 `intake_pending → intake_confirmed → planned → producing → qa → complete`
 正向推进，终态为 `incomplete` 或 `blocked`。`qa → producing` 是一次正式返工边；该正式返工内部允许最多 3 个受控 render-repair iterations。`incomplete → qa` 用于补齐缺失门禁后重入 QA，均须带 `--reason <摘要>`。
@@ -47,7 +46,6 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" <init | confirm --summa
 11. **完成**：PPTX、Slide Spec validation + lock、package validation、actual-content check、完整预览、structured visual review 与 `quality-report.json` 全部通过后，运行 `pptx_delivery_check_v071.py --strict --visual-reviewed`，再 `transition --to complete --pptx <pptx> --delivery-report <report>`。缺渲染、quality gate blocker 或用户放弃时只能 `incomplete`。
 
 ## Generation core contract
-
 默认 create/rebuild 核心链路固定为：
 
 ```text
