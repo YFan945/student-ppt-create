@@ -18,7 +18,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_slide_spec.py" <slide-spec> \
 最终 candidate 不是以 generator 或 composition plan 为准，而以**实际 PPTX**为准。
 
 1. `pptx_tool.py validate`：Open XML package/schema/relationship 检查。
-2. `pptx_actual_content_check.py`：直接回读最终 slide XML，与 Slide Spec 对比页数、标题、关键 claim、显式 slide_copy 和计划关键数字。
+2. `pptx_actual_content_check.py`：直接回读最终 slide XML，与 Slide Spec 对比页数、标题、关键 claim、显式 slide_copy 和计划关键数字，并绑定 PPTX/Slide Spec SHA-256。
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" validate <pptx> \
@@ -76,18 +76,17 @@ workflow state 仍只记录一次正式 `qa → producing` 返工边；该正式
 
 ## Gate 4 — Delivery
 
-用简化交付检查绑定预览有效性、页数覆盖、规划报告、package report、用户要求输出文件和最终 PPTX hash：
+v0.7 默认使用包装后的 simplified delivery gate。它复用原有 preview/package/spec 检查，并新增一个硬门禁：`actual-content-report.json` 必须通过，且其 PPTX hash 必须与当前文件一致。
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_delivery_check.py" \
-  --simple --strict --visual-reviewed \
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_delivery_check_v07.py" \
+  --strict --visual-reviewed \
   --pptx <pptx> --slide-spec-report <slide-spec-report.json> \
   --package-report <package-report.json> \
+  --actual-content-report <actual-content-report.json> \
   --preview <page-1.png> --preview <page-2.png> \
   --notes <speaker-notes.md> --output <delivery-report.json> --json
 ```
-
-在运行 delivery check 前，`actual-content-report.json` 必须 `ok: true`；该报告作为 work artifact 保留，即使当前 simplified-v1 delivery schema 尚未显式绑定它。
 
 每页必须对应一张有效 PNG/JPEG 预览；缺预览或未完成逐页视觉复核时状态只能是 `incomplete`。用户明确不需要 notes 时可传 `--allow-missing-notes`。
 
@@ -98,7 +97,9 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" transition --to complet
   --pptx <pptx> --delivery-report <delivery-report.json>
 ```
 
-`complete` 要求：Production Summary 未变化、Slide Spec 校验通过、Actual Artifact gate 通过、package validation 通过、预览覆盖全部页面、人工/模型逐页视觉检查完成、交付报告绑定当前 PPTX。
+为保持旧 `workflow_guard.py` 兼容，v0.7 delivery report 继续使用 `gate_profile: simplified-v1`，同时新增 `generation_core_version: 0.7`、`actual_content_check_passed` 和 `actual_content_report_sha256`。因此旧完成状态读取逻辑不需要同步大改。
+
+`complete` 要求：Production Summary 未变化、Slide Spec 校验通过、Actual Artifact gate 通过、package validation 通过、预览覆盖全部页面、逐页视觉检查完成、交付报告绑定当前 PPTX。
 
 ## Advanced evidence mode
 
