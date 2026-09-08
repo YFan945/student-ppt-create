@@ -11,7 +11,7 @@
     "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
-    "eslint": "8.57.1",
+    "eslint": "10.10.0",
     "prettier": "3.6.2"
   },
   "overrides": {
