@@ -253,26 +253,30 @@ Depending on the request, `outputs/` may contain:
 <topic>-speaker-notes.md
 <topic>-preview.png
 <topic>-presentation-package-report.json
+<topic>-actual-content-report.json
+<topic>-visual-review.json
+<topic>-quality-report.json
 <topic>-delivery-report.json
 <topic>-change-summary.md
 <topic>-presentation.pdf
 <topic>-teleprompter.html
 <topic>-training-cards.md
-<topic>-quality-report.json
 <topic>-revision-manifest.json
 ```
 
 The final response reports each absolute file path, slide count, rendered QA
-result, and the status: `complete`, `incomplete`, or `blocked`. A `complete`
-delivery uses three gates: one validated Slide Spec report, package validation plus full rendering
-and page review, and one simplified delivery report bound to the current PPTX and previews.
-Detailed content/asset/visual manifests remain optional diagnostics.
-`deck.js` follows the official PptxGenJS gotchas and composes slides freely from their
-narrative job and available assets. Suite-owned layout, visual, shape, SVG, and composer
-libraries provide optional inspiration and deterministic fallback; the wrapper
-normalizes and atomically publishes the deck, and layout/overflow quality is
-caught by page review and package validation. Delivery reuses the
-package report instead of revalidating an unchanged deck.
+result, and the status: `complete`, `incomplete`, or `blocked`. v0.7.1 uses four quality stages:
+(1) validate and freeze the Slide Spec; (2) run the Actual Element Registry, package validation,
+and PPTX artifact readback against that frozen plan; (3) render every page, write a structured
+visual review, and run visual-score, deck-rhythm, evidence-closure, and speaker-timing gates;
+(4) bind those reports to the current PPTX, Slide Spec, and spec-lock hashes in the delivery report.
+Legacy content/asset/QA manifests remain optional advanced diagnostics.
+`deck.js` remains adaptive-freeform PptxGenJS: the model chooses expression, focal point, and
+composition language, while the Actual Element Registry enforces real-element geometry/text-fit
+baselines. Suite-owned layout, visual, shape, SVG, and composer libraries remain inspiration or
+deterministic fallback. Render QA no longer treats “no overflow/overlap” as sufficient design
+quality: high-score decks also evaluate hierarchy, focal point, composition, visual interest,
+whitespace, AI-template feel, and repeated structures across the deck.
 Eleven editable visual families (`pptx-visuals.js`) provide hero,
 visual-dominant, process-path, timeline, comparison, dashboard, architecture,
 matrix, quote, summary, and reference structures without post-generation patch

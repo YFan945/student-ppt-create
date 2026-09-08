@@ -1,7 +1,7 @@
 {
   "name": "student-presentation-suite",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.7.1",
   "description": "Development and local fallback dependencies for the Claude Code student presentation plugin.",
   "scripts": {
     "smoke": "node scripts/run_with_pptxgenjs.js --probe"

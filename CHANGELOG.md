@@ -6,6 +6,21 @@ Codex 发行记录不在此维护。
 
 ## Unreleased
 
+### v0.7.1：冻结计划与设计质量闭环
+
+- Slide Spec 校验后生成 `slide-spec-lock.json` 并绑定 SHA-256；生产、readback 与 QA 阶段禁止
+  静默修改计划。确需改计划时必须重新校验并显式 `revise --reason`，记录 parent spec hash。
+- 新增结构化 render visual critic：逐页记录 hierarchy、focal point、composition、visual interest、
+  whitespace、visual structure 与 AI-template feel；High-score 单项低于 6 或整套均分低于 7 阻断。
+- 新增 deck-level rhythm gate：连续两页等权卡片/卡片网格/三等分/普通编号列表即 Major，
+  任意页面结构连续三页或整套结构多样性不足也会触发返工。
+- 新增 Evidence Closure 与 speaker timing：`evidence_refs`、Evidence Ledger、页面短引用和最终
+  References 必须闭环；讲稿按中文约 240 字/分钟、英文约 130 词/分钟估时，整体超时 15% 阻断。
+- v0.7.1 delivery 与 `workflow_guard complete` 绑定 actual-content、quality report、冻结 Slide Spec
+  与 spec-lock hash，旧 simplified delivery 不能绕过新 quality gate。
+- Typography grammar 增加 thesis contrast、oversized keyword、one-claim-three-supports、
+  question→answer 等表达语法，明确禁止把并列 bullet 机械换成 01/02/03/04 或 N 个等宽矩形。
+
 - 默认门禁由多份中间证据链收敛为三步：一次 Slide Spec/Brief 校验、最终 PPTX 的 package
   validation + 全页渲染/查看、一次 `simplified-v1` delivery check；普通任务不再生成
   content/asset/visual/QA manifest 独立报告。

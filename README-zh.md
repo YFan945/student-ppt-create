@@ -236,24 +236,29 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 <topic>-speaker-notes.md
 <topic>-preview.png
 <topic>-presentation-package-report.json
+<topic>-actual-content-report.json
+<topic>-visual-review.json
+<topic>-quality-report.json
 <topic>-delivery-report.json
 <topic>-change-summary.md
 <topic>-presentation.pdf
 <topic>-teleprompter.html
 <topic>-training-cards.md
-<topic>-quality-report.json
 <topic>-revision-manifest.json
 ```
 
 最终回复会说明文件绝对路径、页数、渲染检查结果，以及任务状态：
-`complete`、`incomplete` 或 `blocked`。默认只有三道门禁：一次 Slide Spec/Brief 校验；
-最终 PPTX 的 package validation、完整渲染与逐页查看；一次绑定当前 PPTX、规划报告和预览的
-简化 delivery check。content/asset/visual/QA manifest 仅作为高级诊断，不再是普通交付物。
-`deck.js` 遵守官方 PptxGenJS gotchas，并默认根据叙事任务和可用素材自由构图；helper
-负责安全检查，版式、visual、shape、SVG 和 composer 库仅提供可选灵感与确定性兜底。
-wrapper 只做 normalize 后原子落盘，不做生成期静态
-门禁，布局/溢出问题由 QA 逐页视觉检查与 package validation 发现。
-QA 和 delivery 复用 package report，不重复校验未修改的 deck。
+`complete`、`incomplete` 或 `blocked`。v0.7.1 默认质量链分为四段：① Slide Spec/Brief
+校验后冻结计划；② Actual Element Registry + package validation + PPTX artifact readback
+检查真实文件是否与冻结计划一致；③ 完整渲染后生成结构化 visual review，并执行页面视觉评分、
+deck-level 节奏、Evidence Closure 与 speaker timing quality gate；④ delivery report 将这些证据
+与当前 PPTX/Slide Spec/spec lock 哈希绑定后才能进入 `complete`。旧 content/asset/QA manifest
+仍只作为高级诊断。
+`deck.js` 继续采用 adaptive-freeform PptxGenJS：模型负责表达、视觉焦点和构图语言，Actual
+Element Registry 负责真实元素的越界/重叠/文字适配底线；版式、visual、shape、SVG 和 composer
+库只提供灵感或确定性兜底。Render QA 不再以“没有 overflow/overlap”作为审美通过标准：
+High-score 页面还要检查 hierarchy、focal point、composition、visual interest、whitespace、
+AI-template feel 和整套页面结构重复。QA 和 delivery 复用未变化的 package/readback 证据。
 11 类可编辑视觉组件（`pptx-visuals.js`）直接提供 hero、visual-dominant、
 process-path、时间线、对比、指标、架构、矩阵、引文、总结和参考资料结构，避免生成后逐页修补。
 12 种正式视觉风格只解析为气质、六角色 palette、四类背景和一个可选 SVG；“其他”使用
