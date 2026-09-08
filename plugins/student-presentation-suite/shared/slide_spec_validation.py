@@ -62,7 +62,7 @@ def _validate_visual_semantics(meta: dict[str, Any], slides: list[Any]) -> list[
             )
             errors.append({
                 "path": f".slides.{index}.visual",
-                "message": f"{mode} requires an explicit visual strategy on every content slide",
+                "message": f"{mode} requires a visual strategy on every content slide",
             })
         if not isinstance(visual, dict):
             continue
