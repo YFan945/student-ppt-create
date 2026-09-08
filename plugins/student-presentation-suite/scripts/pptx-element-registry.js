@@ -122,14 +122,32 @@ class SlideElementRegistry {
       if (el.type === 'line') continue;
       const box = bboxOf(el);
       if (!box) {
-        errors.push({ code: 'invalid_bbox', element: el.id, message: 'Element has invalid x/y/w/h.' });
+        errors.push({
+          code: 'invalid_bbox',
+          element: el.id,
+          message: 'Element has invalid x/y/w/h.',
+        });
         continue;
       }
       if (box.w <= 0 || box.h <= 0) {
-        errors.push({ code: 'non_positive_size', element: el.id, message: 'Element width/height must be positive.' });
+        errors.push({
+          code: 'non_positive_size',
+          element: el.id,
+          message: 'Element width/height must be positive.',
+        });
       }
-      if (box.x < -safeMargin || box.y < -safeMargin || box.r > slideW + safeMargin || box.b > slideH + safeMargin) {
-        errors.push({ code: 'out_of_canvas', element: el.id, bbox: box, message: 'Element exceeds slide canvas.' });
+      if (
+        box.x < -safeMargin ||
+        box.y < -safeMargin ||
+        box.r > slideW + safeMargin ||
+        box.b > slideH + safeMargin
+      ) {
+        errors.push({
+          code: 'out_of_canvas',
+          element: el.id,
+          bbox: box,
+          message: 'Element exceeds slide canvas.',
+        });
       }
       if (el.type === 'text') {
         const fit = estimateTextFit(el);
@@ -137,7 +155,10 @@ class SlideElementRegistry {
       }
     }
 
-    const boxes = elements.filter((el) => el.type !== 'line').map((el) => ({ el, box: bboxOf(el) })).filter((x) => x.box);
+    const boxes = elements
+      .filter((el) => el.type !== 'line')
+      .map((el) => ({ el, box: bboxOf(el) }))
+      .filter((x) => x.box);
     for (let i = 0; i < boxes.length; i += 1) {
       for (let j = i + 1; j < boxes.length; j += 1) {
         const a = boxes[i];
@@ -148,7 +169,12 @@ class SlideElementRegistry {
         const minArea = Math.min(a.box.w * a.box.h, b.box.w * b.box.h);
         const ratio = minArea > 0 ? area / minArea : 0;
         const involvesText = a.el.type === 'text' || b.el.type === 'text';
-        const issue = { code: involvesText ? 'text_overlap' : 'element_overlap', a: a.el.id, b: b.el.id, overlapRatio: ratio };
+        const issue = {
+          code: involvesText ? 'text_overlap' : 'element_overlap',
+          a: a.el.id,
+          b: b.el.id,
+          overlapRatio: ratio,
+        };
         if (involvesText && ratio > 0.04) errors.push(issue);
         else if (ratio > 0.12) warnings.push(issue);
       }
@@ -167,7 +193,9 @@ class SlideElementRegistry {
   }
 
   analyzeDeck() {
-    const slides = [...this.slides.keys()].sort((a, b) => a - b).map((index) => this.analyzeSlide(index));
+    const slides = [...this.slides.keys()]
+      .sort((a, b) => a - b)
+      .map((index) => this.analyzeSlide(index));
     const errors = slides.flatMap((s) => s.errors.map((e) => ({ slide: s.slideIndex, ...e })));
     const warnings = slides.flatMap((s) => s.warnings.map((e) => ({ slide: s.slideIndex, ...e })));
     return { ok: errors.length === 0, errors, warnings, slides };
@@ -176,7 +204,9 @@ class SlideElementRegistry {
   assertSafe() {
     const report = this.analyzeDeck();
     if (!report.ok) {
-      const summary = report.errors.map((e) => `slide ${e.slide}: ${e.code} (${e.element || `${e.a}/${e.b}`})`).join('\n');
+      const summary = report.errors
+        .map((e) => `slide ${e.slide}: ${e.code} (${e.element || `${e.a}/${e.b}`})`)
+        .join('\n');
       throw new Error(`Actual slide geometry preflight failed:\n${summary}`);
     }
     return report;
