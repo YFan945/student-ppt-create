@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 """Compare actual PPTX text against Slide Spec after generation.
 
-This is intentionally lightweight and deterministic. It reads slide XML directly,
-extracts visible text, then checks planned titles, key claims and explicit slide_copy
-fragments. It is not a semantic model; it is a hard guard against accidental drift,
-missing titles, missing key claims, or generation bugs that silently drop content.
+This deterministic readback guard reads slide XML directly and checks planned
+slide count, titles, key claims, explicit slide_copy fragments and key numbers.
+The report is bound to both the current PPTX and the current Slide Spec hashes.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -18,8 +18,15 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
-P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def load_structured(path: Path) -> dict[str, Any]:
@@ -68,7 +75,7 @@ def compact_fragments(value: Any) -> list[str]:
             result.extend(compact_fragments(item))
         return result
     if isinstance(value, dict):
-        result = []
+        result: list[str] = []
         for key in ("text", "title", "claim", "label", "value"):
             if key in value:
                 result.extend(compact_fragments(value[key]))
@@ -118,7 +125,10 @@ def check(spec: dict[str, Any], actual: list[str]) -> dict[str, Any]:
                 "missing": missing_copy[:8],
             })
 
-        numeric_claims = re.findall(r"(?<!\w)(?:\d+(?:\.\d+)?%?|\d{1,3}(?:,\d{3})+)(?!\w)", " ".join([title, claim, *copy_fragments]))
+        numeric_claims = re.findall(
+            r"(?<!\w)(?:\d+(?:\.\d+)?%?|\d{1,3}(?:,\d{3})+)(?!\w)",
+            " ".join([title, claim, *copy_fragments]),
+        )
         missing_numbers = sorted({n for n in numeric_claims if normalize(n) not in actual_norm})
         if missing_numbers:
             slide_issues.append({"severity": "major", "code": "planned_numbers_missing", "missing": missing_numbers})
@@ -153,8 +163,20 @@ def main() -> int:
     parser.add_argument("--strict", action="store_true")
     args = parser.parse_args()
 
+    if not args.pptx.is_file():
+        raise SystemExit(f"PPTX does not exist: {args.pptx}")
+    if not args.slide_spec.is_file():
+        raise SystemExit(f"Slide Spec does not exist: {args.slide_spec}")
+
     spec = load_structured(args.slide_spec)
     report = check(spec, extract_pptx_text(args.pptx))
+    report.update({
+        "pptx": str(args.pptx.resolve()),
+        "pptx_sha256": sha256_file(args.pptx),
+        "slide_spec": str(args.slide_spec.resolve()),
+        "slide_spec_sha256": sha256_file(args.slide_spec),
+        "slide_count": report["actual_slide_count"],
+    })
     payload = json.dumps(report, ensure_ascii=False, indent=2)
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
