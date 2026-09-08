@@ -1,6 +1,6 @@
 # PPTX Production
 
-本文件只负责生产阶段编排。Intake、内容、证据、图片和视觉标准由共享 canonical references 负责；低层命令见 `pptx-runtime.md`。
+本文件只负责生产阶段编排。Intake、内容、证据、图片和视觉标准由共享 canonical references 负责；低层命令见 `pptx-runtime.md`，PptxGenJS 安全规则见 `pptxgenjs-safety.md`。
 
 生产前必须具备：已确认的 Production Summary、验证通过的 Presentation Brief 与 Slide Spec、明确的 output prefix、selected visual style、selected design grammar，以及唯一 production mode。
 
@@ -26,7 +26,7 @@
 - 文本不适配时依次拆页、删减、扩大容器，禁止突破字号下限。
 - 坐标必须落在画布内；标题、正文、页脚区与安全边距保持一致。
 - create/rebuild 的每个实际 text/shape/image/chart/line 必须登记进 Actual Element Registry，不能只检查 advisory composition。
-- 所有最终 candidate 都必须通过 package validation、artifact readback、完整 render 和视觉复核。
+- 所有最终 candidate 都必须通过 package validation、artifact readback、完整 render 和视觉复核；同一份 package validation 证据要与 QA 和 delivery 绑定，不能重复生成相互矛盾的报告。
 
 ## Visual design
 
@@ -57,7 +57,7 @@ Slide Spec
 
 1. 按 Slide Spec 创建 `outputs/.pptx-work/<work-id>/deck.js`。加载 validated Slide Spec、resolved tokens、`pptx-design-grammar.md` 和 `pptx-visual-engine.md`。
 2. 每页先确定最小 composition contract：`role`、`visual_strategy`、`focal_point`、`hierarchy`、`composition_intent`；`layout` 默认只是提示，`layout_lock: true` 时才严格解析。
-3. 可用 `suggestLayouts()` / `suggestCompositions()` 获得 2–3 个候选，但最终真实元素必须进入 `${CLAUDE_PLUGIN_ROOT}/scripts/pptx-element-registry.js`。`preflightSlide()` 只算早期检查，不替代 registry。
+3. 可用 `suggestLayouts()` / `suggestCompositions()` 获得 2–3 个候选，但最终真实元素必须进入 `${CLAUDE_PLUGIN_ROOT}/scripts/pptx-element-registry.js`。`preflightSlide()` 只是早期 safety preflight，不替代 registry；composer 仅作为 deterministic fallback / compatibility path，不是默认生成器。
 4. generator 在 `pptx.writeFile()` 前调用 `registry.assertSafe()`。阻断实际越界、明显文字重叠等几何错误；warning 必须在最终 render 中确认。
 5. deck.js 从 `process.argv[2]` 接收输出路径；每个输出只创建一个 pptxgen 实例。
 6. 执行：
