@@ -61,31 +61,37 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" render <pptx> \
 4. 重新生成完整 candidate；
 5. 从 Gate 2 开始全部重跑。
 
-Render 是生成循环的一部分，不得通过只设置 `--visual-reviewed` 跳过真实复审。
+最多允许 3 次完整 repair cycle；超过上限仍有 blocker 时转 `incomplete`。Render 是生成循环的一部分，
+不得通过只设置 `--visual-reviewed` 跳过真实复审。
 
-## Gate 4 — Delivery
+## Gate 4 — Artifact-aware Delivery
 
-简化交付报告继续作为最终 hash 绑定，但 complete 前必须同时存在：
+默认使用 `pptx_delivery_v2.py`。它先复用旧的 simplified delivery checker，再强制绑定
+static artifact report 与 plan-vs-actual report，生成 `gate_profile: simplified-v2`：
+
+```bash
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_delivery_v2.py" \
+  --strict --visual-reviewed \
+  --pptx <pptx> \
+  --slide-spec-report <slide-spec-report.json> \
+  --static-report <static-report.json> \
+  --plan-actual-report <plan-actual-report.json> \
+  --package-report <package-report.json> \
+  --preview <page-1.png> --preview <page-2.png> \
+  --notes <speaker-notes.md> \
+  --output <delivery-report.json> --json
+```
+
+complete 前必须同时满足：
 - Slide Spec validation pass；
-- static artifact report 无 blocker；
-- plan-vs-actual report 无 blocker/major；
+- static artifact report `ok=true` 且与当前 PPTX hash 一致；
+- plan-vs-actual report `ok=true` 且与当前 PPTX hash 一致；
 - package validation pass；
 - preview 覆盖全部页面；
 - 已完成全页视觉复审且无剩余 blocker。
 
-当前 `pptx_delivery_check.py --simple` 保持兼容；在 v0.7 中，agent 必须把 static/plan 报告作为输出证据，
-不得把 `--visual-reviewed` 布尔值本身视为视觉质量证明。
-
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_delivery_check.py" \
-  --simple --strict --visual-reviewed \
-  --pptx <pptx> --slide-spec-report <slide-spec-report.json> \
-  --package-report <package-report.json> \
-  --preview <page-1.png> --preview <page-2.png> \
-  --notes <speaker-notes.md> --output <delivery-report.json> --json
-```
-
-交付报告通过后：
+`workflow_guard.py transition --to complete` 会重新读取并校验 static/plan report 的文件、hash、profile、
+`ok` 与当前 PPTX hash，因此不能通过手工修改 delivery flag 绕过门禁。
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" transition --to complete \
