@@ -102,7 +102,6 @@ def validate_visual_report(
         issues.append(issue("critical", "visual_slides_missing", "Visual review must contain a slides array."))
 
     by_slide: dict[int, dict[str, Any]] = {}
-    structures: list[str] = []
     score_values: list[float] = []
     for item in raw_slides:
         if not isinstance(item, dict) or not isinstance(item.get("slide"), int):
@@ -114,7 +113,6 @@ def validate_visual_report(
             continue
         by_slide[slide_no] = item
         structure = str(item.get("visual_structure") or "").strip().lower()
-        structures.append(structure)
         if not structure:
             issues.append(issue("major", "visual_structure_missing", f"Slide {slide_no} is missing visual_structure.", slide=slide_no))
 
@@ -268,8 +266,10 @@ def check_evidence(spec: dict[str, Any], actual_text: list[str]) -> dict[str, An
         or re.search(r"参考|references|bibliography|works cited", str(slide.get("title") or ""), flags=re.I)
     }
     # Classroom decks often combine conclusion + references on the final page.
+    # Do not include the penultimate slide automatically: a short source line on
+    # a content slide is not a substitute for the final bibliography.
     if actual_text:
-        reference_indices.update(range(max(1, len(actual_text) - 1), len(actual_text) + 1))
+        reference_indices.add(len(actual_text))
     reference_text = "\n".join(actual_text[index - 1] for index in sorted(reference_indices) if 1 <= index <= len(actual_text))
 
     if citation_style != "none":

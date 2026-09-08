@@ -219,7 +219,7 @@ class GenerationCoreV071Tests(unittest.TestCase):
                 {
                     "id": 1,
                     "timing_sec": 60,
-                    "speaker_notes": "这是测试讲稿。" * 35,
+                    "speaker_notes": "这是测试讲稿。" * 60,
                 }
             ],
         }
