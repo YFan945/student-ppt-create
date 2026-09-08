@@ -88,7 +88,10 @@ def main() -> None:
     result["actual_content_report"] = actual
     result["delivery_report"]["actual_content_check_passed"] = actual["valid"]
     result["delivery_report"]["actual_content_report_sha256"] = actual.get("sha256")
-    result["delivery_report"]["gate_profile"] = "simplified-v2"
+    # Keep the existing profile for workflow_guard compatibility; v0.7 adds
+    # stronger fields without breaking older completion-state readers.
+    result["delivery_report"]["gate_profile"] = "simplified-v1"
+    result["delivery_report"]["generation_core_version"] = "0.7"
 
     if not actual["valid"]:
         result["ok"] = False
