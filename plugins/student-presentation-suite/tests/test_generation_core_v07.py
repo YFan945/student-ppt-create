@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime as dt
 import importlib.util
 import json
 import shutil
@@ -13,6 +14,7 @@ REGISTRY = ROOT / "scripts" / "pptx-element-registry.js"
 ACTUAL_CHECK = ROOT / "skills" / "sp-deck" / "scripts" / "pptx_actual_content_check.py"
 DELIVERY_V07 = ROOT / "skills" / "sp-deck" / "scripts" / "pptx_delivery_check_v07.py"
 SLIDE_VALIDATION = ROOT / "shared" / "slide_spec_validation.py"
+NPM_AUDIT_GATE = ROOT / "scripts" / "npm_audit_gate.py"
 
 
 def load_module(name: str, path: Path):
@@ -30,6 +32,7 @@ class GenerationCoreV07Tests(unittest.TestCase):
         cls.actual = load_module("pptx_actual_content_check_v07_test", ACTUAL_CHECK)
         cls.delivery = load_module("pptx_delivery_check_v07_test", DELIVERY_V07)
         cls.slide_validation = load_module("slide_spec_validation_v07_test", SLIDE_VALIDATION)
+        cls.npm_audit = load_module("npm_audit_gate_v07_test", NPM_AUDIT_GATE)
         cls.node = shutil.which("node")
 
     def run_registry(self, statements: str) -> dict:
@@ -181,6 +184,44 @@ console.log(JSON.stringify(registry.analyzeDeck()));
         self.assertFalse(result["valid"])
         self.assertTrue(
             any("does not match the current PPTX" in item for item in result["errors"])
+        )
+
+    def test_npm_audit_gate_allows_only_known_unexpired_image_size_advisory(self) -> None:
+        advisories = [
+            {
+                "id": "ghsa-w3rx-r6r6-pgpr",
+                "package": "image-size",
+                "severity": "high",
+                "title": "known image-size DoS",
+            }
+        ]
+        result = self.npm_audit.evaluate(advisories, dt.date(2026, 9, 8))
+        self.assertTrue(result["ok"])
+        self.assertEqual(1, len(result["allowed"]))
+        self.assertEqual([], result["blocked"])
+
+    def test_npm_audit_gate_blocks_unknown_or_expired_advisory(self) -> None:
+        unknown = [
+            {
+                "id": "ghsa-aaaa-bbbb-cccc",
+                "package": "example",
+                "severity": "high",
+                "title": "unknown advisory",
+            }
+        ]
+        self.assertFalse(
+            self.npm_audit.evaluate(unknown, dt.date(2026, 9, 8))["ok"]
+        )
+        known = [
+            {
+                "id": "ghsa-w3rx-r6r6-pgpr",
+                "package": "image-size",
+                "severity": "high",
+                "title": "known image-size DoS",
+            }
+        ]
+        self.assertFalse(
+            self.npm_audit.evaluate(known, dt.date(2026, 10, 2))["ok"]
         )
 
 
