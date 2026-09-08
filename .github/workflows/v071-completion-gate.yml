@@ -1,0 +1,54 @@
+name: v071-completion-gate
+
+on:
+  push:
+    branches: [improve/ppt-generation-core-v0.7]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'chore apply v071 completion gate'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: improve/ppt-generation-core-v0.7
+      - name: Patch workflow completion contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          guard = Path('plugins/student-presentation-suite/scripts/workflow_guard.py')
+          text = guard.read_text(encoding='utf-8')
+          old = '''        if delivery.get("visual_reviewed") is not True:\n            errors.append("未确认完成全页视觉检查。")\n        if slide_count is None or delivery.get("preview_page_coverage") != f"{slide_count}/{slide_count}":\n'''
+          new = '''        if delivery.get("visual_reviewed") is not True:\n            errors.append("未确认完成全页视觉检查。")\n        if delivery.get("generation_core_version") != "0.7.1":\n            errors.append("当前 sp-deck 简化交付必须使用 generation_core_version=0.7.1。")\n        if delivery.get("actual_content_check_passed") is not True:\n            errors.append("Actual Artifact readback 未通过。")\n        if delivery.get("quality_check_passed") is not True:\n            errors.append("v0.7.1 quality gate 未通过。")\n        for hash_key, label in (\n            ("quality_report_sha256", "quality report"),\n            ("slide_spec_sha256", "frozen Slide Spec"),\n            ("spec_lock_sha256", "Slide Spec lock"),\n        ):\n            value = delivery.get(hash_key)\n            if not isinstance(value, str) or len(value) != 64:\n                errors.append(f"简化交付报告缺少有效的 {label} hash。")\n        if slide_count is None or delivery.get("preview_page_coverage") != f"{slide_count}/{slide_count}":\n'''
+          if old not in text:
+              raise SystemExit('workflow_guard insertion point not found')
+          guard.write_text(text.replace(old, new), encoding='utf-8')
+
+          tests = Path('plugins/student-presentation-suite/tests/test_workflow_guard.py')
+          t = tests.read_text(encoding='utf-8')
+          marker = '''                        "gate_profile": "simplified-v1",\n                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),\n'''
+          replacement = '''                        "gate_profile": "simplified-v1",\n                        "generation_core_version": "0.7.1",\n                        "actual_content_check_passed": True,\n                        "quality_check_passed": True,\n                        "quality_report_sha256": "1" * 64,\n                        "slide_spec_sha256": "2" * 64,\n                        "spec_lock_sha256": "3" * 64,\n                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),\n'''
+          if marker not in t:
+              raise SystemExit('workflow_guard test insertion point not found')
+          t = t.replace(marker, replacement, 1)
+          anchor = '''            self.assertTrue(module.validate_completion_manifest(None, pptx, delivery))\n\n    def test_complete_rejects_missing_manifest(self) -> None:\n'''
+          extra = '''            self.assertTrue(module.validate_completion_manifest(None, pptx, delivery))\n\n    def test_complete_rejects_pre_v071_simplified_delivery(self) -> None:\n        module = self.module\n        with tempfile.TemporaryDirectory() as tmp:\n            root = Path(tmp)\n            pptx = root / "deck.pptx"\n            with zipfile.ZipFile(pptx, "w") as archive:\n                archive.writestr("ppt/slides/slide1.xml", "<slide/>")\n            delivery = root / "delivery.json"\n            delivery.write_text(\n                json.dumps(\n                    {\n                        "ok": True,\n                        "status": "complete",\n                        "gate_profile": "simplified-v1",\n                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),\n                        "slide_spec_validation_passed": True,\n                        "package_validation_passed": True,\n                        "package_blockers": 0,\n                        "visual_reviewed": True,\n                        "preview_page_coverage": "1/1",\n                    }\n                ),\n                encoding="utf-8",\n            )\n            errors = module.validate_completion_manifest(None, pptx, delivery)\n            self.assertTrue(any("0.7.1" in item for item in errors))\n            self.assertTrue(any("quality gate" in item for item in errors))\n\n    def test_complete_rejects_missing_manifest(self) -> None:\n'''
+          if anchor not in t:
+              raise SystemExit('test anchor not found')
+          tests.write_text(t.replace(anchor, extra, 1), encoding='utf-8')
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add plugins/student-presentation-suite/scripts/workflow_guard.py plugins/student-presentation-suite/tests/test_workflow_guard.py
+          if ! git diff --cached --quiet; then
+            git commit -m "chore apply v071 completion gate"
+            git push origin HEAD:improve/ppt-generation-core-v0.7
+          fi
