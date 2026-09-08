@@ -99,8 +99,12 @@ def _box_from_node(node: ET.Element) -> Box | None:
         xfrm = node.find(".//p:xfrm", NS)
     if xfrm is None:
         return None
-    off = xfrm.find("a:off", NS) or xfrm.find("p:off", NS)
-    ext = xfrm.find("a:ext", NS) or xfrm.find("p:ext", NS)
+    off = xfrm.find("a:off", NS)
+    if off is None:
+        off = xfrm.find("p:off", NS)
+    ext = xfrm.find("a:ext", NS)
+    if ext is None:
+        ext = xfrm.find("p:ext", NS)
     if off is None or ext is None:
         return None
     return Box(
