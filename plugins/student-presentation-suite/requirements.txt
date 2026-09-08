@@ -1,4 +1,4 @@
 # 基础依赖：Slide Spec / Presentation Brief 验证。
 # PPTX 运行时与 QA 专属依赖见 requirements-claude-pptx.txt。
 jsonschema>=4.0
-PyYAML>=6.0
+PyYAML>=6.0.3
