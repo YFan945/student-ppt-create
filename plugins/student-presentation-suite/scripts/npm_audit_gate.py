@@ -18,12 +18,12 @@ GHSA_RE = re.compile(r"GHSA-[0-9a-z-]+", re.IGNORECASE)
 # image-size has no installable patched release as of 2026-09-08. These
 # exceptions are deliberately narrow and expire so CI cannot hide future risk.
 ALLOWLIST = {
-    "GHSA-w3rx-r6r6-pgpr": {
+    "ghsa-w3rx-r6r6-pgpr": {
         "package": "image-size",
         "review_due": dt.date(2026, 10, 1),
         "reason": "No patched npm release is currently installable; reached through PPTX image metadata handling.",
     },
-    "GHSA-5p2g-fcmc-qvqq": {
+    "ghsa-5p2g-fcmc-qvqq": {
         "package": "image-size",
         "review_due": dt.date(2026, 10, 1),
         "reason": "No patched npm release is currently installable; reached through PPTX image metadata handling.",
