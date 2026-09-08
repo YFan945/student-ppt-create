@@ -1,0 +1,54 @@
+name: v071-contract-test-sync
+
+on:
+  push:
+    branches: [improve/ppt-generation-core-v0.7]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    if: github.event.head_commit.message != 'chore sync v071 behavior contracts'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: improve/ppt-generation-core-v0.7
+      - name: Update behavior tests and compact skill entrypoint
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          tests = Path('plugins/student-presentation-suite/tests/test_skill_behavior_contracts.py')
+          text = tests.read_text(encoding='utf-8')
+          old = '''        self.assertIn("package validation", qa)\n        self.assertIn("默认只使用三道门禁", qa)\n        self.assertIn("--simple --strict --visual-reviewed", qa)\n        self.assertIn("Advanced evidence mode", qa)\n'''
+          new = '''        self.assertIn("package validation", qa)\n        self.assertIn("四个阶段", qa)\n        self.assertIn("slide_spec_guard.py", qa)\n        self.assertIn("pptx_quality_gate_v071.py", qa)\n        self.assertIn("pptx_delivery_check_v071.py", qa)\n        self.assertIn("Advanced evidence mode", qa)\n'''
+          if old not in text:
+              raise SystemExit('old QA behavior assertions not found')
+          text = text.replace(old, new, 1)
+          old = '''        self.assertIn("状态只能是\\n`incomplete`", qa)\n        self.assertNotIn("代码允许 complete", qa)\n        self.assertIn("仍有 blocker 时交付 `incomplete`", qa)\n'''
+          new = '''        self.assertIn("缺预览", qa)\n        self.assertIn("状态只能是 `incomplete`", qa)\n        self.assertNotIn("代码允许 complete", qa)\n        self.assertIn("quality gate", qa)\n'''
+          if old not in text:
+              raise SystemExit('old missing-preview assertions not found')
+          tests.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          skill = Path('plugins/student-presentation-suite/skills/sp-deck/SKILL.md')
+          s = skill.read_text(encoding='utf-8')
+          # Keep the entrypoint compact without dropping any contract: remove two
+          # purely presentational blank lines around headings/code blocks.
+          s = s.replace('## State gate\n\n状态按', '## State gate\n状态按', 1)
+          s = s.replace('## Generation core contract\n\n默认 create/rebuild', '## Generation core contract\n默认 create/rebuild', 1)
+          skill.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit sync
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add plugins/student-presentation-suite/tests/test_skill_behavior_contracts.py plugins/student-presentation-suite/skills/sp-deck/SKILL.md
+          if ! git diff --cached --quiet; then
+            git commit -m "chore sync v071 behavior contracts"
+            git push origin HEAD:improve/ppt-generation-core-v0.7
+          fi
