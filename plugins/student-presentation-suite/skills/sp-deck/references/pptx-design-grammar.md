@@ -7,11 +7,12 @@ PPT 如何用页面语法表达内容，layout 只提供局部构图参考。** 
 ## Core principles
 
 1. 先决定叙事动作，再决定页面构图：`introduce / frame / explain / compare / prove / synthesize / conclude`。
-2. 同一 deck 需要视觉节奏：大图/大数字/结构图/文字主导/数据页交替，避免连续 3 页同构。
+2. 同一 deck 需要视觉节奏：大图/大数字/结构图/文字主导/数据页交替，避免连续 3 页同构；连续两页使用等宽卡片、普通列表、三等分栏也应主动改构图。
 3. 视觉元素必须承担信息功能。没有合适图片时宁可使用 typography、原生图表、关系结构或留白，禁止 filler icon/card。
 4. 每页只允许一个 primary focal point；次要元素围绕焦点建立层级。
 5. `pptx-layouts.js` 的 36 个 layout 是 inspiration catalog，不是页面类型枚举，也不是模板配额。
 6. 允许高质量 text-led slide。`visual_strategy: typography` 是合法结构化视觉策略，不得因 high-score 模式强制塞图。
+7. “无越界/无重叠”只是工程底线，不是视觉完成标准。High-score 还必须通过结构化 render visual critic 与 deck rhythm 检查。
 
 ## Grammar families
 
@@ -44,6 +45,7 @@ PPT 如何用页面语法表达内容，layout 只提供局部构图参考。** 
 - 每页只回答一个问题或传达一个知识结论。
 - 概念解释优先 `definition → intuition → example`；复杂过程优先分步揭示。
 - 文字主导页使用大字号、关键字强调和清晰留白，而不是为了“丰富”堆卡片。
+- 连续知识点不要机械映射为“有四项 → 四张卡片”；先判断它们是顺序、因果、层级、对比还是一个主因 + 多个辅因。
 - Rhythm：`hook → concept → example → application → recap`。
 
 ### Defense / competition
@@ -73,6 +75,71 @@ PPT 如何用页面语法表达内容，layout 只提供局部构图参考。** 
 - 可以更强地使用 full-bleed、非对称、crop、oversized type，但仍遵守边界与可读性。
 - 保持一个持续 motif，不要每页随机换视觉语言。
 
+## Typography grammar
+
+`visual_strategy: typography` 不等于“把四个 bullet 改成 01/02/03/04”。Typography 页必须通过字号、位置、比例、留白和对比建立一个真正的视觉命题。优先从以下语法中选择，并按内容自由变形：
+
+### Thesis contrast
+
+适合纠正常识、建立核心判断。
+
+```text
+模型优化的是
+
+        「像」
+
+      而不是
+
+        「真」
+```
+
+一个词/短语承担绝对焦点，解释文字退到辅助层。
+
+### Oversized keyword
+
+适合解释一个概念的本质或关键词。
+
+```text
+HALLUCINATION
+
+流畅、自信、完整
+≠
+有事实依据
+```
+
+关键词或符号可跨越大面积画布，其他信息只做注释。
+
+### One claim + three supports
+
+适合有一个主判断和多个原因的页面。主判断至少占 50% 的视觉权重，三个辅助点不要做成三个等权卡片。
+
+```text
+幻觉不是偶发 bug
+
+训练目标        数据噪声        知识边界
+  ↘               ↓               ↙
+        都在放大“合理但未核实”
+```
+
+### Question → answer
+
+适合 teaching/coursework。
+
+```text
+为什么模型会“编”？
+
+因为它首先学会的是：
+预测下一个最可能的词
+
+而不是先查证事实
+```
+
+问题只出现一次，答案是视觉高潮。
+
+### Progressive hierarchy
+
+仅当内容确实有递进关系时使用 01/02/03/04。编号必须表达“阶段/顺序/层级”，不能只是把并列 bullet 换皮。若四项没有顺序，应改用对比、关系图、主次结构或编辑式排版。
+
 ## Per-slide composition contract
 
 模型在写实际 PptxGenJS 前，先为每页确定以下最小 contract（可以内联在 generator，不强制另存文件）：
@@ -91,13 +158,16 @@ allow_freeform: true
 ```
 
 `reference_layouts` 只用于启发。真正的硬约束由 Actual Element Registry、文字适配、package validation、
-artifact readback 与 render-conditioned visual review 负责。
+artifact readback、Slide Spec freeze 与 render-conditioned visual review 负责。
 
 ## Anti-patterns
 
 - 连续三页以上相同的 hero/card/three-column 结构。
+- 连续两页使用 `equal-cards / card-grid / three-column / numbered-list / plain-list` 这类弱结构。
 - 为满足“每页有视觉”强塞图标、emoji、装饰图、无关照片。
 - 2×2/3×1 卡片成为默认页面语法。
+- “有 N 项内容 → N 个等宽矩形”成为默认映射。
+- typography 页只是编号列表换皮，没有一个主视觉命题。
 - 所有元素视觉权重相近，缺少 focal point。
 - 标题下划线、装饰性色条、无语义渐变、玻璃拟态作为默认风格。
 - 为避免溢出而把正文缩到硬字号下限以下。
