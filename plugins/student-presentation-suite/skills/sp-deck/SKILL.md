@@ -31,15 +31,16 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" <init | confirm --summa
 1. **Intake**：按 `references/presentation-intake.md` 收集需求；完整 Production Summary 经用户确认后继续。
 2. **Mode**：按 source deck/edit intent 唯一确定 `create` / `edit_ooxml` / `rebuild_from_source`。
 3. **Plan + Freeze**：验证 Brief 与 Slide Spec；`slide_spec_guard.py freeze` 绑定 spec/report SHA-256 后转 `planned`，之后禁止静默改 plan。
-4. **Art Direction**：visual style 只作为 seed；根据 design grammar 生成 `art-direction.yaml`，具体决定色彩支配、字体尺度、图片裁切、图标语言、图表语法、组件语言、motif、背景节奏和 asset mix；`art_direction_check.py --strict` 必须通过。
-5. **Reference Retrieval**：每页按 role/grammar/visual strategy/density/tags 调 `visual_reference_select.py` 取 2–3 个正向视觉参考 recipe；真实 reference 比只给 layout 名称优先。36 layouts 继续作为 inspiration/fallback。
-6. **Multi-candidate Composition**：标记 3–5 个 high-leverage 页（封面、hook、核心机制、最强证据、结尾）。每个 high-leverage 页先写 2–3 个不同 silhouette 的 `composition-candidates-<slide>.json`，经 `composition_candidate_check.py --strict` 后用 `scripts/composition_wireframe.js` 生成低成本 wireframe PPTX并渲染观察；选择理由必须记录。普通页至少参考检索结果形成一个明确 composition intent。
-7. **Production**：进入 `producing` 前先 `slide_spec_guard.py check`。create/rebuild 才开始写最终 `deck.js`；每个真实 text/shape/image/chart/line 登记进 `scripts/pptx-element-registry.js`，`registry.assertSafe()` 在写盘前通过。composer 仅用于锁定/兼容/fallback。
-8. **Actual Artifact Check**：用 `${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py validate` 做 package validation，再运行 `pptx_actual_content_check.py --strict` 与冻结 Slide Spec 回读对比。失败修 `deck.js`/PPTX，不能倒改 spec。
-9. **Spec Revision**：只有计划本身错误、需求变化或事实/结构问题时才 `slide_spec_guard.py revise --reason <原因>`；revision 保留 parent hash，并重新生成受影响 artifact。
-10. **Render-conditioned QA**：完整渲染所有页，写绑定当前 PPTX hash 的 `visual-review.json`；检查工程缺陷之外，还评 hierarchy、focal point、composition、visual interest、whitespace、AI-template feel 和 deck rhythm。
-11. **Quality + Repair**：`pptx_quality_gate_v071.py --strict` 继续检查视觉、节奏、Evidence Closure 和 speaker timing。blocker 进入一次正式 `qa → producing`，内部最多 3 次 `render → critique → revise artifact → rebuild → validate/readback → render`；不收敛则 `incomplete`。
-12. **Complete**：生成已确认的 support outputs；PPTX、spec lock、Art Direction、reference/candidate evidence、package、actual-content、preview、visual review、quality report 全通过后运行 `pptx_delivery_check_v071.py --strict --visual-reviewed`，再转 `complete`。所有模式输出新文件，禁止覆盖 source deck。
+4. **Art Direction**：visual style 只作为 seed；根据 design grammar 生成 `art-direction.yaml`，具体决定色彩支配、字体尺度、图片裁切、图标语言、图表语法、组件语言、motif、背景节奏、asset mix，并明确 3–5 个 `high_leverage_slides`；`art_direction_check.py --strict` 必须通过。
+5. **Reference Retrieval**：每页按 role/grammar/visual strategy/density/tags 调 `visual_reference_select.py` 取 2–3 个正向视觉参考 recipe；high-leverage 页必须把结果保存为 `references-slide-<slide>.json`。36 layouts 继续作为二级 inspiration/fallback。
+6. **Multi-candidate Composition**：每个 high-leverage 页先写 2–3 个不同 silhouette 的 `composition-candidates-<slide>.json`，经 `composition_candidate_check.py --strict` 后用 `scripts/composition_wireframe.js` 生成 `wireframes-<slide>.pptx` 并渲染观察；选择理由必须记录。普通页至少参考检索结果形成一个明确 composition intent。
+7. **v0.8 Visual Generation Gate**：final `deck.js` 之前/最迟 QA 前运行 `pptx_visual_generation_gate_v08.py --strict`，绑定 frozen Slide Spec、Art Direction，以及每个 high-leverage 页的 reference-selection、candidate 和 wireframe hash；缺任一探索证据不得交付。
+8. **Production**：进入 `producing` 前先 `slide_spec_guard.py check`。create/rebuild 才开始写最终 `deck.js`；每个真实 text/shape/image/chart/line 登记进 `scripts/pptx-element-registry.js`，`registry.assertSafe()` 在写盘前通过。composer 仅用于锁定/兼容/fallback。
+9. **Actual Artifact Check**：用 `${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py validate` 做 package validation，再运行 `pptx_actual_content_check.py --strict` 与冻结 Slide Spec 回读对比。失败修 `deck.js`/PPTX，不能倒改 spec。
+10. **Spec Revision**：只有计划本身错误、需求变化或事实/结构问题时才 `slide_spec_guard.py revise --reason <原因>`；revision 保留 parent hash，并重新生成受影响 artifact/visual-generation report。
+11. **Render-conditioned QA**：完整渲染所有页，写绑定当前 PPTX hash 的 `visual-review.json`；检查工程缺陷之外，还评 hierarchy、focal point、composition、visual interest、whitespace、Art Direction alignment、reference/candidate intent、AI-template feel 和 deck rhythm。
+12. **Quality + Repair**：`pptx_quality_gate_v071.py --strict` 继续检查视觉、节奏、Evidence Closure 和 speaker timing。blocker 进入一次正式 `qa → producing`，内部最多 3 次 `render → critique → revise artifact → rebuild → validate/readback → render`；不收敛则 `incomplete`。
+13. **Complete**：PPTX、spec lock、Art Direction、`visual-generation-report.json`、package、actual-content、preview、visual review、quality report 全通过后运行 `pptx_delivery_check_v08.py --strict --visual-reviewed`，再转 `complete`。所有模式输出新文件，禁止覆盖 source deck。
 
 ## Generation core contract
 
@@ -48,16 +49,17 @@ Production Summary → Brief / Frozen Slide Spec
 → Design Grammar → Art Direction
 → Visual Reference Retrieval
 → Multi-candidate Composition + Wireframe Selection
+→ v0.8 Visual Generation Evidence Gate
 → Model-authored native PptxGenJS
 → Actual Element Registry → PPTX validation/readback
 → Full Render → Structured Visual Critic
-→ Rhythm + Evidence + Timing Gate → Controlled Repair → Delivery
+→ Rhythm + Evidence + Timing Gate → Controlled Repair → v0.8 Delivery
 ```
 
-核心原则：模型先做 art direction 和视觉方案搜索，再写坐标；reference 是可变形的正向先验而不是固定模板；runtime 负责安全和 plan-vs-actual；render critic 负责最终页面质量。不得把“无 overflow/overlap”或模型一次性自评通过当作设计完成。
+核心原则：模型先做 art direction 和视觉方案搜索，再写坐标；reference 是可变形的正向先验而不是固定模板；runtime 负责安全和 plan-vs-actual；render critic 负责最终页面质量。不得把“无 overflow/overlap”、模型一次性自评通过，或没有 hash 证据的“我已经比较过多个方案”当作设计完成。
 
 ## Output contract
 
-仅写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目 `outputs/`。中间文件位于 `outputs/.pptx-work/<work-id>/`，至少保留 `slide-spec-lock.json`、`art-direction.yaml`、high-leverage composition candidates/wireframes。最终交付 PPTX、speaker notes、preview/contact sheet、package report、`actual-content-report.json`、`visual-review.json`、`quality-report.json` 和 delivery report；编辑任务另含 change summary。
+仅写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目 `outputs/`。中间文件位于 `outputs/.pptx-work/<work-id>/`，至少保留 `slide-spec-lock.json`、`art-direction.yaml`、high-leverage `references-slide-*.json`、composition candidates/wireframes 和 `visual-generation-report.json`。最终交付 PPTX、speaker notes、preview/contact sheet、package report、`actual-content-report.json`、`visual-review.json`、`quality-report.json` 和 v0.8 delivery report；编辑任务另含 change summary。
 
-交付完成后提示可运行 `sp-review` 做只读复核/评分，并报告绝对路径、页数、package/readback/quality/visual QA 状态与剩余限制。
+交付完成后提示可运行 `sp-review` 做只读复核/评分，并报告绝对路径、页数、visual-generation/package/readback/quality/visual QA 状态与剩余限制。
