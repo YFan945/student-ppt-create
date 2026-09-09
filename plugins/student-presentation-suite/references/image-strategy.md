@@ -1,52 +1,100 @@
 # Image And Visual Strategy
 
-Use this shared strategy across planning, PPTX production, and review.
+Use this shared strategy across planning, Art Direction, PPTX production, and review. v0.8 treats visual richness as an **asset-planning problem**, not something to patch at the end after a text-heavy deck already exists.
 
 ## Source Choice
 
 - Use user-provided assets first when they are relevant, clear, and allowed.
 - For real people, places, products, historical material, current events, factual charts, and source-sensitive examples, ask whether web search is allowed before using web images.
-- For abstract concepts, process explanations, cover mood images, and conceptual scenes, generated visuals or self-drawn diagrams may be used unless the user forbids generation.
-- If the user says no network, no generated images, or user-assets only, respect that constraint and use diagrams, shapes, charts, or text-only layouts.
+- For abstract concepts, process explanations, cover mood images, and conceptual scenes, generated visuals may be used when the current environment provides approved generation and the user does not forbid it.
+- If the user says no network, no generated images, or user-assets only, respect that constraint and use diagrams, native charts, custom SVG, built-in semantic icons, or typography-led layouts.
+
+## v0.8 Asset Plan
+
+After Slide Spec freeze, `art-direction.yaml` must decide the deck's visual mix before final composition. For a typical 8–10 slide high-score deck, a useful starting mix may be:
+
+- 1–2 hero/concept visuals for cover, hook or closing;
+- 2–3 evidence visuals such as screenshots, research figures, real photos or sourced diagrams;
+- 1–2 native charts when quantitative evidence exists;
+- 1–2 editable diagrams/process/architecture visuals;
+- 1 intentionally typography-led slide when content supports a strong thesis.
+
+These are not quotas. The requirement is **deliberate diversity of information-bearing visuals** so the generator does not fall back to rectangles and text on every slide.
+
+For each slide, classify the desired asset before layout:
+
+```text
+hero image | evidence image | annotated screenshot | native chart | diagram/process
+| comparison/matrix | semantic icon | typography | none-needed
+```
+
+If the intended asset is unavailable, change the visual strategy or reference recipe before writing the final page; do not leave a placeholder and do not silently replace a hero visual with four cards.
+
+## Deterministic Internal Visual Stack
+
+The plugin already has an editable/no-network visual stack:
+
+1. `scripts/pptx-visuals.js` for process, comparison, timeline, architecture and structured native visuals;
+2. `scripts/pptx-icons.js` for small unified line icons used as semantic accents;
+3. `scripts/pptx-svg-library.js` for motifs/background references;
+4. native PptxGenJS charts for quantitative evidence;
+5. custom SVG/native shapes for topic-specific diagrams.
+
+Use semantic icons sparingly: navigation, state, risk, user/system roles, small concept labels. Icons are not a substitute for a real diagram, chart, screenshot or evidence figure. A slide with four icons above four equal boxes is still a card grid.
 
 ## Optional External Image Generation
 
-插件不内置或承诺特定生图服务。默认 `hybrid-adaptive`：当前会话具备获准的外部生图能力时，
-可为封面、背景或抽象概念制作关键插图；能力不可用、用户拒绝或成本不合适时，直接采用
-图表、原生形状、用户素材或排版主导 fallback，不把外部生图当作生产硬依赖。
+插件不内置或承诺特定生图服务。当前会话具备获准的外部生图能力时，可为封面、背景或抽象概念制作关键插图；能力不可用、用户拒绝或成本不合适时，使用 deterministic visual stack，不把生图当硬依赖。
 
-- **什么时候用外部生图能力**：封面/尾页背景、抽象概念插图、气氛图、需要视觉冲击但无现成素材
-  的场景。生图需要联网 + 生图环境，且通常一次一张，注意成本与时间。
-- **什么时候用 SVG/原生形状**：结构图、流程图、对比、时间线、架构示意等"确定性视觉"——
-  这些用 `pptx-visuals.js` 组件或原生形状渲染，比生图更精确、可编辑、无版权风险。
-- **不要用生图画图表/流程图**：数字、刻度、箭头、节点这些由确定性渲染完成，避免幻觉文字。
-- 生图 prompt 必须为幻灯片留出文字区域（如封面左侧留白），并按当前视觉样式色板限定配色。
-- 生成后必须逐图检查构图、错字、来源记录和裁切，不声明依赖未随插件提供的质检技能。
+- 适用：cover/closing hero、抽象概念、氛围性但内容相关的主视觉。
+- 不适用：图表、流程图、架构、需要准确文字/数字的 evidence visual。
+- prompt 必须为幻灯片文字留出明确空间，并遵循 `art-direction.yaml` 的 palette、crop language 和 treatment。
+- 生成后逐图检查构图、错字、裁切和事实暗示，不把生成画面当事实证据。
+
+## Sourced Web Images
+
+获准联网时，real-world subjects 优先来源明确的高质量图片，而不是搜索结果里第一张小图。记录来源 URL；必要时保留作者/机构/日期。优先选能支撑 slide claim 的图片，例如真实界面、研究图、人物/地点证据，而不是抽象 stock photo。
+
+图片进入 composition 前就决定 crop language：
+
+- **full-bleed**：视觉即叙事，文字很少；
+- **half-bleed**：一侧强视觉 + 一侧文本；
+- **edge crop**：视觉越出常规内容框，制造更强编辑感；
+- **inset figure**：学术/数据证据，保留 caption/source；
+- **annotated screenshot**：大图 + 2–4 个精准标注。
+
+优先一个有决定性的 crop，不要用多个小型 floating stock images 伪造“丰富”。
 
 ## Fallbacks
 
-If no suitable image is available, do not insert unrelated decoration. Prefer:
-- process flow
-- comparison table
-- timeline
-- architecture or concept diagram
-- shape callout
-- icon + short text
-- data chart
-- translucent panel or structured background layer
+If no suitable image is available, prefer an information-bearing transformation rather than unrelated decoration:
+
+- causal/process flow;
+- comparison or decision matrix;
+- timeline/path;
+- architecture/concept diagram;
+- native data chart;
+- annotated text/quote evidence;
+- axis/quadrant/trade-off map;
+- oversized typographic thesis;
+- semantic icon only as a small supporting cue.
 
 ## Production Notes
 
 - Images should explain, evidence, or frame the slide's main message.
-- Avoid stock-like images that only fill space.
-- Text over images needs enough contrast, usually through an opaque or translucent panel.
-- Record web image/source URLs in speaker notes or a references slide when appropriate.
+- A visual must have an explicit role in the composition candidate; avoid “put something on the right because the left has text.”
+- Text over images needs robust contrast through crop choice, negative space, or a purposeful opaque/translucent panel.
+- Preserve aspect ratio unless an intentional crop is specified.
+- Record web image/source URLs in speaker notes or references when appropriate.
 
 ## Review Notes
 
 When reviewing an existing deck, flag:
-- unclear source or copyright risk
-- low-resolution or stretched images
-- visuals that do not support the argument
-- factual visuals without citation
-- busy backgrounds that reduce readability
+
+- unclear source or copyright risk;
+- low-resolution, stretched, badly cropped or unreadable screenshots;
+- visuals that do not support the argument;
+- factual visuals without citation;
+- busy backgrounds that reduce readability;
+- pages that claim `visual-led` but only contain decorative icons/cards;
+- a deck whose asset mix is technically valid but monotonously text/shape-heavy.
