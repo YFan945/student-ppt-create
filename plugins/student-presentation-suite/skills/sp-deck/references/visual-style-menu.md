@@ -1,46 +1,38 @@
 # Visual Style Menu
 
-Visual styles are lightweight references, not templates or layout engines. A selected style may
-guide only four things: overall character, six color roles, background treatment, and one optional
-SVG motif. It must not choose layouts, shapes, image crops, chart grammar, component variants, or
-page rhythm. The AI designs each page from its content and evidence, following
-`pptx-production.md`, `pptx-visual-engine.md`, and the shared safety rules.
+Visual styles are **user-facing style seeds**, not templates or layout engines. Each seed keeps the intake simple by describing character, six color roles, background treatment and one optional SVG motif. After the user confirms the seed, v0.8 **must expand it through `pptx-art-direction.md`** into concrete typography scale, image treatment/crop language, icon language, chart grammar, component behavior, motif use, background rhythm and asset mix before final composition.
 
-Apply priorities in this order: approved user or school template → readability, source safety,
-and truthful representation → the slide's narrative task → the selected lightweight visual
-reference. SVG motifs are optional suggestions and are never inserted automatically.
+This separation is intentional: users choose a comprehensible visual mood; the model then acts as art director instead of asking the user to configure dozens of design details. Apply priorities in this order: approved school/user template → readability/source safety/truthful representation → slide narrative task → confirmed style seed → generated Art Direction.
 
 ## Intake Categories
 
-Step A shows exactly three categories plus `Other`. Step B shows all four styles in the selected
-category in one question.
+Step A shows exactly three categories plus `Other`. Step B shows all four styles in the selected category in one question.
 
 | Category | Four available styles |
 | --- | --- |
 | Academic and professional / 学术与专业类 | Academic Rigorous, Data Driven, Modern Minimal, Charcoal Editorial |
 | Business and technology / 商务与科技类 | Midnight Business, Ocean Tech, Teal Trust, Cherry Bold |
 | Creative and humanistic / 创意与人文类 | Creative Student, Coral Energy, Forest Moss, Warm Terracotta |
-| Other / 其他 | Free user description; the AI completes and confirms the required custom reference |
+| Other / 其他 | Free user description; the AI completes and confirms the required custom seed |
 
-Do not expose old “show all styles”, cross-category markers, or multi-round style lists. Recommend
-the category and then the style that best fit the topic, but keep the final choice with the user.
+Do not expose old “show all styles”, cross-category markers, or multi-round style lists. Recommend the category and style that best fit the topic, but keep the final seed choice with the user.
 
-## Lightweight Reference Contract
+## Style Seed Contract
 
-Each file under `visual-styles/` has exactly these fields, in this order:
+Each file under `visual-styles/` retains exactly these lightweight intake fields:
 
 1. `Style character`
 2. `Palette`
 3. `Background reference`
 4. `SVG reference`
 
-Palette roles are `canvas`, `surface`, `primary_text`, `secondary_text`, `primary_accent`, and
-`secondary_accent`. Shared typography, sizing, contrast, safe-area, text-fit, source, and QA rules
-come from the shared contracts and are not repeated in style files.
+Palette roles are `canvas`, `surface`, `primary_text`, `secondary_text`, `primary_accent`, and `secondary_accent`. These files intentionally stay compact. **They are no longer the final design specification.** After confirmation, `art-direction.yaml` owns the concrete positive design decisions that previously had no home.
+
+Art Direction may strengthen or refine the seed while keeping its recognizable character. For example, `Academic Rigorous` can become “dark editorial cover + light figure-led evidence pages + Cambria/Arial hierarchy + half-bleed research figures + one evidence-rail motif” rather than merely “navy + blue accent.”
 
 ## Other / Custom
 
-When the user selects `Other`, set `visual_style: Other` and complete this structure:
+When the user selects `Other`, set `visual_style: Other` and complete this structure during intake:
 
 ```yaml
 visual_style_custom:
@@ -62,33 +54,22 @@ visual_style_custom:
     usage: "建议使用位置和强度"
 ```
 
-The AI may infer missing values from the topic, supplied template, and user description, but the
-Production Summary must show all four sections before confirmation. An incomplete custom
-reference cannot enter `planned`.
+The Production Summary must show all four seed sections before confirmation. After confirmation, custom styles follow the same Art Direction expansion as formal seeds; do not ask a second long style questionnaire.
 
 ## Compatibility
 
 - `Berry Cream` / `berry-cream` resolves to `Warm Terracotta` with a compatibility warning.
 - `Sage Calm` / `sage-calm` resolves to `Forest Moss` with a compatibility warning.
-- Any other historical unknown style retains its name as `style_character`, uses the Modern
-  Minimal safety palette/background reference, and emits a compatibility warning.
+- Any other historical unknown style retains its name as `style_character`, uses the Modern Minimal safety seed, and emits a compatibility warning.
 
 ## Optional SVG Toolbox
 
-Each formal style points to one recommended SVG name. The model may use, alter, combine, or ignore
-it. Do not insert SVG solely to demonstrate the selected style, and do not use an ornamental SVG
-as a replacement for evidence, a chart, a diagram, or a meaningful image. `addStyleMotif()` exists
-only as an explicit compatibility helper.
+Each formal seed points to one recommended SVG name. It is only a motif seed. Art Direction decides whether the motif becomes part of the actual deck language and where it is allowed. Do not insert SVG solely to prove the style was selected, and never substitute ornamental SVG for evidence, a chart, a diagram or a meaningful image.
 
-## Layout Independence
+## Reference and Layout Independence
 
-The 36-layout registry is an inspiration and deterministic-fallback catalog. `suggestLayouts()`
-and `selectLayouts()` rank candidates only by slide task, available assets, capacity, density, and
-recent silhouette history. Visual style tokens must not affect their order. Known Slide Spec
-`layout` values remain hints unless `layout_lock: true` explicitly requests exact resolution.
+The 36-layout registry remains an inspiration/deterministic-fallback catalog. In v0.8 the stronger positive prior is `visual-reference-library.json`: reference recipes include a rationale, focal ownership, silhouette and normalized wireframe. `visual_reference_select.py` ranks them by slide role, grammar, visual strategy, density, tags and recent visual history. Neither reference recipes nor old layouts are fixed templates; the selected composition is adapted to the slide claim and Art Direction.
 
 ## Template Inheritance
 
-When the user supplies a school template, preserve its required logo, footer, colors, cover, and
-useful placeholders. The template takes priority over a style reference; do not force unrelated
-colors, backgrounds, or SVG motifs into it.
+When the user supplies a school template, preserve required logo, footer, colors, cover and useful placeholders. The template takes priority over the style seed. Art Direction should then describe how to use the template well rather than force unrelated colors, motifs, cropping or component language into it.
