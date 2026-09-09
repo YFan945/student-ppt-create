@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Validate the v0.8 Art Direction artifact.
 
-This checker intentionally validates positive design decisions, not only safety.
-It makes sure the model resolves a lightweight style seed into an executable
-visual system before authoring final slide coordinates.
+This checker validates positive design decisions before final slide coordinates are
+authored. High-score mode also requires an explicit 3–5 slide high-leverage plan
+that will be consumed by the v0.8 visual-generation evidence gate.
 """
 
 from __future__ import annotations
@@ -26,6 +26,7 @@ REQUIRED_SECTIONS = (
     "motif",
     "background_rhythm",
     "asset_plan",
+    "high_leverage_slides",
 )
 
 
@@ -52,6 +53,21 @@ def number(value: Any) -> float | None:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
     return float(value)
+
+
+def high_leverage_numbers(data: dict[str, Any]) -> list[int]:
+    raw = data.get("high_leverage_slides")
+    if not isinstance(raw, list):
+        return []
+    numbers: list[int] = []
+    for item in raw:
+        if isinstance(item, dict):
+            slide = item.get("slide")
+        else:
+            slide = item
+        if isinstance(slide, int) and not isinstance(slide, bool) and slide > 0:
+            numbers.append(slide)
+    return numbers
 
 
 def validate_art_direction(data: dict[str, Any], *, high_score: bool = True) -> dict[str, Any]:
@@ -124,10 +140,24 @@ def validate_art_direction(data: dict[str, Any], *, high_score: bool = True) -> 
     if high_score and visual_mix < 4:
         issues.append(issue("major", "asset_mix_too_thin", "High-score Art Direction needs a deliberate mix of visual assets/strategies."))
 
+    raw_high = data.get("high_leverage_slides")
+    high_numbers = high_leverage_numbers(data)
+    if high_score:
+        if not isinstance(raw_high, list) or not 3 <= len(raw_high) <= 5:
+            issues.append(issue("major", "high_leverage_count_invalid", "High-score Art Direction must identify 3–5 high-leverage slides."))
+        if len(set(high_numbers)) != len(high_numbers) or len(high_numbers) != len(raw_high or []):
+            issues.append(issue("major", "high_leverage_slides_invalid", "Every high-leverage entry needs a unique positive integer slide number."))
+        if isinstance(raw_high, list):
+            for item in raw_high:
+                if not isinstance(item, dict) or len(str(item.get("reason") or "").strip()) < 16:
+                    issues.append(issue("major", "high_leverage_reason_missing", "Each high-leverage slide needs a concrete reason for multi-candidate exploration."))
+                    break
+
     blockers = [item for item in issues if item["severity"] in BLOCKING]
     return {
         "ok": not blockers,
         "generation_core_version": "0.8",
+        "high_leverage_slides": high_numbers,
         "blocker_count": len(blockers),
         "issue_count": len(issues),
         "issues": issues,
