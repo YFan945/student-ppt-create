@@ -2,9 +2,9 @@ name: validate
 
 on:
   push:
-    branches: [claude-code, improve/ppt-generation-core-v0.7]
+    branches: [main]
   pull_request:
-    branches: [claude-code]
+    branches: [main]
 
 jobs:
   runtime:
@@ -89,10 +89,10 @@ jobs:
         run: |
           git diff --check
           python plugins/student-presentation-suite/scripts/check_plugin_release.py
-          if ($env:GITHUB_EVENT_NAME -eq "push" -and $env:GITHUB_REF_NAME -eq "claude-code") {
+          if ($env:GITHUB_EVENT_NAME -eq "push" -and $env:GITHUB_REF_NAME -eq "main") {
             python scripts/check_marketplace_release.py
           } else {
-            Write-Host "Skipping marketplace release-branch gate outside a direct claude-code push."
+            Write-Host "Skipping marketplace release-branch gate outside a direct main push."
           }
           python plugins/student-presentation-suite/scripts/check_claude_pptx_env.py --mode all --json --strict
 
