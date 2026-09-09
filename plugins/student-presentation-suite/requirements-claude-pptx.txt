@@ -2,6 +2,6 @@
 # 基础验证依赖（jsonschema、PyYAML）由 requirements.txt 提供，通过 -r 引用避免重复维护。
 # LibreOffice 和 Poppler 是系统工具，须单独安装。
 -r requirements.txt
-Pillow>=10.0
-markitdown[pptx]>=0.1.0,<1.0
+Pillow>=12.3.0
+markitdown[pptx]>=0.1.7,<1.0
 defusedxml>=0.7.1,<1.0
