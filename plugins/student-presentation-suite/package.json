@@ -7,12 +7,12 @@
     "smoke": "node scripts/run_with_pptxgenjs.js --probe"
   },
   "dependencies": {
-    "image-size": "^1.2.1",
+    "image-size": "^2.0.2",
     "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
-    "eslint": "8.57.1",
-    "prettier": "3.6.2"
+    "eslint": "10.10.0",
+    "prettier": "3.9.6"
   },
   "overrides": {
     "brace-expansion": "^2.0.1"
