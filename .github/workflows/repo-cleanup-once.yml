@@ -20,42 +20,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Fix npm audit dependency and simplify workflows
+      - name: Synchronize npm lockfile
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import json
-          from pathlib import Path
-
-          package = Path('plugins/student-presentation-suite/package.json')
-          data = json.loads(package.read_text(encoding='utf-8'))
-          data.setdefault('overrides', {})['js-yaml'] = '4.3.2'
-          package.write_text(json.dumps(data, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-
-          validate = Path('.github/workflows/validate.yml')
-          text = validate.read_text(encoding='utf-8')
-          text = text.replace(
-              'branches: [claude-code, improve/ppt-generation-core-v0.7]',
-              'branches: [main, improve/ppt-generation-core-v0.7]',
-          )
-          text = text.replace('branches: [claude-code]', 'branches: [main]')
-          validate.write_text(text, encoding='utf-8')
-          PY
           npm --prefix plugins/student-presentation-suite install --package-lock-only --ignore-scripts
-          rm -f .github/dependabot.yml
-          rm -f .github/workflows/v08-maintenance.yml
-          rm -f .github/workflows/v08-finalize.yml
-          rm -f .github/workflows/repo-cleanup-once.yml
-      - name: Commit cleanup
-        shell: bash
-        run: |
-          set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add -A
-          git commit -m 'chore: simplify branches and fix CI dependency'
-          git push origin HEAD:improve/ppt-generation-core-v0.7
+          git add plugins/student-presentation-suite/package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix: synchronize patched npm lockfile'
+            git push origin HEAD:improve/ppt-generation-core-v0.7
+          fi
       - name: Delete stale branches
         shell: bash
         run: |
