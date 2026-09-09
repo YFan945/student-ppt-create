@@ -35,7 +35,9 @@ function zoneToBox(zone) {
 }
 
 function zoneLabel(name) {
-  return String(name || '').replace(/[_-]+/g, ' ').toUpperCase();
+  return String(name || '')
+    .replace(/[_-]+/g, ' ')
+    .toUpperCase();
 }
 
 function addZone(slide, name, zone, index) {
@@ -172,7 +174,9 @@ async function main() {
   const inputIndex = argv.indexOf('--input');
   const outputIndex = argv.indexOf('--output');
   if (inputIndex < 0 || !argv[inputIndex + 1] || outputIndex < 0 || !argv[outputIndex + 1]) {
-    throw new Error('Usage: node composition_wireframe.js --input candidates.json --output wireframes.pptx');
+    throw new Error(
+      'Usage: node composition_wireframe.js --input candidates.json --output wireframes.pptx',
+    );
   }
   const input = path.resolve(argv[inputIndex + 1]);
   const output = path.resolve(argv[outputIndex + 1]);
