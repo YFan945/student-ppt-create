@@ -1,18 +1,18 @@
 # PPTX Art Direction — v0.8
 
-Art Direction is the missing bridge between a lightweight visual style seed and concrete slide design. It is produced **after Slide Spec freeze and before any final `deck.js` is authored**. Its job is to turn vague words such as “academic / modern / creative” into a coherent, executable visual language for the whole deck.
+Art Direction is the bridge between a lightweight visual style seed and concrete slide design. It is produced **after Slide Spec freeze and before any final `deck.js` is authored**. Its job is to turn vague words such as “academic / modern / creative” into a coherent, executable visual language for the whole deck.
 
 The selected `visual-styles/<style>.md` remains a seed for character, palette and background. Art Direction must resolve the choices that the old style layer intentionally left unspecified: typography scale, image treatment, icon language, chart grammar, component language, motif, background rhythm, density rhythm and visual asset strategy.
 
 ## Required artifact
 
-Create `outputs/.pptx-work/<work-id>/art-direction.yaml` before final composition. It is a production artifact, not a user-facing preference questionnaire. Do not ask the user to choose every field; infer a strong coherent direction from the confirmed Production Summary, Slide Spec, selected visual style and design grammar.
+Create `outputs/.pptx-work/<work-id>/art-direction.yaml` before final composition. It is a production artifact, not a user-facing preference questionnaire. Do not ask the user to choose every field; infer a strong coherent direction from the confirmed Production Summary, frozen Slide Spec, selected visual style and design grammar.
 
 Minimum contract:
 
 ```yaml
 version: "0.8"
-concept: "One-sentence visual thesis for this deck"
+concept: "Evidence-first editorial classroom deck: confidence is not truth"
 style_seed: "Academic Rigorous"
 grammar: "coursework"
 
@@ -79,6 +79,16 @@ asset_plan:
   diagrams: 2
   native_charts: 1
   typography_led: 1
+
+high_leverage_slides:
+  - slide: 1
+    reason: "Cover establishes the visual thesis and first impression"
+  - slide: 2
+    reason: "Hook/case page must create curiosity immediately"
+  - slide: 5
+    reason: "Central evidence page determines credibility"
+  - slide: 8
+    reason: "Closing must visually callback to the opening thesis"
 
 avoid:
   - "equal cards as the default mapping for parallel bullets"
@@ -147,15 +157,9 @@ Do not generate eight individually acceptable pages that all have the same visua
 
 ## High-leverage slides
 
-Before writing the final deck, mark 3–5 slides as `high_leverage` in the art-direction notes. Typical choices:
+Before writing the final deck, mark 3–5 slides in `high_leverage_slides`. Typical choices are cover, first problem/hook, central mechanism/framework, strongest evidence/result and conclusion/closing. Every entry needs a valid Slide Spec `slide` number and a concrete `reason`.
 
-- cover;
-- first problem/hook page;
-- central mechanism/framework page;
-- strongest evidence/result page;
-- conclusion/closing.
-
-These pages must go through multi-candidate composition in v0.8. Ordinary low-risk slides may use one composition after reference retrieval.
+These pages must go through v0.8 multi-candidate composition. This list is also consumed by `pptx_visual_generation_gate_v08.py`; therefore it is production evidence, not informal notes. Ordinary lower-risk slides may use one composition after reference retrieval.
 
 ## Asset budget
 
