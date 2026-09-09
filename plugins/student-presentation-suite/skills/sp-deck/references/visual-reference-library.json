@@ -1,0 +1,301 @@
+{
+  "version": "0.8",
+  "description": "Curated visual composition recipes. These are positive visual priors, not fixed templates. Zones use normalized 0..1 coordinates and should be adapted to content.",
+  "references": [
+    {
+      "id": "cover-editorial-contrast",
+      "roles": ["cover", "introduce"],
+      "grammars": ["academic-research", "coursework", "defense-competition", "business-proposal"],
+      "visual_strategies": ["typography", "mixed"],
+      "density": "low",
+      "silhouette": "editorial-left-heavy",
+      "tags": ["oversized-title", "dark-cover", "contrast", "minimal"],
+      "why_it_works": "One oversized statement creates immediate hierarchy; metadata becomes a quiet secondary layer instead of competing with the title.",
+      "dominant_element": "title",
+      "focal_share": 0.58,
+      "wireframe": {
+        "title": [0.07, 0.18, 0.62, 0.34],
+        "subtitle": [0.08, 0.57, 0.45, 0.1],
+        "visual": [0.72, 0.08, 0.21, 0.72],
+        "footer": [0.08, 0.88, 0.55, 0.05]
+      },
+      "adaptation_notes": "Use the right-side visual only if it strengthens the concept; otherwise make typography occupy the full composition."
+    },
+    {
+      "id": "cover-half-bleed-hero",
+      "roles": ["cover", "introduce"],
+      "grammars": ["coursework", "defense-competition", "brand-creative"],
+      "visual_strategies": ["image", "mixed"],
+      "density": "low",
+      "silhouette": "split-hero",
+      "tags": ["half-bleed", "hero-image", "asymmetric"],
+      "why_it_works": "A decisive image crop creates visual richness without adding many small elements; text remains in one clean reading column.",
+      "dominant_element": "visual",
+      "focal_share": 0.52,
+      "wireframe": {
+        "title": [0.06, 0.2, 0.42, 0.28],
+        "subtitle": [0.06, 0.54, 0.34, 0.12],
+        "visual": [0.52, 0.0, 0.48, 1.0]
+      },
+      "adaptation_notes": "Prefer one edge-to-edge crop over a floating stock photo."
+    },
+    {
+      "id": "claim-oversized-keyword",
+      "roles": ["frame", "explain", "synthesize"],
+      "grammars": ["academic-research", "coursework", "defense-competition", "brand-creative"],
+      "visual_strategies": ["typography"],
+      "density": "low",
+      "silhouette": "type-dominant",
+      "tags": ["oversized-keyword", "thesis", "contrast"],
+      "why_it_works": "One word or phrase owns the page while supporting explanation is intentionally subordinate.",
+      "dominant_element": "key_statement",
+      "focal_share": 0.64,
+      "wireframe": {
+        "title": [0.07, 0.08, 0.5, 0.1],
+        "focus": [0.07, 0.24, 0.78, 0.38],
+        "body": [0.58, 0.67, 0.33, 0.17]
+      },
+      "adaptation_notes": "Do not turn parallel bullets into numbered blocks; use this only when a genuine thesis can dominate."
+    },
+    {
+      "id": "claim-evidence-rail",
+      "roles": ["frame", "prove", "explain"],
+      "grammars": ["academic-research", "coursework", "technical-engineering"],
+      "visual_strategies": ["mixed", "typography", "image"],
+      "density": "medium",
+      "silhouette": "asymmetric-evidence",
+      "tags": ["evidence", "annotation", "editorial", "asymmetric"],
+      "why_it_works": "A strong claim occupies one side; a narrow evidence rail gives proof, source and annotations without creating equal cards.",
+      "dominant_element": "claim",
+      "focal_share": 0.48,
+      "wireframe": {
+        "title": [0.06, 0.07, 0.7, 0.11],
+        "focus": [0.07, 0.25, 0.53, 0.35],
+        "body": [0.08, 0.65, 0.46, 0.18],
+        "visual": [0.66, 0.2, 0.27, 0.58],
+        "source": [0.67, 0.82, 0.25, 0.06]
+      },
+      "adaptation_notes": "The evidence rail can be a figure, quote, case fact or compact chart."
+    },
+    {
+      "id": "definition-example-editorial",
+      "roles": ["explain"],
+      "grammars": ["coursework", "academic-research"],
+      "visual_strategies": ["mixed", "typography"],
+      "density": "medium",
+      "silhouette": "definition-example",
+      "tags": ["definition", "example", "teaching", "asymmetric"],
+      "why_it_works": "Definition and example receive different visual weights, making the conceptual relationship clearer than two equal boxes.",
+      "dominant_element": "definition",
+      "focal_share": 0.44,
+      "wireframe": {
+        "title": [0.06, 0.07, 0.7, 0.11],
+        "focus": [0.07, 0.24, 0.52, 0.28],
+        "visual": [0.65, 0.22, 0.28, 0.46],
+        "body": [0.08, 0.62, 0.48, 0.2]
+      },
+      "adaptation_notes": "The example should look like evidence/case material, not a decorative second card."
+    },
+    {
+      "id": "process-central-spine",
+      "roles": ["explain", "prove"],
+      "grammars": ["technical-engineering", "coursework", "academic-research"],
+      "visual_strategies": ["process", "diagram"],
+      "density": "medium",
+      "silhouette": "central-spine",
+      "tags": ["process", "sequence", "flow", "connected"],
+      "why_it_works": "A single path makes causality and order explicit; steps are attached to one spine instead of floating as disconnected cards.",
+      "dominant_element": "flow",
+      "focal_share": 0.55,
+      "wireframe": {
+        "title": [0.06, 0.06, 0.72, 0.11],
+        "visual": [0.1, 0.25, 0.8, 0.48],
+        "takeaway": [0.28, 0.79, 0.44, 0.1]
+      },
+      "adaptation_notes": "Use 3–6 meaningful steps and vary node weight if one stage matters more."
+    },
+    {
+      "id": "architecture-boundary-flow",
+      "roles": ["explain", "prove"],
+      "grammars": ["technical-engineering"],
+      "visual_strategies": ["diagram", "process"],
+      "density": "high",
+      "silhouette": "system-boundary",
+      "tags": ["architecture", "boundary", "flow", "technical"],
+      "why_it_works": "The system boundary is visually explicit and the main data/control path is highlighted, preventing a generic grid of modules.",
+      "dominant_element": "system_diagram",
+      "focal_share": 0.62,
+      "wireframe": {
+        "title": [0.05, 0.05, 0.7, 0.1],
+        "visual": [0.07, 0.2, 0.76, 0.62],
+        "takeaway": [0.84, 0.26, 0.11, 0.42]
+      },
+      "adaptation_notes": "Use the narrow right annotation column for design decisions, risks or constraints."
+    },
+    {
+      "id": "data-big-number-proof",
+      "roles": ["prove", "synthesize"],
+      "grammars": ["academic-research", "defense-competition", "business-proposal", "coursework"],
+      "visual_strategies": ["chart", "mixed"],
+      "density": "medium",
+      "silhouette": "big-number-chart",
+      "tags": ["big-number", "evidence", "chart", "result"],
+      "why_it_works": "The takeaway number is read before the chart; the chart then proves rather than competes with the conclusion.",
+      "dominant_element": "key_number",
+      "focal_share": 0.42,
+      "wireframe": {
+        "title": [0.06, 0.06, 0.73, 0.1],
+        "focus": [0.07, 0.25, 0.3, 0.3],
+        "body": [0.08, 0.59, 0.28, 0.15],
+        "visual": [0.43, 0.22, 0.5, 0.55],
+        "source": [0.44, 0.81, 0.46, 0.05]
+      },
+      "adaptation_notes": "Highlight one series/number; suppress default chart chrome."
+    },
+    {
+      "id": "data-figure-caption",
+      "roles": ["prove"],
+      "grammars": ["academic-research", "coursework"],
+      "visual_strategies": ["image", "chart"],
+      "density": "medium",
+      "silhouette": "figure-caption",
+      "tags": ["research-figure", "caption", "evidence", "annotation"],
+      "why_it_works": "A large research figure owns the page while a caption/takeaway rail explains exactly what the audience should notice.",
+      "dominant_element": "figure",
+      "focal_share": 0.65,
+      "wireframe": {
+        "title": [0.05, 0.05, 0.72, 0.1],
+        "visual": [0.06, 0.2, 0.68, 0.61],
+        "body": [0.78, 0.23, 0.17, 0.42],
+        "source": [0.06, 0.84, 0.65, 0.05]
+      },
+      "adaptation_notes": "Use annotations/callouts sparingly; preserve figure legibility and source."
+    },
+    {
+      "id": "comparison-asymmetric-decision",
+      "roles": ["compare", "synthesize"],
+      "grammars": ["business-proposal", "technical-engineering", "defense-competition", "coursework"],
+      "visual_strategies": ["comparison", "mixed"],
+      "density": "medium",
+      "silhouette": "asymmetric-comparison",
+      "tags": ["comparison", "decision", "tradeoff", "asymmetric"],
+      "why_it_works": "The recommended/preferred option gets larger visual weight; comparison is not forced into two equal columns when the conclusion is not equal.",
+      "dominant_element": "preferred_option",
+      "focal_share": 0.53,
+      "wireframe": {
+        "title": [0.06, 0.06, 0.72, 0.1],
+        "focus": [0.07, 0.23, 0.5, 0.52],
+        "body": [0.64, 0.28, 0.28, 0.4],
+        "takeaway": [0.65, 0.72, 0.25, 0.1]
+      },
+      "adaptation_notes": "Use equal columns only when the argument truly has equal weight."
+    },
+    {
+      "id": "comparison-criteria-matrix",
+      "roles": ["compare", "prove"],
+      "grammars": ["business-proposal", "technical-engineering", "academic-research"],
+      "visual_strategies": ["comparison", "table"],
+      "density": "high",
+      "silhouette": "criteria-matrix",
+      "tags": ["matrix", "tradeoff", "criteria", "decision"],
+      "why_it_works": "Criteria form the reading spine and visual emphasis marks the decision, avoiding a feature-list card grid.",
+      "dominant_element": "matrix",
+      "focal_share": 0.61,
+      "wireframe": {
+        "title": [0.05, 0.05, 0.73, 0.1],
+        "visual": [0.07, 0.22, 0.72, 0.58],
+        "takeaway": [0.82, 0.25, 0.13, 0.48]
+      },
+      "adaptation_notes": "Use direct highlights/checks only for meaningful criteria; do not decorate every cell."
+    },
+    {
+      "id": "annotated-screenshot-focus",
+      "roles": ["prove", "explain"],
+      "grammars": ["technical-engineering", "coursework", "defense-competition"],
+      "visual_strategies": ["image", "mixed"],
+      "density": "medium",
+      "silhouette": "annotated-visual",
+      "tags": ["screenshot", "annotation", "product", "evidence"],
+      "why_it_works": "A large screenshot/figure is treated as evidence and only a few precise annotations explain what matters.",
+      "dominant_element": "visual",
+      "focal_share": 0.7,
+      "wireframe": {
+        "title": [0.05, 0.05, 0.73, 0.1],
+        "visual": [0.06, 0.2, 0.76, 0.65],
+        "body": [0.84, 0.24, 0.12, 0.45]
+      },
+      "adaptation_notes": "Crop aggressively enough that the audience can read the relevant UI/figure."
+    },
+    {
+      "id": "timeline-editorial-path",
+      "roles": ["explain", "synthesize"],
+      "grammars": ["coursework", "academic-research", "business-proposal"],
+      "visual_strategies": ["process", "diagram"],
+      "density": "medium",
+      "silhouette": "editorial-timeline",
+      "tags": ["timeline", "progression", "milestones"],
+      "why_it_works": "Milestones follow one visual path with varied emphasis, avoiding a row of identical date cards.",
+      "dominant_element": "timeline",
+      "focal_share": 0.58,
+      "wireframe": {
+        "title": [0.05, 0.06, 0.72, 0.1],
+        "visual": [0.08, 0.28, 0.84, 0.42],
+        "takeaway": [0.54, 0.76, 0.35, 0.1]
+      },
+      "adaptation_notes": "Vary milestone size only when importance differs."
+    },
+    {
+      "id": "tradeoff-axis-map",
+      "roles": ["compare", "synthesize"],
+      "grammars": ["academic-research", "technical-engineering", "business-proposal"],
+      "visual_strategies": ["comparison", "diagram"],
+      "density": "medium",
+      "silhouette": "axis-map",
+      "tags": ["tradeoff", "quadrant", "decision", "map"],
+      "why_it_works": "Two dimensions turn a prose trade-off list into a spatial argument, making relationships immediately visible.",
+      "dominant_element": "axis_map",
+      "focal_share": 0.66,
+      "wireframe": {
+        "title": [0.05, 0.05, 0.72, 0.1],
+        "visual": [0.08, 0.21, 0.62, 0.64],
+        "body": [0.75, 0.29, 0.19, 0.4]
+      },
+      "adaptation_notes": "Axes must represent real decision dimensions, not arbitrary decorative labels."
+    },
+    {
+      "id": "closing-callback",
+      "roles": ["conclude", "synthesize"],
+      "grammars": ["academic-research", "coursework", "defense-competition", "business-proposal", "brand-creative"],
+      "visual_strategies": ["typography", "mixed"],
+      "density": "low",
+      "silhouette": "closing-callback",
+      "tags": ["closing", "callback", "thesis", "dark"],
+      "why_it_works": "The closing echoes the opening visual thesis and leaves one memorable statement instead of a generic 'Thank you' page.",
+      "dominant_element": "takeaway",
+      "focal_share": 0.62,
+      "wireframe": {
+        "focus": [0.09, 0.24, 0.7, 0.34],
+        "body": [0.1, 0.64, 0.48, 0.13],
+        "visual": [0.76, 0.14, 0.17, 0.64]
+      },
+      "adaptation_notes": "Reuse one motif or phrase from the cover to create closure."
+    },
+    {
+      "id": "references-editorial-clean",
+      "roles": ["reference"],
+      "grammars": ["academic-research", "coursework", "technical-engineering"],
+      "visual_strategies": ["typography", "table"],
+      "density": "high",
+      "silhouette": "reference-editorial",
+      "tags": ["references", "bibliography", "clean"],
+      "why_it_works": "A strong typographic column system keeps dense citations readable without turning every source into a card.",
+      "dominant_element": "references",
+      "focal_share": 0.72,
+      "wireframe": {
+        "title": [0.05, 0.05, 0.7, 0.1],
+        "body": [0.07, 0.22, 0.84, 0.64]
+      },
+      "adaptation_notes": "Use hanging indents, numbering or author/year hierarchy rather than decorative boxes."
+    }
+  ]
+}
