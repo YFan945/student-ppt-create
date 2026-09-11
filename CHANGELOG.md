@@ -31,6 +31,20 @@ Codex 发行记录不在此维护。
 
 ### 代码审查驱动的安全与健壮性修复（逐项来自 `插件代码审查报告.md`）
 
+- **修复两个长期被误标为"环境性失败"的真实缺陷**（`test_runtime_paths` 的 2 个
+  失败从项目开跑第一天就存在，本轮根因定位后全部转绿）：
+  - `runtime_paths.project_root` 的 `env or os.environ` 让空 dict（调用方明确表示
+    "无环境变量"）回退到真实进程环境，`CLAUDE_PROJECT_DIR` 泄漏进测试与子命令；
+    改为 `env if env is not None else os.environ`；
+  - `CLAUDE_PROJECT_DIR` 为 Git-Bash/MSYS 形式（`/e/foo`）时，Windows 上
+    `Path('/e/foo').resolve()` 错误拼接到当前盘符根（实际观测输出到
+    `E:/e/student-ppt-create/outputs`）；新增 `_normalize_platform_path`，首段为
+    单个盘符字母时按 MSYS 约定转换成 `X:\foo`，`/tmp` 类路径不受影响；
+  - node wrapper probe 测试的 fixture 迁出用户 home 祖先链（本机
+    `C:\Users\<user>\node_modules` 残留有 pptxgenjs，会让空项目误判 project 命中）
+    与插件 node_modules 祖先链，并清除 `NODE_PATH` 兜底，契约验证不再依赖机器
+    环境巧合。
+
 - **优化建议区落地一批（2026-09-11 第五轮）**：
   - `pptx-element-registry.js` 默认画布 13.333×7.5 → **10×5.625in**，与
     `pptx-helpers.js` 的 STUDENT_WIDE 版式对齐——越界判定此前用了错误基准；
