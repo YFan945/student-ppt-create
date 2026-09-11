@@ -6,6 +6,20 @@ Codex 发行记录不在此维护。
 
 ## Unreleased
 
+### 实战验收暴露并修复的缺陷（2026-09-12）
+
+- **workflow_guard 状态机与 v0.8 门禁链口径分裂**：`validate_completion_manifest`
+  硬编码只认 `simplified-v1` + core 0.7.1，v0.8 全链路（全部门禁绿灯）在 complete
+  转换处被旧口径挡死。新增 `simplified-v08` 分支：校验强度对齐（7 项检查显式
+  True + 6 个产物哈希 + 预览全覆盖 + core 0.8），并补行为测试
+  （`test_complete_accepts_simplified_v08_delivery`）。
+- 同日实跑中修复：`runtime_paths.project_root` 空 env dict 回退泄漏
+  `CLAUDE_PROJECT_DIR`、MSYS `/e/foo` 路径在 Windows 错拼当前盘符（原被误标为
+  "环境性测试失败"，实为影响所有真实生成的运行时缺陷）。
+- 实跑记录：一次全新主题的 10 页生成中，各门禁依次拦截了 spec 枚举违规、
+  标题溢出、6 页缺 claim 原文、evidence ledger 不对账等 4 类真实问题，
+  最终全门禁通过、状态机走完 complete（详见 outputs/ai-showcase/）。
+
 ### 图表逐点配色、章节页锚点与视觉基线归档
 
 - **单系列柱/条形图逐点配色**：`pptx-shapes.js` 新增 `accentRamp()`——以强调色为最重色、
