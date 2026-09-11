@@ -1,6 +1,6 @@
 # Visual Style Menu
 
-Visual styles are **user-facing style seeds**, not templates or layout engines. Each seed keeps the intake simple by describing character, six color roles, background treatment and one optional SVG motif. After the user confirms the seed, v0.8 **must expand it through `pptx-art-direction.md`** into concrete typography scale, image treatment/crop language, icon language, chart grammar, component behavior, motif use, background rhythm and asset mix before final composition.
+Visual styles are **user-facing style seeds**, not templates or layout engines. Each seed keeps the intake simple by describing character, a light six-role palette, its dark companion for cover/section/closing pages, background treatment and one optional SVG motif. After the user confirms the seed, v0.8 **must expand it through `pptx-art-direction.md`** into concrete typography scale, image treatment/crop language, icon language, chart grammar, component behavior, motif use, background rhythm and asset mix before final composition.
 
 This separation is intentional: users choose a comprehensible visual mood; the model then acts as art director instead of asking the user to configure dozens of design details. Apply priorities in this order: approved school/user template → readability/source safety/truthful representation → slide narrative task → confirmed style seed → generated Art Direction.
 
@@ -27,6 +27,33 @@ Each file under `visual-styles/` retains exactly these lightweight intake fields
 4. `SVG reference`
 
 Palette roles are `canvas`, `surface`, `primary_text`, `secondary_text`, `primary_accent`, and `secondary_accent`. These files intentionally stay compact. **They are no longer the final design specification.** After confirmation, `art-direction.yaml` owns the concrete positive design decisions that previously had no home.
+
+### Light and dark are one scheme, not two
+
+Every style carries **two** six-role palettes: the light `palette` for content pages and a matching
+`dark_palette` for the cover, section and closing pages. The dark scheme is derived from the same
+hue family as the light one, so a deck never reads as "dark cover glued to unrelated light body
+pages". `resolve_design_tokens()` guarantees a dark companion for every style; custom and legacy
+styles get one derived automatically, and a supplied `dark_palette` is contrast-checked exactly
+like the light palette.
+
+Both palettes must clear the same floors: `primary_text` and `secondary_text` at 4.5:1 against
+both `canvas` and `surface`, and `primary_accent` at 3:1 against both.
+
+### The shared visual system
+
+The style files describe *character and colour only*; the deck-wide system is shared and is
+expressed the same way in every style:
+
+- **Type scale**: 40pt cover / 32pt page title / 26pt statement / 22pt body / 11pt caption, so
+  hierarchy is visible instead of title≈body.
+- **Accent semantics**: the accent marks the emphasised line, the recommended option, the key
+  number and the conclusion node — never decoration.
+- **Background rhythm**: dark cover → light content → dark section → dark closing.
+- **Evidence rail motif**: a thin accent rule plus caption marks sourced or constructed evidence.
+
+Because the CJK body floor is 22pt, a page title must be at least 32pt to satisfy the 1.45×
+hierarchy requirement; this is why the scale starts where it does.
 
 Art Direction may strengthen or refine the seed while keeping its recognizable character. For example, `Academic Rigorous` can become “dark editorial cover + light figure-led evidence pages + Cambria/Arial hierarchy + half-bleed research figures + one evidence-rail motif” rather than merely “navy + blue accent.”
 
@@ -69,6 +96,23 @@ Each formal seed points to one recommended SVG name. It is only a motif seed. Ar
 ## Reference and Layout Independence
 
 The 36-layout registry remains an inspiration/deterministic-fallback catalog. In v0.8 the stronger positive prior is `visual-reference-library.json`: reference recipes include a rationale, focal ownership, silhouette and normalized wireframe. `visual_reference_select.py` ranks them by slide role, grammar, visual strategy, density, tags and recent visual history. Neither reference recipes nor old layouts are fixed templates; the selected composition is adapted to the slide claim and Art Direction.
+
+## The shared visual system and per-style language
+
+Beyond the two palettes, each style declares a `visual_language` in
+`references/design-tokens.json`: how its accent rules are drawn (`bracket`,
+`left-rail`, `underline-left`, `top-band`, `slash`), how panels are treated
+(`outlined`, `flush`, `soft-fill`, `edge-band`), its corner radius, where the
+style's SVG motif sits (`corner-tr`, `corner-bl`, `edge-right`), its signature
+chart grammar (`columns`, `line`, `bars`) and its decoration density
+(`restrained`, `balanced`, `expressive`). This is what makes the same layout
+read differently across styles while staying one system.
+
+**Rendered exemplars:** `examples/visual-template-gallery/` renders 9 template
+pages per style (108 pages total) from the layout library and these tokens.
+Before composing a deck, consult the rendered pages of the selected style as
+the visual ceiling reference; copy the *treatment* (type scale, rule placement,
+panel handling, motif use), never the sample copy.
 
 ## Template Inheritance
 

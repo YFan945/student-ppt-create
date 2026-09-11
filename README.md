@@ -13,10 +13,18 @@ including coursework reports, thesis defenses, and group presentations. In
 Claude Code it can plan an outline and speaker notes, create an editable PPTX,
 review an existing deck, or produce a separate improved version.
 
-Its visual runtime includes 12 lightweight style references in three categories, an `Other`
-custom entry, 36 shared composition
+Its visual runtime includes 12 lightweight style references in three categories — each with a
+light palette plus the matching dark scheme for cover, section and closing pages — an `Other`
+custom entry, a 32-recipe visual composition reference library, 36 shared composition
 references, an original SVG/non-rectangular shape toolbox, a safety/fallback composer,
-and content/file/visual QA evidence bound to the final PPTX hash.
+and content/file/visual QA evidence bound to the final PPTX hash. Image search and
+generation are declared explicitly through `image-sources.json` and reported as
+`image_search_ready` / `image_generation_ready`, so planning never promises a
+capability the session does not have.
+
+A reproducible
+[golden sample](plugins/student-presentation-suite/examples/golden-sample/README.md)
+runs the full v0.8 pipeline end-to-end and reaches `status: complete`.
 
 Plugin install ID:
 

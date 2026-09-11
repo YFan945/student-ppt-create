@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import glob
 import os
 import shutil
 import subprocess
@@ -66,7 +67,8 @@ def render_pptx(
         missing = [name for name, value in (("LibreOffice", soffice), ("pdftoppm", pdftoppm)) if not value]
         raise FileNotFoundError("missing render tools: " + ", ".join(missing))
     output_dir.mkdir(parents=True, exist_ok=True)
-    for stale in output_dir.glob(f"{prefix}-*.{image_format}"):
+    # prefix 来自用户文件名，`[`/`*`/`?` 会被 glob 当通配符误匹配，必须转义。
+    for stale in output_dir.glob(f"{glob.escape(prefix)}-*.{image_format}"):
         stale.unlink()
     generated = output_dir / f"{source.stem}.pdf"
     pdf = output_dir / f"{prefix}.pdf"

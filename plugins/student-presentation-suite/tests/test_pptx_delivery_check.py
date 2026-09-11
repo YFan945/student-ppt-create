@@ -166,6 +166,16 @@ class PptxDeliveryCheckTests(unittest.TestCase):
             self.write_minimal_pptx(pptx)
             notes.write_text("notes", encoding="utf-8")
             self.write_valid_preview_and_manifest(pptx, preview, legacy_manifest)
+            review = root / "visual-review.json"
+            review.write_text(
+                json.dumps(
+                    {
+                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                        "slides": [{"slide": 1, "visual_structure": "diagram"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
             result = module.inspect_delivery(
                 pptx,
                 notes,
@@ -174,11 +184,13 @@ class PptxDeliveryCheckTests(unittest.TestCase):
                 slide_spec_report=root / "slide-spec-report.json",
                 simple=True,
                 visual_reviewed=True,
+                visual_review_report=review,
             )
         self.assertTrue(result["ok"])
         self.assertEqual("simplified-v1", result["delivery_report"]["gate_profile"])
         self.assertTrue(result["delivery_report"]["slide_spec_validation_passed"])
         self.assertTrue(result["delivery_report"]["visual_reviewed"])
+        self.assertTrue(result["delivery_report"]["visual_review_check"]["valid"])
         self.assertIsNone(result["delivery_report"]["qa_manifest_sha256"])
 
     def test_simplified_gate_rejects_unreviewed_previews(self) -> None:
@@ -202,6 +214,111 @@ class PptxDeliveryCheckTests(unittest.TestCase):
                 visual_reviewed=False,
             )
         self.assertFalse(result["ok"])
+
+    def test_missing_previews_leave_delivery_incomplete(self) -> None:
+        """pptx-qa.md"缺预览状态只能是 incomplete"——行为验证而非文档断言。"""
+        module = load_module(SCRIPT)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            notes = root / "deck-speaker-notes.md"
+            self.write_minimal_pptx(pptx)
+            notes.write_text("notes", encoding="utf-8")
+            # 有合法 package-report 与绑定复核报告，但没有预览图。
+            package_report = root / "package-report.json"
+            package_report.write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                        "validation_profile": "openxml-sdk-plus-suite-semantic-v4",
+                        "schema_validation": {"performed": True, "error_count": 0},
+                    }
+                ),
+                encoding="utf-8",
+            )
+            review = root / "visual-review.json"
+            review.write_text(
+                json.dumps(
+                    {
+                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                        "slides": [{"slide": 1, "visual_structure": "diagram"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = module.inspect_delivery(
+                pptx,
+                notes,
+                [],
+                package_report=package_report,
+                slide_spec_report=root / "slide-spec-report.json",
+                simple=True,
+                visual_review_report=review,
+            )
+        self.assertFalse(result["ok"])
+        self.assertEqual("incomplete", result["delivery_report"]["status"])
+        # 复核报告本身有效——不完全是因为缺它，而是缺预览。
+        self.assertTrue(result["delivery_report"]["visual_review_check"]["valid"])
+
+    def test_bare_visual_reviewed_flag_is_not_evidence(self) -> None:
+        """审查致命 1：裸 --visual-reviewed 布尔量由生成方自证，不构成复核证据。"""
+        module = load_module(SCRIPT)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            preview = root / "deck-preview.png"
+            notes = root / "deck-speaker-notes.md"
+            legacy_manifest = root / "qa-manifest.json"
+            self.write_minimal_pptx(pptx)
+            notes.write_text("notes", encoding="utf-8")
+            self.write_valid_preview_and_manifest(pptx, preview, legacy_manifest)
+            result = module.inspect_delivery(
+                pptx,
+                notes,
+                [preview],
+                package_report=root / "package-report.json",
+                slide_spec_report=root / "slide-spec-report.json",
+                simple=True,
+                visual_reviewed=True,
+            )
+        self.assertFalse(result["ok"])
+        self.assertFalse(result["delivery_report"]["visual_review_check"]["valid"])
+        self.assertIn("no sha256-bound", result["delivery_report"]["visual_review_check"]["reason"])
+
+    def test_stale_visual_review_report_is_rejected(self) -> None:
+        module = load_module(SCRIPT)
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            preview = root / "deck-preview.png"
+            notes = root / "deck-speaker-notes.md"
+            legacy_manifest = root / "qa-manifest.json"
+            self.write_minimal_pptx(pptx)
+            notes.write_text("notes", encoding="utf-8")
+            self.write_valid_preview_and_manifest(pptx, preview, legacy_manifest)
+            review = root / "visual-review.json"
+            review.write_text(
+                json.dumps(
+                    {
+                        "pptx_sha256": "0" * 64,
+                        "slides": [{"slide": 1, "visual_structure": "diagram"}],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = module.inspect_delivery(
+                pptx,
+                notes,
+                [preview],
+                package_report=root / "package-report.json",
+                slide_spec_report=root / "slide-spec-report.json",
+                simple=True,
+                visual_reviewed=True,
+                visual_review_report=review,
+            )
+        self.assertFalse(result["ok"])
+        self.assertIn("not bound", result["delivery_report"]["visual_review_check"]["reason"])
 
     def test_stale_preview_is_warning_not_error(self) -> None:
         """预览在 manifest 后重新渲染：文件本身有效仅 hash 不一致 → warning，不阻断交付。"""

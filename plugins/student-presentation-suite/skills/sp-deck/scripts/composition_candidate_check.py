@@ -201,7 +201,12 @@ def main() -> int:
     parser.add_argument("--quality", choices=["high-score", "standard"], default="high-score")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--strict", action="store_true", help="deprecated no-op alias; gates are fail-closed by default")
+    parser.add_argument(
+        "--lenient",
+        action="store_true",
+        help="opt-in relaxation: exit 0 even when the report is not ok (default is fail-closed)",
+    )
     args = parser.parse_args()
 
     report = validate_candidates(
@@ -215,7 +220,7 @@ def main() -> int:
         args.output.write_text(payload, encoding="utf-8")
     if args.json or not args.output:
         print(payload, end="")
-    if args.strict and not report["ok"]:
+    if not report["ok"] and not args.lenient:
         return 2
     return 0
 

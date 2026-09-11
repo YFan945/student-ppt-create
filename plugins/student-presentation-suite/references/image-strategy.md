@@ -42,9 +42,21 @@ The plugin already has an editable/no-network visual stack:
 
 Use semantic icons sparingly: navigation, state, risk, user/system roles, small concept labels. Icons are not a substitute for a real diagram, chart, screenshot or evidence figure. A slide with four icons above four equal boxes is still a card grid.
 
+## Image Sourcing Capability
+
+搜图/生图是否为可用能力，由项目根目录的 `image-sources.json` **显式声明**，不靠假设。运行
+`check_claude_pptx_env.py` 会报告 `capabilities.image_search_ready` /
+`image_generation_ready` / `user_assets_ready`；未声明时全部为 `false`。
+
+- 声明格式、权限门禁、来源留痕与降级顺序见 `image-sourcing.md`（schema：`image-sources.schema.json`，示例：`image-sources.example.json`）。
+- 规划顺序应为"先解析能力，再决定 asset plan"，不要先画好版式再发现拿不到图。
+- 每张外部/生成图都要写入 `asset-manifest.json` 的来源字段（`source_url`、`license`、`provider_id`、`retrieved_at`、`prompt`），并用 `pptx_tool.py validate-asset-manifest` 校验。
+
 ## Optional External Image Generation
 
-插件不内置或承诺特定生图服务。当前会话具备获准的外部生图能力时，可为封面、背景或抽象概念制作关键插图；能力不可用、用户拒绝或成本不合适时，使用 deterministic visual stack，不把生图当硬依赖。
+插件不内置或承诺特定生图服务。只有 `image-sources.json` 声明了可用的 `image-generation`
+provider 且用户未拒绝时，才可为封面、背景或抽象概念制作关键插图；能力不可用、用户拒绝或成本
+不合适时，使用 deterministic visual stack，不把生图当硬依赖。
 
 - 适用：cover/closing hero、抽象概念、氛围性但内容相关的主视觉。
 - 不适用：图表、流程图、架构、需要准确文字/数字的 evidence visual。
@@ -53,7 +65,8 @@ Use semantic icons sparingly: navigation, state, risk, user/system roles, small 
 
 ## Sourced Web Images
 
-获准联网时，real-world subjects 优先来源明确的高质量图片，而不是搜索结果里第一张小图。记录来源 URL；必要时保留作者/机构/日期。优先选能支撑 slide claim 的图片，例如真实界面、研究图、人物/地点证据，而不是抽象 stock photo。
+仅当 `image-sources.json` 中 `web-search` provider 可用且用户已授权联网时，real-world subjects
+优先来源明确的高质量图片，而不是搜索结果里第一张小图。记录来源 URL；必要时保留作者/机构/日期。优先选能支撑 slide claim 的图片，例如真实界面、研究图、人物/地点证据，而不是抽象 stock photo。
 
 图片进入 composition 前就决定 crop language：
 

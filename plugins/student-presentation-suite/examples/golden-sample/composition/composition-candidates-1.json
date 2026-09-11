@@ -1,0 +1,75 @@
+{
+  "version": "0.8",
+  "slide_id": 1,
+  "high_leverage": true,
+  "candidates": [
+    {
+      "id": "A",
+      "visual_strategy": "typography",
+      "silhouette": "editorial-left-heavy",
+      "reference_ids": [
+        "cover-editorial-contrast"
+      ],
+      "dominant_element": "title",
+      "focal_share": 0.58,
+      "title_pt": 44,
+      "body_pt": 20,
+      "zones": {
+        "title": [
+          0.06,
+          0.18,
+          0.72,
+          0.36
+        ],
+        "subtitle": [
+          0.06,
+          0.6,
+          0.5,
+          0.1
+        ],
+        "footer": [
+          0.06,
+          0.88,
+          0.4,
+          0.05
+        ]
+      },
+      "rationale": "Left-heavy editorial cover on a dark field gives the thesis one dominant reading path and keeps metadata quiet."
+    },
+    {
+      "id": "B",
+      "visual_strategy": "image",
+      "silhouette": "full-bleed-overlay",
+      "reference_ids": [
+        "cover-full-bleed-overlay"
+      ],
+      "dominant_element": "visual",
+      "focal_share": 0.6,
+      "title_pt": 44,
+      "body_pt": 20,
+      "zones": {
+        "title": [
+          0.08,
+          0.5,
+          0.6,
+          0.24
+        ],
+        "subtitle": [
+          0.08,
+          0.76,
+          0.4,
+          0.08
+        ],
+        "visual": [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ]
+      },
+      "rationale": "Full-bleed conceptual art would add mood, but no approved generated asset exists for this sample run."
+    }
+  ],
+  "selected_id": "A",
+  "selection_reason": "Typography already carries the thesis for a coursework deck, and no image provider is declared, so the editorial cover is both stronger and honest."
+}

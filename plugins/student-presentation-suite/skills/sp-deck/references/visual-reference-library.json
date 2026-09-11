@@ -296,6 +296,296 @@
         "body": [0.07, 0.22, 0.84, 0.64]
       },
       "adaptation_notes": "Use hanging indents, numbering or author/year hierarchy rather than decorative boxes."
+    },
+    {
+      "id": "cover-full-bleed-overlay",
+      "roles": ["cover", "introduce"],
+      "grammars": ["brand-creative", "defense-competition", "business-proposal", "coursework"],
+      "visual_strategies": ["image"],
+      "density": "low",
+      "silhouette": "full-bleed-overlay",
+      "tags": ["full-bleed", "hero-image", "overlay", "title-contrast"],
+      "why_it_works": "One image covering the full canvas plus a single text block reads as a designed cover rather than a template; a purposeful panel keeps the title legible instead of relying on a gradient.",
+      "dominant_element": "visual",
+      "focal_share": 0.6,
+      "wireframe": {
+        "title": [0.08, 0.5, 0.6, 0.24],
+        "subtitle": [0.08, 0.76, 0.4, 0.08],
+        "visual": [0.0, 0.0, 1.0, 1.0]
+      },
+      "adaptation_notes": "Overlay text only on genuine negative space or an opaque panel; otherwise shift the crop so one exists."
+    },
+    {
+      "id": "hook-question-tension",
+      "roles": ["introduce", "frame"],
+      "grammars": ["coursework", "academic-research", "defense-competition"],
+      "visual_strategies": ["typography", "mixed"],
+      "density": "low",
+      "silhouette": "question-hook",
+      "tags": ["hook", "question", "tension", "minimal"],
+      "why_it_works": "A single unresolved question plus one striking fact creates immediate curiosity, which a table-of-contents card cannot.",
+      "dominant_element": "key_statement",
+      "focal_share": 0.6,
+      "wireframe": {
+        "focus": [0.08, 0.24, 0.7, 0.3],
+        "body": [0.08, 0.6, 0.5, 0.16],
+        "title": [0.08, 0.08, 0.6, 0.1]
+      },
+      "adaptation_notes": "Reserve for the first content page; do not stack several questions or turn it into an agenda list."
+    },
+    {
+      "id": "image-dominant-edge-crop",
+      "roles": ["explain", "prove"],
+      "grammars": ["brand-creative", "coursework", "defense-competition", "technical-engineering"],
+      "visual_strategies": ["image"],
+      "density": "low",
+      "silhouette": "image-dominant",
+      "tags": ["edge-crop", "image-led", "decisive-crop"],
+      "why_it_works": "One image bleeding past the normal content frame dominates the page, so a single caption supplies meaning instead of many small decorative photos.",
+      "dominant_element": "visual",
+      "focal_share": 0.72,
+      "wireframe": {
+        "title": [0.06, 0.08, 0.5, 0.12],
+        "visual": [0.0, 0.0, 1.0, 1.0],
+        "source": [0.06, 0.86, 0.4, 0.06]
+      },
+      "adaptation_notes": "Decide the crop before writing the text; a small floating photo defeats this reference."
+    },
+    {
+      "id": "image-pull-quote-duotone",
+      "roles": ["synthesize", "frame", "conclude"],
+      "grammars": ["brand-creative", "coursework", "academic-research"],
+      "visual_strategies": ["image", "typography"],
+      "density": "low",
+      "silhouette": "image-quote",
+      "tags": ["pull-quote", "image-led", "overlay", "quote"],
+      "why_it_works": "A short quote over a purposeful image makes one claim memorable while the image carries tone rather than information.",
+      "dominant_element": "quote",
+      "focal_share": 0.66,
+      "wireframe": {
+        "focus": [0.1, 0.26, 0.62, 0.34],
+        "body": [0.1, 0.64, 0.4, 0.1],
+        "visual": [0.0, 0.0, 1.0, 1.0]
+      },
+      "adaptation_notes": "Keep quote text short and verify contrast against the real crop, not an assumed one."
+    },
+    {
+      "id": "concept-diagram-split",
+      "roles": ["explain", "prove"],
+      "grammars": ["coursework", "technical-engineering", "academic-research"],
+      "visual_strategies": ["diagram", "mixed"],
+      "density": "medium",
+      "silhouette": "concept-diagram-split",
+      "tags": ["concept", "diagram", "definition", "split"],
+      "why_it_works": "A short definition anchors one column while a purpose-built diagram earns the other, so the concept is explained visually instead of restated in bullets.",
+      "dominant_element": "diagram",
+      "focal_share": 0.58,
+      "wireframe": {
+        "title": [0.06, 0.07, 0.7, 0.1],
+        "focus": [0.07, 0.24, 0.4, 0.3],
+        "body": [0.07, 0.6, 0.38, 0.22],
+        "visual": [0.53, 0.22, 0.41, 0.6]
+      },
+      "adaptation_notes": "The diagram must encode a real relationship, not repeat the sentence using shapes."
+    },
+    {
+      "id": "process-linear-steps",
+      "roles": ["explain"],
+      "grammars": ["coursework", "technical-engineering", "business-proposal"],
+      "visual_strategies": ["process", "diagram"],
+      "density": "medium",
+      "silhouette": "linear-steps",
+      "tags": ["process", "sequence", "steps", "flow"],
+      "why_it_works": "A left-to-right path of three to five steps shows order and hand-off, and unequal node weight marks the step that matters instead of four equal cards.",
+      "dominant_element": "flow",
+      "focal_share": 0.56,
+      "wireframe": {
+        "title": [0.06, 0.06, 0.7, 0.1],
+        "visual": [0.07, 0.28, 0.86, 0.34],
+        "takeaway": [0.06, 0.7, 0.6, 0.12]
+      },
+      "adaptation_notes": "Use only when genuine order exists; otherwise switch to comparison or a main-cause structure."
+    },
+    {
+      "id": "process-cycle-loop",
+      "roles": ["explain", "synthesize"],
+      "grammars": ["technical-engineering", "academic-research", "coursework"],
+      "visual_strategies": ["process", "diagram"],
+      "density": "medium",
+      "silhouette": "cycle-ring",
+      "tags": ["cycle", "loop", "feedback", "state"],
+      "why_it_works": "A closed loop makes feedback and repetition legible; a linear row would misrepresent a process that never terminates.",
+      "dominant_element": "diagram",
+      "focal_share": 0.6,
+      "wireframe": {
+        "title": [0.06, 0.06, 0.7, 0.1],
+        "visual": [0.28, 0.2, 0.44, 0.56],
+        "body": [0.76, 0.26, 0.19, 0.44]
+      },
+      "adaptation_notes": "Reserve the side rail for the exit condition or failure mode."
+    },
+    {
+      "id": "hierarchy-layered-funnel",
+      "roles": ["synthesize", "explain", "compare"],
+      "grammars": ["business-proposal", "academic-research", "coursework"],
+      "visual_strategies": ["diagram", "comparison"],
+      "density": "medium",
+      "silhouette": "layered-pyramid",
+      "tags": ["hierarchy", "funnel", "layers", "synthesis"],
+      "why_it_works": "Layered bands express inclusion and scale, which a flat list or equal cards cannot, because band width becomes meaningful data.",
+      "dominant_element": "diagram",
+      "focal_share": 0.6,
+      "wireframe": {
+        "title": [0.06, 0.06, 0.7, 0.1],
+        "visual": [0.16, 0.22, 0.52, 0.58],
+        "body": [0.72, 0.28, 0.23, 0.42]
+      },
+      "adaptation_notes": "Band width or height must encode a real quantity or scope, not decoration."
+    },
+    {
+      "id": "comparison-before-after",
+      "roles": ["compare", "prove"],
+      "grammars": ["technical-engineering", "business-proposal", "academic-research", "coursework"],
+      "visual_strategies": ["comparison", "image"],
+      "density": "medium",
+      "silhouette": "before-after",
+      "tags": ["before-after", "comparison", "result", "evidence"],
+      "why_it_works": "Two states share one axis so the change itself becomes the message, and a shared divider makes the delta readable at a glance.",
+      "dominant_element": "comparison",
+      "focal_share": 0.6,
+      "wireframe": {
+        "title": [0.06, 0.06, 0.72, 0.1],
+        "visual": [0.07, 0.24, 0.86, 0.46],
+        "focus": [0.07, 0.74, 0.86, 0.12]
+      },
+      "adaptation_notes": "Use identical framing and crop for both states or the comparison becomes misleading."
+    },
+    {
+      "id": "table-editorial-clean",
+      "roles": ["prove", "compare"],
+      "grammars": ["business-proposal", "academic-research", "technical-engineering"],
+      "visual_strategies": ["table"],
+      "density": "high",
+      "silhouette": "editorial-table",
+      "tags": ["table", "data", "comparison", "dense"],
+      "why_it_works": "A quiet editorial table with one emphasized column beats a card grid when many values must be compared across the same dimensions.",
+      "dominant_element": "table",
+      "focal_share": 0.68,
+      "wireframe": {
+        "title": [0.05, 0.05, 0.72, 0.1],
+        "visual": [0.07, 0.22, 0.86, 0.6],
+        "takeaway": [0.07, 0.84, 0.6, 0.08]
+      },
+      "adaptation_notes": "Remove vertical rules and zebra shading unless they carry meaning; emphasize one column or row."
+    },
+    {
+      "id": "data-kpi-dashboard",
+      "roles": ["prove", "synthesize"],
+      "grammars": ["business-proposal", "technical-engineering"],
+      "visual_strategies": ["chart", "mixed"],
+      "density": "medium",
+      "silhouette": "dashboard-kpi",
+      "tags": ["dashboard", "kpi", "metrics", "summary"],
+      "why_it_works": "One dominant primary metric plus a supporting strip reads as a decision summary rather than a row of four equal stat tiles.",
+      "dominant_element": "key_number",
+      "focal_share": 0.5,
+      "wireframe": {
+        "title": [0.06, 0.06, 0.72, 0.1],
+        "focus": [0.07, 0.24, 0.4, 0.34],
+        "visual": [0.07, 0.64, 0.86, 0.2],
+        "source": [0.07, 0.87, 0.5, 0.05]
+      },
+      "adaptation_notes": "Give one metric real dominance; identical stat tiles are the failure mode."
+    },
+    {
+      "id": "data-small-multiples",
+      "roles": ["prove"],
+      "grammars": ["academic-research", "technical-engineering"],
+      "visual_strategies": ["chart", "diagram"],
+      "density": "high",
+      "silhouette": "small-multiples",
+      "tags": ["small-multiples", "trend", "series", "comparison"],
+      "why_it_works": "Repeated charts on one shared scale reveal a pattern across groups that a single stacked chart would hide.",
+      "dominant_element": "chart",
+      "focal_share": 0.64,
+      "wireframe": {
+        "title": [0.05, 0.05, 0.72, 0.1],
+        "visual": [0.07, 0.2, 0.86, 0.62],
+        "takeaway": [0.07, 0.84, 0.62, 0.08]
+      },
+      "adaptation_notes": "Share axes across panels and label once; per-panel legends add noise."
+    },
+    {
+      "id": "quote-pull-attribution",
+      "roles": ["frame", "synthesize", "conclude"],
+      "grammars": ["academic-research", "brand-creative", "coursework"],
+      "visual_strategies": ["typography"],
+      "density": "low",
+      "silhouette": "pull-quote",
+      "tags": ["quote", "attribution", "typography", "single-claim"],
+      "why_it_works": "One oversized quotation with clear attribution gives a single voice full authority while surrounding commentary stays subordinate.",
+      "dominant_element": "quote",
+      "focal_share": 0.68,
+      "wireframe": {
+        "focus": [0.09, 0.2, 0.7, 0.4],
+        "body": [0.09, 0.64, 0.45, 0.12],
+        "visual": [0.78, 0.16, 0.15, 0.6]
+      },
+      "adaptation_notes": "Use a real, attributable quotation; never fabricate a source, speaker or study."
+    },
+    {
+      "id": "recap-numbered-path",
+      "roles": ["conclude", "synthesize"],
+      "grammars": ["coursework", "academic-research", "defense-competition", "business-proposal"],
+      "visual_strategies": ["mixed", "typography"],
+      "density": "medium",
+      "silhouette": "recap-path",
+      "tags": ["recap", "summary", "numbered", "progression"],
+      "why_it_works": "A recap that traces the deck's own argument path reinforces retention, unlike a neutral bullet summary detached from the narrative.",
+      "dominant_element": "path",
+      "focal_share": 0.56,
+      "wireframe": {
+        "title": [0.06, 0.06, 0.7, 0.1],
+        "visual": [0.08, 0.24, 0.84, 0.4],
+        "body": [0.08, 0.7, 0.6, 0.14]
+      },
+      "adaptation_notes": "Numbering must mirror the actual argument sequence, not restate parallel bullets."
+    },
+    {
+      "id": "section-divider-typographic",
+      "roles": ["introduce"],
+      "grammars": ["academic-research", "coursework", "technical-engineering", "business-proposal", "defense-competition", "brand-creative"],
+      "visual_strategies": ["typography"],
+      "density": "low",
+      "silhouette": "section-divider",
+      "tags": ["section", "divider", "oversized-number", "transition"],
+      "why_it_works": "An oversized section numeral plus one line of orientation gives the audience a clear breath between chapters without a decorative card.",
+      "dominant_element": "key_statement",
+      "focal_share": 0.66,
+      "wireframe": {
+        "focus": [0.08, 0.3, 0.5, 0.3],
+        "body": [0.08, 0.64, 0.44, 0.1],
+        "visual": [0.62, 0.24, 0.3, 0.44]
+      },
+      "adaptation_notes": "Keep dividers sparse; more than three in a short deck breaks rhythm."
+    },
+    {
+      "id": "closing-next-step-ask",
+      "roles": ["conclude"],
+      "grammars": ["business-proposal", "defense-competition", "coursework", "technical-engineering"],
+      "visual_strategies": ["mixed", "typography"],
+      "density": "low",
+      "silhouette": "closing-ask",
+      "tags": ["closing", "next-step", "ask", "action"],
+      "why_it_works": "Ending on an explicit next step or ask makes the deck actionable and prevents a hollow thank-you slide.",
+      "dominant_element": "takeaway",
+      "focal_share": 0.58,
+      "wireframe": {
+        "focus": [0.08, 0.24, 0.6, 0.26],
+        "body": [0.08, 0.56, 0.5, 0.2],
+        "visual": [0.72, 0.2, 0.22, 0.56]
+      },
+      "adaptation_notes": "Use when the scenario expects a proposal or decision; otherwise prefer closing-callback."
     }
   ]
 }

@@ -209,7 +209,19 @@ def validate_visual_generation(
                 for ref in candidate.get("reference_ids") or []
             }
             selected_refs = set(ref_result.get("reference_ids") or [])
-            if selected_refs and candidate_refs and not candidate_refs.intersection(selected_refs):
+            # 旧写法 `selected_refs and candidate_refs and not ...` 在两侧同时缺失时
+            # 整段跳过——检索与候选可同时缺失而门禁放行。SKILL.md 第 7 步要求
+            # high-leverage 页"缺任一探索证据不得交付"，故任一侧为空即阻断。
+            if not selected_refs or not candidate_refs:
+                issues.append(
+                    issue(
+                        "major",
+                        "evidence_chain_incomplete",
+                        f"Slide {slide_no} lacks retrieved references or candidate references; evidence chain is broken.",
+                        slide=slide_no,
+                    )
+                )
+            elif not candidate_refs.intersection(selected_refs):
                 issues.append(issue("major", "candidate_reference_disconnected", f"Slide {slide_no} candidates do not use any retrieved visual reference.", slide=slide_no))
             item["composition_candidates_sha256"] = sha256_file(candidate_path)
             item["candidate_count"] = candidate_result.get("candidate_count")
@@ -251,7 +263,12 @@ def main() -> int:
     parser.add_argument("--quality", choices=["high-score", "standard"], default="high-score")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--strict", action="store_true", help="deprecated no-op alias; gates are fail-closed by default")
+    parser.add_argument(
+        "--lenient",
+        action="store_true",
+        help="opt-in relaxation: exit 0 even when the report is not ok (default is fail-closed)",
+    )
     args = parser.parse_args()
 
     report = validate_visual_generation(
@@ -266,7 +283,7 @@ def main() -> int:
         args.output.write_text(payload, encoding="utf-8")
     if args.json or not args.output:
         print(payload, end="")
-    if args.strict and not report["ok"]:
+    if not report["ok"] and not args.lenient:
         return 2
     return 0
 

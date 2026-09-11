@@ -11,8 +11,15 @@
 场景。它可以在 Claude Code 中生成 PPT 大纲和讲稿、创建可编辑 PPTX、审查
 已有 PPT，并根据审查结果生成独立改进版。
 
-视觉运行时包含三类共 12 套轻量风格参考和“其他”自定义入口、36 套共享构图参考、原创 SVG/非矩形形状工具箱、
+视觉运行时包含三类共 12 套轻量风格参考（每套含浅色 palette 与配套的深色方案，用于封面/章节/收尾）、
+“其他”自定义入口、32 条视觉构图参考 recipe、36 套共享构图参考、原创 SVG/非矩形形状工具箱、
 安全/兜底 composer，以及与最终 PPTX hash 绑定的 content/file/visual QA 证据链。
+搜图/生图能力通过 `image-sources.json` 显式声明，并以 `image_search_ready` /
+`image_generation_ready` 报告，规划阶段不会承诺会话并不具备的能力。
+
+仓库内含一个可复现的
+[黄金样例](plugins/student-presentation-suite/examples/golden-sample/README.md)，
+端到端跑通 v0.8 管线并达到 `status: complete`。
 
 插件安装 ID：
 

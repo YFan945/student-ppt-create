@@ -19,11 +19,49 @@ from ._util import local as _local
 from .package import pack_directory, safe_extract_package
 
 C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
+A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 StdET.register_namespace("c", C_NS)
+StdET.register_namespace("a", A_NS)
+
+_SLIDE_PART_DIRS = ("slides", "notesSlides")
+
+
+def _fix_rich_text_paragraphs(root) -> int:
+    """pptxgenjs 富文本缺陷：每个 run 之后都重复写一个 <a:pPr>。
+
+    schema 规定 <a:p> 的 pPr 至多一个且必须是第一个子元素。删除所有
+    非首位的 pPr，使行内强调（多 run 混排变色）合法可用。返回删除数。
+    """
+    removed = 0
+    for paragraph in root.iter(f"{{{A_NS}}}p"):
+        children = list(paragraph)
+        pprs = [c for c in children if c.tag == f"{{{A_NS}}}pPr"]
+        if len(pprs) < 2:
+            continue
+        # 合法写法：pPr 位于首位。首位之外的全部删除。
+        for extra in pprs:
+            if list(paragraph).index(extra) != 0:
+                paragraph.remove(extra)
+                removed += 1
+    return removed
 
 
 def normalize_unpacked(root: Path) -> list[str]:
     changed: list[str] = []
+    for part_dir in _SLIDE_PART_DIRS:
+        parts_root = root / "ppt" / part_dir
+        if not parts_root.is_dir():
+            continue
+        for part_path in sorted(parts_root.glob("*.xml")):
+            part = ET.parse(part_path).getroot()
+            removed = _fix_rich_text_paragraphs(part)
+            if removed:
+                StdET.ElementTree(part).write(
+                    part_path,
+                    encoding="utf-8",
+                    xml_declaration=True,
+                )
+                changed.append(f"{part_path.relative_to(root).as_posix()} (removed {removed} stray pPr)")
     charts_root = root / "ppt" / "charts"
     for chart_path in sorted(charts_root.glob("chart*.xml")) if charts_root.is_dir() else []:
         chart = ET.parse(chart_path).getroot()
@@ -45,6 +83,35 @@ def normalize_unpacked(root: Path) -> list[str]:
                 if axis_id.get("val") not in declared_axes:
                     chart_node.remove(axis_id)
                     chart_changed = True
+            # pptxgenjs line-chart 缺陷：漏写 <c:grouping>，且 ser 内带非法的
+            # invertIfNegative（该元素只属于 barChart 的 ser）。两处都必须修，
+            # 否则 OpenXML schema 校验失败。
+            if _local(chart_node.tag) == "lineChart":
+                if chart_node.find(f"{{{C_NS}}}grouping") is None:
+                    grouping = StdET.Element(f"{{{C_NS}}}grouping", {"val": "standard"})
+                    chart_node.insert(0, grouping)
+                    chart_changed = True
+                for ser in chart_node.findall(f"{{{C_NS}}}ser"):
+                    broken = ser.find(f"{{{C_NS}}}invertIfNegative")
+                    if broken is not None:
+                        ser.remove(broken)
+                        chart_changed = True
+                    # ser 内 marker 必须紧跟 spPr（在 dLbls 之前），pptxgenjs 写在 dLbls 之后。
+                    ser_marker = ser.find(f"{{{C_NS}}}marker")
+                    if ser_marker is not None:
+                        d_lbls = ser.find(f"{{{C_NS}}}dLbls")
+                        if d_lbls is not None and list(ser).index(ser_marker) > list(ser).index(d_lbls):
+                            ser.remove(ser_marker)
+                            ser.insert(list(ser).index(d_lbls), ser_marker)
+                            chart_changed = True
+                # marker 必须位于 axId 之前；pptxgenjs 把它写到末尾。
+                marker = chart_node.find(f"{{{C_NS}}}marker")
+                if marker is not None:
+                    ax_ids = chart_node.findall(f"{{{C_NS}}}axId")
+                    if ax_ids and list(chart_node).index(marker) > list(chart_node).index(ax_ids[0]):
+                        chart_node.remove(marker)
+                        chart_node.insert(list(chart_node).index(ax_ids[0]), marker)
+                        chart_changed = True
         if chart_changed:
             StdET.ElementTree(chart).write(
                 chart_path,

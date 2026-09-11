@@ -1,13 +1,19 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "version": "2.0",
+  "version": "2.5",
   "defaults": {
     "geometry": {
       "slide_ratio": "16:9",
       "safe_margin_pct": 6,
       "title_zone_pct": 16,
       "footer_zone_pct": 5,
-      "spacing_scale_pt": [6, 12, 18, 24, 36, 48],
+      "spacing_scale_pt": [
+        6,
+        12,
+        18,
+        24,
+        36,
+        48
+      ],
       "min_gutter_pt": 18,
       "min_card_padding_pt": 16,
       "max_columns": 3,
@@ -25,13 +31,30 @@
       "dashed_semantics": "optional-or-future"
     },
     "typography": {
-      "title_min_pt": 24,
+      "title_min_pt": 32,
+      "title_max_pt": 44,
+      "cover_title_pt": 40,
+      "subtitle_min_pt": 26,
       "body_cjk_min_pt": 22,
       "body_latin_min_pt": 20,
-      "caption_min_pt": 10,
+      "body_max_pt": 22,
+      "label_min_pt": 16,
+      "caption_min_pt": 11,
       "title_weight": "semibold",
       "title_font": "Cambria",
-      "body_font": "Calibri"
+      "body_font": "Calibri",
+      "cjk_title_font": "Microsoft YaHei",
+      "cjk_body_font": "Microsoft YaHei"
+    },
+    "effects": {
+      "soft_shadow": {
+        "blur_pt": 10,
+        "offset_pt": 4,
+        "angle_deg": 90,
+        "opacity": 0.16,
+        "enabled": true,
+        "comment": "Color derives from the light palette's primary_text at resolve time; suppressed on dark pages."
+      }
     }
   },
   "categories": {
@@ -58,86 +81,566 @@
     "academic-rigorous": {
       "name": "Academic Rigorous",
       "style_character": "Formal, evidence-first, restrained, and suitable for teacher-scored academic work.",
-      "palette": {"canvas":"F8FAFC","surface":"FFFFFF","primary_text":"0F172A","secondary_text":"475569","primary_accent":"1D4ED8","secondary_accent":"8B9BAB"},
-      "backgrounds": {"cover":"Primary-text navy field with canvas-colored title, or a quiet canvas background.","content":"Canvas background with white surface areas used only when grouping is useful.","section":"Canvas or primary-text field with one restrained accent cue.","closing":"Reuse the cover background treatment for visual closure."},
-      "svg_reference": {"name":"academic-bracket","usage":"Optional bracket or evidence-rail motif on cover, section, or one representative evidence page."}
+      "palette": {
+        "canvas": "F8FAFC",
+        "surface": "FFFFFF",
+        "primary_text": "0F172A",
+        "secondary_text": "475569",
+        "primary_accent": "1D4ED8",
+        "secondary_accent": "8B9BAB"
+      },
+      "dark_palette": {
+        "canvas": "0D172D",
+        "surface": "192441",
+        "primary_text": "C4D2E4",
+        "secondary_text": "8A9FB4",
+        "primary_accent": "5C86F0",
+        "secondary_accent": "30447E"
+      },
+      "visual_language": {
+        "rule": "bracket",
+        "panel": "outlined",
+        "radius": 0.03,
+        "motif_at": "corner-tr",
+        "chart": "columns",
+        "decor": "restrained",
+        "pattern": "none",
+        "emphasis_marker": "square",
+        "cover_band": "corner-block"
+      },
+      "backgrounds": {
+        "cover": "Primary-text navy field with canvas-colored title, or a quiet canvas background.",
+        "content": "Canvas background with white surface areas used only when grouping is useful.",
+        "section": "Canvas or primary-text field with one restrained accent cue.",
+        "closing": "Reuse the cover background treatment for visual closure."
+      },
+      "svg_reference": {
+        "name": "academic-bracket",
+        "usage": "Optional bracket or evidence-rail motif on cover, section, or one representative evidence page."
+      },
+      "typography": {
+        "cjk_title_font": "SimHei",
+        "cjk_body_font": "SimSun",
+        "title_font": "Cambria",
+        "body_font": "Calibri"
+      }
     },
     "data-driven": {
       "name": "Data Driven",
       "style_character": "Analytical, chart-conscious, precise, and focused on traceable quantitative findings.",
-      "palette": {"canvas":"F8FAFC","surface":"FFFFFF","primary_text":"111827","secondary_text":"4B5563","primary_accent":"2563EB","secondary_accent":"16A34A"},
-      "backgrounds": {"cover":"Clean canvas or primary-text field with one data-point accent.","content":"Neutral canvas that leaves charts and labels visually dominant.","section":"Canvas background with a sparse coordinate cue when useful.","closing":"Return to the cover treatment with one verified takeaway."},
-      "svg_reference": {"name":"data-axis","usage":"Optional axis, bracket, or data-point motif; never substitute it for an actual chart."}
+      "palette": {
+        "canvas": "F8FAFC",
+        "surface": "FFFFFF",
+        "primary_text": "111827",
+        "secondary_text": "4B5563",
+        "primary_accent": "2563EB",
+        "secondary_accent": "16A34A"
+      },
+      "dark_palette": {
+        "canvas": "0F1A25",
+        "surface": "1B2A38",
+        "primary_text": "C6D6E4",
+        "secondary_text": "8FA6B8",
+        "primary_accent": "4290F0",
+        "secondary_accent": "2E7D4F"
+      },
+      "visual_language": {
+        "rule": "left-rail",
+        "panel": "flush",
+        "radius": 0.02,
+        "motif_at": "edge-right",
+        "chart": "columns",
+        "decor": "restrained",
+        "pattern": "grid",
+        "emphasis_marker": "number",
+        "cover_band": "side-band"
+      },
+      "backgrounds": {
+        "cover": "Clean canvas or primary-text field with one data-point accent.",
+        "content": "Neutral canvas that leaves charts and labels visually dominant.",
+        "section": "Canvas background with a sparse coordinate cue when useful.",
+        "closing": "Return to the cover treatment with one verified takeaway."
+      },
+      "svg_reference": {
+        "name": "data-axis",
+        "usage": "Optional axis, bracket, or data-point motif; never substitute it for an actual chart."
+      },
+      "typography": {
+        "cjk_title_font": "Microsoft YaHei",
+        "cjk_body_font": "DengXian",
+        "title_font": "Arial",
+        "body_font": "Calibri"
+      }
     },
     "modern-minimal": {
       "name": "Modern Minimal",
       "style_character": "Clean, spacious, direct, and centered on one strong visual or message at a time.",
-      "palette": {"canvas":"F8FAFC","surface":"FFFFFF","primary_text":"111827","secondary_text":"6B7280","primary_accent":"2563EB","secondary_accent":"93C5FD"},
-      "backgrounds": {"cover":"Open canvas with a single focal accent or optional primary-text field.","content":"Mostly unboxed canvas with disciplined whitespace.","section":"Open canvas with one focal cue and no decorative bands.","closing":"Minimal cover echo with one concluding statement."},
-      "svg_reference": {"name":"minimal-focus","usage":"Optional focal dot or alignment motif used sparingly at structural moments."}
+      "palette": {
+        "canvas": "F8FAFC",
+        "surface": "FFFFFF",
+        "primary_text": "111827",
+        "secondary_text": "6B7280",
+        "primary_accent": "2563EB",
+        "secondary_accent": "93C5FD"
+      },
+      "dark_palette": {
+        "canvas": "15171B",
+        "surface": "23262D",
+        "primary_text": "E9EBEF",
+        "secondary_text": "A8AEBA",
+        "primary_accent": "7FA8FF",
+        "secondary_accent": "3C4A63"
+      },
+      "visual_language": {
+        "rule": "underline-left",
+        "panel": "flush",
+        "radius": 0.0,
+        "motif_at": "corner-bl",
+        "chart": "line",
+        "decor": "restrained",
+        "pattern": "none",
+        "emphasis_marker": "dash",
+        "cover_band": "none"
+      },
+      "backgrounds": {
+        "cover": "Open canvas with a single focal accent or optional primary-text field.",
+        "content": "Mostly unboxed canvas with disciplined whitespace.",
+        "section": "Open canvas with one focal cue and no decorative bands.",
+        "closing": "Minimal cover echo with one concluding statement."
+      },
+      "svg_reference": {
+        "name": "minimal-focus",
+        "usage": "Optional focal dot or alignment motif used sparingly at structural moments."
+      },
+      "typography": {
+        "cjk_title_font": "DengXian",
+        "cjk_body_font": "DengXian Light",
+        "title_font": "Calibri",
+        "body_font": "Arial"
+      }
     },
     "charcoal-editorial": {
       "name": "Charcoal Editorial",
       "style_character": "Editorial, typographic, monochrome-leaning, and deliberately asymmetric.",
-      "palette": {"canvas":"F2F2F2","surface":"FFFFFF","primary_text":"111111","secondary_text":"4B5563","primary_accent":"36454F","secondary_accent":"C9B89B"},
-      "backgrounds": {"cover":"Charcoal or off-white editorial field with strong type hierarchy.","content":"Off-white canvas with flat image and text regions rather than UI cards.","section":"Charcoal field or off-white spread with restrained crop marks.","closing":"Reuse the cover contrast and editorial spacing."},
-      "svg_reference": {"name":"editorial-crop","usage":"Optional crop-mark motif for cover, section, or image-led editorial pages."}
+      "palette": {
+        "canvas": "F2F2F2",
+        "surface": "FFFFFF",
+        "primary_text": "111111",
+        "secondary_text": "4B5563",
+        "primary_accent": "36454F",
+        "secondary_accent": "C9B89B"
+      },
+      "dark_palette": {
+        "canvas": "1D1D1D",
+        "surface": "2D2D2D",
+        "primary_text": "D6D6D6",
+        "secondary_text": "A4A4A4",
+        "primary_accent": "7FA0B5",
+        "secondary_accent": "5C6B75"
+      },
+      "visual_language": {
+        "rule": "top-band",
+        "panel": "outlined",
+        "radius": 0.0,
+        "motif_at": "corner-tr",
+        "chart": "bars",
+        "decor": "restrained",
+        "pattern": "grid",
+        "emphasis_marker": "slash",
+        "cover_band": "side-band"
+      },
+      "backgrounds": {
+        "cover": "Charcoal or off-white editorial field with strong type hierarchy.",
+        "content": "Off-white canvas with flat image and text regions rather than UI cards.",
+        "section": "Charcoal field or off-white spread with restrained crop marks.",
+        "closing": "Reuse the cover contrast and editorial spacing."
+      },
+      "svg_reference": {
+        "name": "editorial-crop",
+        "usage": "Optional crop-mark motif for cover, section, or image-led editorial pages."
+      },
+      "typography": {
+        "cjk_title_font": "SimHei",
+        "cjk_body_font": "FangSong",
+        "title_font": "Century Schoolbook",
+        "body_font": "Times New Roman"
+      }
     },
     "midnight-business": {
       "name": "Midnight Business",
       "style_character": "Executive, polished, decisive, and suited to strategy, management, and business cases.",
-      "palette": {"canvas":"F6F8FC","surface":"FFFFFF","primary_text":"17213C","secondary_text":"52627A","primary_accent":"3157A4","secondary_accent":"3B82F6"},
-      "backgrounds": {"cover":"Primary-text midnight field with canvas-colored title and restrained blue light.","content":"Light canvas with navy text and limited blue emphasis.","section":"Alternate a midnight field with a light decision page when it supports pacing.","closing":"Return to the midnight cover treatment."},
-      "svg_reference": {"name":"midnight-beam","usage":"Optional beam motif on cover, section, or closing; do not place it behind body copy."}
+      "palette": {
+        "canvas": "F6F8FC",
+        "surface": "FFFFFF",
+        "primary_text": "17213C",
+        "secondary_text": "52627A",
+        "primary_accent": "3157A4",
+        "secondary_accent": "3B82F6"
+      },
+      "dark_palette": {
+        "canvas": "0E162C",
+        "surface": "192341",
+        "primary_text": "C2CBDE",
+        "secondary_text": "8E9CB7",
+        "primary_accent": "5A86E0",
+        "secondary_accent": "30497E"
+      },
+      "visual_language": {
+        "rule": "left-rail",
+        "panel": "edge-band",
+        "radius": 0.06,
+        "motif_at": "corner-bl",
+        "chart": "columns",
+        "decor": "balanced",
+        "pattern": "grid",
+        "emphasis_marker": "number",
+        "cover_band": "bottom-band"
+      },
+      "backgrounds": {
+        "cover": "Primary-text midnight field with canvas-colored title and restrained blue light.",
+        "content": "Light canvas with navy text and limited blue emphasis.",
+        "section": "Alternate a midnight field with a light decision page when it supports pacing.",
+        "closing": "Return to the midnight cover treatment."
+      },
+      "svg_reference": {
+        "name": "midnight-beam",
+        "usage": "Optional beam motif on cover, section, or closing; do not place it behind body copy."
+      },
+      "typography": {
+        "cjk_title_font": "Microsoft YaHei",
+        "cjk_body_font": "Microsoft YaHei",
+        "title_font": "Cambria",
+        "body_font": "Arial"
+      }
     },
     "ocean-tech": {
       "name": "Ocean Tech",
       "style_character": "Technical, fluid, high-trust, and suitable for software, AI, engineering, and systems.",
-      "palette": {"canvas":"F4F9FC","surface":"FFFFFF","primary_text":"132238","secondary_text":"52677A","primary_accent":"065A82","secondary_accent":"1C7293"},
-      "backgrounds": {"cover":"Primary-text deep-ocean field with canvas-colored title and cyan-blue accents.","content":"Pale ocean canvas with white surfaces only where structure needs them.","section":"Deep-ocean or pale-canvas field selected by narrative emphasis.","closing":"Reuse the deep-ocean cover treatment."},
-      "svg_reference": {"name":"ocean-circuit","usage":"Optional circuit, node, or signal-path motif on technical overview pages."}
+      "palette": {
+        "canvas": "F4F9FC",
+        "surface": "FFFFFF",
+        "primary_text": "132238",
+        "secondary_text": "52677A",
+        "primary_accent": "065A82",
+        "secondary_accent": "1C7293"
+      },
+      "dark_palette": {
+        "canvas": "0D1A2D",
+        "surface": "192941",
+        "primary_text": "C0D2DD",
+        "secondary_text": "89A3B3",
+        "primary_accent": "1E9AD4",
+        "secondary_accent": "30657E"
+      },
+      "visual_language": {
+        "rule": "top-band",
+        "panel": "soft-fill",
+        "radius": 0.1,
+        "motif_at": "edge-right",
+        "chart": "line",
+        "decor": "balanced",
+        "pattern": "waves",
+        "emphasis_marker": "chevron",
+        "cover_band": "side-band"
+      },
+      "backgrounds": {
+        "cover": "Primary-text deep-ocean field with canvas-colored title and cyan-blue accents.",
+        "content": "Pale ocean canvas with white surfaces only where structure needs them.",
+        "section": "Deep-ocean or pale-canvas field selected by narrative emphasis.",
+        "closing": "Reuse the deep-ocean cover treatment."
+      },
+      "svg_reference": {
+        "name": "ocean-circuit",
+        "usage": "Optional circuit, node, or signal-path motif on technical overview pages."
+      },
+      "typography": {
+        "cjk_title_font": "Microsoft YaHei",
+        "cjk_body_font": "DengXian",
+        "title_font": "Arial",
+        "body_font": "Arial"
+      }
     },
     "teal-trust": {
       "name": "Teal Trust",
       "style_character": "Reliable, clear, approachable, and suitable for service, healthcare, education, and UX topics.",
-      "palette": {"canvas":"F3FAF9","surface":"FFFFFF","primary_text":"173B3F","secondary_text":"536C70","primary_accent":"028090","secondary_accent":"00A896"},
-      "backgrounds": {"cover":"Teal-led field or pale canvas with one clear checkpoint.","content":"Pale canvas with white surfaces and restrained teal navigation cues.","section":"Pale or deep teal field selected for legibility and pacing.","closing":"Reuse the cover checkpoint treatment."},
-      "svg_reference": {"name":"teal-checkpoint","usage":"Optional checkpoint or handoff motif on service-flow and structural pages."}
+      "palette": {
+        "canvas": "F3FAF9",
+        "surface": "FFFFFF",
+        "primary_text": "173B3F",
+        "secondary_text": "536C70",
+        "primary_accent": "028090",
+        "secondary_accent": "00A896"
+      },
+      "dark_palette": {
+        "canvas": "0E2A2D",
+        "surface": "193D41",
+        "primary_text": "D6E9E6",
+        "secondary_text": "91B8B3",
+        "primary_accent": "17B4C6",
+        "secondary_accent": "30757E"
+      },
+      "visual_language": {
+        "rule": "underline-left",
+        "panel": "soft-fill",
+        "radius": 0.12,
+        "motif_at": "corner-tr",
+        "chart": "bars",
+        "decor": "balanced",
+        "pattern": "waves",
+        "emphasis_marker": "dot",
+        "cover_band": "bottom-band"
+      },
+      "backgrounds": {
+        "cover": "Teal-led field or pale canvas with one clear checkpoint.",
+        "content": "Pale canvas with white surfaces and restrained teal navigation cues.",
+        "section": "Pale or deep teal field selected for legibility and pacing.",
+        "closing": "Reuse the cover checkpoint treatment."
+      },
+      "svg_reference": {
+        "name": "teal-checkpoint",
+        "usage": "Optional checkpoint or handoff motif on service-flow and structural pages."
+      },
+      "typography": {
+        "cjk_title_font": "Microsoft YaHei",
+        "cjk_body_font": "Microsoft YaHei",
+        "title_font": "Bookman Old Style",
+        "body_font": "Calibri"
+      }
     },
     "cherry-bold": {
       "name": "Cherry Bold",
       "style_character": "Bold, persuasive, high-contrast, and reserved for strong priorities, risks, or conclusions.",
-      "palette": {"canvas":"FCF6F5","surface":"FFFFFF","primary_text":"182033","secondary_text":"5B6475","primary_accent":"990011","secondary_accent":"2F3C7E"},
-      "backgrounds": {"cover":"Cherry or navy statement field with high-contrast title.","content":"Warm off-white canvas; cherry is limited to evidence-backed emphasis.","section":"Statement field using cherry or navy, not both at equal weight.","closing":"Return to the strongest cover color with one concise conclusion."},
-      "svg_reference": {"name":"cherry-slash","usage":"Optional slash or directional motif for a decisive cover, comparison, or conclusion."}
+      "palette": {
+        "canvas": "FCF6F5",
+        "surface": "FFFFFF",
+        "primary_text": "182033",
+        "secondary_text": "5B6475",
+        "primary_accent": "990011",
+        "secondary_accent": "2F3C7E"
+      },
+      "dark_palette": {
+        "canvas": "111829",
+        "surface": "1D263D",
+        "primary_text": "E0C9C5",
+        "secondary_text": "B89590",
+        "primary_accent": "F04A5C",
+        "secondary_accent": "7E3038"
+      },
+      "visual_language": {
+        "rule": "slash",
+        "panel": "flush",
+        "radius": 0.0,
+        "motif_at": "corner-tr",
+        "chart": "columns",
+        "decor": "expressive",
+        "pattern": "grid",
+        "emphasis_marker": "slash",
+        "cover_band": "corner-block"
+      },
+      "backgrounds": {
+        "cover": "Cherry or navy statement field with high-contrast title.",
+        "content": "Warm off-white canvas; cherry is limited to evidence-backed emphasis.",
+        "section": "Statement field using cherry or navy, not both at equal weight.",
+        "closing": "Return to the strongest cover color with one concise conclusion."
+      },
+      "svg_reference": {
+        "name": "cherry-slash",
+        "usage": "Optional slash or directional motif for a decisive cover, comparison, or conclusion."
+      },
+      "typography": {
+        "cjk_title_font": "SimHei",
+        "cjk_body_font": "Microsoft YaHei",
+        "title_font": "Times New Roman",
+        "body_font": "Calibri"
+      }
     },
     "creative-student": {
       "name": "Creative Student",
       "style_character": "Energetic, authentic, exploratory, and suitable for student projects, prototypes, and campus topics.",
-      "palette": {"canvas":"F7F4EF","surface":"FFFFFF","primary_text":"1F2937","secondary_text":"596273","primary_accent":"C4510B","secondary_accent":"0EA5E9"},
-      "backgrounds": {"cover":"Warm paper-like canvas with one vivid accent and authentic imagery when available.","content":"Warm canvas with open collage or process space; avoid fake documentary material.","section":"Paper-like field with one optional taped cue.","closing":"Reuse the cover paper treatment with a clear next step."},
-      "svg_reference": {"name":"studio-tape","usage":"Optional tape or studio-note motif; use only when it supports process or iteration."}
+      "palette": {
+        "canvas": "F7F4EF",
+        "surface": "FFFFFF",
+        "primary_text": "1F2937",
+        "secondary_text": "596273",
+        "primary_accent": "C4510B",
+        "secondary_accent": "0EA5E9"
+      },
+      "dark_palette": {
+        "canvas": "221A14",
+        "surface": "33281E",
+        "primary_text": "EADCC8",
+        "secondary_text": "BFA98A",
+        "primary_accent": "E8761F",
+        "secondary_accent": "8A5A34"
+      },
+      "visual_language": {
+        "rule": "underline-left",
+        "panel": "soft-fill",
+        "radius": 0.14,
+        "motif_at": "corner-bl",
+        "chart": "columns",
+        "decor": "expressive",
+        "pattern": "dots",
+        "emphasis_marker": "dot",
+        "cover_band": "bottom-band"
+      },
+      "backgrounds": {
+        "cover": "Warm paper-like canvas with one vivid accent and authentic imagery when available.",
+        "content": "Warm canvas with open collage or process space; avoid fake documentary material.",
+        "section": "Paper-like field with one optional taped cue.",
+        "closing": "Reuse the cover paper treatment with a clear next step."
+      },
+      "svg_reference": {
+        "name": "studio-tape",
+        "usage": "Optional tape or studio-note motif; use only when it supports process or iteration."
+      },
+      "typography": {
+        "cjk_title_font": "Microsoft YaHei",
+        "cjk_body_font": "KaiTi",
+        "title_font": "Century Schoolbook",
+        "body_font": "Calibri"
+      }
     },
     "coral-energy": {
       "name": "Coral Energy",
       "style_character": "Optimistic, energetic, forward-moving, and suitable for campaigns, youth topics, and proposals.",
-      "palette": {"canvas":"FFF9F0","surface":"FFFFFF","primary_text":"202A44","secondary_text":"5A6478","primary_accent":"D94E54","secondary_accent":"F9E795"},
-      "backgrounds": {"cover":"Warm canvas or coral statement field with navy text contrast.","content":"Warm canvas with coral used for motion and emphasis, not body text.","section":"Coral-led statement field or warm canvas with one arc.","closing":"Reuse the cover energy with one action-oriented conclusion."},
-      "svg_reference": {"name":"coral-arc","usage":"Optional rising arc or route motif on launch, roadmap, or closing pages."}
+      "palette": {
+        "canvas": "FFF9F0",
+        "surface": "FFFFFF",
+        "primary_text": "202A44",
+        "secondary_text": "5A6478",
+        "primary_accent": "D94E54",
+        "secondary_accent": "F9E795"
+      },
+      "dark_palette": {
+        "canvas": "2A1917",
+        "surface": "3B2622",
+        "primary_text": "F0DDD5",
+        "secondary_text": "C6A79C",
+        "primary_accent": "F0716F",
+        "secondary_accent": "8A4A45"
+      },
+      "visual_language": {
+        "rule": "top-band",
+        "panel": "soft-fill",
+        "radius": 0.16,
+        "motif_at": "edge-right",
+        "chart": "columns",
+        "decor": "expressive",
+        "pattern": "waves",
+        "emphasis_marker": "chevron",
+        "cover_band": "side-band"
+      },
+      "backgrounds": {
+        "cover": "Warm canvas or coral statement field with navy text contrast.",
+        "content": "Warm canvas with coral used for motion and emphasis, not body text.",
+        "section": "Coral-led statement field or warm canvas with one arc.",
+        "closing": "Reuse the cover energy with one action-oriented conclusion."
+      },
+      "svg_reference": {
+        "name": "coral-arc",
+        "usage": "Optional rising arc or route motif on launch, roadmap, or closing pages."
+      },
+      "typography": {
+        "cjk_title_font": "Microsoft YaHei",
+        "cjk_body_font": "Microsoft YaHei",
+        "title_font": "Calibri",
+        "body_font": "Cambria"
+      }
     },
     "forest-moss": {
       "name": "Forest Moss",
       "style_character": "Organic, grounded, calm, and suitable for environment, health, place, and social-good topics.",
-      "palette": {"canvas":"F7F4E9","surface":"FFFCF4","primary_text":"18351F","secondary_text":"536454","primary_accent":"2C5F2D","secondary_accent":"97BC62"},
-      "backgrounds": {"cover":"Earth-toned canvas or forest field with strong text contrast.","content":"Warm natural canvas with documentary imagery or open explanatory structure.","section":"Forest field or canvas with an optional contour cue.","closing":"Return to the cover landscape treatment."},
-      "svg_reference": {"name":"moss-contour","usage":"Optional contour motif on place, environment, section, or systems pages."}
+      "palette": {
+        "canvas": "F7F4E9",
+        "surface": "FFFCF4",
+        "primary_text": "18351F",
+        "secondary_text": "536454",
+        "primary_accent": "2C5F2D",
+        "secondary_accent": "97BC62"
+      },
+      "dark_palette": {
+        "canvas": "112A17",
+        "surface": "1C3D24",
+        "primary_text": "E7E3D3",
+        "secondary_text": "B8AF8F",
+        "primary_accent": "55B357",
+        "secondary_accent": "3A733B"
+      },
+      "visual_language": {
+        "rule": "left-rail",
+        "panel": "outlined",
+        "radius": 0.1,
+        "motif_at": "corner-bl",
+        "chart": "bars",
+        "decor": "balanced",
+        "pattern": "dots",
+        "emphasis_marker": "leaf",
+        "cover_band": "corner-block"
+      },
+      "backgrounds": {
+        "cover": "Earth-toned canvas or forest field with strong text contrast.",
+        "content": "Warm natural canvas with documentary imagery or open explanatory structure.",
+        "section": "Forest field or canvas with an optional contour cue.",
+        "closing": "Return to the cover landscape treatment."
+      },
+      "svg_reference": {
+        "name": "moss-contour",
+        "usage": "Optional contour motif on place, environment, section, or systems pages."
+      },
+      "typography": {
+        "cjk_title_font": "Microsoft YaHei",
+        "cjk_body_font": "DengXian",
+        "title_font": "Bookman Old Style",
+        "body_font": "Times New Roman"
+      }
     },
     "warm-terracotta": {
       "name": "Warm Terracotta",
       "style_character": "Humanistic, documentary, warm, and suitable for culture, history, community, and education reflection.",
-      "palette": {"canvas":"F4EEDF","surface":"FFFDFC","primary_text":"3D2C28","secondary_text":"6F5B53","primary_accent":"B85042","secondary_accent":"A7BEAE"},
-      "backgrounds": {"cover":"Warm material canvas or terracotta field with grounded typography.","content":"Warm canvas with archival or documentary evidence when reliable sources exist.","section":"Terracotta or warm-canvas field with one archival cue.","closing":"Reuse the cover material treatment for closure."},
-      "svg_reference": {"name":"terracotta-stamp","usage":"Optional stamp or archival motif on historical, evidence, or section pages."}
+      "palette": {
+        "canvas": "F4EEDF",
+        "surface": "FFFDFC",
+        "primary_text": "3D2C28",
+        "secondary_text": "6F5B53",
+        "primary_accent": "B85042",
+        "secondary_accent": "A7BEAE"
+      },
+      "dark_palette": {
+        "canvas": "241916",
+        "surface": "362723",
+        "primary_text": "DAD1BA",
+        "secondary_text": "ADA07F",
+        "primary_accent": "D4756A",
+        "secondary_accent": "7C3B32"
+      },
+      "visual_language": {
+        "rule": "underline-left",
+        "panel": "soft-fill",
+        "radius": 0.08,
+        "motif_at": "corner-tr",
+        "chart": "bars",
+        "decor": "balanced",
+        "pattern": "dots",
+        "emphasis_marker": "square",
+        "cover_band": "bottom-band"
+      },
+      "backgrounds": {
+        "cover": "Warm material canvas or terracotta field with grounded typography.",
+        "content": "Warm canvas with archival or documentary evidence when reliable sources exist.",
+        "section": "Terracotta or warm-canvas field with one archival cue.",
+        "closing": "Reuse the cover material treatment for closure."
+      },
+      "svg_reference": {
+        "name": "terracotta-stamp",
+        "usage": "Optional stamp or archival motif on historical, evidence, or section pages."
+      },
+      "typography": {
+        "cjk_title_font": "KaiTi",
+        "cjk_body_font": "DengXian",
+        "title_font": "Cambria",
+        "body_font": "Times New Roman"
+      }
     }
   }
 }

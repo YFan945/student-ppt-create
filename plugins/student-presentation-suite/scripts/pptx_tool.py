@@ -23,9 +23,14 @@ if str(ROOT) not in sys.path:
 
 from shared.pptx_runtime import (  # noqa: E402
     add_slide,
+    apply_cjk_fonts,
     clean_package,
+    compare_baseline,
     delete_slide,
+    fetch_images,
     pack_directory,
+    parse_font_map,
+    record_baseline,
     reorder_slides,
     safe_extract_package,
     validate_pptx,
@@ -42,6 +47,10 @@ from shared.slide_spec_contract import load_slide_spec, validate_slide_spec  # n
 
 PPTX_SUFFIXES = {".pptx", ".potx"}
 ASSET_MANIFEST_SCHEMA = ROOT / "references" / "asset-manifest.schema.json"
+# 文本抽取子进程的超时：markitdown 曾是全仓唯一没有 timeout 的执行点。
+TEXT_EXTRACTION_TIMEOUT_SEC = 180
+# 允许作为 add-slide 来源的部件名（禁止目录分隔符与路径穿越）
+_SLIDE_PART_NAME_RE = re.compile(r"^slide(Layout|Master)?\d+\.xml$")
 
 
 def _path(value: str) -> Path:
@@ -75,6 +84,20 @@ def _basename(value: str) -> str:
             "expected a filename prefix without directory components"
         )
     return value
+
+
+def _slide_part_name(value: str) -> str:
+    """只接受包内的幻灯片部件名。
+
+    ``edit.add_slide`` 内部执行 ``slides / source``；若传入绝对路径，
+    ``Path`` 会整体覆盖为绝对路径，任意可读文件都会被复制进 PPTX。
+    """
+    name = Path(str(value)).name
+    if not _SLIDE_PART_NAME_RE.match(name):
+        raise argparse.ArgumentTypeError(
+            f"expected a slide part name like slide2.xml, got {value!r}"
+        )
+    return name
 
 
 def _sha256(path: Path) -> str:
@@ -150,14 +173,27 @@ def command_inspect(args: argparse.Namespace) -> int:
             result["text_extraction"] = "suite-ooxml-fallback"
             result["text_extraction_warning"] = "markitdown is unavailable"
         else:
-            completed = subprocess.run(
-                [command, str(path), "-o", str(output)],
-                check=False,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-            )
+            try:
+                completed = subprocess.run(
+                    [command, str(path), "-o", str(output)],
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    # 全仓唯一缺 timeout 的执行点：超大/异常 PPTX 会让门禁永久挂死。
+                    timeout=TEXT_EXTRACTION_TIMEOUT_SEC,
+                )
+            except subprocess.TimeoutExpired:
+                # 超时就退回套件自带的 OOXML 抽取，保证流程不会卡住。
+                _write_ooxml_text_fallback(path, output)
+                result["text_output"] = str(output)
+                result["text_extraction"] = "suite-ooxml-fallback"
+                result["text_extraction_warning"] = (
+                    f"markitdown timed out after {TEXT_EXTRACTION_TIMEOUT_SEC}s"
+                )
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+                return 0 if result["ok"] else 1
             result["text_output"] = str(output)
             result["text_extraction_returncode"] = completed.returncode
             if completed.returncode != 0:
@@ -286,6 +322,52 @@ def command_clean(args: argparse.Namespace) -> int:
         return 1
     print(json.dumps({"ok": True, "removed": removed}, ensure_ascii=False, indent=2))
     return 0
+
+
+def command_cjk_fonts(args: argparse.Namespace) -> int:
+    try:
+        mapping = parse_font_map(list(args.map))
+        total = apply_cjk_fonts(args.input, mapping, args.output)
+    except (ValueError, zipfile.BadZipFile) as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+        return 1
+    print(
+        json.dumps(
+            {"ok": True, "pptx": str(args.input), "mapping": mapping, "ea_written": total},
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
+
+
+def command_fetch_images(args: argparse.Namespace) -> int:
+    try:
+        report = fetch_images(args.sources, args.query, args.out_dir, args.timeout)
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
+        return 1
+    report_path = args.out_dir / "fetch-images-report.json"
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({**report, "report": str(report_path)}, ensure_ascii=False, indent=2))
+    return 0 if report["ok"] else 1
+
+
+
+
+def command_visual_baseline(args: argparse.Namespace) -> int:
+    if args.action == "record":
+        payload = record_baseline(args.render_dir, args.baseline)
+        print(json.dumps({"ok": True, "action": "record", "pages": payload["pages"],
+                          "baseline": str(args.baseline)}, ensure_ascii=False))
+        return 0
+    report = compare_baseline(args.render_dir, args.baseline, args.threshold)
+    report["action"] = "compare"
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0 if report["ok"] else 1
 
 
 def command_validate(args: argparse.Namespace) -> int:
@@ -457,8 +539,14 @@ def command_content_qa(args: argparse.Namespace) -> int:
             findings.append({"slide": index, "severity": "blocker", "code": "placeholder", "detail": "placeholder text remains"})
         if planned.get("speaker_notes") and index <= len(metadata) and not metadata[index - 1].get("has_notes"):
             findings.append({"slide": index, "severity": "blocker", "code": "missing-notes", "detail": "Slide Spec requires speaker notes but the PPTX slide has no notes part"})
-        if int(planned.get("id", index)) != index:
-            findings.append({"slide": index, "severity": "blocker", "code": "page-order", "detail": "Slide Spec ids are not in rendered page order"})
+        # id 可能不是数字（手写 spec），旧实现在 try 块外直接 int() 会抛未捕获 ValueError。
+        planned_id = planned.get("id", index)
+        try:
+            ordered = int(planned_id) == index
+        except (TypeError, ValueError):
+            ordered = False
+        if not ordered:
+            findings.append({"slide": index, "severity": "blocker", "code": "page-order", "detail": f"Slide Spec id {planned_id!r} is not in rendered page order"})
     blockers = [item for item in findings if item["severity"] == "blocker"]
     payload = {
         "ok": not blockers,
@@ -632,7 +720,9 @@ def command_qa_manifest(args: argparse.Namespace) -> int:
     payload = {
         "pptx_sha256": _sha256(pptx),
         "slide_count": slide_count,
-        "rendered_page_count": len(previews),
+        # 未提供 --preview 时如实记 null（"未渲染"），与"渲染了 0 页"区分开；
+        # 下游 delivery_check 对 None/0 均按未渲染处理。
+        "rendered_page_count": len(previews) if previews else None,
         "scenario_contract_passed": True,
         "slide_spec": str(args.slide_spec),
         "slide_spec_report": str(args.slide_spec_report),
@@ -689,7 +779,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     add_slide_parser = sub.add_parser("add-slide", help="add a slide without overwriting a package")
     add_slide_parser.add_argument("input", type=_path)
-    add_slide_parser.add_argument("source")
+    # 必须校验：edit.py 内部做 `slides / source`，未净化的绝对路径会让
+    # 任意可读文件被复制进 PPTX（旧实现这里没有任何 type 校验器）。
+    add_slide_parser.add_argument("source", type=_slide_part_name)
     add_slide_parser.add_argument("--after")
     add_slide_parser.add_argument("--output", type=_path)
     add_slide_parser.set_defaults(handler=command_add_slide)
@@ -720,6 +812,40 @@ def build_parser() -> argparse.ArgumentParser:
     validate.add_argument("--json", action="store_true")
     validate.add_argument("--output", type=_path)
     validate.set_defaults(handler=command_validate)
+    cjk = sub.add_parser(
+        "cjk-fonts",
+        help="add <a:ea> East Asian typefaces for mapped latin fonts (CJK typography)",
+    )
+    cjk.add_argument("input", type=Path, help="generated PPTX to rewrite in place")
+    cjk.add_argument(
+        "--map",
+        action="append",
+        required=True,
+        help="Latin=CJK pair, e.g. Cambria=SimHei; repeat for title/body fonts",
+    )
+    cjk.add_argument("--output", type=Path, default=None, help="write to a new file instead of in place")
+    cjk.set_defaults(handler=command_cjk_fonts)
+    fetch = sub.add_parser(
+        "fetch-images",
+        help="execute image providers from an image-sources.json contract",
+    )
+    fetch.add_argument("--sources", type=Path, required=True, help="path to image-sources.json")
+    fetch.add_argument("--query", action="append", required=True, help="image query; repeat for multiple")
+    fetch.add_argument("--out-dir", type=Path, required=True, help="directory for fetched assets")
+    fetch.add_argument("--timeout", type=int, default=120, help="per-command timeout in seconds")
+    fetch.set_defaults(handler=command_fetch_images)
+    baseline = sub.add_parser(
+        "visual-baseline",
+        help="record or compare a perceptual-hash baseline of rendered pages",
+    )
+    baseline.add_argument("action", choices=("record", "compare"))
+    baseline.add_argument("--render-dir", type=Path, required=True, help="directory of rendered PNGs")
+    baseline.add_argument("--baseline", type=Path, required=True, help="baseline JSON path")
+    baseline.add_argument("--threshold", type=int, default=6, help="max allowed bits distance (0-64)")
+    baseline.set_defaults(handler=command_visual_baseline)
+
+
+
 
     normalize_generated = sub.add_parser(
         "normalize-generated",

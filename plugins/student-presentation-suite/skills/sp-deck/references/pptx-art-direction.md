@@ -107,7 +107,28 @@ Art Direction must describe **what to do**, not only what to avoid.
 
 Every deck needs a dominance model. One background/color family should carry roughly 55–75% of the visual weight. Accent colors must be scarce enough to mean something. Avoid distributing four or more colors at equal strength.
 
-### 2. Use a strong type scale
+### 2. Bind pages to the style's two palettes
+
+The selected style ships **two** palettes: the light `palette` and the matching `dark_palette`.
+`background_rhythm` only selects between them — `mode: dark` / `mode: accent` mean "render this
+page with the style's dark palette", not "invent a dark colour that looks nice".
+
+- The two palettes share one hue family and are contrast-checked, so cover, section and closing
+  pages belong to the same colour scheme as the content pages.
+- Never introduce a colour outside the two palettes, and never hand-tune one page's background or
+  accent "so it matches better" — that is exactly how a cover stops matching the body.
+- Accent semantics are identical in both modes: the accent still marks the emphasised line, the
+  recommended option, the key number and the conclusion.
+- Custom and unknown styles receive a derived `dark_palette`, so a dark page is always available
+  and never improvised.
+- Only palette roles may set colour. A hard-coded hex value in the generator is a defect.
+- If the intended dark page is unreadable, change the **crop, panel or text amount** — not the
+  palette.
+
+Art Direction decides *which* pages are dark and how much accent they carry. It does not decide
+*what dark means*.
+
+### 3. Use a strong type scale
 
 For 16:9 classroom/research decks, default ranges are:
 
@@ -119,7 +140,7 @@ For 16:9 classroom/research decks, default ranges are:
 
 Title/body hierarchy should normally be at least about 1.45× in perceived size. Do not let a safety minimum silently collapse title and body to nearly equal sizes.
 
-### 3. Decide an imagery language
+### 4. Decide an imagery language
 
 Do not merely say `use images`. Decide how images behave:
 
@@ -130,15 +151,15 @@ Do not merely say `use images`. Decide how images behave:
 
 Small unrelated floating images are usually weaker than one decisive crop.
 
-### 4. Decide a chart language
+### 5. Decide a chart language
 
 A chart should not inherit PowerPoint defaults. Art Direction decides whether the deck uses direct labels, one accent series, quiet gridlines, data callouts, figure captions and source placement. The chart exists to prove one claim, not to display every available metric.
 
-### 5. Decide component behavior
+### 6. Decide component behavior
 
 Cards, pills, icon circles, borders and shadows are components, not a default page grammar. State when they are appropriate and when whitespace, alignment, type and images should carry structure instead.
 
-### 6. Plan deck rhythm before page coordinates
+### 7. Plan deck rhythm before page coordinates
 
 A good 8–12 slide deck should normally alternate among several visual energies, for example:
 
@@ -169,7 +190,8 @@ Use user assets and sourced evidence first. `pptx-icons.js`, `pptx-visuals.js`, 
 
 ## Relationship to other layers
 
-- **Visual style seed**: color/character/background starting point.
+- **Visual style seed**: character plus its light and dark palettes; `references/design-tokens.json`
+  owns both, and `shared/design_tokens.py` derives a dark companion for custom styles.
 - **Design grammar**: narrative/page-language rules for the scenario.
 - **Art Direction**: concrete deck-wide visual decisions.
 - **Visual Reference Library**: proven composition recipes that make Art Direction tangible.

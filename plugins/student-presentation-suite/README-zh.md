@@ -101,8 +101,14 @@ Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 
 ## 视觉系统
 
 PPTX skill 先从三类、每类四种风格中选择一个，或选择“其他”，再加载
-`visual-styles/` 下的一份轻量参考。正式风格只包含气质、六个颜色角色、背景参考和一个
-可选 SVG 参考；“其他”使用相同四项结构，并在 Production Summary 中完整展示后确认。
+`visual-styles/` 下的一份轻量参考。正式风格包含气质、浅色六角色 palette、配套的深色
+六角色 palette（封面/章节/收尾）、背景参考和一个可选 SVG 参考；“其他”使用相同结构，
+并在 Production Summary 中完整展示后确认。
+
+深浅是**同一套体系的两面，而不是两套配色**：深色配套与浅色 palette 同色相家族，
+不会出现"深色封面硬贴浅色正文"的割裂。两套 palette 都要通过同一组对比度下限
+（正文 4.5:1、强调色 3:1，对 canvas 与 surface 均适用）。`resolve_design_tokens()`
+保证任何风格都有深色配套，并为自定义/历史风格自动派生对比度安全的版本。
 
 风格是自适应生成方向，不是固定模板。硬约束只保护可读性、证据真实性、来源边界和
 内容适配；页面配方、比例、母题和常规密度范围均可根据叙事任务调整。没有合适视觉素材时
@@ -110,6 +116,16 @@ PPTX skill 先从三类、每类四种风格中选择一个，或选择“其他
 
 12 种风格不控制布局、形状、图片处理、图表语法、组件或页面节奏。SVG 母题只作可选参考，
 不得自动插入；风格参考不能绕过容量、来源、对比度或用户模板规则。
+
+在写最终坐标前，每页会从 32 条
+[`visual-reference-library.json`](skills/sp-deck/references/visual-reference-library.json)
+中检索 2–3 个正向构图先验，高价值页必须产出 2–3 个真正不同的 silhouette 候选。搜图与生图
+从不默认可用：在 `image-sources.json` 中声明 provider（见
+[`references/image-sourcing.md`](references/image-sourcing.md)），环境检查会报告
+`image_search_ready` / `image_generation_ready` / `user_assets_ready`。
+
+仓库内含可复现的[黄金样例](examples/golden-sample/README.md)，跑通全流程并达到
+`status: complete`。
 
 所有风格共享 `layout-library.json` 中的 36 套页面构图灵感。`pptx-layouts.js` 会映射 Slide Spec
 原生 kind/visual 值，先按素材、数据、项目数量、禁用条件、声明容量和标题区几何容量过滤，

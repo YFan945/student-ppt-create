@@ -151,6 +151,131 @@ def resolve_pptxgenjs(project: Path) -> dict[str, Any]:
     }
 
 
+IMAGE_SOURCE_CONFIG_NAME = "image-sources.json"
+
+
+def image_source_config_path(project: Path) -> Path | None:
+    override = os.environ.get("SPS_IMAGE_SOURCES", "").strip()
+    if override:
+        candidate = Path(override).expanduser()
+        return candidate if candidate.is_file() else None
+    candidate = project / IMAGE_SOURCE_CONFIG_NAME
+    return candidate if candidate.is_file() else None
+
+
+def resolve_image_sources(project: Path) -> dict[str, Any]:
+    """读项目里的 image-sources.json，报告 search/generation/user-assets 是否就绪。
+
+    未配置时返回安全的"未声明"状态，不把缺失当成错误。
+    """
+    config_path = image_source_config_path(project)
+    base = {
+        "ok": False,
+        "configured": False,
+        "config_path": str(config_path) if config_path else None,
+        "search_ready": False,
+        "generation_ready": False,
+        "user_assets_ready": False,
+        "permission": {},
+        "providers": [],
+        "detail": "No image-sources.json declared; image search and generation are treated as unavailable.",
+    }
+    if config_path is None:
+        return base
+
+    try:
+        raw = json.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        base["configured"] = True
+        base["detail"] = f"image-sources.json could not be read: {exc}"
+        return base
+
+    if not isinstance(raw, dict) or not isinstance(raw.get("providers"), list):
+        base["configured"] = True
+        base["detail"] = "image-sources.json must contain a providers array."
+        return base
+
+    permission = raw.get("permission") if isinstance(raw.get("permission"), dict) else {}
+    # 缺省即拒绝（fail-closed），与执行侧 fetch_images.py:50,53 的真值判定保持一致。
+    # 旧写法 `is not False` 会在字段缺失时放行，导致环境检查报 ready、实际却被跳过。
+    allow_search = permission.get("allow_web_search") is True
+    allow_generation = permission.get("allow_generation") is True
+
+    providers: list[dict[str, Any]] = []
+    search_ready = generation_ready = user_assets_ready = False
+    for entry in raw["providers"]:
+        if not isinstance(entry, dict):
+            continue
+        kind = str(entry.get("kind") or "")
+        enabled = bool(entry.get("enabled"))
+        record: dict[str, Any] = {
+            "id": entry.get("id"),
+            "kind": kind,
+            "enabled": enabled,
+            "capability": entry.get("capability"),
+            "permission": entry.get("permission"),
+        }
+        missing_commands = [
+            name for name in (entry.get("requires") or []) if command_path(str(name)) is None
+        ]
+        record["missing_commands"] = missing_commands
+
+        if not enabled:
+            record["available"] = False
+            record["reason"] = "disabled"
+        elif kind == "user-assets":
+            assets_dir = entry.get("assets_dir")
+            resolved = (project / str(assets_dir)) if assets_dir else None
+            available = bool(resolved and resolved.is_dir())
+            record["available"] = available
+            record["reason"] = None if available else "assets_dir missing"
+            record["assets_dir"] = str(resolved) if resolved else None
+            user_assets_ready = user_assets_ready or available
+        elif kind == "web-search":
+            available = allow_search and not missing_commands
+            record["available"] = available
+            record["reason"] = (
+                None
+                if available
+                else ("permission denied" if not allow_search else "required command missing")
+            )
+            search_ready = search_ready or available
+        elif kind == "image-generation":
+            available = allow_generation and bool(entry.get("capability")) and not missing_commands
+            record["available"] = available
+            record["reason"] = (
+                None
+                if available
+                else (
+                    "permission denied"
+                    if not allow_generation
+                    else "missing capability declaration or required command"
+                )
+            )
+            generation_ready = generation_ready or available
+        else:
+            record["available"] = False
+            record["reason"] = "unknown provider kind"
+        providers.append(record)
+
+    declared = bool(providers)
+    return {
+        "ok": declared,
+        "configured": True,
+        "config_path": str(config_path),
+        "search_ready": search_ready,
+        "generation_ready": generation_ready,
+        "user_assets_ready": user_assets_ready,
+        "permission": permission,
+        "providers": providers,
+        "detail": (
+            f"{len(providers)} provider(s) declared; "
+            f"search_ready={search_ready}, generation_ready={generation_ready}, "
+            f"user_assets_ready={user_assets_ready}."
+        ),
+    }
+
+
 def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[str, Any]:
     active_project = (project or project_root()).resolve()
     runtime_probe = run_probe(
@@ -171,6 +296,22 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
             openxml_detail = str(build_openxml_validator())
         except RuntimeError as exc:
             openxml_detail = str(exc)
+    image_sources = resolve_image_sources(active_project)
+    if not image_sources["configured"]:
+        external_image_generation: dict[str, Any] = {
+            "ok": None,
+            "status": "optional-unknown",
+            "detail": "No vendor-specific image generator is bundled by this suite.",
+        }
+    else:
+        external_image_generation = {
+            "ok": image_sources["generation_ready"],
+            "status": "configured" if image_sources["generation_ready"] else "configured-unavailable",
+            "detail": image_sources["detail"],
+            "providers": [
+                item for item in image_sources["providers"] if item["kind"] == "image-generation"
+            ],
+        }
     checks = {
         "node": {"ok": command_path("node") is not None, "path": command_path("node")},
         "npm": {"ok": command_path("npm") is not None, "path": command_path("npm")},
@@ -204,11 +345,20 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
         },
         "jsonschema": {"ok": python_module("jsonschema"), "module": "jsonschema"},
         "PyYAML": {"ok": python_module("yaml"), "module": "yaml"},
-        "External image generation": {
-            "ok": None,
-            "status": "optional-unknown",
-            "detail": "No vendor-specific image generator is bundled by this suite.",
+        "External image generation": external_image_generation,
+        "Image search": {
+            "ok": image_sources["search_ready"],
+            "status": (
+                "optional-unknown"
+                if not image_sources["configured"]
+                else ("configured" if image_sources["search_ready"] else "configured-unavailable")
+            ),
+            "detail": image_sources["detail"],
+            "providers": [
+                item for item in image_sources["providers"] if item["kind"] == "web-search"
+            ],
         },
+        "Image sourcing": image_sources,
     }
     common_required = [
         "jsonschema",
@@ -264,6 +414,9 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
             for name in ("LibreOffice", "LibreOffice sandbox", "Poppler pdftoppm", "Pillow")
         ),
         "pdf_export_ready": checks["LibreOffice"]["ok"],
+        "image_search_ready": image_sources["search_ready"],
+        "image_generation_ready": image_sources["generation_ready"],
+        "user_assets_ready": image_sources["user_assets_ready"],
     }
     return {
         "ok": not missing_required,
@@ -282,7 +435,8 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
             "LibreOffice/Poppler 缺失不阻止候选生成，但无法完成视觉 QA；"
             "未渲染时以 --allow-missing-preview 交付，状态只能是 incomplete。"
             "inspect --text-output 在 markitdown 缺失时使用 suite-owned OOXML fallback。"
-            "外部生图能力为 optional-unknown，不作为已安装能力。"
+            "图片能力由项目根目录的 image-sources.json 显式声明（见 references/image-sourcing.md）；"
+            "未声明时搜图/生图一律视为不可用，改用 deterministic visual stack，不阻断生产。"
         ),
     }
 
@@ -296,7 +450,7 @@ def main() -> None:
         print(result["note"])
         visible = set(result["active_requirements"]) | {
             "LibreOffice", "LibreOffice sandbox", "Poppler pdftoppm", "markitdown",
-            "External image generation",
+            "External image generation", "Image search", "Image sourcing",
         }
         for name, check in result["checks"].items():
             if args.mode != "all" and name not in visible:
@@ -304,6 +458,10 @@ def main() -> None:
             status = "ok" if check["ok"] else "缺失"
             if check.get("status") == "optional-unknown":
                 status = "optional/unknown"
+            elif name == "Image sourcing":
+                status = "declared" if check.get("configured") else "optional/unknown"
+            elif check.get("status") == "configured-unavailable":
+                status = "已声明但不可用"
             extra = ""
             if name in ("LibreOffice", "Poppler pdftoppm") and not check["ok"]:
                 extra = "（不阻止候选 PPTX 生成，但阻止 complete 视觉验收）"

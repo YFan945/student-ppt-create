@@ -174,15 +174,16 @@ try {
   }
   // A same-directory hard link is atomic and fails with EEXIST on every
   // supported platform; rename() would overwrite a raced-in file on POSIX.
-  // 硬链接不可用（FAT/exFAT/网络盘）时回退为复制。
+  // 硬链接不可用时统一回退为复制：除 EEXIST/EPERM 外，FAT/exFAT 常见的
+  // ENOSYS、网络盘的 EACCES、旧内核的 EOPNOTSUPP 都不该让构建直接崩掉。
   try {
     fs.linkSync(normalized, finalOutput);
   } catch (linkError) {
-    if (linkError.code === 'EEXIST' || linkError.code === 'EPERM') {
-      fs.copyFileSync(normalized, finalOutput);
-    } else {
+    if (linkError.code === 'EEXIST') {
+      // 目标已存在（并发构建竞态）才是真正的异常路径。
       throw linkError;
     }
+    fs.copyFileSync(normalized, finalOutput);
   }
 } finally {
   for (const temporary of [generated, normalized]) {

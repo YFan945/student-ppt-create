@@ -10,8 +10,10 @@
  */
 
 const DEFAULTS = {
-  slideW: 13.333,
-  slideH: 7.5,
+  // 与 pptx-helpers.js SLIDE_W_IN/SLIDE_H_IN（10×5.625in，STUDENT_WIDE 版式）一致；
+  // 越界判定必须与真实产物同基准。tests/test_stack_contract.py 锁定两侧一致。
+  slideW: 10,
+  slideH: 5.625,
   safeMargin: 0.12,
   overlapTolerance: 0.015,
   minTextW: 0.05,

@@ -7,6 +7,7 @@ import argparse
 import contextlib
 import json
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -58,7 +59,8 @@ def _update_plugin_entry(data: dict, version: str) -> dict:
 
 
 def read_json(path: Path) -> dict:
-    return json.loads(path.read_text(encoding="utf-8"))
+    # utf-8-sig：容忍 Windows 工具写入的 BOM，避免 json.loads 首字符报错。
+    return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def write_json(path: Path, data: dict) -> None:
@@ -69,7 +71,7 @@ def write_json(path: Path, data: dict) -> None:
 
 
 def update_skill_version(path: Path, version: str, *, dry_run: bool = False) -> None:
-    text = path.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8-sig")
     updated, count = re.subn(
         r"(?m)^version:\s*[^\r\n]+$",
         f"version: {version}",
@@ -150,15 +152,19 @@ def bump(target: str, dry_run: bool = False) -> int:
 
     print("  正在同步 package-lock.json ...")
     try:
+        # 不用 shell=True：Windows 上列表参数经 cmd.exe 会分裂；npm 在 Windows
+        # 实际是 npm.cmd，用 shutil.which 解析出可执行文件后直接调用。
+        npm = shutil.which("npm")
+        if npm is None:
+            raise FileNotFoundError("npm not found on PATH")
         result = subprocess.run(
-            ["npm", "--prefix", str(PLUGIN_ROOT), "install", "--package-lock-only"],
+            [npm, "--prefix", str(PLUGIN_ROOT), "install", "--package-lock-only"],
             check=False,
             capture_output=True,
             text=True,
             encoding="utf-8",
             errors="replace",
             timeout=60,
-            shell=sys.platform == "win32",
         )
     except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
         _revert_package()

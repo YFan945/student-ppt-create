@@ -64,13 +64,19 @@ function paletteMode(tokens, mode) {
 function fontSizeScale(tokens, lang) {
   const t = tokens.typography || {};
   const isCJK = lang === 'chinese' || lang === 'bilingual';
+  const body = isCJK ? t.body_cjk_min_pt || 22 : t.body_latin_min_pt || 20;
+  // 官方规范：CJK 正文下限 22pt，页面标题必须 ≥32pt 才能满足 1.45× 层级门禁。
+  // 早期 defaults 给的是 24pt，与正文 22pt 仅差 2pt，导致层级塌陷。
+  const title = t.title_min_pt || Math.max(32, Math.round(body * 1.45));
   return {
-    title: t.title_min_pt || 24,
-    body: isCJK ? t.body_cjk_min_pt || 22 : t.body_latin_min_pt || 20,
-    titleMax: t.title_max_pt || 44,
+    title,
+    // 陈述/小标题：标题与正文之间的中间档，避免两者之间无过渡。
+    subtitle: t.subtitle_min_pt || Math.max(Math.round(title * 0.8), body + 2),
+    body,
+    titleMax: t.title_max_pt || Math.max(44, title + 8),
     bodyMax: t.body_max_pt || (isCJK ? 26 : 24),
-    label: t.label_min_pt || 14,
-    caption: t.caption_min_pt || 10,
+    label: t.label_min_pt || 16,
+    caption: t.caption_min_pt || 11,
   };
 }
 
@@ -86,11 +92,23 @@ const SAFE_TITLE_FONTS = [
   'Courier New',
 ];
 const SAFE_BODY_FONTS = ['Calibri', 'Arial', 'Times New Roman', 'Cambria', 'Courier New'];
+// 中文字体白名单：Windows/Office 环境随系统或 Office 附带，LibreOffice QA 环境可回落。
+// 东亚字形由 <a:ea> typeface 控制（pptx_tool.py cjk-fonts 后处理写入），
+// 这里的名字只用于生成映射与文档。
+const SAFE_CJK_TITLE_FONTS = ['Microsoft YaHei', 'SimHei', 'DengXian', 'KaiTi', 'SimSun'];
+const SAFE_CJK_BODY_FONTS = [
+  'Microsoft YaHei',
+  'DengXian',
+  'DengXian Light',
+  'SimSun',
+  'FangSong',
+  'KaiTi',
+];
 
 /**
  * 选中风格的字体族，强制落到官方安全字体。
  * @param {object} tokens
- * @returns {{ title: string, body: string }}
+ * @returns {{ title: string, body: string, cjkTitle: string, cjkBody: string }}
  */
 function fontFamily(tokens) {
   const t = tokens.typography || {};
@@ -99,6 +117,63 @@ function fontFamily(tokens) {
   return {
     title: pick(t.title_font, SAFE_TITLE_FONTS, 'Cambria'),
     body: pick(t.body_font, SAFE_BODY_FONTS, 'Calibri'),
+    cjkTitle: pick(t.cjk_title_font, SAFE_CJK_TITLE_FONTS, 'Microsoft YaHei'),
+    cjkBody: pick(t.cjk_body_font, SAFE_CJK_BODY_FONTS, 'Microsoft YaHei'),
+  };
+}
+
+/**
+ * 全幅纹理背景（dots/waves/grid），供 decor=expressive 的章节/封面页使用。
+ * 颜色默认取当前盘的 primary_text（深色页自然为浅色纹理）。
+ * @param {object} slide
+ * @param {object} tokens paletteMode 后的 tokens
+ * @param {{pattern?: 'dots'|'waves'|'grid', color?: string, opacity?: number}} [opts]
+ */
+function patternBackground(slide, tokens, opts = {}) {
+  // 用 SVG <pattern> 平铺整页：直接拉伸小贴片会变成一个巨大的孤立图形。
+  const name = ['dots', 'waves', 'grid'].includes(opts.pattern) ? opts.pattern : 'grid';
+  const palette = tokens.palette || {};
+  const color = String(
+    opts.color || palette.primary_text || palette.primary_accent || '94A3B8',
+  ).replace(/^#/, '');
+  const opacity = Math.max(0.02, Math.min(0.25, Number(opts.opacity ?? 0.08)));
+  const motifs = {
+    dots: '<circle cx="8" cy="8" r="1.6"/>',
+    waves: '<path d="M0 10c4-7 9 7 13 0s9 7 13 0" fill="none"/>',
+    grid: '<path d="M0 0.5H32M0.5 0V32" fill="none"/>',
+  };
+  const W = Math.round(SLIDE_W_IN * 96);
+  const Ht = Math.round(SLIDE_H_IN * 96);
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${Ht}" viewBox="0 0 ${W} ${Ht}">` +
+    `<defs><pattern id="p" width="32" height="32" patternUnits="userSpaceOnUse">` +
+    `<g fill="#${color}" stroke="#${color}" stroke-width="0.7">${motifs[name]}</g>` +
+    `</pattern></defs>` +
+    `<rect width="${W}" height="${Ht}" fill="url(#p)" opacity="${opacity}"/></svg>`;
+  const data = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
+  slide.addImage({ data, x: 0, y: 0, w: SLIDE_W_IN, h: SLIDE_H_IN });
+}
+
+/**
+ * 统一 soft-shadow token。阴影颜色取浅色盘的 primary_text（最深色），
+ * 深色页返回 null（暗场上的外阴影既不可见也会产生脏边）。
+ * @param {object} tokens
+ * @param {object} [overrides] {enabled, color, blur, offset, angle, opacity}
+ * @returns {object|null} pptxgenjs shadow options 或 null
+ */
+function softShadow(tokens, overrides = {}) {
+  const effects = (tokens.effects && tokens.effects.soft_shadow) || {};
+  if (effects.enabled === false || overrides.enabled === false) return null;
+  const mode = tokens.palette_mode || 'light';
+  if (mode !== 'light') return null;
+  const palette = tokens.palette || {};
+  return {
+    type: 'outer',
+    color: String(overrides.color || palette.primary_text || '0F172A').replace(/^#/, ''),
+    blur: Number(overrides.blur ?? effects.blur_pt ?? 10),
+    offset: Number(overrides.offset ?? effects.offset_pt ?? 4),
+    angle: Number(overrides.angle ?? effects.angle_deg ?? 90),
+    opacity: Number(overrides.opacity ?? effects.opacity ?? 0.16),
   };
 }
 
@@ -280,7 +355,17 @@ function rolePolicy(tokens, lang, role, options = {}) {
       valign: 'mid',
     },
   };
-  return { ...(table[normalized] || table.body), ...options, role: normalized };
+  const policy = { ...(table[normalized] || table.body), ...options, role: normalized };
+  // 调用方显式传入的字号必须生效。
+  // 旧实现在 addText() 里用 `fontSize: fit.fontSize` 覆盖了调用方的 fontSize，
+  // 导致"传了等于没传"且不报错（Hero 标题请求 32pt 实际只拿到 26pt）。
+  // 这里把请求值作为上限，放不下时仍允许下调，因此不会产生新的失败。
+  const requested = Number(policy.fontSize);
+  if (Number.isFinite(requested) && requested > 0) {
+    policy.max = requested;
+    policy.min = Math.min(Number(policy.min) || requested, requested);
+  }
+  return policy;
 }
 
 /** Choose the largest readable size that fits. Never shrinks below the role floor. */
@@ -317,9 +402,77 @@ function preflightText(text, box, tokens, lang, role, options = {}) {
   };
 }
 
+// 允许做"平衡换行"的角色：这些角色的盒子宽度可以微调而不影响版面骨架。
+const BALANCE_ROLES = new Set([
+  'title',
+  'body',
+  'list',
+  'label',
+  'quote',
+  'kpi',
+  'node',
+  'reference',
+]);
+
+/**
+ * 估算末行长度，必要时收窄盒子让各行长度均衡。
+ *
+ * 旧行为：estimateTextFit 只管"放不放得下"，从不管末行剩几个字。
+ * 于是标题长度略超每行容量时，第二行只剩一两个字（孤字行）。
+ * 这里不改变文本（插入 \n 会破坏"claim 必须出现在渲染文本"一类的门禁），
+ * 而是把盒子收窄到 ceil(字数/行数) 的宽度，让换行点自然前移。
+ * @returns {object|null} 收窄后的盒子，或 null（无需调整）
+ */
+function balancedBox(text, box, policy) {
+  if (policy.balance === false || !BALANCE_ROLES.has(policy.role)) return null;
+  const plain = plainText(text);
+  if (!plain) return null;
+  const isCJK = policy.isCJK ?? /[぀-ヿ㐀-鿿豈-﫿]/u.test(plain);
+  // 拉丁文本按单词换行，收窄盒子无法精确控制断点，只在 CJK 场景介入。
+  if (!isCJK) return null;
+  const min = Number(policy.min || policy.minFontSize || 10);
+  const margin = policy.margin === undefined ? 8 : policy.margin;
+  const margins = Array.isArray(margin) ? margin : [margin, margin, margin, margin];
+  const usableW = box.w - ((margins[1] || 0) + (margins[3] || 0)) / 72;
+  const charWidthCm = min * 0.035;
+  const charsPerLine = Math.max(1, Math.floor((usableW * CM_PER_INCH) / charWidthCm));
+  const length = plain.length;
+  if (charsPerLine < 6 || length <= charsPerLine) return null;
+  const lines = Math.ceil(length / charsPerLine);
+  if (lines < 2) return null;
+  const last = length - charsPerLine * (lines - 1);
+  const orphanLimit = Math.max(2, Math.round(charsPerLine * 0.25));
+  if (last >= orphanLimit) return null;
+  const target = Math.max(4, Math.ceil(length / lines));
+  const narrowedW = Math.min(usableW, (target * charWidthCm) / CM_PER_INCH);
+  if (narrowedW >= usableW - 0.01) return null;
+  const newW = box.w - (usableW - narrowedW);
+  return { x: box.x, y: box.y, w: newW, h: box.h };
+}
+
+/**
+ * 决定最终文本盒子：先按原盒子试排，若末行会出现孤字且收窄后仍放得下，则收窄。
+ */
+function resolveTextPlacement(text, box, policy) {
+  const fit = fitText(text, box, policy);
+  if (!fit.fits) return { box, fit };
+  const narrowed = balancedBox(text, box, policy);
+  if (!narrowed) return { box, fit };
+  const narrowedFit = fitText(text, narrowed, policy);
+  if (!narrowedFit.fits || narrowedFit.lines > fit.lines + 1) return { box, fit };
+  // 居中文本收窄后要保持视觉居中，不能让整块偏左。
+  const centered = (policy.align || '') === 'center';
+  return {
+    box: centered ? { ...narrowed, x: box.x + (box.w - narrowed.w) / 2 } : narrowed,
+    fit: narrowedFit,
+  };
+}
+
 function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
   const policy = rolePolicy(tokens, lang, role, options);
-  const fit = fitText(text, box, policy);
+  const placement = resolveTextPlacement(text, box, policy);
+  const fit = placement.fit;
+  const textBox = placement.box;
   if (!fit.fits) {
     throw new RangeError(
       `${options.label || policy.role} cannot fit at ${fit.fontSize}pt; expand the region, change the layout, compress the copy, or split the slide.`,
@@ -339,15 +492,16 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
     'analysis',
     'isCJK',
     'maxFillRatio',
+    'balance',
   ]) {
     delete pptxOptions[key];
   }
   return slide.addText(text, {
     ...pptxOptions,
-    x: box.x,
-    y: box.y,
-    w: box.w,
-    h: box.h,
+    x: textBox.x,
+    y: textBox.y,
+    w: textBox.w,
+    h: textBox.h,
     fontSize: fit.fontSize,
     fontFace: pptxOptions.fontFace || (policy.role === 'title' ? fonts.title : fonts.body),
     color: pptxOptions.color || color(tokens, options.colorRole || 'primary_text'),
@@ -396,6 +550,40 @@ function gridLayout(area, columns, rows, opts) {
   return cells;
 }
 
+/**
+ * 不对称列布局：按权重分配横向空间（对比组件的去等宽化原语）。
+ * weights 缺省/非法时退化为等宽（与 gridLayout 单行一致，向后兼容）。
+ * @param {{ x: number, y: number, w: number, h: number }} area
+ * @param {number} count
+ * @param {number[]|undefined} weights 每列权重（正值）
+ * @param {number} gap 列间距（英寸）
+ * @returns {Array<{x: number, y: number, w: number, h: number}>}
+ */
+function weightedColumns(area, count, weights, gap) {
+  if (!Number.isInteger(count) || count < 1) {
+    throw new RangeError('weightedColumns count must be a positive integer.');
+  }
+  const valid =
+    Array.isArray(weights) && weights.length === count && weights.every((w) => Number(w) > 0);
+  const ws = valid ? weights.map(Number) : Array(count).fill(1);
+  const total = ws.reduce((a, b) => a + b, 0);
+  // gap 缺省时旧实现算出 NaN，而 `NaN <= 0` 为 false，守卫形同虚设，
+  // NaN 坐标会被直接写进 OOXML。这里补默认值并对结果做有限性校验。
+  const gutter = Number.isFinite(gap) ? gap : 0;
+  const usable = area.w - gutter * (count - 1);
+  if (!Number.isFinite(usable) || usable <= 0) {
+    throw new RangeError('weightedColumns gaps leave no usable width.');
+  }
+  const cells = [];
+  let x = area.x;
+  ws.forEach((w) => {
+    const cellW = (usable * w) / total;
+    cells.push({ x, y: area.y, w: cellW, h: area.h });
+    x += cellW + gutter;
+  });
+  return cells;
+}
+
 // ── Box 创建辅助 ─────────────────────────────────────────
 
 /**
@@ -416,7 +604,9 @@ function addTitle(slide, text, area, tokens, lang) {
     x: area.x,
     y: fallbackTop,
     w: area.w,
-    h: area.y - fallbackTop - spacing(tokens, 1),
+    // area.y === fallbackTop（reserveTitle: false）时旧实现算出负高度，
+    // estimateTextFit 随即判溢出并 100% 抛错。这里兜一个最小可用高度。
+    h: Math.max(0.4, area.y - fallbackTop - spacing(tokens, 1)),
   };
   return addFittedText(slide, text, titleBox, tokens, lang, 'title', {
     min: sizes.title,
@@ -521,11 +711,12 @@ function addFooter(slide, text, tokens, opts) {
 function addAccentCard(slide, text, box, tokens) {
   const radius = cornerRadius(tokens);
   const padding = spacing(tokens, 2);
-  const textWidth = box.w - padding * 2;
-  const textHeight = box.h - padding * 2;
+  // 与 addLabel 保持一致：小盒子上 padding 会把尺寸吃成负数，必须兜下限。
+  const textWidth = Math.max(0.1, box.w - padding * 2);
+  const textHeight = Math.max(0.1, box.h - padding * 2);
   const isCJK = /[\u3400-\u9fff]/u.test(String(text || ''));
-  const typography = tokens.typography || {};
-  const fontSize = isCJK ? typography.body_cjk_min_pt || 22 : typography.body_latin_min_pt || 20;
+  // 走统一的字号层级，避免这里再抄一份 22/20 兜底常量导致两处漂移。
+  const fontSize = fontSizeScale(tokens, isCJK ? 'chinese' : 'english').body;
   assertTextFits(text, textWidth, textHeight, fontSize, isCJK, '卡片文本');
   const shape = slide.addShape(_shapeType.roundRect, {
     x: box.x,
@@ -655,11 +846,14 @@ module.exports = {
   paletteMode,
   fontSizeScale,
   fontFamily,
+  softShadow,
+  patternBackground,
 
   // 几何计算
   safeArea,
   footerArea,
   gridLayout,
+  weightedColumns,
   spacing,
   cornerRadius,
 

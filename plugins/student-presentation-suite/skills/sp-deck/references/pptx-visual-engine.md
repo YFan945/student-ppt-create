@@ -94,7 +94,7 @@ cards、pill、icon circle、border、shadow 都是组件，不是页面语法�
 
 ```js
 const { SlideElementRegistry } = require(`${process.env.CLAUDE_PLUGIN_ROOT}/scripts/pptx-element-registry.js`);
-const registry = new SlideElementRegistry({ slideW: 13.333, slideH: 7.5 });
+const registry = new SlideElementRegistry({ slideW: H.SLIDE_W_IN, slideH: H.SLIDE_H_IN }); // 10 × 5.625in，与 applyTokens 的 STUDENT_WIDE 版式一致
 slide.addText(title, titleOpts);
 registry.text(slideNo, title, { ...titleOpts, fontSize: 34 });
 slide.addImage(imageOpts);

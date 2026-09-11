@@ -117,9 +117,16 @@ The plugin installation directory is read-only for user deliverables.
 ## Visual System
 
 The PPTX skill first chooses one of three four-style categories, or `Other`, then loads one
-lightweight reference from `visual-styles/`. Each formal style defines only its character, six
-color roles, background references, and one optional SVG reference. `Other` uses the same four-part
-structure and must be shown in the Production Summary before confirmation.
+lightweight reference from `visual-styles/`. Each formal style defines only its character, a light
+six-role palette, the matching dark six-role palette for cover/section/closing pages, background
+references, and one optional SVG reference. `Other` uses the same structure and must be shown in
+the Production Summary before confirmation.
+
+Light and dark are **one scheme, not two**: the dark companion shares the light palette's hue
+family, so a deck never reads as a dark cover glued to unrelated light body pages. Both palettes
+must clear the same contrast floors (text 4.5:1, accent 3:1 against canvas and surface).
+`resolve_design_tokens()` guarantees a dark companion for every style and derives a
+contrast-safe one for custom or legacy styles.
 
 Styles are adaptive directions rather than fixed templates. Hard guardrails
 protect readability, truthful evidence, source boundaries, and fit; layout
@@ -130,6 +137,18 @@ is available, and filler icons, cards, or quotations are not acceptable.
 The 12 styles do not control layout, shapes, image treatment, chart grammar, components, or page
 rhythm. SVG motifs are optional and never inserted automatically; style references never override
 capacity, evidence, contrast, or template rules.
+
+Before final composition the deck resolves a 32-recipe
+[`visual-reference-library.json`](skills/sp-deck/references/visual-reference-library.json) into
+2–3 positive composition priors per slide, and high-leverage slides explore 2–3 genuinely
+different silhouettes. Image search and generation are never assumed: declare providers in
+`image-sources.json` (see
+[`references/image-sourcing.md`](references/image-sourcing.md)) and the environment check reports
+`image_search_ready` / `image_generation_ready` / `user_assets_ready`.
+
+A reproducible
+[golden sample](examples/golden-sample/README.md) exercises the whole pipeline and reaches
+`status: complete`.
 
 All styles share 36 page-layout inspirations in `layout-library.json` through
 `pptx-layouts.js`. Suggestions map Slide Spec-native kind/visual values and filter by

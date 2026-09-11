@@ -11,6 +11,9 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 5. 必须检查整套节奏：连续弱卡片/列表/三等分属于 AI-template repetition 风险。
 6. **Author/critic separation**：如果当前执行环境能使用独立 review context、subagent 或重新开启一个不带 deck.js 细节的视觉审查上下文，优先这么做。无法分离时，也必须先隐藏/放下实现代码，只依据 full-resolution renders + Art Direction 目标复核，避免“因为自己刚写完所以自动觉得合理”。
 7. v0.8 critic 不只是给分：如果最终页明显弱于选定 wireframe/reference 的视觉命题，应指出是哪一步退化（asset、hierarchy、crop、composition、type scale 或实现保守化）。
+8. **配色一致性**：整套只能使用所选风格的两套 palette（light `palette` + 对应 `dark_palette`）。
+   深色封面/章节/收尾页必须来自 `dark_palette`，不能是生成时临时挑的深色；发现任何 palette
+   之外的强调色或底色、或直接写死的 hex，按 `art-direction` / `implementation` 返修。
 
 ## visual-review.json
 
@@ -85,6 +88,7 @@ High-score 默认每项不低于 6、整套平均不低于 7。低于阈值属�
 - **Image crop**：是不是一个决定性 crop，还是图片被缩成右侧小矩形；
 - **Chart**：takeaway 是否先于图表被读到，是否仍是默认 chart chrome；
 - **Cover/closing**：是否有可记忆的 visual thesis 和视觉呼应。
+- **Palette consistency**：cover/section/closing 是否真的用了该风格的 `dark_palette`，还是生产时另挑了一套深色；把深浅两页并排放，强调色与中性色是否仍属同一色系。
 
 如果 high-leverage 页 `reference_intent_preserved=false` 或 asset plan 明显未实现，默认至少 Minor；若因此页面落入 card-grid/weak hierarchy/无 focal point，则 Major。
 

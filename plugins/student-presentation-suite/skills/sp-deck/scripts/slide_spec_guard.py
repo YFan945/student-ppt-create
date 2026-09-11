@@ -13,7 +13,7 @@ import argparse
 import hashlib
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -77,7 +77,7 @@ def make_lock(
         "slide_spec_sha256": spec_hash,
         "validation_report": str(validation_report.resolve()),
         "validation_report_sha256": report_hash,
-        "frozen_at": datetime.now(timezone.utc).isoformat(),
+        "frozen_at": datetime.now(UTC).isoformat(),
     }
 
 

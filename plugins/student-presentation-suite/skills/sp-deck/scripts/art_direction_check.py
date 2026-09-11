@@ -61,10 +61,7 @@ def high_leverage_numbers(data: dict[str, Any]) -> list[int]:
         return []
     numbers: list[int] = []
     for item in raw:
-        if isinstance(item, dict):
-            slide = item.get("slide")
-        else:
-            slide = item
+        slide = item.get("slide") if isinstance(item, dict) else item
         if isinstance(slide, int) and not isinstance(slide, bool) and slide > 0:
             numbers.append(slide)
     return numbers
@@ -103,8 +100,8 @@ def validate_art_direction(data: dict[str, Any], *, high_score: bool = True) -> 
         issues.append(issue("minor", "weak_cover_scale", "Cover title should normally be materially larger than ordinary slide titles."))
     if key_pt is not None and body_pt is not None and key_pt < body_pt * 1.25:
         issues.append(issue("minor", "weak_takeaway_scale", "Key statement scale is too close to body text."))
-    if caption_pt is not None and not 8 <= caption_pt <= 13:
-        issues.append(issue("minor", "caption_scale_unusual", "Caption/source text should normally be around 8–13pt."))
+    if caption_pt is not None and not 11 <= caption_pt <= 13:
+        issues.append(issue("minor", "caption_scale_unusual", "Caption/source text should stay within 11–13pt (design-tokens caption_min_pt is 11)."))
 
     imagery = data.get("imagery") if isinstance(data.get("imagery"), dict) else {}
     if not str(imagery.get("crop_language") or "").strip():
@@ -129,16 +126,27 @@ def validate_art_direction(data: dict[str, Any], *, high_score: bool = True) -> 
             issues.append(issue("major", "background_rhythm_flat", "High-score decks should normally use at least two background energy modes."))
 
     asset_plan = data.get("asset_plan") if isinstance(data.get("asset_plan"), dict) else {}
+    mix_keys = ("hero_visuals", "evidence_visuals", "diagrams", "native_charts", "typography_led")
     visual_mix = sum(
         int(value)
         for key, value in asset_plan.items()
-        if key in {"hero_visuals", "evidence_visuals", "diagrams", "native_charts", "typography_led"}
+        if key in mix_keys
         and isinstance(value, int)
         and not isinstance(value, bool)
         and value > 0
     )
-    if high_score and visual_mix < 4:
-        issues.append(issue("major", "asset_mix_too_thin", "High-score Art Direction needs a deliberate mix of visual assets/strategies."))
+    if high_score:
+        # 旧判定只数"有几个类别 >0"，不看总量：4 个类别各配 1 个元素的 8 页 deck
+        # 也能放行。加总量下限（审查第 19 条的原始反例即 total=4）。
+        total_visuals = sum(
+            int(asset_plan.get(key))
+            for key in mix_keys
+            if isinstance(asset_plan.get(key), int) and not isinstance(asset_plan.get(key), bool)
+        )
+        if visual_mix < 4:
+            issues.append(issue("major", "asset_mix_too_thin", "High-score Art Direction needs a deliberate mix of visual assets/strategies."))
+        elif total_visuals < 5:
+            issues.append(issue("major", "asset_mix_total_too_low", f"High-score Art Direction plans only {total_visuals} visual elements across the deck; raise the asset_plan totals."))
 
     raw_high = data.get("high_leverage_slides")
     high_numbers = high_leverage_numbers(data)
@@ -170,7 +178,12 @@ def main() -> int:
     parser.add_argument("--quality", choices=["high-score", "standard"], default="high-score")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--strict", action="store_true")
+    parser.add_argument("--strict", action="store_true", help="deprecated no-op alias; gates are fail-closed by default")
+    parser.add_argument(
+        "--lenient",
+        action="store_true",
+        help="opt-in relaxation: exit 0 even when the report is not ok (default is fail-closed)",
+    )
     args = parser.parse_args()
 
     report = validate_art_direction(load_structured(args.art_direction), high_score=args.quality == "high-score")
@@ -180,7 +193,7 @@ def main() -> int:
         args.output.write_text(payload, encoding="utf-8")
     if args.json or not args.output:
         print(payload, end="")
-    if args.strict and not report["ok"]:
+    if not report["ok"] and not args.lenient:
         return 2
     return 0
 

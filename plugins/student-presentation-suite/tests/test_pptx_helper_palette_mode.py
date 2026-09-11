@@ -32,6 +32,32 @@ if (light.palette.canvas !== 'FFFFFF' || light.palette_mode !== 'light') process
         )
         self.assertEqual(0, result.returncode, result.stderr)
 
+    def test_soft_shadow_is_light_only_and_configurable(self) -> None:
+        helper = ROOT / "scripts" / "pptx-helpers.js"
+        script = f"""
+const H = require({json.dumps(str(helper))});
+const base = {{
+  palette: {{ primary_text: '111111' }},
+  effects: {{ soft_shadow: {{ blur_pt: 10, offset_pt: 4, angle_deg: 90, opacity: 0.16, enabled: true }} }}
+}};
+const light = H.softShadow(base);
+if (!light || light.type !== 'outer' || light.color !== '111111' || light.blur !== 10) process.exit(2);
+const dark = H.softShadow({{ ...base, palette_mode: 'dark', palette: {{ primary_text: 'FFFFFF' }} }});
+if (dark !== null) process.exit(3);
+if (H.softShadow(base, {{ enabled: false }}) !== null) process.exit(4);
+if (H.softShadow({{ ...base, effects: {{ soft_shadow: {{ enabled: false }} }} }}) !== null) process.exit(5);
+const tuned = H.softShadow(base, {{ blur: 20, opacity: 0.3 }});
+if (tuned.blur !== 20 || tuned.opacity !== 0.3) process.exit(6);
+"""
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_dark_mode_rejects_missing_dark_palette(self) -> None:
         helper = ROOT / "scripts" / "pptx-helpers.js"
         script = f"""

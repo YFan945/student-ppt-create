@@ -1,0 +1,75 @@
+{
+  "version": "0.8",
+  "slide_id": 2,
+  "high_leverage": true,
+  "candidates": [
+    {
+      "id": "A",
+      "visual_strategy": "typography",
+      "silhouette": "type-dominant",
+      "reference_ids": [
+        "claim-oversized-keyword"
+      ],
+      "dominant_element": "key_statement",
+      "focal_share": 0.64,
+      "title_pt": 30,
+      "body_pt": 20,
+      "zones": {
+        "title": [
+          0.06,
+          0.06,
+          0.8,
+          0.12
+        ],
+        "focus": [
+          0.06,
+          0.26,
+          0.62,
+          0.4
+        ],
+        "body": [
+          0.68,
+          0.3,
+          0.28,
+          0.3
+        ]
+      },
+      "rationale": "One oversized claim owns the left two thirds while the two judgment rules sit in a narrow right rail."
+    },
+    {
+      "id": "B",
+      "visual_strategy": "mixed",
+      "silhouette": "question-hook",
+      "reference_ids": [
+        "hook-question-tension"
+      ],
+      "dominant_element": "key_statement",
+      "focal_share": 0.6,
+      "title_pt": 30,
+      "body_pt": 20,
+      "zones": {
+        "title": [
+          0.08,
+          0.08,
+          0.6,
+          0.1
+        ],
+        "focus": [
+          0.08,
+          0.24,
+          0.7,
+          0.3
+        ],
+        "body": [
+          0.08,
+          0.6,
+          0.5,
+          0.16
+        ]
+      },
+      "rationale": "A centered question hook would create curiosity but reads more like a divider than a coursework argument page."
+    }
+  ],
+  "selected_id": "A",
+  "selection_reason": "The thesis-contrast composition states the mechanism immediately, which the audience needs before any evidence page."
+}

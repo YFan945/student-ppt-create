@@ -84,6 +84,26 @@ def normalized_severity(value: Any) -> str:
     return str(value or "").strip().lower()
 
 
+def has_resolution_evidence(finding: dict[str, Any], pptx_digest: str) -> bool:
+    """A claimed fix only counts when bound to the current artifact.
+
+    ``resolved: true`` on its own is self-attestation by the generating model:
+    the same actor that created the finding also declares it gone, so the
+    "human review" layer degenerates into a no-op. Require
+    ``resolved_evidence`` with the pre-fix digest (audit trail) and an
+    ``after_sha256`` equal to the PPTX being gated — the claim is then either
+    backed by real artifacts or trivially falsifiable.
+    """
+    if finding.get("resolved") is not True:
+        return False
+    evidence = finding.get("resolved_evidence")
+    if not isinstance(evidence, dict):
+        return False
+    before = str(evidence.get("before_sha256") or "")
+    after = str(evidence.get("after_sha256") or "")
+    return bool(before) and after == pptx_digest
+
+
 def validate_visual_report(
     report_path: Path,
     pptx: Path,
@@ -93,7 +113,8 @@ def validate_visual_report(
 ) -> dict[str, Any]:
     report = load_json(report_path)
     issues: list[dict[str, Any]] = []
-    if report.get("pptx_sha256") != sha256_file(pptx):
+    pptx_digest = sha256_file(pptx)
+    if report.get("pptx_sha256") != pptx_digest:
         issues.append(issue("critical", "visual_report_stale", "Visual review is not bound to the current PPTX."))
 
     raw_slides = report.get("slides")
@@ -138,9 +159,20 @@ def validate_visual_report(
             if not isinstance(finding, dict):
                 continue
             sev = normalized_severity(finding.get("severity"))
-            resolved = finding.get("resolved") is True
-            if sev in BLOCKING_SEVERITIES and not resolved:
-                issues.append(issue(sev, str(finding.get("code") or "visual_finding"), str(finding.get("message") or "Unresolved visual finding."), slide=slide_no))
+            if sev not in BLOCKING_SEVERITIES:
+                continue
+            if has_resolution_evidence(finding, pptx_digest):
+                continue
+            if finding.get("resolved") is True:
+                issues.append(
+                    issue(
+                        "major",
+                        "resolved_without_evidence",
+                        f"Slide {slide_no} finding '{finding.get('code')}' claims resolved without sha256-bound evidence.",
+                        slide=slide_no,
+                    )
+                )
+            issues.append(issue(sev, str(finding.get("code") or "visual_finding"), str(finding.get("message") or "Unresolved visual finding."), slide=slide_no))
 
     expected = set(range(1, slide_count + 1))
     missing = sorted(expected - set(by_slide))
@@ -183,8 +215,19 @@ def validate_visual_report(
             if not isinstance(finding, dict):
                 continue
             sev = normalized_severity(finding.get("severity"))
-            if sev in BLOCKING_SEVERITIES and finding.get("resolved") is not True:
-                issues.append(issue(sev, str(finding.get("code") or "deck_visual_finding"), str(finding.get("message") or "Unresolved deck-level visual finding.")))
+            if sev not in BLOCKING_SEVERITIES:
+                continue
+            if has_resolution_evidence(finding, pptx_digest):
+                continue
+            if finding.get("resolved") is True:
+                issues.append(
+                    issue(
+                        "major",
+                        "resolved_without_evidence",
+                        f"Deck finding '{finding.get('code')}' claims resolved without sha256-bound evidence.",
+                    )
+                )
+            issues.append(issue(sev, str(finding.get("code") or "deck_visual_finding"), str(finding.get("message") or "Unresolved deck-level visual finding.")))
 
     average_score = sum(score_values) / len(score_values) if score_values else 0.0
     target_average = 7.0 if high_score else 6.0

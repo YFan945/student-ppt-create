@@ -52,7 +52,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--visual-reviewed",
         action="store_true",
-        help="Confirm that every supplied rendered page was visually reviewed",
+        help="Deprecated self-attestation flag; completion now requires --visual-review-report",
+    )
+    parser.add_argument(
+        "--visual-review-report",
+        type=Path,
+        help="Visual-review JSON bound to the PPTX via pptx_sha256 (required for simple-mode completion)",
     )
     parser.add_argument("--output", type=Path, help="Optional delivery-report.json output path")
     parser.add_argument("--json", action="store_true", help="Emit JSON")
@@ -118,6 +123,35 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def verify_visual_review_report(report_path: Path, pptx: Path) -> dict[str, Any]:
+    """A "reviewed" claim must be a report file bound to this exact PPTX.
+
+    The bare ``--visual-reviewed`` boolean is asserted by the generating agent
+    itself, so it proves nothing. The report file must carry ``pptx_sha256``
+    matching the artifact being gated plus per-slide entries.
+    """
+    path = Path(report_path)
+    if not path.is_file():
+        return {"valid": False, "reason": f"visual-review report not found: {path}"}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return {"valid": False, "reason": f"unreadable visual-review report: {exc}"}
+    if not isinstance(data, dict):
+        return {"valid": False, "reason": "visual-review report must be a JSON object"}
+    if data.get("pptx_sha256") != sha256_file(pptx):
+        return {"valid": False, "reason": "visual-review report is not bound to the current PPTX (stale sha256)"}
+    slides = data.get("slides")
+    if not isinstance(slides, list) or not slides:
+        return {"valid": False, "reason": "visual-review report contains no per-slide entries"}
+    return {
+        "valid": True,
+        "report_sha256": sha256_file(path),
+        "slide_entries": len(slides),
+        "average_score": data.get("average_score"),
+    }
 
 
 def inspect_preview(path: Path) -> dict[str, Any]:
@@ -361,6 +395,7 @@ def inspect_delivery(
     slide_spec_report: Path | None = None,
     simple: bool = False,
     visual_reviewed: bool = False,
+    visual_review_report: Path | None = None,
 ) -> dict[str, Any]:
     if require_notes and notes is None:
         notes = expected_notes_path(pptx)
@@ -445,12 +480,20 @@ def inspect_delivery(
         and preview_checks
         and package_ready
     )
+    review_check: dict[str, Any] = {
+        "valid": False,
+        "reason": "no sha256-bound visual-review report supplied",
+    }
+    if visual_review_report is not None:
+        review_check = verify_visual_review_report(visual_review_report, pptx)
     if simple:
+        # 裸 --visual-reviewed 布尔量由生成方自行断言，不构成"人已复核"的证据；
+        # 完成判定只认与当前 PPTX 的 sha256 绑定的复核报告文件。
         complete_ready = bool(
             base_ready
             and len(preview_checks) == slide_count
             and spec_summary["valid"] is True
-            and visual_reviewed
+            and review_check["valid"]
         )
     else:
         complete_ready = bool(
@@ -494,6 +537,7 @@ def inspect_delivery(
         "slide_spec_validation_passed": spec_summary.get("valid") if simple else None,
         "slide_spec_report_sha256": spec_summary.get("sha256") if simple else None,
         "visual_reviewed": visual_reviewed if simple else None,
+        "visual_review_check": review_check if simple else None,
         "quality_report_passed": quality_summary.get("valid"),
         "quality_report_sha256": quality_summary.get("sha256"),
         "package_validation_passed": package_summary.get("valid"),
@@ -579,6 +623,7 @@ def main() -> None:
         slide_spec_report=args.slide_spec_report,
         simple=args.simple,
         visual_reviewed=args.visual_reviewed,
+        visual_review_report=args.visual_review_report,
     )
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))

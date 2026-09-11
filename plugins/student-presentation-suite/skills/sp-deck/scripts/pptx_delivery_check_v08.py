@@ -27,7 +27,10 @@ def validate_visual_generation_report(path: Path, slide_spec: Path, art_directio
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         return {"valid": False, "errors": [f"Cannot read v0.8 visual-generation report: {exc}"]}
-    if not isinstance(data, dict) or data.get("ok") is not True:
+    if not isinstance(data, dict):
+        errors.append("v0.8 visual-generation report must be a JSON object.")
+        return {"valid": False, "errors": errors}
+    if data.get("ok") is not True:
         errors.append("v0.8 visual-generation gate did not pass.")
     if data.get("generation_core_version") != "0.8":
         errors.append("Visual-generation report is not a v0.8 report.")
@@ -78,6 +81,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--slide-spec-report", type=Path, required=True)
     parser.add_argument("--actual-content-report", type=Path, required=True)
     parser.add_argument("--visual-reviewed", action="store_true")
+    parser.add_argument(
+        "--visual-review-report",
+        type=Path,
+        help="Visual-review JSON bound to the PPTX via pptx_sha256; required for completion",
+    )
     parser.add_argument("--allow-missing-notes", action="store_true")
     parser.add_argument("--allow-missing-preview", action="store_true")
     parser.add_argument("--output", type=Path)
@@ -99,6 +107,7 @@ def main() -> None:
         slide_spec_report=args.slide_spec_report,
         simple=True,
         visual_reviewed=args.visual_reviewed,
+        visual_review_report=args.visual_review_report,
     )
     actual = v07.validate_actual_report(args.actual_content_report, args.pptx, result.get("slide_count"))
     quality = v071.validate_quality_report(
@@ -129,6 +138,11 @@ def main() -> None:
     delivery["art_direction_sha256"] = sha256_file(args.art_direction) if args.art_direction.is_file() else None
     delivery["gate_profile"] = "simplified-v08"
     delivery["generation_core_version"] = "0.8"
+
+    review_check = (result.get("delivery_report") or {}).get("visual_review_check") or {}
+    delivery["visual_review_check_passed"] = review_check.get("valid") is True
+    if not review_check.get("valid"):
+        result["ok"] = False
 
     if not actual["valid"] or not quality["valid"] or not visual_generation["valid"]:
         result["ok"] = False
