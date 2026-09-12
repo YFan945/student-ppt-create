@@ -8,6 +8,13 @@ Codex 发行记录不在此维护。
 
 ### CI 修复：渲染矩阵适配视觉复核证据契约（2026-09-12）
 
+- **修复 gallery 冒烟（`visual_system_smoke_gallery.py`）的两层失败**：
+  1. style tokens 缺 geometry 时 `addTitle` 的 fallback 标题框只有 ~0.56in，
+     装不下 32pt 标题行——`addTitle` 现在对标题框做自适应兜底（不足时按
+     title 字号单行所需扩展，扩幅落在标题区与内容区之间的 gap 内）；
+  2. 长标题压力用例的框尺寸按旧的宽容行为设计——已按新契约调整框高，
+     并让小 zone 的样例文本在角色下限放不下时降级为 caption 重试
+     （连 11pt 都放不下仍照常抛错，真缺陷不被掩盖）。
 - **修复 `scenario_render_matrix.py --require-render` 的 CI 失败（两个根因）**：
   1. 反自证收紧后裸 `--visual-reviewed` 不再放行，矩阵脚本的 strict delivery
      调用缺 sha256 绑定的复核报告——矩阵现在在渲染后按场景编写绑定当前 PPTX

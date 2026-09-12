@@ -608,7 +608,12 @@ function addTitle(slide, text, area, tokens, lang) {
     // estimateTextFit 随即判溢出并 100% 抛错。这里兜一个最小可用高度。
     h: Math.max(0.4, area.y - fallbackTop - spacing(tokens, 1)),
   };
-  return addFittedText(slide, text, titleBox, tokens, lang, 'title', {
+  // 令牌几何与字号令牌可能冲突：title_zone 扣掉边距与 gap 后的高度若小于
+  // title 字号单行所需（行高 / 0.85 填充上限），addFittedText 会在 min 卡死
+  // 并抛错。标题框向下自适应扩展——扩幅落在 titleBox 与内容区之间的 gap 内。
+  const minTitleH = (sizes.title * 1.4) / 72 / 0.8;
+  const box = { ...titleBox, h: Math.max(titleBox.h, minTitleH) };
+  return addFittedText(slide, text, box, tokens, lang, 'title', {
     min: sizes.title,
     max: sizes.titleMax,
     fontFace: fonts.title,
