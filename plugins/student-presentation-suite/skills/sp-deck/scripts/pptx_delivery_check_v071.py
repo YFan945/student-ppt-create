@@ -38,6 +38,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--slide-spec-report", type=Path, required=True)
     parser.add_argument("--actual-content-report", type=Path, required=True)
     parser.add_argument("--visual-reviewed", action="store_true")
+    parser.add_argument(
+        "--visual-review-report",
+        type=Path,
+        default=None,
+        help="visual-review JSON bound to the PPTX via pptx_sha256; "
+        "required for the simplified gate to reach complete",
+    )
     parser.add_argument("--allow-missing-notes", action="store_true")
     parser.add_argument("--allow-missing-preview", action="store_true")
     parser.add_argument("--output", type=Path)
@@ -99,6 +106,7 @@ def main() -> None:
         slide_spec_report=args.slide_spec_report,
         simple=True,
         visual_reviewed=args.visual_reviewed,
+        visual_review_report=args.visual_review_report,
     )
 
     actual = v07.validate_actual_report(args.actual_content_report, args.pptx, result.get("slide_count"))

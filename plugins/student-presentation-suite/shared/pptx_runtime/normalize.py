@@ -112,6 +112,22 @@ def normalize_unpacked(root: Path) -> list[str]:
                         chart_node.remove(marker)
                         chart_node.insert(list(chart_node).index(ax_ids[0]), marker)
                         chart_changed = True
+        # pptxgenjs 单系列多色柱状图把 <c:dPt> 写在 <c:dLbls> 之后，违反
+        # CT_*Ser 的元素序列（dPt* 必须在 dLbls 之前），OpenXML SDK 校验直接
+        # 报 unexpected child。把 dPt 统一移到 dLbls 之前（保持相对顺序）。
+        for ser in plot_area.iter(f"{{{C_NS}}}ser"):
+            d_lbls = ser.find(f"{{{C_NS}}}dLbls")
+            if d_lbls is None:
+                continue
+            d_lbls_index = list(ser).index(d_lbls)
+            for element in [
+                element
+                for element in ser.findall(f"{{{C_NS}}}dPt")
+                if list(ser).index(element) > d_lbls_index
+            ]:
+                ser.remove(element)
+                ser.insert(list(ser).index(d_lbls), element)
+                chart_changed = True
         if chart_changed:
             StdET.ElementTree(chart).write(
                 chart_path,

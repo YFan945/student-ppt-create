@@ -168,6 +168,7 @@ v0.7.1 默认使用新的 delivery wrapper。除了 preview/package/spec/actual-
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_delivery_check_v071.py" \
   --strict --visual-reviewed \
+  --visual-review-report <visual-review.json> \
   --pptx <pptx> --slide-spec <slide-spec.yaml> \
   --spec-lock <slide-spec-lock.json> \
   --slide-spec-report <slide-spec-report.json> \
@@ -177,6 +178,8 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_delivery_check_v071.py
   --preview <page-1.png> --preview <page-2.png> \
   --notes <speaker-notes.md> --output <delivery-report.json> --json
 ```
+
+`--visual-review-report` 是逐页视觉复核的证据文件（`pptx_sha256` 绑定当前 PPTX + 每页条目）；只传裸 `--visual-reviewed` 而不传该报告时，simplified 门禁停留在 `incomplete`。
 
 每页必须对应一张有效 PNG/JPEG 预览；缺预览、spec lock 失效、quality gate 未通过或未完成逐页视觉复核时状态只能是 `incomplete`。用户明确不需要 notes 时可传 `--allow-missing-notes`。
 

@@ -6,6 +6,25 @@ Codex 发行记录不在此维护。
 
 ## Unreleased
 
+### CI 修复：渲染矩阵适配视觉复核证据契约（2026-09-12）
+
+- **修复 `scenario_render_matrix.py --require-render` 的 CI 失败（两个根因）**：
+  1. 反自证收紧后裸 `--visual-reviewed` 不再放行，矩阵脚本的 strict delivery
+     调用缺 sha256 绑定的复核报告——矩阵现在在渲染后按场景编写绑定当前 PPTX
+     的 `visual-review.json` 并传给 delivery，与实战流程一致；
+  2. **normalize 新增 chart ser 子元素重排**：pptxgenjs 单系列多色柱状图
+     （逐点配色 accentRamp）把 `<c:dPt>` 写在 `<c:dLbls>` 之后，违反 CT_*Ser
+     元素序列，OpenXML SDK 校验报 unexpected child——normalize 现在把 dPt
+     统一移到 dLbls 之前（保持相对顺序），单测
+     `tests/test_normalize_chart.py`（2 例）锁定。
+- **补齐 `pptx_delivery_check_v071.py` 的 `--visual-review-report` 参数**并透传
+  给 `inspect_delivery`——此前该 wrapper 在 simple 模式下永远无法达到 complete
+  （第二处被"致命 1"修复牵连的调用点）；`pptx-qa.md` Gate 4 示例同步更新。
+- `slide_spec_to_pptx_brief.py` 生成的 QA 指引同步：说明裸 `--visual-reviewed`
+  不再通过，复核报告是必备证据。
+- 教训：收紧校验或新增生成特性时，必须全仓 grep 同一脚本的**全部调用点**，
+  并让渲染矩阵（CI 的 Linux 路径）在本地跑一遍——两个问题都是 CI 首次暴露。
+
 ### 质量检查流程优化：gate-all 单进程门禁（2026-09-12）
 
 - **新增 `pptx_tool.py gate-all`**：package validate / actual-content readback /
