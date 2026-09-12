@@ -154,15 +154,8 @@ def check(spec: dict[str, Any], actual: list[str]) -> dict[str, Any]:
     }
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("pptx", type=Path)
-    parser.add_argument("slide_spec", type=Path)
-    parser.add_argument("--output", type=Path)
-    parser.add_argument("--json", action="store_true")
-    parser.add_argument("--strict", action="store_true")
-    args = parser.parse_args()
-
+def run(args: argparse.Namespace) -> int:
+    """Run the readback gate with pre-parsed arguments (shared by gate-all)."""
     if not args.pptx.is_file():
         raise SystemExit(f"PPTX does not exist: {args.pptx}")
     if not args.slide_spec.is_file():
@@ -186,6 +179,16 @@ def main() -> int:
     if args.strict and not report["ok"]:
         return 2
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("pptx", type=Path)
+    parser.add_argument("slide_spec", type=Path)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--strict", action="store_true")
+    return run(parser.parse_args())
 
 
 if __name__ == "__main__":

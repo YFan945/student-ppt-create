@@ -69,6 +69,28 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_actual_content_check.p
 
 **重要：readback 失败后先修 actual artifact。** 不允许把“编造”改成“编出”这类 plan wording 来迁就已经生成的 PPTX，除非走上面的显式 spec revision。
 
+### 快速通道：deck 迭代期用 gate-all 单进程跑完 4 个门禁
+
+deck 反复重建的迭代期，Package/Actual/Rendered/Quality 四个门禁可以用
+`gate-all` 在**一个进程内**顺序执行（省 3 次解释器启动，实测 4.1s → 2.1s）。
+每个门禁仍写出各自独立的报告文件，合并汇总写入 `gate-all-report.json`；
+任一门禁失败整体 exit 2（fail-closed），单步崩溃不拖垮其余步骤。
+
+```bash
+python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" gate-all \
+  --pptx <pptx> --slide-spec <slide-spec.yaml> \
+  --spec-lock <spec-lock.json> --visual-report <visual-review.json> \
+  --output-dir <reports-dir> --output <gate-all-report.json> --json
+```
+
+约定：
+
+- **迭代期快速通道**：deck 未定稿前用 gate-all + 跳过渲染先把结构类门禁跑绿；
+- **最终交付前**：渲染一次全部页面，人眼逐页完成视觉审查后再跑一次 gate-all；
+- **Spec 报告复用**：冻结时产出的 `slide-spec-report.json` 在其
+  `slide_spec_sha256` 与当前 spec 一致时可直接复用于交付链，无需第三次校验；
+  spec 一旦走 revise，旧报告即失效并重新校验。
+
 ## Gate 3 — Render + Structured Quality Critic
 
 完整渲染全部页面，然后逐页观察真实 artifact。Render 是 inference loop 的一部分，不是只在最后盖章。

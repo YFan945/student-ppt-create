@@ -47,6 +47,7 @@ from shared.slide_spec_contract import load_slide_spec, validate_slide_spec  # n
 
 PPTX_SUFFIXES = {".pptx", ".potx"}
 ASSET_MANIFEST_SCHEMA = ROOT / "references" / "asset-manifest.schema.json"
+SKILL_SCRIPTS = ROOT / "skills" / "sp-deck" / "scripts"
 # 文本抽取子进程的超时：markitdown 曾是全仓唯一没有 timeout 的执行点。
 TEXT_EXTRACTION_TIMEOUT_SEC = 180
 # 允许作为 add-slide 来源的部件名（禁止目录分隔符与路径穿越）
@@ -514,6 +515,152 @@ PLACEHOLDER_PATTERN = re.compile(
 )
 
 
+def _load_skill_module(file_name: str, module_name: str):
+    import importlib.util
+
+    path = SKILL_SCRIPTS / file_name
+    spec = importlib.util.spec_from_file_location(module_name, path)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"cannot load gate module: {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def command_gate_all(args: argparse.Namespace) -> int:
+    """Run package/actual-content/rendered/quality gates in one process.
+
+    Same checks, same reports, same exit contract as running each gate
+    separately — the only change is one interpreter instead of four and a
+    merged summary report. Any failing gate still fails the whole run
+    (fail-closed), and every step keeps writing its own standalone report.
+    """
+    import time
+    from argparse import Namespace
+
+    output_dir: Path = args.output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    actual = _load_skill_module(
+        "pptx_actual_content_check.py", "gate_all_actual_content"
+    )
+    rendered = _load_skill_module(
+        "pptx_rendered_check.py", "gate_all_rendered_check"
+    )
+    quality = _load_skill_module(
+        "pptx_quality_gate_v071.py", "gate_all_quality_gate"
+    )
+
+    steps: list[tuple[str, str, object, Path]] = [
+        (
+            "package",
+            "command_validate",
+            Namespace(
+                input=args.pptx,
+                original=None,
+                json=False,
+                output=output_dir / "package-report.json",
+            ),
+            output_dir / "package-report.json",
+        ),
+        (
+            "actual-content",
+            None,
+            Namespace(
+                pptx=args.pptx,
+                slide_spec=args.slide_spec,
+                output=output_dir / "actual-content-report.json",
+                json=False,
+                strict=True,
+            ),
+            output_dir / "actual-content-report.json",
+        ),
+        (
+            "rendered",
+            None,
+            Namespace(
+                pptx=args.pptx,
+                tokens=args.tokens,
+                output=output_dir / "rendered-check-report.json",
+                json=False,
+                strict=True,
+                lenient=False,
+            ),
+            output_dir / "rendered-check-report.json",
+        ),
+        (
+            "quality",
+            None,
+            Namespace(
+                pptx=args.pptx,
+                slide_spec=args.slide_spec,
+                spec_lock=args.spec_lock,
+                visual_report=args.visual_report,
+                output=output_dir / "quality-report.json",
+                json=False,
+                strict=True,
+            ),
+            output_dir / "quality-report.json",
+        ),
+    ]
+
+    runners: dict[str, Any] = {
+        "package": command_validate,
+        "actual-content": actual.run,
+        "rendered": rendered.run,
+        "quality": quality.run,
+    }
+
+    step_reports: dict[str, Any] = {}
+    failed = False
+    for name, _, namespace, report_path in steps:
+        started = time.perf_counter()
+        code = 0
+        error: str | None = None
+        try:
+            code = runners[name](namespace)
+        except SystemExit as exc:  # a gate may SystemExit with a diagnostic
+            code = 1
+            error = str(exc)
+        except Exception as exc:  # noqa: BLE001 - one gate must not kill the rest
+            code = 1
+            error = f"{type(exc).__name__}: {exc}"
+        elapsed = round(time.perf_counter() - started, 3)
+        report: Any = None
+        if report_path.is_file():
+            try:
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                report = None
+        ok = code == 0 and isinstance(report, dict) and report.get("ok", code == 0)
+        step_reports[name] = {
+            "ok": ok,
+            "exit_code": code,
+            "elapsed_s": elapsed,
+            "report": report_path.name,
+            "blocker_count": report.get("blocker_count") if isinstance(report, dict) else None,
+            "error": error,
+        }
+        if not ok:
+            failed = True
+
+    pptx_hash = hashlib.sha256(args.pptx.read_bytes()).hexdigest()
+    merged = {
+        "ok": not failed,
+        "gate_profile": "gate-all-v1",
+        "pptx": str(args.pptx.resolve()),
+        "pptx_sha256": pptx_hash,
+        "steps": step_reports,
+    }
+    payload = json.dumps(merged, ensure_ascii=False, indent=2) + "\n"
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(payload, encoding="utf-8")
+    if args.json or not args.output:
+        print(payload, end="")
+    return 2 if failed else 0
+
+
 def command_content_qa(args: argparse.Namespace) -> int:
     pptx: Path = args.pptx
     try:
@@ -875,6 +1022,25 @@ def build_parser() -> argparse.ArgumentParser:
     content_qa.add_argument("--slide-spec", required=True, type=_existing_file)
     content_qa.add_argument("--output", required=True, type=_path)
     content_qa.set_defaults(handler=command_content_qa)
+
+    gate_all = sub.add_parser(
+        "gate-all",
+        help="run package/actual-content/rendered/quality gates in one process",
+    )
+    gate_all.add_argument("--pptx", required=True, type=_pptx_file)
+    gate_all.add_argument("--slide-spec", required=True, type=_existing_file)
+    gate_all.add_argument("--spec-lock", required=True, type=_existing_file)
+    gate_all.add_argument("--visual-report", required=True, type=_existing_file)
+    gate_all.add_argument(
+        "--tokens",
+        type=_path,
+        default=ROOT / "references" / "design-tokens.json",
+        help="design tokens for the rendered-artifact readback",
+    )
+    gate_all.add_argument("--output-dir", required=True, type=_path)
+    gate_all.add_argument("--output", type=_path, help="merged summary report path")
+    gate_all.add_argument("--json", action="store_true")
+    gate_all.set_defaults(handler=command_gate_all)
 
     asset_manifest = sub.add_parser("validate-asset-manifest", help="validate source, permission, dimensions, alt text, and fallback records")
     asset_manifest.add_argument("manifest", type=_existing_file)

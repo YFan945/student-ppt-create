@@ -6,6 +6,22 @@ Codex 发行记录不在此维护。
 
 ## Unreleased
 
+### 质量检查流程优化：gate-all 单进程门禁（2026-09-12）
+
+- **新增 `pptx_tool.py gate-all`**：package validate / actual-content readback /
+  rendered readback / quality gate 四个门禁在**一个进程内**顺序执行，共享一次
+  解释器启动；每个门禁仍写出各自独立的报告文件，另产 `gate-all-report.json`
+  合并汇总（含每步耗时与 blocker 数）。实测 10 页 deck：**4.10s → 2.12s（-48%）**。
+- **fail-closed 语义不变**：任一门禁失败整体 exit 2；单步异常被隔离（崩溃的门禁
+  记 error，不拖垮其余步骤）；各单门禁 CLI 与报告 schema 完全向后兼容。
+- 行为测试 `tests/test_gate_all.py`（2 例，fixture 由真实 Node 管线生成）：
+  全绿路径（4 报告 + 哈希绑定 + merged 汇总）与 fail-closed 路径（9pt 违例 +
+  claim 回读失败 + 复核哈希失效三重拦截，其余步骤仍独立出结论）。
+- `pptx-qa.md` 写入迭代期快速通道与 spec 报告复用约定（O2/O5）；
+  三个门禁脚本拆出 `run(args)` 供编排复用，CLI 行为不变。
+- 分析依据与后续优化项（O3 视觉审查分级看图、O4 deck 模板化、O6 validate 单次
+  解析经评估收益 <1s 暂缓）见 `outputs/质量检查流程分析.md`。
+
 ### 实战验收暴露并修复的缺陷（2026-09-12）
 
 - **workflow_guard 状态机与 v0.8 门禁链口径分裂**：`validate_completion_manifest`

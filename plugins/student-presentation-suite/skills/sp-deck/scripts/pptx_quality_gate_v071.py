@@ -404,8 +404,8 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
+def run(args: argparse.Namespace) -> int:
+    """Run the quality gate with pre-parsed arguments (shared by gate-all)."""
     if not args.pptx.is_file():
         raise SystemExit(f"PPTX does not exist: {args.pptx}")
     if not args.slide_spec.is_file():
@@ -449,6 +449,10 @@ def main() -> int:
     if args.strict and not result["ok"]:
         return 2
     return 0
+
+
+def main() -> int:
+    return run(parse_args())
 
 
 if __name__ == "__main__":

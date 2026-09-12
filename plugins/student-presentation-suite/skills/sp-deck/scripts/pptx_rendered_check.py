@@ -188,6 +188,20 @@ def check_pptx(pptx: Path, tokens: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def run(args: argparse.Namespace) -> int:
+    """Run the rendered-artifact gate with pre-parsed arguments (shared by gate-all)."""
+    report = check_pptx(args.pptx, _load_tokens(args.tokens))
+    payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(payload, encoding="utf-8")
+    if args.json or not args.output:
+        print(payload, end="")
+    if not report["ok"] and not args.lenient:
+        return 2
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pptx", type=Path, required=True)
@@ -200,18 +214,7 @@ def main() -> int:
         action="store_true",
         help="opt-in relaxation: exit 0 even when the report is not ok (default is fail-closed)",
     )
-    args = parser.parse_args()
-
-    report = check_pptx(args.pptx, _load_tokens(args.tokens))
-    payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(payload, encoding="utf-8")
-    if args.json or not args.output:
-        print(payload, end="")
-    if not report["ok"] and not args.lenient:
-        return 2
-    return 0
+    return run(parser.parse_args())
 
 
 if __name__ == "__main__":
