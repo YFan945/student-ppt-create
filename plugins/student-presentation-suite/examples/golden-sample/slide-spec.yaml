@@ -1,0 +1,279 @@
+schema_version: '1.0'
+meta:
+  topic: AI 幻觉：为什么模型会「编」，以及我们能做什么
+  presentation_type: Coursework report
+  scenario: coursework
+  audience: Teacher + classmates
+  audience_type: teacher+classmates
+  audience_depth: standard
+  language: Chinese
+  duration_min: 5
+  slide_count: 9
+  format: individual
+  course: 人工智能导论
+  structure_mode: problem-solution
+  interaction_mode: beginner
+  quality_level: high-score
+  visual_text_ratio: balanced
+  include_speaker_notes: true
+  include_key_lines: true
+  citation_style: classroom
+  export_formats:
+  - pptx
+  - preview
+  - pdf
+  versioning: false
+  source_material: 课程讲义 + 公开综述文献
+  image_source: diagram-only
+  visual_style: Academic Rigorous
+  deliverables:
+  - pptx
+  - speaker-notes
+  - preview
+  output_prefix: golden-ai-hallucination
+evidence_ledger:
+- id: E1
+  title: Survey of Hallucination in Natural Language Generation
+  source_type: paper
+  locator: ACM Computing Surveys, 2023
+  author: Ji et al.
+  date: '2023'
+  confidence: high
+  used_on_slides:
+  - 2
+  - 4
+  - 6
+  - 7
+  - 8
+  limitation: 综述覆盖多任务，本汇报只取其关于成因与缓解的结论。
+- id: E2
+  title: 课堂示意数据：摘要忠实度分组占比
+  source_type: dataset
+  locator: 课堂演示用示意数据，非已发表统计
+  author: 本汇报作者
+  date: '2026'
+  confidence: low
+  used_on_slides:
+  - 5
+  limitation: 示意数据仅用于演示论证结构，不可作为事实引用。
+slides:
+- id: 1
+  title: AI 会「编」，而且编得很自信
+  layout: cover-editorial
+  layout_lock: false
+  role: opening
+  kind: cover
+  claim: AI 会「编」，而且编得很自信
+  content:
+  - 副标题：从语言模型的训练目标理解「幻觉」
+  speaker_notes: 开场先制造一个反差。模型可以在几秒内写出结构完整、语气自信的答案，但这并不等于它说的对。今天这场汇报只回答一件事：它为什么会编，以及我们能做什么。请记住封面这句话，后面每个结论都会回到它。
+  key_line: 流畅 ≠ 正确
+  timing_sec: 30
+  owner: Individual
+  visual:
+    type: typographic
+    purpose: 用超大标题建立全篇论点，而不是放一张无关封面图。
+    emphasis: text
+- id: 2
+  title: 为什么一个模型能立刻给出流畅的答案？
+  layout: claim-focus
+  layout_lock: false
+  role: problem
+  kind: content
+  claim: 因为它先学会的是预测下一个最可能的词，而不是先查证事实。
+  supporting_points:
+  - 流畅 ≠ 正确
+  - 自信 ≠ 有据
+  content:
+  - 核心命题：它先学会预测下一个词，而不是先查证事实
+  speaker_notes: 把问题收敛成一个机制判断。模型训练时优化的目标是预测下一个最可能出现的词，而不是先查证事实。这两件事在统计上高度相关，所以答案往往很流畅；但它们并不是同一件事。流畅、自信、完整，都可以在没有事实依据的情况下被生成出来。这就是今天讨论的起点。
+  key_line: 它先学会的是预测下一个最可能的词
+  evidence_refs:
+  - E1
+  timing_sec: 38
+  owner: Individual
+  visual:
+    type: typographic
+    purpose: 用文字对比承担核心命题，不塞图。
+    emphasis: text
+- id: 3
+  title: 幻觉不是偶发 bug
+  layout: section-number
+  layout_lock: false
+  role: background
+  kind: section-divider
+  claim: 幻觉不是偶发 bug
+  content:
+  - 章节引导：从训练目标进入
+  speaker_notes: 这里做一个呼吸和定位。我要强调一个判断：幻觉不是偶发的程序故障，而是训练方式本身的产物。既然是产物，就不能指望它偶然消失，只能从流程上用别的手段去补。
+  key_line: 它不是 bug，是产物
+  timing_sec: 18
+  owner: Individual
+- id: 4
+  title: 三类因素在放大「合理但未核实」
+  layout: architecture-layered
+  layout_lock: false
+  role: method
+  kind: content
+  claim: 都在放大同一种失败模式：输出「合理但未核实」
+  supporting_points:
+  - 训练目标：最大化似然
+  - 数据噪声：真假混杂
+  - 知识边界：不知道就猜
+  content:
+  - 三个从属因素汇聚到一个主导结论：输出合理但未核实
+  speaker_notes: 这一页是整场汇报的机制核心。三个因素共同作用：训练目标鼓励最大化似然，所以更像人话的答案得分更高；训练数据里真假混杂，模型无法区分来源可靠性；知识边界之外它没有停下来的机制，只能继续猜。请先记住下面这个结论：三者并没有各自独立的问题，而是共同放大同一种失败模式，输出合理但未核实的内容。
+  key_line: 都在放大「合理但未核实」
+  evidence_refs:
+  - E1
+  timing_sec: 45
+  owner: Individual
+  visual:
+    type: architecture
+    purpose: 用收敛结构表达多因一果，避免三等分卡片。
+    layout_family: architecture
+    emphasis: visual
+    details:
+      nodes:
+      - 训练目标：最大化似然
+      - 数据噪声：真假混杂
+      - 知识边界：不知道就猜
+- id: 5
+  title: 示意数据：流畅的摘要有多少不忠实
+  layout: data-chart-takeaway
+  layout_lock: false
+  role: evidence
+  kind: content
+  claim: 约三成摘要与原文不一致
+  supporting_points:
+  - 结论先于图表被读到
+  - 图表只承担证据角色
+  content:
+  - 示意数据：完全忠实 68 / 部分不忠实 22 / 明显不忠实 10
+  speaker_notes: 这一页演示证据页应该怎么读。我要先说清楚：这是课堂示意数据，不是任何一篇论文的统计结果，用来说明结构和读法。正确顺序是先读左侧结论，再看右侧图表作证据。图表的职责是支撑一句话，而不是把每一个数字都展示出来。真实汇报时请替换成有出处的数据。
+  key_line: 约三成摘要与原文不一致
+  evidence_refs:
+  - E2
+  timing_sec: 38
+  owner: Individual
+  visual:
+    type: chart
+    purpose: 用原生可编辑图表承担证据。
+    layout_family: dashboard
+    emphasis: visual
+    details:
+      measure: 摘要与原文不一致的比例
+      unit: '%'
+      scope: 课堂示意分组，3 个类别
+      source: 课堂示意数据（E2，非已发表统计）
+      takeaway: 约三成摘要与原文不一致
+      series:
+      - name: 占比
+        labels:
+        - 完全忠实
+        - 部分不忠实
+        - 明显不忠实
+        values:
+        - 68
+        - 22
+        - 10
+- id: 6
+  title: 案例：一条检索不到的「文献」
+  layout: visual-annotated
+  layout_lock: false
+  role: evidence
+  kind: content
+  claim: 格式自洽，却检索不到
+  supporting_points:
+  - 作者与年份格式自洽
+  - 期刊名真实存在
+  - 组合后检索不到
+  content:
+  - 示例引用（虚构）与三条标注
+  speaker_notes: 这个案例说明危险点在哪里。模型给出的这条引用，作者和年份格式自洽，期刊名也真实存在，但把它当成一个整体去检索，却是找不到的。也就是说，每个局部都合理，组合起来才失效。这正是人工快速核对容易放过它的原因。所以核对不能只看格式，要看整体是否可溯源。
+  key_line: 格式自洽 ≠ 真实存在
+  evidence_refs:
+  - E1
+  timing_sec: 40
+  owner: Individual
+  visual:
+    type: typographic_evidence
+    purpose: 用排版化的引用证据替代虚构照片。
+    emphasis: balanced
+- id: 7
+  title: 降低幻觉：先取证，再回答
+  layout: compare-criteria
+  layout_lock: false
+  role: solution
+  kind: content
+  claim: 把查证写进流程
+  supporting_points:
+  - 仅提示「不要编」：零成本、效果不稳定
+  - 先检索再回答（RAG）：引用可核验、补足知识边界
+  content:
+  - 推荐方案与对照方案的不对称对比
+  speaker_notes: 这一页不是二选一，而是说明两种做法的性质不同。左边只是提示模型不要编，成本接近零，但没有改变它的信息条件，所以效果不稳定。右边是先检索再回答，把外部材料放进上下文，让引用可以核验，也补上了知识边界。视觉上我刻意让推荐方案占更大的权重，因为它们的结论并不等权。
+  key_line: 先取证，再回答
+  evidence_refs:
+  - E1
+  timing_sec: 42
+  owner: Individual
+  visual:
+    type: comparison
+    purpose: 不对称对比，首选方案占主导权重。
+    layout_family: comparison
+    emphasis: balanced
+    details:
+      dimensions:
+      - 成本
+      - 可核验性
+      - 对知识边界的覆盖
+      items:
+      - 仅提示「不要编」
+      - 先检索再回答（RAG）
+- id: 8
+  title: 回到这条推理链
+  layout: process-horizontal
+  layout_lock: false
+  role: conclusion
+  kind: content
+  claim: 先取证，再回答
+  supporting_points:
+  - 幻觉源于优化目标
+  - 流畅不等于忠实
+  - 先取证，再回答
+  content:
+  - 三步回顾，第三步为结论并加权重
+  speaker_notes: 最后把论证顺序复述一遍。第一步，幻觉来自优化目标；第二步，流畅不等于忠实；第三步，所以对策是把查证放进流程。请注意这三步是有先后关系的推理链，不是三个并列的要点。落点只有一个：先取证，再回答。
+  key_line: 先取证，再回答
+  evidence_refs:
+  - E1
+  timing_sec: 30
+  owner: Individual
+  visual:
+    type: process
+    purpose: 用带强调终点的路径强化论证顺序。
+    layout_family: process-path
+    emphasis: balanced
+    details:
+      steps:
+      - 幻觉源于优化目标
+      - 流畅不等于忠实
+      - 先取证，再回答
+- id: 9
+  title: 流畅是能力，忠实是选择。
+  layout: closing-takeaway
+  layout_lock: false
+  role: closing
+  kind: closing
+  claim: 流畅是能力，忠实是选择。
+  content:
+  - 结语呼应封面论点
+  speaker_notes: 收束成一句话：流畅是一种能力，忠实是一种选择。我们无法要求模型凭自觉变得诚实，但可以在流程里强制它先取证。谢谢大家，下面是提问时间。
+  key_line: 流畅是能力，忠实是选择。
+  timing_sec: 22
+  owner: Individual
+  visual:
+    type: typographic
+    purpose: 用呼应收尾，避免「谢谢观看」式结尾。
+    emphasis: text

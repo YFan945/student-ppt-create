@@ -98,6 +98,8 @@ function executableLayout(layout) {
   return {
     ...layout,
     composition: `${family.composition}:${layout.silhouette}`,
+    // 注意：当前 8 个 family 的 shape_slots 均只有 1 个槽位，LAYOUT_VARIANTS 的
+    // 第二个形状（备用风格）不会被消费；未来引入双槽 family 时此映射自动生效。
     shape_slots: family.shape_slots.map((role, index) => ({
       role,
       shape: shapes[index % shapes.length],
@@ -353,7 +355,10 @@ function resolveLayout(id, safeArea, options = {}) {
 
   const mirror = Boolean(options.mirror);
   const zones = {};
-  for (const [name, normalized] of Object.entries(layout.zones)) {
+  // executableLayout 用 `layout.zones &&` 做空值防御，这里却直接 Object.entries，
+  // 两处假设矛盾；外部版式源缺 zones 时会抛 TypeError。统一为"缺失即空分区"。
+  for (const [name, normalized] of Object.entries(layout.zones || {})) {
+    if (!Array.isArray(normalized) || normalized.length < 4) continue;
     const [nx, ny, nw, nh] = normalized;
     const resolvedX = mirror ? 1 - nx - nw : nx;
     zones[name] = {

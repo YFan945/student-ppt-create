@@ -1,7 +1,7 @@
 {
   "name": "student-presentation-suite",
   "private": true,
-  "version": "0.6.0",
+  "version": "0.8.0",
   "description": "Development and local fallback dependencies for the Claude Code student presentation plugin.",
   "scripts": {
     "smoke": "node scripts/run_with_pptxgenjs.js --probe"
@@ -15,6 +15,7 @@
     "prettier": "3.6.2"
   },
   "overrides": {
-    "brace-expansion": "^2.0.1"
+    "brace-expansion": "^2.0.1",
+    "js-yaml": "4.3.2"
   }
 }

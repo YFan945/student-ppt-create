@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://student-presentation-suite.local/image-sources.schema.json",
+  "title": "Image sources declaration",
+  "description": "Declares which image providers a session may use. The plugin never bundles or assumes a vendor; this file is how a host or user makes search/generation capability explicit so image planning can gate on it.",
+  "type": "object",
+  "required": ["version", "providers"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": "0.8"},
+    "permission": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow_web_search": {"type": "boolean"},
+        "allow_generation": {"type": "boolean"},
+        "record_source": {"type": "boolean"}
+      }
+    },
+    "providers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "enabled", "permission"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["user-assets", "web-search", "image-generation"]},
+          "enabled": {"type": "boolean"},
+          "capability": {
+            "type": "string",
+            "description": "How the session reaches this provider, e.g. skill:imagegen, websearch, command:<binary>."
+          },
+          "command": {"type": "string"},
+          "requires": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Executable names that must resolve on PATH for this provider to be usable."
+          },
+          "assets_dir": {
+            "type": "string",
+            "description": "Project-relative directory holding user-provided assets."
+          },
+          "permission": {
+            "enum": ["user-provided", "licensed", "public-domain", "generated", "suite-original"]
+          },
+          "notes": {"type": "string"}
+        }
+      }
+    }
+  }
+}

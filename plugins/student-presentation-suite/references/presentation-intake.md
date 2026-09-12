@@ -132,6 +132,9 @@ Basic）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内
   - `User-provided image/用户照片` → 优先使用用户提供的素材
   - `Ask-before-web-search/每次联网前询问`
   - `No images/无图` → 纯图表/形状/文字版式
+  - 选项可用性以当前会话解析出的 image capability 为准：`image_generation_ready` 为 false
+    时不得提供"内置生图 skill 生成插图"为可兑现项，`image_search_ready` 为 false 时不得
+    承诺联网搜图；声明机制与降级见 `../../references/image-sourcing.md`。
 - `Citation style` → 不询问，默认 `Classroom/课堂引用`（详见 `../../references/evidence-and-citations.md`）
 - Round 3 只有视觉风格（占 2 轮）与配图 1 个问题，若需要可把 Deliverables 提前到本轮填满槽位
 
