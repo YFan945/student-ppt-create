@@ -8,8 +8,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$Repository = "https://github.com/YFan945/Personal-Student.git"
-$Branch = "claude-code"
+$Repository = "https://github.com/YFan945/student-ppt-create.git"
+$Branch = "main"
 $Marketplace = "claude-personal"
 $Plugin = "student-presentation-suite"
 $PluginId = "$Plugin@$Marketplace"

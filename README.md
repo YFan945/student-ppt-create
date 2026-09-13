@@ -2,11 +2,12 @@
 
 [中文](README-zh.md) | English
 
-> This branch is built specifically for **Claude Code**. Its installation,
-> dependencies, and runtime behavior are not intended for Codex. If you use
-> **OpenAI Codex**, see the
-> [`main` branch](https://github.com/YFan945/Personal-Student/tree/main)
-> instead.
+> This repository is the Claude Code-only marketplace for
+> `student-presentation-suite`. Installation, dependencies, and runtime are
+> Claude Code specific — do not install it in **OpenAI Codex**.
+> The **publishable source of truth is the `main` branch of this repository**
+> (`YFan945/student-ppt-create`); the former `claude-code` branch of
+> `YFan945/Personal-Student` is retired.
 
 `student-presentation-suite` supports student-owned university presentations,
 including coursework reports, thesis defenses, and group presentations. In
@@ -96,8 +97,8 @@ npm --version
 Run in PowerShell:
 
 ```powershell
-git clone --branch claude-code --single-branch `
-  https://github.com/YFan945/Personal-Student.git `
+git clone --branch main --single-branch `
+  https://github.com/YFan945/student-ppt-create.git `
   "$env:USERPROFILE\.agents\claude-plugins"
 
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
@@ -126,8 +127,8 @@ yourself or explicitly opt in to the pinned 8.0.423 user-local download (about 2
 
 ```powershell
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
-git switch claude-code
-git pull --ff-only origin claude-code
+git switch main
+git pull --ff-only origin main
 .\scripts\install_claude_plugin.ps1
 ```
 
@@ -367,11 +368,11 @@ They are under the project directory from which Claude Code was started:
 `outputs/`. If `CLAUDE_PROJECT_DIR` is set, the location is
 `${CLAUDE_PROJECT_DIR}/outputs`.
 
-### Can Codex Use This Branch?
+### Can Codex Use This Repository?
 
-No. This branch supports Claude Code only. Use the
-[`main` branch](https://github.com/YFan945/Personal-Student/tree/main)
-for Codex.
+No. This repository supports Claude Code only, and `main` here is the
+publishable source of truth. Codex users need their own Codex implementation
+repository, which this project does not provide.
 
 ## Development And Releases
 

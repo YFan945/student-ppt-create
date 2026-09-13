@@ -11,7 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 _SEMVER_RE = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
@@ -56,15 +55,15 @@ def release_branch_error(
     ref_name: str,
 ) -> str | None:
     if head_ref:
-        if base_ref != "claude-code":
+        if base_ref != "main":
             return (
-                "Claude marketplace pull requests must target claude-code, "
+                "Claude marketplace pull requests must target main, "
                 f"got {base_ref!r}"
             )
         return None
     branch = local_branch or ref_name
-    if branch != "claude-code":
-        return f"Claude marketplace must be released from claude-code, got {branch!r}"
+    if branch != "main":
+        return f"Claude marketplace must be released from main, got {branch!r}"
     return None
 
 
