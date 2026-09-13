@@ -1,0 +1,37 @@
+{
+  "version": "0.8",
+  "permission": {
+    "allow_web_search": false,
+    "allow_generation": false,
+    "record_source": true
+  },
+  "providers": [
+    {
+      "id": "sample-user-assets",
+      "kind": "user-assets",
+      "enabled": true,
+      "assets_dir": "assets",
+      "permission": "user-provided",
+      "notes": "Empty by default. Drop real user photos/screenshots here to reproduce the image-led variant."
+    },
+    {
+      "id": "sample-imagegen",
+      "kind": "image-generation",
+      "enabled": false,
+      "capability": "skill:imagegen",
+      "permission": "generated",
+      "notes": "Enable together with permission.allow_generation for the generated-hero cover variant."
+    },
+    {
+      "id": "sample-web-search",
+      "kind": "web-search",
+      "enabled": false,
+      "capability": "websearch",
+      "requires": [
+        "curl"
+      ],
+      "permission": "licensed",
+      "notes": "Enable together with permission.allow_web_search for real-screenshot evidence pages."
+    }
+  ]
+}

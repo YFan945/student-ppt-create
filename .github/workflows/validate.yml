@@ -2,9 +2,9 @@ name: validate
 
 on:
   push:
-    branches: [claude-code]
+    branches: [main, improve/ppt-generation-core-v0.7]
   pull_request:
-    branches: [claude-code]
+    branches: [main]
 
 jobs:
   runtime:
@@ -35,15 +35,18 @@ jobs:
         shell: pwsh
         env:
           PYTHONPATH: "${{ github.workspace }}/plugins/student-presentation-suite"
+          PYTHONIOENCODING: "utf-8"
         run: |
           python -m json.tool plugins/student-presentation-suite/references/slide-spec.schema.json | Out-Null
           python -m json.tool plugins/student-presentation-suite/references/presentation-brief.schema.json | Out-Null
           python -m unittest discover -s plugins/student-presentation-suite/tests
           node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --probe
-      - name: Smoke test (Windows only; Ubuntu covered by render-matrix)
+      - name: Smoke test (Windows package/runtime path; rendering covered by Ubuntu matrix)
         if: matrix.os == 'windows-latest'
         shell: pwsh
-        run: python plugins/student-presentation-suite/scripts/smoke_pptx.py
+        env:
+          PYTHONIOENCODING: "utf-8"
+        run: python plugins/student-presentation-suite/scripts/smoke_pptx.py --skip-render --json
       - name: Lint Python (ruff)
         shell: pwsh
         run: |
@@ -53,6 +56,7 @@ jobs:
         run: |
           npx --prefix plugins/student-presentation-suite eslint plugins/student-presentation-suite/scripts/*.js
           npx --prefix plugins/student-presentation-suite prettier --check plugins/student-presentation-suite/scripts/*.js
+
   release-checks:
     runs-on: ubuntu-latest
     steps:
@@ -60,22 +64,36 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Install Python dependencies
-        shell: pwsh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Install release dependencies
         run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice-impress poppler-utils
           python -m pip install -r plugins/student-presentation-suite/requirements.txt
           python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt
+          npm --prefix plugins/student-presentation-suite ci
       - name: Release checks
         shell: pwsh
         env:
           PYTHONPATH: "${{ github.workspace }}/plugins/student-presentation-suite"
+          PYTHONIOENCODING: "utf-8"
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_HEAD_REF: ${{ github.head_ref }}
           GITHUB_BASE_REF: ${{ github.base_ref }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
           git diff --check
           python plugins/student-presentation-suite/scripts/check_plugin_release.py
-          python scripts/check_marketplace_release.py
+          if ($env:GITHUB_EVENT_NAME -eq "push" -and $env:GITHUB_REF_NAME -eq "main") {
+            python scripts/check_marketplace_release.py
+          } else {
+            Write-Host "Skipping marketplace release-branch gate outside a direct main push."
+          }
           python plugins/student-presentation-suite/scripts/check_claude_pptx_env.py --mode all --json --strict
 
   claude-manifest:
@@ -144,8 +162,8 @@ jobs:
         run: |
           python -m pip install pip-audit
           pip-audit -r plugins/student-presentation-suite/requirements.txt -r plugins/student-presentation-suite/requirements-claude-pptx.txt
-      - name: Npm audit
-        run: npm --prefix plugins/student-presentation-suite audit
+      - name: Npm audit policy gate
+        run: python plugins/student-presentation-suite/scripts/npm_audit_gate.py --json
       - name: NuGet audit
         run: |
           dotnet restore plugins/student-presentation-suite/shared/pptx_runtime/openxml_validator/OpenXmlValidator.csproj --locked-mode

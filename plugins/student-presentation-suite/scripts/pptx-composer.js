@@ -1,9 +1,19 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
 const H = require('pptx-helpers');
 const L = require('pptx-layouts');
 const V = require('pptx-visuals');
+
+// 同一 asset 路径在一次 deck 构建里最多被探测 5 次（每页 preflight + render 各一次），
+// 网络盘下 IO 放大明显。构建是一次性进程，按绝对路径缓存存在性即可。
+const _assetExistsCache = new Map();
+function assetExists(asset) {
+  const key = path.resolve(String(asset));
+  if (!_assetExistsCache.has(key)) _assetExistsCache.set(key, fs.existsSync(key));
+  return _assetExistsCache.get(key);
+}
 
 const FAMILY_BY_TYPE = Object.freeze({
   chart: 'dashboard',
@@ -68,7 +78,7 @@ function contextFor(slideSpec, context) {
     layout: slideSpec.layout,
     layoutFamily: visualFamily(slideSpec),
     itemCount,
-    hasAsset: Boolean(asset && fs.existsSync(asset)),
+    hasAsset: Boolean(asset && assetExists(asset)),
     hasData: Boolean(slideSpec.visual?.details?.series || slideSpec.visual?.details?.metrics),
     hasQuote: Boolean(slideSpec.visual?.details?.quote || slideSpec.visual?.type === 'quote'),
     seed: context.seed || `${context.topic || 'deck'}:${slideSpec.id}`,
@@ -204,7 +214,7 @@ function preflightSlide(slideSpec, context) {
       ),
     );
   }
-  const missingAsset = Boolean(slideSpec.visual?.asset && !fs.existsSync(slideSpec.visual.asset));
+  const missingAsset = Boolean(slideSpec.visual?.asset && !assetExists(slideSpec.visual.asset));
   errors.push(
     ...results
       .filter((result) => !result.ok)
@@ -216,6 +226,7 @@ function preflightSlide(slideSpec, context) {
     ok: errors.length === 0,
     slide_id: slideSpec.id,
     layout: layout.id || null,
+    composition: layout,
     composition_mode: layout.mode,
     suggestions: layout.suggestions?.map((item) => item.id) || [],
     text: results,
@@ -238,11 +249,15 @@ function fallbackIllustration(slide, slideSpec, box, context) {
   );
 }
 
-function renderSlide(slide, slideSpec, context) {
-  const preflight = preflightSlide(slideSpec, context);
-  if (!preflight.ok)
-    throw new RangeError(`Slide ${slideSpec.id} preflight failed: ${preflight.errors.join('; ')}`);
-  const layout = actualComposition(slideSpec, context);
+function renderSlide(slide, slideSpec, context, preflight) {
+  // compose 已对全部页跑过 preflight 并携带 composition 结果；外部直调（无第 4 参）
+  // 时才自行计算。此前每页重复跑 2 次 preflight、3 次 actualComposition。
+  const check = preflight || preflightSlide(slideSpec, context);
+  if (!check.ok)
+    throw new RangeError(`Slide ${slideSpec.id} preflight failed: ${check.errors.join('; ')}`);
+  const layout = check.composition;
+  if (!layout)
+    throw new RangeError(`Slide ${slideSpec.id} preflight result lacks composition layout`);
   H.addBackground(slide, context.tokens, false);
   H.addFittedText(
     slide,
@@ -277,7 +292,7 @@ function renderSlide(slide, slideSpec, context) {
   }
   if (slideSpec.visual) {
     const family = visualFamily(slideSpec);
-    const assetUsable = !slideSpec.visual.asset || fs.existsSync(slideSpec.visual.asset);
+    const assetUsable = !slideSpec.visual.asset || assetExists(slideSpec.visual.asset);
     if (family && assetUsable) {
       const visualBox = family === 'summary' ? layout.zones.body : layout.zones.visual;
       V.renderVisualSpec(slide, slideSpec.visual, family, visualBox, context.tokens, context.lang);
@@ -317,11 +332,14 @@ function renderDeck(pptx, spec, context) {
   const preflight = spec.slides.map((slideSpec) => preflightSlide(slideSpec, resolved));
   const blockers = preflight.filter((item) => !item.ok);
   if (blockers.length)
+    // 拼上每页的具体违规项，否则调用方只能看到 slide_id，无法定位违规区域。
     throw new RangeError(
-      `Deck preflight failed on slides: ${blockers.map((item) => item.slide_id).join(', ')}`,
+      `Deck preflight failed on slides: ${blockers
+        .map((item) => `${item.slide_id}(${(item.errors || []).join('; ')})`)
+        .join(', ')}`,
     );
-  const rendered = spec.slides.map((slideSpec) =>
-    renderSlide(pptx.addSlide(), slideSpec, resolved),
+  const rendered = spec.slides.map((slideSpec, index) =>
+    renderSlide(pptx.addSlide(), slideSpec, resolved, preflight[index]),
   );
   return { preflight, rendered };
 }

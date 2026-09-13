@@ -3,5 +3,9 @@
 # LibreOffice 和 Poppler 是系统工具，须单独安装。
 -r requirements.txt
 Pillow>=10.0
+# python-pptx 被 tests（test_design_tokens 构造 fixture）直接 import，
+# 过去只靠 markitdown[pptx] 传递依赖，显式声明避免依赖漂移。
+python-pptx>=1.0
+# markitdown 以 CLI 子进程方式被 pptx_tool.py 调用（非 import）。
 markitdown[pptx]>=0.1.0,<1.0
 defusedxml>=0.7.1,<1.0

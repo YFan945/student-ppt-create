@@ -18,6 +18,11 @@ def parse_args() -> argparse.Namespace:
         description="Generate and validate a temporary PPTX through the suite runtime"
     )
     parser.add_argument("--json", action="store_true", help="Emit compact JSON")
+    parser.add_argument(
+        "--skip-render",
+        action="store_true",
+        help="Stop after generation and package validation (for runners without LibreOffice/Poppler)",
+    )
     return parser.parse_args()
 
 
@@ -92,20 +97,44 @@ pptx.writeFile({ fileName: process.argv[2] });
                 + validation.stdout
                 + validation.stderr
             )
+        package_report = work / "smoke-package-report.json"
+        if not package_report.is_file():
+            raise SystemExit("Generation/validation did not publish a package report.")
+
+        if args.skip_render:
+            result = {
+                "ok": True,
+                "slide_count": 1,
+                "stage": "package-validation",
+                "render_skipped": True,
+            }
+            print(json.dumps(result, indent=None if args.json else 2))
+            return
+
         notes.write_text("# Speaker notes\n\nSmoke test.", encoding="utf-8")
         render_dir = work / "render"
         rendered = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "pptx_tool.py"), "render", str(pptx), "--output-dir", str(render_dir), "--prefix", "smoke"],
-            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "pptx_tool.py"),
+                "render",
+                str(pptx),
+                "--output-dir",
+                str(render_dir),
+                "--prefix",
+                "smoke",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if rendered.returncode:
             raise SystemExit(rendered.stdout + rendered.stderr)
         preview = render_dir / "smoke-1.png"
         if not preview.is_file():
             raise SystemExit("Rendered smoke preview is missing.")
-        package_report = work / "smoke-package-report.json"
-        if not package_report.is_file():
-            raise SystemExit("Generation/validation did not publish a package report.")
         spec = work / "smoke-slide-spec.json"
         spec_report = work / "smoke-slide-spec-report.json"
         spec.write_text(
@@ -141,29 +170,84 @@ pptx.writeFile({ fileName: process.argv[2] });
                 raise SystemExit(evidence.stdout + evidence.stderr)
         content_qa = work / "smoke-content-qa.json"
         content_result = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "pptx_tool.py"), "content-qa", "--pptx", str(pptx), "--slide-spec", str(spec), "--output", str(content_qa)],
-            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "pptx_tool.py"),
+                "content-qa",
+                "--pptx",
+                str(pptx),
+                "--slide-spec",
+                str(spec),
+                "--output",
+                str(content_qa),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if content_result.returncode:
             raise SystemExit(content_result.stdout + content_result.stderr)
         visual_findings = work / "smoke-visual-findings.json"
         visual_findings.write_text(
-            json.dumps({"pages": [{"slide": 1, "checked": True, "blockers": [], "warnings": [], "notes": "Rendered one-page runtime smoke inspected."}]}),
+            json.dumps(
+                {
+                    "pages": [
+                        {
+                            "slide": 1,
+                            "checked": True,
+                            "blockers": [],
+                            "warnings": [],
+                            "notes": "Rendered one-page runtime smoke inspected.",
+                        }
+                    ]
+                }
+            ),
             encoding="utf-8",
         )
         visual_inspection = work / "smoke-visual-inspection.json"
         visual_result = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "pptx_tool.py"), "visual-inspection", "--pptx", str(pptx), "--preview", str(preview), "--findings", str(visual_findings), "--output", str(visual_inspection)],
-            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "pptx_tool.py"),
+                "visual-inspection",
+                "--pptx",
+                str(pptx),
+                "--preview",
+                str(preview),
+                "--findings",
+                str(visual_findings),
+                "--output",
+                str(visual_inspection),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if visual_result.returncode:
             raise SystemExit(visual_result.stdout + visual_result.stderr)
         asset_manifest = work / "smoke-asset-manifest.json"
-        asset_manifest.write_text(json.dumps({"deck": str(pptx), "assets": []}), encoding="utf-8")
+        asset_manifest.write_text(
+            json.dumps({"deck": str(pptx), "assets": []}), encoding="utf-8"
+        )
         asset_report = work / "smoke-asset-manifest-report.json"
         asset_result = subprocess.run(
-            [sys.executable, str(ROOT / "scripts" / "pptx_tool.py"), "validate-asset-manifest", str(asset_manifest), "--output", str(asset_report)],
-            check=False, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "pptx_tool.py"),
+                "validate-asset-manifest",
+                str(asset_manifest),
+                "--output",
+                str(asset_report),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if asset_result.returncode:
             raise SystemExit(asset_result.stdout + asset_result.stderr)
@@ -216,7 +300,7 @@ pptx.writeFile({ fileName: process.argv[2] });
                 "--qa-manifest",
                 str(qa_manifest),
                 "--package-report",
-                str(work / "smoke-package-report.json"),
+                str(package_report),
                 "--output",
                 str(delivery_report),
                 "--strict",
@@ -236,7 +320,11 @@ pptx.writeFile({ fileName: process.argv[2] });
             raise SystemExit(
                 f"delivery check output is not valid JSON:\n{proc.stdout}\n{proc.stderr}"
             )
-        if result.get("slide_count") != 1 or not result.get("ok") or not delivery_report.is_file():
+        if (
+            result.get("slide_count") != 1
+            or not result.get("ok")
+            or not delivery_report.is_file()
+        ):
             raise SystemExit(f"Unexpected smoke result: {result}")
         result = {"ok": True, "slide_count": 1}
         print(json.dumps(result, indent=None if args.json else 2))

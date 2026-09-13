@@ -38,8 +38,12 @@ PRIMARY_TITLE_PLACEHOLDER_TYPES = {"title", "ctrTitle"}
 BODY_PLACEHOLDER_TYPES = {"body", "dt", "ftr", "sldNum"}
 HEADING_NAME_HINTS = ("title", "subtitle", "heading", "header", "标题", "副标题")
 DEFAULT_MAX_PPTX_BYTES = 80 * 1024 * 1024
-DEFAULT_SLIDE_WIDTH_EMU = 12_192_000
-DEFAULT_SLIDE_HEIGHT_EMU = 6_858_000
+# 画布事实标准在 JS 侧（pptx-helpers.js SLIDE_W_IN/SLIDE_H_IN = 10×5.625in，
+# applyTokens 以 STUDENT_WIDE 版式写盘）；这里的默认值只是 presentation.xml
+# 缺失 sldSz 时的兜底，必须与 JS 产物一致，否则静态分析会按错误画布判断越界。
+# tests/test_stack_contract.py 锁定两侧一致。
+DEFAULT_SLIDE_WIDTH_EMU = 9_144_000
+DEFAULT_SLIDE_HEIGHT_EMU = 5_143_500
 EDGE_MARGIN_EMU = 72_000
 MIN_UNINTENDED_OVERLAP_EMU = 72_000
 ALIGNMENT_TOLERANCE_EMU = 38_100  # 3pt

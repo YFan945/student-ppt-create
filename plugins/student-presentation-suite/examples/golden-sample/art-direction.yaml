@@ -1,0 +1,83 @@
+version: "0.8"
+concept: "Evidence-first editorial classroom deck: confidence is fluency, not truth"
+style_seed: "Academic Rigorous"
+grammar: "coursework"
+
+color_system:
+  dominant_role: "canvas"
+  dominant_share_pct: 68
+  contrast_mode: "dark-light-sandwich"
+  accent_usage: "Only evidence, key claims, the recommended option and the recap conclusion"
+
+typography:
+  personality: "editorial sans with restrained serif accent"
+  cover_title_pt: 40
+  slide_title_pt: 32
+  key_statement_pt: 26
+  body_pt: 22
+  caption_pt: 11
+  title_body_ratio: 1.45
+  emphasis_methods: ["size", "weight", "position", "accent color"]
+
+imagery:
+  strategy: "evidence-first; conceptual hero only when it carries meaning"
+  crop_language: "half-bleed or inset evidence panel; never a small floating stock photo"
+  treatment: "natural color, no decorative gradient overlays"
+  subject_priority: ["real cited material", "typographic evidence", "purpose-built diagram"]
+
+icon_language:
+  usage: "none by default; only as a small navigation or state accent"
+  style: "single-weight line icons"
+  max_per_slide: 2
+
+chart_grammar:
+  default: "native PowerPoint bar chart with one accent series and direct labels"
+  labels: "direct data labels; category labels kept legible"
+  gridlines: "quiet or removed"
+  takeaway: "one takeaway sentence is placed beside the chart and read first"
+
+component_language:
+  cards: "exception, not default; used only for genuinely parallel annotated items"
+  borders: "hairline for grouping, heavier accent border only for the preferred option"
+  radius: "small"
+  shadows: "none"
+  separators: "whitespace first; a single rule or spine only when it encodes a path"
+
+motif:
+  name: "evidence rail"
+  description: "A repeated caption/bracket treatment that marks sourced or constructed evidence"
+  allowed_on: ["cover", "evidence", "closing"]
+
+background_rhythm:
+  - role: cover
+    mode: dark
+  - role: content
+    mode: light
+  - role: section
+    mode: light
+  - role: closing
+    mode: dark
+
+asset_plan:
+  hero_visuals: 1
+  evidence_visuals: 2
+  diagrams: 1
+  native_charts: 1
+  typography_led: 1
+
+high_leverage_slides:
+  - slide: 1
+    reason: "Cover establishes the deck's visual thesis and the first impression."
+  - slide: 2
+    reason: "Hook page must create curiosity and state the core claim before any detail."
+  - slide: 5
+    reason: "Central evidence page determines whether the argument is credible."
+  - slide: 9
+    reason: "Closing must visually call back to the cover thesis and land on one line."
+
+avoid:
+  - "three equal cards as the default rendering of parallel causes"
+  - "an empty ellipse or placeholder frame standing in for a real image"
+  - "all slides sharing the same title/body silhouette"
+  - "filler icons or decorative photos"
+  - "caption text overlapping chart axis labels"

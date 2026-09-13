@@ -1,0 +1,196 @@
+{
+  "version": "0.8",
+  "query": {
+    "role": "prove",
+    "grammar": "academic-research",
+    "visual_strategy": "chart",
+    "density": "medium",
+    "tags": [
+      "evidence",
+      "result"
+    ]
+  },
+  "selected": [
+    {
+      "id": "data-big-number-proof",
+      "roles": [
+        "prove",
+        "synthesize"
+      ],
+      "grammars": [
+        "academic-research",
+        "defense-competition",
+        "business-proposal",
+        "coursework"
+      ],
+      "visual_strategies": [
+        "chart",
+        "mixed"
+      ],
+      "density": "medium",
+      "silhouette": "big-number-chart",
+      "tags": [
+        "big-number",
+        "evidence",
+        "chart",
+        "result"
+      ],
+      "why_it_works": "The takeaway number is read before the chart; the chart then proves rather than competes with the conclusion.",
+      "dominant_element": "key_number",
+      "focal_share": 0.42,
+      "wireframe": {
+        "title": [
+          0.06,
+          0.06,
+          0.73,
+          0.1
+        ],
+        "focus": [
+          0.07,
+          0.25,
+          0.3,
+          0.3
+        ],
+        "body": [
+          0.08,
+          0.59,
+          0.28,
+          0.15
+        ],
+        "visual": [
+          0.43,
+          0.22,
+          0.5,
+          0.55
+        ],
+        "source": [
+          0.44,
+          0.81,
+          0.46,
+          0.05
+        ]
+      },
+      "adaptation_notes": "Highlight one series/number; suppress default chart chrome.",
+      "retrieval_score": 31.0,
+      "match_reasons": [
+        "role",
+        "grammar",
+        "visual-strategy",
+        "density",
+        "tags:evidence,result"
+      ]
+    },
+    {
+      "id": "data-figure-caption",
+      "roles": [
+        "prove"
+      ],
+      "grammars": [
+        "academic-research",
+        "coursework"
+      ],
+      "visual_strategies": [
+        "image",
+        "chart"
+      ],
+      "density": "medium",
+      "silhouette": "figure-caption",
+      "tags": [
+        "research-figure",
+        "caption",
+        "evidence",
+        "annotation"
+      ],
+      "why_it_works": "A large research figure owns the page while a caption/takeaway rail explains exactly what the audience should notice.",
+      "dominant_element": "figure",
+      "focal_share": 0.65,
+      "wireframe": {
+        "title": [
+          0.05,
+          0.05,
+          0.72,
+          0.1
+        ],
+        "visual": [
+          0.06,
+          0.2,
+          0.68,
+          0.61
+        ],
+        "body": [
+          0.78,
+          0.23,
+          0.17,
+          0.42
+        ],
+        "source": [
+          0.06,
+          0.84,
+          0.65,
+          0.05
+        ]
+      },
+      "adaptation_notes": "Use annotations/callouts sparingly; preserve figure legibility and source.",
+      "retrieval_score": 28.0,
+      "match_reasons": [
+        "role",
+        "grammar",
+        "visual-strategy",
+        "density",
+        "tags:evidence"
+      ]
+    },
+    {
+      "id": "data-small-multiples",
+      "roles": [
+        "prove"
+      ],
+      "grammars": [
+        "academic-research",
+        "technical-engineering"
+      ],
+      "visual_strategies": [
+        "chart",
+        "diagram"
+      ],
+      "density": "high",
+      "silhouette": "small-multiples",
+      "tags": [
+        "small-multiples",
+        "trend",
+        "series",
+        "comparison"
+      ],
+      "why_it_works": "Repeated charts on one shared scale reveal a pattern across groups that a single stacked chart would hide.",
+      "dominant_element": "chart",
+      "focal_share": 0.64,
+      "wireframe": {
+        "title": [
+          0.05,
+          0.05,
+          0.72,
+          0.1
+        ],
+        "visual": [
+          0.07,
+          0.2,
+          0.86,
+          0.62
+        ],
+        "takeaway": [
+          0.07,
+          0.84,
+          0.62,
+          0.08
+        ]
+      },
+      "adaptation_notes": "Share axes across panels and label once; per-panel legends add noise.",
+      "retrieval_score": 23.0,
+      "match_reasons": [
+        "role",
+        "grammar",
+        "visual-strategy"
+      ]
+    }
+  ]
+}

@@ -21,7 +21,12 @@
           "height": {"type": ["integer", "null"], "minimum": 1},
           "crop": {"type": ["object", "null"]},
           "alt_text": {"type": "string", "minLength": 1},
-          "fallback": {"type": "string", "minLength": 1}
+          "fallback": {"type": "string", "minLength": 1},
+          "provider_id": {"type": ["string", "null"]},
+          "source_url": {"type": ["string", "null"]},
+          "license": {"type": ["string", "null"]},
+          "retrieved_at": {"type": ["string", "null"]},
+          "prompt": {"type": ["string", "null"]}
         }
       }
     }

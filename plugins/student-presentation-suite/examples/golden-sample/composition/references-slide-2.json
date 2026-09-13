@@ -1,0 +1,178 @@
+{
+  "version": "0.8",
+  "query": {
+    "role": "frame",
+    "grammar": "coursework",
+    "visual_strategy": "typography",
+    "density": "low",
+    "tags": []
+  },
+  "selected": [
+    {
+      "id": "claim-oversized-keyword",
+      "roles": [
+        "frame",
+        "explain",
+        "synthesize"
+      ],
+      "grammars": [
+        "academic-research",
+        "coursework",
+        "defense-competition",
+        "brand-creative"
+      ],
+      "visual_strategies": [
+        "typography"
+      ],
+      "density": "low",
+      "silhouette": "type-dominant",
+      "tags": [
+        "oversized-keyword",
+        "thesis",
+        "contrast"
+      ],
+      "why_it_works": "One word or phrase owns the page while supporting explanation is intentionally subordinate.",
+      "dominant_element": "key_statement",
+      "focal_share": 0.64,
+      "wireframe": {
+        "title": [
+          0.07,
+          0.08,
+          0.5,
+          0.1
+        ],
+        "focus": [
+          0.07,
+          0.24,
+          0.78,
+          0.38
+        ],
+        "body": [
+          0.58,
+          0.67,
+          0.33,
+          0.17
+        ]
+      },
+      "adaptation_notes": "Do not turn parallel bullets into numbered blocks; use this only when a genuine thesis can dominate.",
+      "retrieval_score": 25.0,
+      "match_reasons": [
+        "role",
+        "grammar",
+        "visual-strategy",
+        "density"
+      ]
+    },
+    {
+      "id": "hook-question-tension",
+      "roles": [
+        "introduce",
+        "frame"
+      ],
+      "grammars": [
+        "coursework",
+        "academic-research",
+        "defense-competition"
+      ],
+      "visual_strategies": [
+        "typography",
+        "mixed"
+      ],
+      "density": "low",
+      "silhouette": "question-hook",
+      "tags": [
+        "hook",
+        "question",
+        "tension",
+        "minimal"
+      ],
+      "why_it_works": "A single unresolved question plus one striking fact creates immediate curiosity, which a table-of-contents card cannot.",
+      "dominant_element": "key_statement",
+      "focal_share": 0.6,
+      "wireframe": {
+        "focus": [
+          0.08,
+          0.24,
+          0.7,
+          0.3
+        ],
+        "body": [
+          0.08,
+          0.6,
+          0.5,
+          0.16
+        ],
+        "title": [
+          0.08,
+          0.08,
+          0.6,
+          0.1
+        ]
+      },
+      "adaptation_notes": "Reserve for the first content page; do not stack several questions or turn it into an agenda list.",
+      "retrieval_score": 25.0,
+      "match_reasons": [
+        "role",
+        "grammar",
+        "visual-strategy",
+        "density"
+      ]
+    },
+    {
+      "id": "image-pull-quote-duotone",
+      "roles": [
+        "synthesize",
+        "frame",
+        "conclude"
+      ],
+      "grammars": [
+        "brand-creative",
+        "coursework",
+        "academic-research"
+      ],
+      "visual_strategies": [
+        "image",
+        "typography"
+      ],
+      "density": "low",
+      "silhouette": "image-quote",
+      "tags": [
+        "pull-quote",
+        "image-led",
+        "overlay",
+        "quote"
+      ],
+      "why_it_works": "A short quote over a purposeful image makes one claim memorable while the image carries tone rather than information.",
+      "dominant_element": "quote",
+      "focal_share": 0.66,
+      "wireframe": {
+        "focus": [
+          0.1,
+          0.26,
+          0.62,
+          0.34
+        ],
+        "body": [
+          0.1,
+          0.64,
+          0.4,
+          0.1
+        ],
+        "visual": [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ]
+      },
+      "adaptation_notes": "Keep quote text short and verify contrast against the real crop, not an assumed one.",
+      "retrieval_score": 25.0,
+      "match_reasons": [
+        "role",
+        "grammar",
+        "visual-strategy",
+        "density"
+      ]
+    }
+  ]
+}

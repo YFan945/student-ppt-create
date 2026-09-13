@@ -1,0 +1,81 @@
+{
+  "version": "0.8",
+  "slide_id": 5,
+  "high_leverage": true,
+  "candidates": [
+    {
+      "id": "A",
+      "visual_strategy": "chart",
+      "silhouette": "big-number-chart",
+      "reference_ids": [
+        "data-big-number-proof"
+      ],
+      "dominant_element": "key_number",
+      "focal_share": 0.42,
+      "title_pt": 30,
+      "body_pt": 20,
+      "zones": {
+        "title": [
+          0.06,
+          0.06,
+          0.78,
+          0.1
+        ],
+        "focus": [
+          0.06,
+          0.24,
+          0.32,
+          0.3
+        ],
+        "visual": [
+          0.42,
+          0.22,
+          0.52,
+          0.6
+        ],
+        "source": [
+          0.06,
+          0.86,
+          0.7,
+          0.06
+        ]
+      },
+      "rationale": "The takeaway count is read first in a left callout, then the chart proves it on the right, with the source line kept separate."
+    },
+    {
+      "id": "B",
+      "visual_strategy": "chart",
+      "silhouette": "figure-caption",
+      "reference_ids": [
+        "data-figure-caption"
+      ],
+      "dominant_element": "figure",
+      "focal_share": 0.65,
+      "title_pt": 30,
+      "body_pt": 20,
+      "zones": {
+        "title": [
+          0.05,
+          0.05,
+          0.72,
+          0.1
+        ],
+        "visual": [
+          0.06,
+          0.2,
+          0.68,
+          0.64
+        ],
+        "body": [
+          0.78,
+          0.23,
+          0.17,
+          0.44
+        ]
+      },
+      "rationale": "Letting the chart dominate with a thin caption rail works for figures, but here the number itself is the argument."
+    }
+  ],
+  "selected_id": "A",
+  "selection_reason": "The claim is a quantity, so the number must be read before the chart; candidate B would bury the takeaway inside chart detail."
+}

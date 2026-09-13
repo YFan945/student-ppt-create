@@ -1,0 +1,35 @@
+{
+  "version": "0.8",
+  "permission": {
+    "allow_web_search": false,
+    "allow_generation": true,
+    "record_source": true
+  },
+  "providers": [
+    {
+      "id": "user-photos",
+      "kind": "user-assets",
+      "enabled": true,
+      "assets_dir": "assets",
+      "permission": "user-provided",
+      "notes": "Anything the user supplied for this deck. Always preferred when relevant and clear."
+    },
+    {
+      "id": "concept-imagegen",
+      "kind": "image-generation",
+      "enabled": true,
+      "capability": "skill:imagegen",
+      "permission": "generated",
+      "notes": "Cover mood art, abstract concepts. Never used for charts, diagrams or factual evidence."
+    },
+    {
+      "id": "web-image-search",
+      "kind": "web-search",
+      "enabled": false,
+      "capability": "websearch",
+      "requires": ["curl"],
+      "permission": "licensed",
+      "notes": "Real people, places, products, current events. Requires explicit user permission before use."
+    }
+  ]
+}

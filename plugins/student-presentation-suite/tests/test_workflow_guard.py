@@ -206,6 +206,12 @@ class StateTransitionTests(unittest.TestCase):
                         "ok": True,
                         "status": "complete",
                         "gate_profile": "simplified-v1",
+                        "generation_core_version": "0.7.1",
+                        "actual_content_check_passed": True,
+                        "quality_check_passed": True,
+                        "quality_report_sha256": "1" * 64,
+                        "slide_spec_sha256": "2" * 64,
+                        "spec_lock_sha256": "3" * 64,
                         "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
                         "slide_spec_validation_passed": True,
                         "package_validation_passed": True,
@@ -223,6 +229,80 @@ class StateTransitionTests(unittest.TestCase):
             broken["visual_reviewed"] = False
             delivery.write_text(json.dumps(broken), encoding="utf-8")
             self.assertTrue(module.validate_completion_manifest(None, pptx, delivery))
+
+    def test_complete_rejects_pre_v071_simplified_delivery(self) -> None:
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            with zipfile.ZipFile(pptx, "w") as archive:
+                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
+            delivery = root / "delivery.json"
+            delivery.write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "status": "complete",
+                        "gate_profile": "simplified-v1",
+                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                        "slide_spec_validation_passed": True,
+                        "package_validation_passed": True,
+                        "package_blockers": 0,
+                        "visual_reviewed": True,
+                        "preview_page_coverage": "1/1",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            errors = module.validate_completion_manifest(None, pptx, delivery)
+            self.assertTrue(any("0.7.1" in item for item in errors))
+            self.assertTrue(any("quality gate" in item for item in errors))
+
+    def test_complete_accepts_simplified_v08_delivery(self) -> None:
+        """v0.8 门禁链的交付报告必须能走 complete 转换（实战暴露的口径分裂）。"""
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            with zipfile.ZipFile(pptx, "w") as archive:
+                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
+            delivery = root / "delivery.json"
+            delivery.write_text(
+                json.dumps(
+                    {
+                        "ok": True,
+                        "status": "complete",
+                        "gate_profile": "simplified-v08",
+                        "generation_core_version": "0.8",
+                        "slide_spec_validation_passed": True,
+                        "package_validation_passed": True,
+                        "package_blockers": 0,
+                        "visual_reviewed": True,
+                        "actual_content_check_passed": True,
+                        "quality_check_passed": True,
+                        "visual_generation_check_passed": True,
+                        "visual_review_check_passed": True,
+                        "quality_report_sha256": "1" * 64,
+                        "actual_content_report_sha256": "4" * 64,
+                        "visual_generation_report_sha256": "5" * 64,
+                        "slide_spec_sha256": "2" * 64,
+                        "spec_lock_sha256": "3" * 64,
+                        "art_direction_sha256": "6" * 64,
+                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                        "preview_page_coverage": "1/1",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.assertEqual(
+                [], module.validate_completion_manifest(None, pptx, delivery)
+            )
+            # 任一 v0.8 检查项失败都必须拒绝。
+            broken = json.loads(delivery.read_text(encoding="utf-8"))
+            broken["visual_review_check_passed"] = False
+            delivery.write_text(json.dumps(broken), encoding="utf-8")
+            errors = module.validate_completion_manifest(None, pptx, delivery)
+            self.assertTrue(any("视觉复核证据绑定" in item for item in errors))
 
     def test_complete_rejects_missing_manifest(self) -> None:
         module = self.module

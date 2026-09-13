@@ -1,0 +1,180 @@
+{
+  "version": "0.8",
+  "query": {
+    "role": "conclude",
+    "grammar": "coursework",
+    "visual_strategy": "typography",
+    "density": "low",
+    "tags": []
+  },
+  "selected": [
+    {
+      "id": "closing-callback",
+      "roles": [
+        "conclude",
+        "synthesize"
+      ],
+      "grammars": [
+        "academic-research",
+        "coursework",
+        "defense-competition",
+        "business-proposal",
+        "brand-creative"
+      ],
+      "visual_strategies": [
+        "typography",
+        "mixed"
+      ],
+      "density": "low",
+      "silhouette": "closing-callback",
+      "tags": [
+        "closing",
+        "callback",
+        "thesis",
+        "dark"
+      ],
+      "why_it_works": "The closing echoes the opening visual thesis and leaves one memorable statement instead of a generic 'Thank you' page.",
+      "dominant_element": "takeaway",
+      "focal_share": 0.62,
+      "wireframe": {
+        "focus": [
+          0.09,
+          0.24,
+          0.7,
+          0.34
+        ],
+        "body": [
+          0.1,
+          0.64,
+          0.48,
+          0.13
+        ],
+        "visual": [
+          0.76,
+          0.14,
+          0.17,
+          0.64
+        ]
+      },
+      "adaptation_notes": "Reuse one motif or phrase from the cover to create closure.",
+      "retrieval_score": 25.0,
+      "match_reasons": [
+        "role",
+        "grammar",
+        "visual-strategy",
+        "density"
+      ]
+    },
+    {
+      "id": "closing-next-step-ask",
+      "roles": [
+        "conclude"
+      ],
+      "grammars": [
+        "business-proposal",
+        "defense-competition",
+        "coursework",
+        "technical-engineering"
+      ],
+      "visual_strategies": [
+        "mixed",
+        "typography"
+      ],
+      "density": "low",
+      "silhouette": "closing-ask",
+      "tags": [
+        "closing",
+        "next-step",
+        "ask",
+        "action"
+      ],
+      "why_it_works": "Ending on an explicit next step or ask makes the deck actionable and prevents a hollow thank-you slide.",
+      "dominant_element": "takeaway",
+      "focal_share": 0.58,
+      "wireframe": {
+        "focus": [
+          0.08,
+          0.24,
+          0.6,
+          0.26
+        ],
+        "body": [
+          0.08,
+          0.56,
+          0.5,
+          0.2
+        ],
+        "visual": [
+          0.72,
+          0.2,
+          0.22,
+          0.56
+        ]
+      },
+      "adaptation_notes": "Use when the scenario expects a proposal or decision; otherwise prefer closing-callback.",
+      "retrieval_score": 25.0,
+      "match_reasons": [
+        "role",
+        "grammar",
+        "visual-strategy",
+        "density"
+      ]
+    },
+    {
+      "id": "image-pull-quote-duotone",
+      "roles": [
+        "synthesize",
+        "frame",
+        "conclude"
+      ],
+      "grammars": [
+        "brand-creative",
+        "coursework",
+        "academic-research"
+      ],
+      "visual_strategies": [
+        "image",
+        "typography"
+      ],
+      "density": "low",
+      "silhouette": "image-quote",
+      "tags": [
+        "pull-quote",
+        "image-led",
+        "overlay",
+        "quote"
+      ],
+      "why_it_works": "A short quote over a purposeful image makes one claim memorable while the image carries tone rather than information.",
+      "dominant_element": "quote",
+      "focal_share": 0.66,
+      "wireframe": {
+        "focus": [
+          0.1,
+          0.26,
+          0.62,
+          0.34
+        ],
+        "body": [
+          0.1,
+          0.64,
+          0.4,
+          0.1
+        ],
+        "visual": [
+          0.0,
+          0.0,
+          1.0,
+          1.0
+        ]
+      },
+      "adaptation_notes": "Keep quote text short and verify contrast against the real crop, not an assumed one.",
+      "retrieval_score": 25.0,
+      "match_reasons": [
+        "role",
+        "grammar",
+        "visual-strategy",
+        "density"
+      ]
+    }
+  ]
+}

@@ -417,6 +417,42 @@ def exercise_cross_workflow_contracts(
     return completed
 
 
+def write_visual_review(pptx: Path, path: Path, page_count: int) -> None:
+    """Author a sha256-bound visual-review report for the rendered scenario.
+
+    The simplified delivery gate rejects a bare ``--visual-reviewed`` flag:
+    completion requires a report file bound to the current PPTX hash with
+    per-slide entries (review item fatal 1). The matrix exercises exactly
+    that contract by authoring the report after the pages are rendered.
+    """
+    digest = hashlib.sha256(pptx.read_bytes()).hexdigest()
+    slides = [
+        {
+            "slide": number,
+            "visual_structure": "reviewed",
+            "scores": {
+                "hierarchy": 8,
+                "focal_point": 8,
+                "composition": 8,
+                "visual_interest": 8,
+                "whitespace": 8,
+            },
+            "ai_template_feel": "none",
+            "issues": [],
+        }
+        for number in range(1, page_count + 1)
+    ]
+    path.write_text(
+        json.dumps(
+            {"pptx_sha256": digest, "slides": slides, "deck": {"issues": []}},
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run temporary rendered PPTX scenario matrix")
     parser.add_argument("--require-render", action="store_true")
@@ -478,6 +514,8 @@ def main() -> None:
                 str(delivery),
                 "--simple",
                 "--visual-reviewed",
+                "--visual-review-report",
+                str(work / f"{name}-visual-review.json"),
                 "--pptx",
                 str(pptx),
                 "--notes",
@@ -489,6 +527,7 @@ def main() -> None:
                 "--strict",
                 "--json",
             ]
+            write_visual_review(pptx, work / f"{name}-visual-review.json", len(roles))
             for page in pages:
                 delivery_command.extend(["--preview", str(page)])
             run_checked(delivery_command, f"{name}: strict delivery")

@@ -1,0 +1,196 @@
+{
+  "_comment": "Authored against the rendered pages of the v2 visual system (navy/light rhythm, 40/32/26/22/11 type scale, accent-meaning system, evidence-rail motif, gridline-free charts). build.py injects pptx_sha256.",
+  "art_direction_alignment": {
+    "overall": 9,
+    "lost_intent": []
+  },
+  "slides": [
+    {
+      "slide": 1,
+      "visual_structure": "cover",
+      "reference_ids": [
+        "cover-editorial-contrast"
+      ],
+      "selected_candidate_id": "A",
+      "scores": {
+        "hierarchy": 9,
+        "focal_point": 9,
+        "composition": 9,
+        "visual_interest": 8,
+        "whitespace": 8
+      },
+      "art_direction_alignment": 9,
+      "reference_intent_preserved": true,
+      "ai_template_feel": "none",
+      "issues": []
+    },
+    {
+      "slide": 2,
+      "visual_structure": "statement",
+      "reference_ids": [
+        "claim-oversized-keyword"
+      ],
+      "selected_candidate_id": "A",
+      "scores": {
+        "hierarchy": 9,
+        "focal_point": 8,
+        "composition": 8,
+        "visual_interest": 8,
+        "whitespace": 8
+      },
+      "art_direction_alignment": 9,
+      "reference_intent_preserved": true,
+      "ai_template_feel": "none",
+      "issues": []
+    },
+    {
+      "slide": 3,
+      "visual_structure": "typography",
+      "reference_ids": [
+        "section-divider-typographic"
+      ],
+      "scores": {
+        "hierarchy": 8,
+        "focal_point": 8,
+        "composition": 8,
+        "visual_interest": 7,
+        "whitespace": 8
+      },
+      "art_direction_alignment": 9,
+      "reference_intent_preserved": true,
+      "ai_template_feel": "none",
+      "issues": [
+        {
+          "code": "quiet_divider",
+          "severity": "minor",
+          "message": "Navy divider page is intentionally sparse; acceptable for an 18s transition."
+        }
+      ]
+    },
+    {
+      "slide": 4,
+      "visual_structure": "diagram",
+      "reference_ids": [
+        "claim-evidence-rail"
+      ],
+      "scores": {
+        "hierarchy": 9,
+        "focal_point": 9,
+        "composition": 8,
+        "visual_interest": 8,
+        "whitespace": 8
+      },
+      "art_direction_alignment": 9,
+      "reference_intent_preserved": true,
+      "ai_template_feel": "none",
+      "issues": []
+    },
+    {
+      "slide": 5,
+      "visual_structure": "dashboard",
+      "reference_ids": [
+        "data-big-number-proof"
+      ],
+      "selected_candidate_id": "A",
+      "scores": {
+        "hierarchy": 8,
+        "focal_point": 8,
+        "composition": 8,
+        "visual_interest": 7,
+        "whitespace": 7
+      },
+      "art_direction_alignment": 8,
+      "reference_intent_preserved": true,
+      "ai_template_feel": "none",
+      "issues": [
+        {
+          "code": "chart_category_labels",
+          "severity": "minor",
+          "message": "Category labels sit close in size to body text; acceptable but could drop slightly."
+        }
+      ]
+    },
+    {
+      "slide": 6,
+      "visual_structure": "editorial",
+      "reference_ids": [
+        "claim-evidence-rail"
+      ],
+      "scores": {
+        "hierarchy": 8,
+        "focal_point": 8,
+        "composition": 8,
+        "visual_interest": 8,
+        "whitespace": 8
+      },
+      "art_direction_alignment": 9,
+      "reference_intent_preserved": true,
+      "ai_template_feel": "none",
+      "issues": []
+    },
+    {
+      "slide": 7,
+      "visual_structure": "comparison",
+      "reference_ids": [
+        "comparison-asymmetric-decision"
+      ],
+      "scores": {
+        "hierarchy": 9,
+        "focal_point": 9,
+        "composition": 8,
+        "visual_interest": 8,
+        "whitespace": 8
+      },
+      "art_direction_alignment": 9,
+      "reference_intent_preserved": true,
+      "ai_template_feel": "none",
+      "issues": []
+    },
+    {
+      "slide": 8,
+      "visual_structure": "flow",
+      "reference_ids": [
+        "recap-numbered-path"
+      ],
+      "scores": {
+        "hierarchy": 8,
+        "focal_point": 8,
+        "composition": 8,
+        "visual_interest": 7,
+        "whitespace": 8
+      },
+      "art_direction_alignment": 9,
+      "reference_intent_preserved": true,
+      "ai_template_feel": "none",
+      "issues": []
+    },
+    {
+      "slide": 9,
+      "visual_structure": "statement",
+      "reference_ids": [
+        "closing-callback"
+      ],
+      "selected_candidate_id": "A",
+      "scores": {
+        "hierarchy": 9,
+        "focal_point": 9,
+        "composition": 9,
+        "visual_interest": 8,
+        "whitespace": 8
+      },
+      "art_direction_alignment": 9,
+      "reference_intent_preserved": true,
+      "ai_template_feel": "none",
+      "issues": []
+    }
+  ],
+  "deck": {
+    "issues": [
+      {
+        "code": "no_declared_image_provider",
+        "severity": "minor",
+        "message": "This run declares diagram-only sourcing, so imagery is limited to charts, diagrams and typography by design."
+      }
+    ]
+  }
+}

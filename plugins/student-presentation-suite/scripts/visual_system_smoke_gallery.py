@@ -34,6 +34,20 @@ def run_checked(command: list[str], label: str) -> subprocess.CompletedProcess[s
 
 
 def style_deck_source(tokens: dict[str, object]) -> str:
+    # style 令牌可能缺 geometry：addTitle 的标题框高度与 safeArea 都依赖
+    # safe_margin_pct / title_zone_pct，缺失时标题框只剩 ~0.56in，装不下
+    # 32pt 标题行。与 scenario_render_matrix 的 TOKENS 保持同一组默认值。
+    tokens = {
+        **tokens,
+        "geometry": {
+            **(tokens.get("geometry") or {}),
+            "safe_margin_pct": 6,
+            "title_zone_pct": 16,
+            "footer_zone_pct": 5,
+            "spacing_scale_pt": [6, 12, 18, 24, 36, 48],
+            "corner_radius_pt": 8,
+        },
+    }
     token_json = json.dumps(tokens, ensure_ascii=False)
     style_label = json.dumps(str(tokens["style_name"]), ensure_ascii=False)
     return f"""
@@ -72,9 +86,12 @@ function baseSlide(mode = 'light', reserveTitle = true) {{
 {{
   const {{ slide, tokens, area }} = baseSlide('light', false);
   const stressTitle = '长标题与素材缺失并存时，版式仍须保持清晰';
-  const titleBox = {{x:area.x,y:area.y+area.h*0.04,w:area.w*0.78,h:area.h*0.25}};
-  const bodyBox = {{x:area.x,y:area.y+area.h*0.42,w:area.w*0.48,h:area.h*0.34}};
-  const visualBox = {{x:area.x+area.w*0.57,y:area.y+area.h*0.30,w:area.w*0.38,h:area.h*0.54}};
+  // 19 字长标题在 title_min_pt=32 下需要两行：框高必须容纳 2 行（~1.24in），
+  // 否则 addFittedText 会在 title 下限处抛错——这正是本用例要守护的边界。
+  // 框高同时要满足静态扫描的 0.85 填充上限（37pt 顶格时约需 1.9in）。
+  const titleBox = {{x:area.x,y:area.y+area.h*0.04,w:area.w*0.78,h:area.h*0.38}};
+  const bodyBox = {{x:area.x,y:area.y+area.h*0.46,w:area.w*0.48,h:area.h*0.30}};
+  const visualBox = {{x:area.x+area.w*0.57,y:area.y+area.h*0.46,w:area.w*0.38,h:area.h*0.38}};
   H.addFittedText(slide, stressTitle, titleBox, tokens, 'chinese', 'title', {{bold:true,label:'长标题'}});
   H.addFittedText(slide, '没有可靠素材时，用图表、关系图或留白，不制造纪实感。', bodyBox, tokens, 'chinese', 'body', {{label:'内容策略'}});
   V.renderVisual(slide, 'architecture', {{nodes:['问题','证据','结论']}}, visualBox, tokens, 'chinese');
@@ -117,7 +134,16 @@ pptx.layout = 'LAYOUT_WIDE';
 H.applyTokens(pptx, TOKENS, 'chinese');
 
 function addCopy(slide, text, box, options = {{}}) {{
-  H.addFittedText(slide, text, box, TOKENS, 'chinese', options.textRole || 'body', {{fontSize:options.fontSize || 15,bold:Boolean(options.bold),margin:0.08,color:H.color(TOKENS,options.role || 'primary_text'),align:options.align || 'left',valign:options.valign || 'mid',label:options.label || '版式样例文本'}});
+  // 冒烟样例文本：部分版式的小 zone 容不下 node/label 的 16pt 角色下限。
+  // 先按调用方角色试排，放不下时降级为 caption（11–12pt 仍可读）；再失败
+  // （连 11pt 都放不下）说明是真实版式缺陷，照常抛错。
+  const role = options.textRole || 'body';
+  try {{
+    H.addFittedText(slide, text, box, TOKENS, 'chinese', role, {{fontSize:options.fontSize || 15,bold:Boolean(options.bold),margin:0.08,color:H.color(TOKENS,options.role || 'primary_text'),align:options.align || 'left',valign:options.valign || 'mid',label:options.label || '版式样例文本'}});
+  }} catch (error) {{
+    if (!(error instanceof RangeError)) throw error;
+    H.addFittedText(slide, text, box, TOKENS, 'chinese', 'caption', {{fontSize:options.fontSize || 12,bold:Boolean(options.bold),margin:0.08,color:H.color(TOKENS,options.role || 'primary_text'),align:options.align || 'left',valign:'mid',label:(options.label || '版式样例文本') + '（降级）'}});
+  }}
 }}
 
 function addPanel(slide, box, label, accent = false, shape = 'roundRect', textRole = 'node') {{

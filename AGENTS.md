@@ -53,6 +53,15 @@ Canonical ownership:
 - `references/evidence-and-citations.md`: source ledger and citation policy.
 - `references/revision-training-export.md`: locking, revisions, rehearsal, scoring, and export boundaries.
 - `references/image-strategy.md`: image sourcing and visual policy.
+- `shared/pptx_runtime/cjk_fonts.py` + `pptx_tool.py cjk-fonts`: post-process generated decks
+- `shared/pptx_runtime/fetch_images.py` + `pptx_tool.py fetch-images`: execute the
+  image-sources.json contract (permission gates enforced, provenance recorded).
+- `shared/pptx_runtime/visual_baseline.py` + `pptx_tool.py visual-baseline`: perceptual-hash
+  record/compare of rendered pages as a visual-regression defence.
+- normalize also repairs pptxgenjs rich-text (stray per-run `<a:pPr>`), so multi-run
+  inline emphasis is now valid and validated.  to add `<a:ea>` East Asian typefaces (CJK typography pairing lives in design-tokens.json).
+- `references/image-sourcing.md` plus `image-sources.schema.json`: explicit image search/generation capability declaration, permission gate, and provenance recording.
+- `references/design-tokens.json`: 12 style palettes, each with a light six-role palette and the matching dark scheme for cover/section/closing pages; `shared/design_tokens.py` owns dark-companion derivation and contrast floors.
 - PPTX skill references: production mechanics and visual style controls.
 
 Keep each `SKILL.md` compact. Entry files should define trigger, responsibility,

@@ -1,0 +1,69 @@
+{
+  "version": "0.8",
+  "slide_id": 9,
+  "high_leverage": true,
+  "candidates": [
+    {
+      "id": "A",
+      "visual_strategy": "typography",
+      "silhouette": "closing-callback",
+      "reference_ids": [
+        "closing-callback"
+      ],
+      "dominant_element": "takeaway",
+      "focal_share": 0.62,
+      "title_pt": 30,
+      "body_pt": 20,
+      "zones": {
+        "focus": [
+          0.08,
+          0.24,
+          0.7,
+          0.34
+        ],
+        "body": [
+          0.08,
+          0.64,
+          0.5,
+          0.13
+        ]
+      },
+      "rationale": "A dark closing statement that echoes the cover turns the deck into one argument instead of a stop at the end."
+    },
+    {
+      "id": "B",
+      "visual_strategy": "mixed",
+      "silhouette": "closing-ask",
+      "reference_ids": [
+        "closing-next-step-ask"
+      ],
+      "dominant_element": "takeaway",
+      "focal_share": 0.58,
+      "title_pt": 30,
+      "body_pt": 20,
+      "zones": {
+        "focus": [
+          0.08,
+          0.24,
+          0.6,
+          0.26
+        ],
+        "body": [
+          0.08,
+          0.56,
+          0.5,
+          0.2
+        ],
+        "visual": [
+          0.72,
+          0.2,
+          0.22,
+          0.56
+        ]
+      },
+      "rationale": "An explicit ask fits proposal decks, but a coursework report should close on the thesis rather than a call to action."
+    }
+  ],
+  "selected_id": "A",
+  "selection_reason": "Callback closure keeps the deck's opening promise visible, which the visual critic rewards over a generic next-step slide."
+}

@@ -97,8 +97,43 @@ def validate_completion_manifest(
             return ["简化交付报告根节点必须是对象。"]
         slide_count = count_slides(pptx)
         errors = []
-        if delivery.get("gate_profile") != "simplified-v1":
-            errors.append("缺少 QA manifest 时必须使用 simplified-v1 交付报告。")
+        profile = delivery.get("gate_profile")
+        if profile == "simplified-v08":
+            # v0.8 门禁链的交付报告：字段集与 v1 不同（新增探索证据、视觉复核
+            # 证据绑定等），校验强度对齐——所有检查项必须显式为 True。
+            if delivery.get("ok") is not True or delivery.get("status") != "complete":
+                errors.append("简化交付报告未通过。")
+            if delivery.get("generation_core_version") != "0.8":
+                errors.append("v0.8 简化交付必须使用 generation_core_version=0.8。")
+            for key, label in (
+                ("slide_spec_validation_passed", "Slide Spec 规划门禁"),
+                ("package_validation_passed", "PPTX package validation"),
+                ("visual_reviewed", "全页视觉检查"),
+                ("actual_content_check_passed", "Actual Artifact readback"),
+                ("quality_check_passed", "v0.7.1 quality gate"),
+                ("visual_generation_check_passed", "v0.8 visual generation gate"),
+                ("visual_review_check_passed", "视觉复核证据绑定"),
+            ):
+                if delivery.get(key) is not True:
+                    errors.append(f"{label} 未通过。")
+            if delivery.get("package_blockers") != 0:
+                errors.append("PPTX package validation 未通过。")
+            for hash_key, label in (
+                ("quality_report_sha256", "quality report"),
+                ("actual_content_report_sha256", "actual content report"),
+                ("visual_generation_report_sha256", "visual generation report"),
+                ("slide_spec_sha256", "frozen Slide Spec"),
+                ("spec_lock_sha256", "Slide Spec lock"),
+                ("art_direction_sha256", "Art Direction"),
+            ):
+                value = delivery.get(hash_key)
+                if not isinstance(value, str) or len(value) != 64:
+                    errors.append(f"简化交付报告缺少有效的 {label} hash。")
+            if slide_count is None or delivery.get("preview_page_coverage") != f"{slide_count}/{slide_count}":
+                errors.append("渲染预览未覆盖全部页面。")
+            return errors
+        if profile != "simplified-v1":
+            errors.append("缺少 QA manifest 时必须使用 simplified-v1 或 simplified-v08 交付报告。")
         if delivery.get("ok") is not True or delivery.get("status") != "complete":
             errors.append("简化交付报告未通过。")
         if not pptx.is_file() or delivery.get("pptx_sha256") != sha256_file(pptx):
@@ -109,6 +144,20 @@ def validate_completion_manifest(
             errors.append("PPTX package validation 未通过。")
         if delivery.get("visual_reviewed") is not True:
             errors.append("未确认完成全页视觉检查。")
+        if delivery.get("generation_core_version") != "0.7.1":
+            errors.append("当前 sp-deck 简化交付必须使用 generation_core_version=0.7.1。")
+        if delivery.get("actual_content_check_passed") is not True:
+            errors.append("Actual Artifact readback 未通过。")
+        if delivery.get("quality_check_passed") is not True:
+            errors.append("v0.7.1 quality gate 未通过。")
+        for hash_key, label in (
+            ("quality_report_sha256", "quality report"),
+            ("slide_spec_sha256", "frozen Slide Spec"),
+            ("spec_lock_sha256", "Slide Spec lock"),
+        ):
+            value = delivery.get(hash_key)
+            if not isinstance(value, str) or len(value) != 64:
+                errors.append(f"简化交付报告缺少有效的 {label} hash。")
         if slide_count is None or delivery.get("preview_page_coverage") != f"{slide_count}/{slide_count}":
             errors.append("渲染预览未覆盖全部页面。")
         return errors

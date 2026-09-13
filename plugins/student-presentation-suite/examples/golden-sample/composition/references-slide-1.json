@@ -1,0 +1,184 @@
+{
+  "version": "0.8",
+  "query": {
+    "role": "cover",
+    "grammar": "coursework",
+    "visual_strategy": "typography",
+    "density": "low",
+    "tags": []
+  },
+  "selected": [
+    {
+      "id": "cover-editorial-contrast",
+      "roles": [
+        "cover",
+        "introduce"
+      ],
+      "grammars": [
+        "academic-research",
+        "coursework",
+        "defense-competition",
+        "business-proposal"
+      ],
+      "visual_strategies": [
+        "typography",
+        "mixed"
+      ],
+      "density": "low",
+      "silhouette": "editorial-left-heavy",
+      "tags": [
+        "oversized-title",
+        "dark-cover",
+        "contrast",
+        "minimal"
+      ],
+      "why_it_works": "One oversized statement creates immediate hierarchy; metadata becomes a quiet secondary layer instead of competing with the title.",
+      "dominant_element": "title",
+      "focal_share": 0.58,
+      "wireframe": {
+        "title": [
+          0.07,
+          0.18,
+          0.62,
+          0.34
+        ],
+        "subtitle": [
+          0.08,
+          0.57,
+          0.45,
+          0.1
+        ],
+        "visual": [
+          0.72,
+          0.08,
+          0.21,
+          0.72
+        ],
+        "footer": [
+          0.08,
+          0.88,
+          0.55,
+          0.05
+        ]
+      },
+      "adaptation_notes": "Use the right-side visual only if it strengthens the concept; otherwise make typography occupy the full composition.",
+      "retrieval_score": 25.0,
+      "match_reasons": [
+        "role",
+        "grammar",
+        "visual-strategy",
+        "density"
+      ]
+    },
+    {
+      "id": "claim-oversized-keyword",
+      "roles": [
+        "frame",
+        "explain",
+        "synthesize"
+      ],
+      "grammars": [
+        "academic-research",
+        "coursework",
+        "defense-competition",
+        "brand-creative"
+      ],
+      "visual_strategies": [
+        "typography"
+      ],
+      "density": "low",
+      "silhouette": "type-dominant",
+      "tags": [
+        "oversized-keyword",
+        "thesis",
+        "contrast"
+      ],
+      "why_it_works": "One word or phrase owns the page while supporting explanation is intentionally subordinate.",
+      "dominant_element": "key_statement",
+      "focal_share": 0.64,
+      "wireframe": {
+        "title": [
+          0.07,
+          0.08,
+          0.5,
+          0.1
+        ],
+        "focus": [
+          0.07,
+          0.24,
+          0.78,
+          0.38
+        ],
+        "body": [
+          0.58,
+          0.67,
+          0.33,
+          0.17
+        ]
+      },
+      "adaptation_notes": "Do not turn parallel bullets into numbered blocks; use this only when a genuine thesis can dominate.",
+      "retrieval_score": 16.0,
+      "match_reasons": [
+        "grammar",
+        "visual-strategy",
+        "density"
+      ]
+    },
+    {
+      "id": "closing-callback",
+      "roles": [
+        "conclude",
+        "synthesize"
+      ],
+      "grammars": [
+        "academic-research",
+        "coursework",
+        "defense-competition",
+        "business-proposal",
+        "brand-creative"
+      ],
+      "visual_strategies": [
+        "typography",
+        "mixed"
+      ],
+      "density": "low",
+      "silhouette": "closing-callback",
+      "tags": [
+        "closing",
+        "callback",
+        "thesis",
+        "dark"
+      ],
+      "why_it_works": "The closing echoes the opening visual thesis and leaves one memorable statement instead of a generic 'Thank you' page.",
+      "dominant_element": "takeaway",
+      "focal_share": 0.62,
+      "wireframe": {
+        "focus": [
+          0.09,
+          0.24,
+          0.7,
+          0.34
+        ],
+        "body": [
+          0.1,
+          0.64,
+          0.48,
+          0.13
+        ],
+        "visual": [
+          0.76,
+          0.14,
+          0.17,
+          0.64
+        ]
+      },
+      "adaptation_notes": "Reuse one motif or phrase from the cover to create closure.",
+      "retrieval_score": 16.0,
+      "match_reasons": [
+        "grammar",
+        "visual-strategy",
+        "density"
+      ]
+    }
+  ]
+}
