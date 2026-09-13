@@ -6,6 +6,25 @@ Codex 发行记录不在此维护。
 
 ## Unreleased
 
+### 发布源统一：本仓库 main 取代 Personal-Student 的 claude-code 分支（2026-09-14）
+
+- **单一发布源**：`YFan945/student-ppt-create` 的 **`main` 分支**成为唯一可发布
+  来源；原 `YFan945/Personal-Student` 的 `claude-code` 分支停用。
+- 同步改动的 11 处引用：
+  - `scripts/install_claude_plugin.ps1`：`$Repository` / `$Branch` →
+    student-ppt-create / main（`-SkipMarketplaceClone` 本地直装用法不变）；
+  - 两个 manifest（`marketplace.json`、`plugin.json`）的 `homepage` /
+    `repository` 指向新地址；
+  - `check_plugin_release.py` 的硬校验由 `tree/claude-code` 改为
+    `student-ppt-create/tree/main`——**防止悄悄回退到旧仓库**；
+  - `check_marketplace_release.py`：发布分支与 PR 基线均要求 `main`
+    （原要求 claude-code），顺带修掉该文件既有的 ruff I001；
+  - `README.md` / `README-zh.md`：安装命令、Codex 说明、相关链接；
+  - `CONTRIBUTING.md`：克隆地址与工作流（从 main 建分支、PR 到 main）；
+  - `AGENTS.md`：发布源条款改写（原"禁止从 main 发布"已废止）。
+- 验证：插件发布检查 0 错误；分支校验函数四类输入断言正确
+  （main 放行 / 功能分支拒绝 / PR base=main 放行 / claude-code 拒绝）。
+
 ### CI 修复：渲染矩阵适配视觉复核证据契约（2026-09-12）
 
 - **修复 gallery 冒烟（`visual_system_smoke_gallery.py`）的两层失败**：

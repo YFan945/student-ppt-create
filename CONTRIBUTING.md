@@ -5,9 +5,9 @@
 ## 开发设置
 
 ```bash
-# 克隆仓库
-git clone https://github.com/YFan945/Personal-Student.git
-cd Personal-Student
+# 克隆仓库（发布源是本仓库的 main 分支）
+git clone https://github.com/YFan945/student-ppt-create.git
+cd student-ppt-create
 
 # Python 依赖
 pip install -r plugins/student-presentation-suite/requirements.txt
@@ -52,10 +52,10 @@ claude plugin validate --strict ./plugins/student-presentation-suite
 
 ## 工作流
 
-1. 从 `claude-code` 创建功能分支
+1. 从 `main` 创建功能分支
 2. 实施修改并添加测试
 3. 运行全部测试确保通过
-4. 提交 PR 到 `claude-code` 分支
+4. 提交 PR 到 `main` 分支
 
 ## 版本发布
 

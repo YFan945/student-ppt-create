@@ -3,12 +3,15 @@
 ## Repository Purpose
 
 This repository is the Claude Code-only marketplace for
-`student-presentation-suite`. The publishable source of truth is the
-`claude-code` branch of `YFan945/Personal-Student`.
+`student-presentation-suite`. **The `main` branch of this repository
+(`YFan945/student-ppt-create`) is the single publishable source of truth.**
 
-Never publish this marketplace from or to `main`. The `main` branch is a
-separate Codex implementation line with different manifests and runtime
-dependencies.
+The former `claude-code` branch of `YFan945/Personal-Student` is retired: do
+not publish, install, or point documentation at it. Every manifest
+(`homepage` / `repository`), the install script, and both READMEs must resolve
+to `github.com/YFan945/student-ppt-create/tree/main` — `check_plugin_release.py`
+enforces this so a silent rollback is impossible. Codex has its own separate
+implementation line and is not supported here.
 
 ## Repository Layout
 

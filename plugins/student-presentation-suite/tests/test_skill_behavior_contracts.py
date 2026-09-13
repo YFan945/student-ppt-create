@@ -52,24 +52,26 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertFalse((ROOT / ".codex-plugin").exists())
         self.assertFalse(any(ROOT.glob("skills/*/agents/openai.yaml")))
 
-    def test_marketplace_release_accepts_prs_targeting_claude_code(self) -> None:
+    def test_marketplace_release_accepts_prs_targeting_main(self) -> None:
+        # 发布源已统一到本仓库的 main 分支；claude-code 分支必须被拒绝，
+        # 否则会悄悄回到已停用的旧发布线。
         check = load_marketplace_check()
         self.assertIsNone(
             check.release_branch_error(
-                "codex/claude-plugin-0.4.0",
-                "codex/claude-plugin-0.4.0",
-                "claude-code",
+                "feat/v0.9",
+                "feat/v0.9",
+                "main",
                 "1/merge",
             )
         )
         self.assertIn(
-            "must target claude-code",
-            check.release_branch_error("feature", "feature", "main", "1/merge"),
+            "must target main",
+            check.release_branch_error("feature", "feature", "claude-code", "1/merge"),
         )
-        self.assertIsNone(check.release_branch_error("claude-code", "", "", ""))
+        self.assertIsNone(check.release_branch_error("main", "", "", ""))
         self.assertIn(
-            "must be released from claude-code",
-            check.release_branch_error("main", "", "", ""),
+            "must be released from main",
+            check.release_branch_error("claude-code", "", "", ""),
         )
 
     def test_skill_frontmatter_has_distinct_intents(self) -> None:

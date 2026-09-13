@@ -2,10 +2,9 @@
 
 中文 | [English](README.md)
 
-> 本分支是专门适配 **Claude Code** 的插件版本，安装、依赖和运行方式均以
-> Claude Code 为准。若你使用 **OpenAI Codex**，请查看
-> [`main` 分支](https://github.com/YFan945/Personal-Student/tree/main)，
-> 不要在 Codex 中安装本分支。
+> 本仓库是专门适配 **Claude Code** 的插件 marketplace，安装、依赖和运行方式均以
+> Claude Code 为准。**发布源是本仓库的 `main` 分支**（原 `YFan945/Personal-Student`
+> 的 `claude-code` 分支已停用）。不要在 **OpenAI Codex** 中安装本插件。
 
 `student-presentation-suite` 用于大学课程汇报、论文答辩、小组展示等学生学术
 场景。它可以在 Claude Code 中生成 PPT 大纲和讲稿、创建可编辑 PPTX、审查
@@ -89,8 +88,8 @@ npm --version
 在 PowerShell 中执行：
 
 ```powershell
-git clone --branch claude-code --single-branch `
-  https://github.com/YFan945/Personal-Student.git `
+git clone --branch main --single-branch `
+  https://github.com/YFan945/student-ppt-create.git `
   "$env:USERPROFILE\.agents\claude-plugins"
 
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
@@ -118,8 +117,8 @@ Set-ExecutionPolicy -Scope Process Bypass
 
 ```powershell
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
-git switch claude-code
-git pull --ff-only origin claude-code
+git switch main
+git pull --ff-only origin main
 .\scripts\install_claude_plugin.ps1
 ```
 
@@ -335,10 +334,10 @@ python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
 默认在启动 Claude Code 时所在项目的 `outputs/`。如果设置了
 `CLAUDE_PROJECT_DIR`，则位于 `${CLAUDE_PROJECT_DIR}/outputs`。
 
-### Codex 能否使用本分支
+### Codex 能否使用本插件
 
-不能。本分支只适配 Claude Code。Codex 版本请使用
-[`main` 分支](https://github.com/YFan945/Personal-Student/tree/main)。
+不能。本仓库只适配 Claude Code；发布源是这里的 `main` 分支。Codex 用户请使用
+各自独立的 Codex 实现仓库（本仓库不提供）。
 
 ## 开发与发布
 

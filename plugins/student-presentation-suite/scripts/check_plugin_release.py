@@ -160,10 +160,12 @@ def check_manifest(errors: list[str]) -> None:
     for field in REQUIRED_METADATA:
         if not manifest.get(field):
             errors.append(f"manifest 缺少必要元数据: {field}")
-    if "tree/claude-code" not in str(manifest.get("homepage")):
-        errors.append("manifest homepage 必须指向 claude-code 分支")
-    if "tree/claude-code" not in str(manifest.get("repository")):
-        errors.append("manifest repository 必须指向 claude-code 分支")
+    # 发布源已统一到本仓库的 main 分支（原 Personal-Student 的 claude-code
+    # 分支不再是发布线），manifest 必须指向这里，防止悄悄回退到旧仓库。
+    if "student-ppt-create/tree/main" not in str(manifest.get("homepage")):
+        errors.append("manifest homepage 必须指向 student-ppt-create 的 main 分支")
+    if "student-ppt-create/tree/main" not in str(manifest.get("repository")):
+        errors.append("manifest repository 必须指向 student-ppt-create 的 main 分支")
     for skill_file in sorted((ROOT / "skills").glob("*/SKILL.md")):
         match = re.search(
             r"(?m)^version:\s*(\S+)\s*$",
