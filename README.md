@@ -91,9 +91,49 @@ npm --version
 
 ## Download And Install
 
-### Recommended Windows Installation
+### Recommended: Add The GitHub Marketplace (No Clone Needed)
 
-Run in PowerShell:
+Claude Code marketplaces can point straight at a GitHub repository, so there is
+nothing to clone first. Run two commands:
+
+```powershell
+claude plugin marketplace add YFan945/student-ppt-create@main
+claude plugin install student-presentation-suite@claude-personal
+```
+
+Restart Claude Code (or run `/reload-plugins`) afterwards.
+
+The plugin also needs Python and Node.js dependencies. Use the installer to add
+them in one go — it installs into the plugin copy Claude Code actually loads:
+
+```powershell
+Invoke-WebRequest `
+  -Uri "https://raw.githubusercontent.com/YFan945/student-ppt-create/main/scripts/install_claude_plugin.ps1" `
+  -OutFile "$env:TEMP\install_claude_plugin.ps1"
+Set-ExecutionPolicy -Scope Process Bypass
+& "$env:TEMP\install_claude_plugin.ps1" -Migrate
+```
+
+`-Migrate` removes the obsolete `student-presentation-suite@personal`
+registration and cache, then:
+
+1. verifies .NET 8 and installs Python and Node.js dependencies;
+2. registers the `claude-personal` marketplace from GitHub, pinned to `main`;
+3. installs and enables `student-presentation-suite@claude-personal`;
+4. runs the strict environment check and displays plugin status.
+
+Update later with `claude plugin marketplace update claude-personal`.
+
+The installer never downloads a .NET SDK implicitly. If .NET 8 is absent, either install it
+yourself or explicitly opt in to the pinned 8.0.423 user-local download (about 285 MB):
+
+```powershell
+& "$env:TEMP\install_claude_plugin.ps1" -InstallDotNetSdk
+```
+
+### Local Checkout (Development Or Offline)
+
+Clone `main` and register that directory with `-Local`:
 
 ```powershell
 git clone --branch main --single-branch `
@@ -102,39 +142,24 @@ git clone --branch main --single-branch `
 
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\install_claude_plugin.ps1 -Migrate
+.\scripts\install_claude_plugin.ps1 -Local -Migrate
 ```
 
-`-Migrate` removes the obsolete `student-presentation-suite@personal`
-registration and cache, then:
-
-1. verifies .NET 8 and installs Python and Node.js dependencies;
-2. registers the local `claude-personal` marketplace;
-3. installs and enables `student-presentation-suite@claude-personal`;
-4. runs the strict environment check and displays plugin status.
-
-Restart Claude Code after installation.
-
-The installer never downloads a .NET SDK implicitly. If .NET 8 is absent, either install it
-yourself or explicitly opt in to the pinned 8.0.423 user-local download (about 285 MB):
-
-```powershell
-.\scripts\install_claude_plugin.ps1 -Migrate -InstallDotNetSdk
-```
-
-### Existing Checkout
+Already cloned? Pull, then reinstall:
 
 ```powershell
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
 git switch main
 git pull --ff-only origin main
-.\scripts\install_claude_plugin.ps1
+.\scripts\install_claude_plugin.ps1 -Local
 ```
 
-To re-register the plugin without reinstalling dependencies:
+To re-register without reinstalling dependencies, or to register an existing
+working copy such as `E:\student-ppt-create`:
 
 ```powershell
-.\scripts\install_claude_plugin.ps1 -SkipDependencies -SkipMarketplaceClone
+.\scripts\install_claude_plugin.ps1 -Local -SkipDependencies -SkipMarketplaceClone
+.\scripts\install_claude_plugin.ps1 -Local -InstallRoot "E:\student-ppt-create" -SkipMarketplaceClone
 ```
 
 ## Verify The Installation

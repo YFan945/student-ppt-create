@@ -28,6 +28,23 @@ Codex 发行记录不在此维护。
   迁移公告口吻），Codex 说明同步简化；安装命令与标题引用保持一致。
 - 分支清理：`improve/ppt-generation-core-v0.7` 已合并并删除（远端 + 本地）。
 
+### 插件市场支持直接指向 GitHub（无需本地克隆）（2026-09-14）
+
+- **官方能力**：Claude Code 的 `claude plugin marketplace add` 支持直接传
+  `owner/repo@branch`，无需先 clone 到本地。本插件市场采用该方式，固定 `main`
+  分支（`YFan945/student-ppt-create@main`）。
+- `scripts/install_claude_plugin.ps1` 改造：
+  - 新增 `-Local` 开关。**默认（无 `-Local`）走 GitHub 远程注册**，跳过克隆；
+  - 远程模式下，依赖（Python wheel / npm）自动装进 Claude Code 实际加载的插件
+    缓存副本（`~/.claude/plugins/cache/claude-personal/...`），由
+    `Resolve-InstalledPluginRoot` 定位，而非本地 clone；
+  - `-Local` 保留原本地目录注册（开发 / 离线），克隆、依赖、注册逻辑不变；
+  - 删除已废弃的 `-SkipMarketplaceClone` 参数（远程注册不再需要克隆）。
+- 两份 README 安装章节重写：顶部改为“推荐方式：直接添加 GitHub 市场（无需克隆）”，
+  给出 `marketplace add` + `plugin install` 两条命令及微软 CDN 下载安装脚本的方式；
+  本地克隆方式降为“开发或离线”次级小节，命令统一加 `-Local`。
+- 验证：PowerShell 语法检查通过；plugin 与 marketplace 发布检查均 0 错误。
+
 ### CI 修复：渲染矩阵适配视觉复核证据契约（2026-09-12）
 
 - **修复 gallery 冒烟（`visual_system_smoke_gallery.py`）的两层失败**：

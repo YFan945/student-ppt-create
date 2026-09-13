@@ -83,9 +83,50 @@ npm --version
 
 ## 下载与安装
 
-### Windows 推荐方式
+### 推荐方式：直接添加 GitHub 市场（无需克隆）
 
-在 PowerShell 中执行：
+Claude Code 的插件市场可以直接指向 GitHub 仓库，不必先克隆到本地。在
+PowerShell（或任意终端）中执行两条命令：
+
+```powershell
+claude plugin marketplace add YFan945/student-ppt-create@main
+claude plugin install student-presentation-suite@claude-personal
+```
+
+第二条命令的插件 ID 就是前面的 `student-presentation-suite@claude-personal`。
+安装后重启 Claude Code（或执行 `/reload-plugins`）即可生效。
+
+插件还需要 Python 与 Node.js 依赖。用安装脚本一次补齐（脚本会自动把依赖装到
+Claude Code 实际加载的那份插件副本里）：
+
+```powershell
+Invoke-WebRequest `
+  -Uri "https://raw.githubusercontent.com/YFan945/student-ppt-create/main/scripts/install_claude_plugin.ps1" `
+  -OutFile "$env:TEMP\install_claude_plugin.ps1"
+Set-ExecutionPolicy -Scope Process Bypass
+& "$env:TEMP\install_claude_plugin.ps1" -Migrate
+```
+
+`-Migrate` 会清理旧的 `student-presentation-suite@personal` 注册和缓存，然后：
+
+1. 检查 .NET 8 并安装 Python 与 Node.js 依赖；
+2. 注册 GitHub 市场 `claude-personal`（固定 `main` 分支）；
+3. 安装并启用 `student-presentation-suite@claude-personal`；
+4. 执行严格环境检查并显示插件状态。
+
+以后更新只需：`claude plugin marketplace update claude-personal`。
+
+安装脚本不会静默下载 .NET SDK。如果本机没有 .NET 8，可自行安装，或显式同意下载
+固定版本 8.0.423 到用户目录（约 285 MB）：
+
+```powershell
+& "$env:TEMP\install_claude_plugin.ps1" -InstallDotNetSdk
+```
+
+### 本地克隆方式（开发或离线）
+
+想固定一份本地副本（例如参与开发、或需要离线安装）时，克隆 `main` 分支并用
+`-Local` 注册该目录：
 
 ```powershell
 git clone --branch main --single-branch `
@@ -94,38 +135,24 @@ git clone --branch main --single-branch `
 
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
 Set-ExecutionPolicy -Scope Process Bypass
-.\scripts\install_claude_plugin.ps1 -Migrate
+.\scripts\install_claude_plugin.ps1 -Local -Migrate
 ```
 
-`-Migrate` 会清理旧的 `student-presentation-suite@personal` 注册和缓存，然后：
-
-1. 检查 .NET 8 并安装 Python 与 Node.js 依赖；
-2. 注册本地 marketplace `claude-personal`；
-3. 安装并启用 `student-presentation-suite@claude-personal`；
-4. 执行严格环境检查并显示插件状态。
-
-安装完成后重启 Claude Code。
-
-安装脚本不会静默下载 .NET SDK。如果本机没有 .NET 8，可自行安装，或显式同意下载
-固定版本 8.0.423 到用户目录（约 285 MB）：
-
-```powershell
-.\scripts\install_claude_plugin.ps1 -Migrate -InstallDotNetSdk
-```
-
-### 已经下载过仓库
+已经克隆过仓库，拉取更新后重装：
 
 ```powershell
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
 git switch main
 git pull --ff-only origin main
-.\scripts\install_claude_plugin.ps1
+.\scripts\install_claude_plugin.ps1 -Local
 ```
 
-如果只需重新注册插件、不想重复安装依赖：
+如果只需重新注册插件、不想重复安装依赖（或直接用现有工作副本，如
+`E:\student-ppt-create`）：
 
 ```powershell
-.\scripts\install_claude_plugin.ps1 -SkipDependencies -SkipMarketplaceClone
+.\scripts\install_claude_plugin.ps1 -Local -SkipDependencies -SkipMarketplaceClone
+.\scripts\install_claude_plugin.ps1 -Local -InstallRoot "E:\student-ppt-create" -SkipMarketplaceClone
 ```
 
 ## 验证安装
