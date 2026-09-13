@@ -2,9 +2,9 @@
 
 中文 | [English](README.md)
 
-> 本仓库是专门适配 **Claude Code** 的插件 marketplace，安装、依赖和运行方式均以
-> Claude Code 为准。**发布源是本仓库的 `main` 分支**（原 `YFan945/Personal-Student`
-> 的 `claude-code` 分支已停用）。不要在 **OpenAI Codex** 中安装本插件。
+> 本仓库是专门适配 **Claude Code** 的插件 marketplace：**直接从本仓库的 `main`
+> 分支下载安装**（命令见下面“下载与安装”）。安装、依赖和运行方式均以
+> Claude Code 为准，不要在 **OpenAI Codex** 中安装本插件。
 
 `student-presentation-suite` 用于大学课程汇报、论文答辩、小组展示等学生学术
 场景。它可以在 Claude Code 中生成 PPT 大纲和讲稿、创建可编辑 PPTX、审查
@@ -336,8 +336,7 @@ python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
 
 ### Codex 能否使用本插件
 
-不能。本仓库只适配 Claude Code；发布源是这里的 `main` 分支。Codex 用户请使用
-各自独立的 Codex 实现仓库（本仓库不提供）。
+不能。本仓库只适配 Claude Code。
 
 ## 开发与发布
 

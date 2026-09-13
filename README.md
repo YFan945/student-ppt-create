@@ -3,11 +3,10 @@
 [中文](README-zh.md) | English
 
 > This repository is the Claude Code-only marketplace for
-> `student-presentation-suite`. Installation, dependencies, and runtime are
-> Claude Code specific — do not install it in **OpenAI Codex**.
-> The **publishable source of truth is the `main` branch of this repository**
-> (`YFan945/student-ppt-create`); the former `claude-code` branch of
-> `YFan945/Personal-Student` is retired.
+> `student-presentation-suite`. **Download and install it from the `main`
+> branch of this repository** — see Download And Install below. Installation,
+> dependencies, and runtime are Claude Code specific; do not install it in
+> **OpenAI Codex**.
 
 `student-presentation-suite` supports student-owned university presentations,
 including coursework reports, thesis defenses, and group presentations. In
@@ -370,9 +369,7 @@ They are under the project directory from which Claude Code was started:
 
 ### Can Codex Use This Repository?
 
-No. This repository supports Claude Code only, and `main` here is the
-publishable source of truth. Codex users need their own Codex implementation
-repository, which this project does not provide.
+No. This repository supports Claude Code only.
 
 ## Development And Releases
 
