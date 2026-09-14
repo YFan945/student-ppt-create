@@ -40,6 +40,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -254,7 +255,9 @@ def normalise_severity(report: dict[str, Any], issue: dict[str, Any]) -> str:
 
 def collect(stage: Stage) -> tuple[bool, list[dict[str, Any]], dict[str, Any]]:
     """Run one stage and return (ok, problems, manifest binding)."""
+    started = time.monotonic()
     proc = _runner(stage.argv)
+    duration_ms = int((time.monotonic() - started) * 1000)
     if not stage.report.is_file():
         detail = (proc.stderr or proc.stdout or "").strip()
         return False, [
@@ -264,7 +267,7 @@ def collect(stage: Stage) -> tuple[bool, list[dict[str, Any]], dict[str, Any]]:
                 "code": f"{stage.name}_missing_report",
                 "message": f"{stage.name} produced no report (exit {proc.returncode}): {detail[:200]}",
             }
-        ], {"ok": False, "checked": True, "exit_code": proc.returncode}
+        ], {"ok": False, "checked": True, "exit_code": proc.returncode, "duration_ms": duration_ms}
     report = json.loads(stage.report.read_text(encoding="utf-8"))
     issues = report.get(stage.issues_key) if isinstance(report.get(stage.issues_key), list) else []
     problems = [
@@ -281,6 +284,7 @@ def collect(stage: Stage) -> tuple[bool, list[dict[str, Any]], dict[str, Any]]:
         "ok": bool(report.get("ok", proc.returncode == 0)),
         "checked": True,
         "exit_code": proc.returncode,
+        "duration_ms": duration_ms,
         "issue_count": len(issues),
         **bind(stage.report),
     }
@@ -519,6 +523,16 @@ def cmd_qa(args: argparse.Namespace) -> int:
         "blockers": blockers,
         "report": bind(qa_report_path),
         "stages": reports,
+        # Render-side evidence bindings: what the visual critique actually saw.
+        "visual_review": bind(Path(args.visual_review).resolve())
+        if args.visual_review and Path(args.visual_review).is_file()
+        else None,
+        "previews": [bind(Path(p).resolve()) for p in args.preview if Path(p).is_file()]
+        if args.preview
+        else None,
+        "stage_cost_ms": {
+            name: data["duration_ms"] for name, data in reports.items() if "duration_ms" in data
+        },
     }
     manifest["state"] = "qa"
     record(manifest, "qa", before, "qa")

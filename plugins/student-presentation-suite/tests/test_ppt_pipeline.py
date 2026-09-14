@@ -309,6 +309,37 @@ class QaDagTests(PipelineTestCase):
         self.assertEqual(manifest["state"], "qa")
         self.assertTrue(manifest["qa"]["ok"])
         self.assertIn("sha256", manifest["qa"]["stages"]["delivery"])
+        # Ideal-manifest completeness (review section 12): render-side evidence
+        # hashes and per-stage cost metrics are bound alongside the reports.
+        self.assertIn("sha256", manifest["qa"]["visual_review"])
+        self.assertEqual(
+            manifest["qa"]["previews"],
+            None,
+        )
+        self.assertTrue(all(v >= 0 for v in manifest["qa"]["stage_cost_ms"].values()))
+        self.assertEqual(
+            set(manifest["qa"]["stage_cost_ms"]),
+            {"package", "rendered", "actual_content", "quality", "delivery"},
+        )
+
+    def test_previews_and_visual_review_are_hash_bound(self) -> None:
+        self.producing_manifest()
+        previews = self.work / "preview-01.png", self.work / "preview-02.png"
+        for index, preview in enumerate(previews):
+            preview.write_bytes(f"png-{index}".encode())
+        pp._runner = FakeRunner(self.work)
+        rc = pp.main(
+            [
+                "qa", "--work-dir", str(self.work),
+                "--visual-review", str(self.files["visual_review"]),
+                "--preview", str(previews[0]), "--preview", str(previews[1]),
+            ]
+        )
+        self.assertEqual(rc, 0)
+        qa = self.manifest()["qa"]
+        self.assertEqual([Path(p["path"]).name for p in qa["previews"]], ["preview-01.png", "preview-02.png"])
+        self.assertTrue(all(p["sha256"] for p in qa["previews"]))
+        self.assertIn("sha256", qa["visual_review"])
 
     def test_failing_stage_stops_the_dag(self) -> None:
         self.producing_manifest()
