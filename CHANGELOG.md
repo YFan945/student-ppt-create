@@ -4,6 +4,47 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## Unreleased
+
+### 合并 PR #18：research 子系统的证据链与门禁加固（2026-09-14）
+
+合并 `fix/research-subsystem-hardening`（26 个提交，16 文件，+1118/−555，合并提交
+`43013e1`）。这一轮修的大多是 0.10.1 自身留下的洞：
+
+**CI 门禁实际是 fail-open 的（最严重）**
+`validate.yml` 里每条原生命令后面都补了 `if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }`。
+pwsh 下原生命令的非零退出码**默认不会让 step 失败**——只要脚本最后一条命令成功，前面
+某个 checker 挂掉也会显示 ✓。`check_plugin_release.py`、`check_marketplace_release.py`、
+schema 校验、ruff、eslint、prettier 全都受影响。另外给 runtime job 加了 `PYTHONUTF8=1`，
+并给测试 step 把 `TEMP`/`TMP` 收敛到 `runner.temp`。
+
+**schema 与校验器互相打架（我引入的死锁）**
+校验器要求 low 置信度的 `data_point` 必须写 `notes`，但 schema 里 `data_point` 没声明该
+字段且 `additionalProperties: false` —— 一条合规的 pack 会**必然**卡在 schema 校验上。
+已补 `data_point.notes`；`unresolved.impact` 也从"校验器要求"提升为 schema 必填。
+
+**证据编译从"半成品"变成真正的编译器**
+- 分配规则补上 **quotes**（此前 `Q` 完全没有到 `E` 的通路）；
+- 接受 draft spec 里的 `F/D/Q` 或已分配的 `E`，重写 `evidence_refs`、重算
+  `used_on_slides`、替换 ledger，并可写出**非破坏性**的 compiled Slide Spec，不再需要
+  任何模型手工搬运；
+- 保留全部 `source_ids` 并选出 `primary_source_id`（此前只留一个 locator，其余来源丢失）
+  —— `slide-spec.schema.json` 相应新增这两个字段；
+- 校验报告必须与 pack **哈希绑定**，过期或对不上另一份 pack 直接拒绝编译。
+
+**freeze 校验整条来源链**
+research-backed freeze 现在验证 Pack → Validation → Evidence Map → Compiled Spec 全链；
+Research Gate 变成原子的（三个产物要么都有要么都没有）；research-backed revision 不能
+静默丢掉 provenance；同时保留 legacy lock 的兼容性。
+
+**子代理收窄**
+`presentation-researcher` 加了工具白名单（`Read, Grep, Glob, Bash, PowerShell, Write,
+WebFetch, WebSearch`——没有 Edit、没有 Agent）；`sp-research` 改用**具名参数**
+`arguments: [work_id, brief_path, scope, materials_path]`，不再靠自由文本传参；
+返回信封有界；纯 C 类（无需检索）大纲不再启动子代理。
+
+测试 364 → **371** 项。
+
 ## 0.10.1 — 2026-09-14
 
 ### sp-research 从"提示词规则"升级为真正的独立子代理（2026-09-14）
