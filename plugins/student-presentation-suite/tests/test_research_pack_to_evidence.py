@@ -327,5 +327,192 @@ class ResearchGateBindingTests(unittest.TestCase):
         self.assertIn("research-backed", output)
 
 
+class EvidenceMapSchemaTests(unittest.TestCase):
+    """Evidence Map 是 Presentation Compiler 的中间表示，形状必须被强制。"""
+
+    SCRIPT = ROOT / "scripts" / "research_pack_to_evidence.py"
+    SCHEMA = ROOT / "references" / "evidence-map.schema.json"
+
+    def setUp(self) -> None:
+        self.module = load_module(self.SCRIPT)
+        self._tmp = TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+
+    def compile_map(self, pack: dict) -> dict:
+        path = self.tmp / "research-pack.json"
+        path.write_text(json.dumps(pack, ensure_ascii=False), encoding="utf-8")
+        out = self.tmp / "evidence-map.json"
+        code = self.module.main([str(path), "--output", str(out)])
+        self.assertEqual(0, code)
+        return json.loads(out.read_text(encoding="utf-8"))
+
+    def test_the_schema_file_exists_and_is_valid_json_schema(self) -> None:
+        self.assertTrue(self.SCHEMA.is_file(), "evidence-map.schema.json is missing")
+        schema = json.loads(self.SCHEMA.read_text(encoding="utf-8"))
+        self.assertEqual("1.0", schema["properties"]["schema_version"]["const"])
+        jsonschema = __import__("jsonschema")
+        jsonschema.Draft202012Validator.check_schema(schema)
+
+    def test_compiler_output_satisfies_the_schema(self) -> None:
+        report = self.compile_map(base_pack())
+        self.assertEqual([], self.module.schema_issues(report), "compiler produced a schema-invalid map")
+
+    def test_schema_rejects_a_map_missing_provenance(self) -> None:
+        report = self.compile_map(base_pack())
+        del report["provenance"]
+        self.assertTrue(self.module.schema_issues(report))
+
+    def test_schema_rejects_a_ledger_entry_without_source_ids(self) -> None:
+        """多源关系丢了就是丢了，不能靠 additionalProperties 兜过去。"""
+        report = self.compile_map(base_pack())
+        del report["evidence_ledger"][0]["source_ids"]
+        self.assertTrue(self.module.schema_issues(report))
+
+    def test_schema_rejects_a_foreign_schema_version(self) -> None:
+        report = self.compile_map(base_pack())
+        report["schema_version"] = "0.9"
+        self.assertTrue(self.module.schema_issues(report))
+
+    def test_semantic_hash_ignores_the_working_directory(self) -> None:
+        """相同内容在不同目录下语义哈希必须一致——审计路径不进哈希。"""
+        report_a = self.compiled_via_subdir("a")
+        report_b = self.compiled_via_subdir("b")
+        self.assertEqual(report_a["semantic_sha256"], report_b["semantic_sha256"])
+        self.assertNotEqual(report_a["provenance"]["research_pack"], report_b["provenance"]["research_pack"])
+
+    def compiled_via_subdir(self, name: str) -> dict:
+        sub = self.tmp / name
+        sub.mkdir()
+        path = sub / "research-pack.json"
+        path.write_text(json.dumps(base_pack(), ensure_ascii=False), encoding="utf-8")
+        out = sub / "evidence-map.json"
+        self.assertEqual(0, self.module.main([str(path), "--output", str(out)]))
+        return json.loads(out.read_text(encoding="utf-8"))
+
+
+class ResearchPipelineEndToEndTests(unittest.TestCase):
+    """Pack → Validation → Compile → Freeze 的整链回归。
+
+    组件测试能证明每个脚本自己是对的，证明不了它们串起来是对的——这一条补那个缺口。
+    它仍然不是 Live E2E（不经过真实模型与联网），但把「编译产物能否真的被冻结」这一环
+    从"没测过"变成"每次 CI 都测"。
+    """
+
+    GUARD = ROOT / "skills" / "sp-deck" / "scripts" / "slide_spec_guard.py"
+    COMPILER = ROOT / "scripts" / "research_pack_to_evidence.py"
+    VALIDATOR = ROOT / "scripts" / "validate_research_pack.py"
+
+    def setUp(self) -> None:
+        self._tmp = TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.tmp = Path(self._tmp.name)
+        self.pack = self.tmp / "research-pack.json"
+        self.pack.write_text(json.dumps(base_pack(), ensure_ascii=False, indent=2), encoding="utf-8")
+        self.draft = self.tmp / "draft-spec.json"
+        self.draft.write_text(
+            json.dumps(
+                {"schema_version": "2.0", "slides": [{"id": 5, "evidence_refs": ["F01", "D01"]}]},
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        self.validation = self.tmp / "research-pack-validation.json"
+        self.compiled = self.tmp / "compiled-spec.json"
+        self.evidence_map = self.tmp / "evidence-map.json"
+        self.spec_validation = self.tmp / "spec-validation.json"
+        self.lock = self.tmp / "lock.json"
+
+    def run_script(self, *args: str) -> tuple[int, str, str]:
+        import subprocess
+
+        result = subprocess.run(
+            [sys.executable, *args],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+        return result.returncode, result.stdout, result.stderr
+
+    def sha(self, path: Path) -> str:
+        import hashlib
+
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def test_the_whole_chain_runs_and_freezes(self) -> None:
+        # 1) validate the pack, producing a report bound to the pack hash
+        code, _, err = self.run_script(str(self.VALIDATOR), str(self.pack), "--output", str(self.validation))
+        self.assertEqual(0, code, err)
+        self.assertEqual(self.sha(self.pack), json.loads(self.validation.read_text(encoding="utf-8"))["research_pack_sha256"])
+
+        # 2) compile the draft spec into a compiled spec + evidence map
+        code, _, err = self.run_script(
+            str(self.COMPILER),
+            str(self.pack),
+            "--validation-report", str(self.validation),
+            "--slide-spec", str(self.draft),
+            "--compiled-slide-spec", str(self.compiled),
+            "--output", str(self.evidence_map),
+        )
+        self.assertEqual(0, code, err)
+
+        compiled = json.loads(self.compiled.read_text(encoding="utf-8"))
+        slide = compiled["slides"][0]
+        self.assertEqual(["E01", "E02"], slide["evidence_refs"], "F/D refs were not rewritten to E ids")
+        ledger_ids = [entry["id"] for entry in compiled["evidence_ledger"]]
+        self.assertEqual(["E01", "E02"], ledger_ids)
+        self.assertEqual([5], compiled["evidence_ledger"][0]["used_on_slides"])
+
+        # 3) freeze, binding the full provenance chain
+        self.spec_validation.write_text(
+            json.dumps({"valid": True, "slide_spec_sha256": self.sha(self.compiled)}), encoding="utf-8"
+        )
+        code, _, err = self.run_script(
+            str(self.GUARD), "freeze",
+            "--slide-spec", str(self.compiled),
+            "--validation-report", str(self.spec_validation),
+            "--lock-file", str(self.lock),
+            "--research-pack", str(self.pack),
+            "--research-validation", str(self.validation),
+            "--evidence-map", str(self.evidence_map),
+        )
+        self.assertEqual(0, code, err)
+
+        lock = json.loads(self.lock.read_text(encoding="utf-8"))
+        self.assertEqual(
+            ["evidence_map", "research_pack", "research_validation"],
+            sorted(lock["research"]),
+        )
+        code, stdout, _ = self.run_script(str(self.GUARD), "check", "--lock-file", str(self.lock))
+        self.assertEqual(0, code)
+        self.assertTrue(json.loads(stdout)["ok"])
+
+    def test_editing_the_pack_after_freeze_breaks_the_chain(self) -> None:
+        self.test_the_whole_chain_runs_and_freezes()
+        self.pack.write_text(json.dumps({"topic": "被改动过"}, ensure_ascii=False), encoding="utf-8")
+        code, stdout, _ = self.run_script(str(self.GUARD), "check", "--lock-file", str(self.lock))
+        self.assertEqual(2, code)
+        errors = json.loads(stdout)["errors"]
+        self.assertTrue(any("research_pack" in line for line in errors), errors)
+
+    def test_a_compiled_spec_referencing_an_unknown_pack_id_blocks(self) -> None:
+        """draft 里写了不存在的 F99，编译器必须拒绝而不是产出半个 spec。"""
+        self.draft.write_text(
+            json.dumps({"schema_version": "2.0", "slides": [{"id": 1, "evidence_refs": ["F99"]}]}),
+            encoding="utf-8",
+        )
+        self.run_script(str(self.VALIDATOR), str(self.pack), "--output", str(self.validation))
+        code, _, _ = self.run_script(
+            str(self.COMPILER),
+            str(self.pack),
+            "--validation-report", str(self.validation),
+            "--slide-spec", str(self.draft),
+            "--compiled-slide-spec", str(self.compiled),
+            "--output", str(self.evidence_map),
+        )
+        self.assertEqual(2, code)
+
+
 if __name__ == "__main__":
     unittest.main()

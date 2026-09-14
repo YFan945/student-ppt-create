@@ -55,6 +55,7 @@ SOURCE_TYPE_MAP = {
 }
 TIER_RANK = {"S": 0, "A": 1, "B": 2, "C": 3, "D": 4, "?": 5}
 TITLE_LIMIT = 160
+SCHEMA_PATH = HERE.parent / "references" / "evidence-map.schema.json"
 
 
 def sha256_file(path: Path) -> str:
@@ -290,6 +291,28 @@ def validate_report_for_pack(path: Path, pack_hash: str) -> tuple[bool, str | No
     return True, None
 
 
+def schema_issues(report: dict[str, Any]) -> list[str]:
+    """Validate the map against its own schema before it is written.
+
+    `semantic_sha256` and the freeze chain both treat this file as an intermediate
+    representation, so its shape has to be enforced rather than assumed. Failing
+    closed matters here: reporting "cannot verify" as "fine" is how a malformed IR
+    reaches the freeze.
+    """
+    try:
+        import jsonschema  # type: ignore
+    except ImportError:
+        return ["jsonschema is not installed, so the Evidence Map shape cannot be verified."]
+    if not SCHEMA_PATH.is_file():
+        return [f"Evidence Map schema is missing: {SCHEMA_PATH}"]
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema)
+    return [
+        f"{'/'.join(str(part) for part in error.absolute_path) or '(root)'}: {error.message}"
+        for error in sorted(validator.iter_errors(report), key=lambda item: list(item.absolute_path))
+    ]
+
+
 def render(report: dict[str, Any], path: Path, compiled_spec: Path | None) -> str:
     blocked = bool(report["unresolved_refs"])
     state = "blocked" if blocked else "ok"
@@ -366,6 +389,16 @@ def main(argv: list[str] | None = None) -> int:
         provenance["compiled_slide_spec"] = str(args.compiled_slide_spec.resolve())
         provenance["compiled_slide_spec_sha256"] = sha256_file(args.compiled_slide_spec)
     report["provenance"] = provenance
+
+    violations = schema_issues(report)
+    if violations:
+        print(
+            f"research_pack_to_evidence: Evidence Map violates evidence-map.schema.json ({len(violations)} violations):",
+            file=sys.stderr,
+        )
+        for line in violations[:10]:
+            print(f"  {line}", file=sys.stderr)
+        return 2
 
     report_path = args.output or (args.pack.parent / "evidence-map.json")
     report_path.parent.mkdir(parents=True, exist_ok=True)

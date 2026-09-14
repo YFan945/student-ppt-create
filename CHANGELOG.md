@@ -4,6 +4,44 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## Unreleased
+
+### Evidence Map 补 schema 与管线级 E2E（2026-09-14）
+
+上一轮 review 的 14 项里，11 项已在 PR #18 修完；剩下三项中的两项在这里收尾。
+
+- **新增 `references/evidence-map.schema.json`**（review 第 13 项）。此前 Evidence Map 只有
+  `schema_version: "1.0"` 这个声明，没有真正的验证器——**声明了版本却不校验形状，等于
+  没有版本**。现在 `research_pack_to_evidence.py` 在写盘前用这个 schema 校验自己的产出，
+  违反即退出码 2 并打印具体路径。校验是 **fail-closed** 的：`jsonschema` 缺失或 schema
+  文件不见了都算失败，不当作"无法验证所以放行"。
+  schema 里把三处关键约束钉死：`evidence_ledger` 条目**必须**带 `source_ids`（多源关系
+  不能丢）、`provenance.research_pack_sha256` 必须是合法哈希、`schema_version` 必须是
+  `"1.0"`。
+- **新增管线级 E2E 测试**（review 第 14 项的本地替代）。此前 371 项测试只证明组件各自
+  正确，不证明串起来正确——这正是上一轮 review 第 9 条批评的点。新增的
+  `ResearchPipelineEndToEndTests` 跑完整条链：
+
+  ```text
+  Research Pack → validate_research_pack → research_pack_to_evidence
+      → compiled Slide Spec → slide_spec_guard freeze → check
+  ```
+
+  并断言：`F01/D01` 被改写成 `E01/E02`、ledger 的 `used_on_slides` 被算出、锁里绑定了
+  三个 research 产物、冻结后改动 pack 会让 `check` 失败、draft 里写了不存在的 `F99`
+  时编译器拒绝产出半个 spec。
+- **明确 Evidence Map 的确定性边界**（review 第 12 项，`research-workflow.md`）：
+  **语义内容确定性 ✅**（`semantic_sha256` 与 ledger 逐字一致）；**字节级位置无关确定性 🟡**
+  （`provenance` 含绝对路径）。按 review 的建议**不删审计路径**，改用
+  `semantic_sha256` 作为"是否同一份证据"的判据，并补了跨目录一致性测试。
+- `check_plugin_release.py` 的 `REQUIRED_FILES` 增加 `evidence-map.schema.json`。
+
+测试 371 → **380** 项。
+
+> 请注意：**仍未完成的是 review 第 14 项本身——真实 Claude Code Live E2E。** 上面的
+> 管线测试不经过真实模型与联网，它把"编译产物能否真的被冻结"从没测过变成每次 CI 都测，
+> 但证明不了 fork 出来的子代理在真实会话里行为正确。这一项只能靠真跑。
+
 ## 0.10.2 — 2026-09-14
 
 ### 合并 PR #18：research 子系统的证据链与门禁加固（2026-09-14）

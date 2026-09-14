@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://student-presentation-suite.local/evidence-map.schema.json",
+  "title": "Evidence Map",
+  "description": "research_pack_to_evidence.py 的产出：把一份已验证的 Research Pack 编译成确定性 Evidence Ledger，并记录 Pack → Validation → Draft Spec → Compiled Spec 的来源链。这是 compiler-owned artifact，不是模型自由生成的内容——但它现在是 Presentation Compiler 的中间表示，所以形状必须被钉住，而不是只靠生产者自觉。",
+  "type": "object",
+  "required": ["schema_version", "ref_map", "source_index", "evidence_ledger", "semantic_sha256", "provenance"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "topic": {"type": "string", "minLength": 1},
+    "budget": {"enum": ["simple", "standard", "deep"]},
+
+    "ref_map": {
+      "type": "object",
+      "description": "Research Pack 实体 id → 分配的 Evidence id。键形如 F01 / D01 / Q01，值形如 E01。",
+      "additionalProperties": {"type": "string", "pattern": "^E[0-9]{2,}$"}
+    },
+
+    "source_index": {
+      "type": "object",
+      "description": "来源快照，供后续审计与参考文献生成使用。",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["title", "tier"],
+        "additionalProperties": false,
+        "properties": {
+          "title": {"type": "string", "minLength": 1},
+          "tier": {"enum": ["S", "A", "B", "C", "D"]},
+          "type": {"type": "string"},
+          "locator": {"type": "string"},
+          "publisher": {"type": ["string", "null"]},
+          "year": {"type": ["integer", "null"]},
+          "independence_group": {"type": ["string", "null"]}
+        }
+      }
+    },
+
+    "evidence_ledger": {
+      "type": "array",
+      "description": "已按固定规则分配好 id 的 Evidence Ledger，可直接并入 Slide Spec。",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "source_type", "locator", "source_ids", "confidence", "used_on_slides"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^E[0-9]{2,}$"},
+          "title": {"type": "string", "minLength": 1},
+          "source_type": {
+            "enum": ["user-file", "paper", "book", "website", "dataset", "survey", "experiment", "interview", "case", "other"]
+          },
+          "locator": {"type": "string", "minLength": 1},
+          "source_ids": {
+            "type": "array",
+            "items": {"type": "string", "pattern": "^S[0-9]{2,}$"},
+            "minItems": 1,
+            "uniqueItems": true,
+            "description": "支撑该条目的全部 Research Pack 来源；多源关系必须保留，不能只留下被引用的那一个。"
+          },
+          "primary_source_id": {"type": "string", "pattern": "^S[0-9]{2,}$"},
+          "confidence": {"enum": ["high", "medium", "low", "unverified"]},
+          "used_on_slides": {"type": "array", "items": {"type": "integer", "minimum": 1}, "uniqueItems": true},
+          "author": {"type": "string"},
+          "date": {"type": "string"},
+          "limitation": {"type": "string"}
+        }
+      }
+    },
+
+    "unresolved_retrieval": {
+      "type": "array",
+      "description": "从 Research Pack 原样带过来的受阻检索记录，不得在这一层丢失。",
+      "items": {"type": "object"}
+    },
+    "unresolved_refs": {
+      "type": "array",
+      "description": "无法解析到 pack 实体的 evidence_refs；非空时编译器退出码为 2。",
+      "items": {"type": "string"}
+    },
+
+    "semantic_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "对语义内容（ref_map + source_index + evidence_ledger + unresolved_*）计算的哈希，不含 provenance。相同内容在不同工作目录下这个值必须一致——provenance 里的绝对路径是审计信息，故意不进哈希。"
+    },
+
+    "provenance": {
+      "type": "object",
+      "description": "研究链条的四段来源，freeze 用它验证 Pack → Validation → Evidence Map → Compiled Spec 一一对应。",
+      "required": ["research_pack", "research_pack_sha256", "validation_ok"],
+      "additionalProperties": false,
+      "properties": {
+        "research_pack": {"type": "string", "minLength": 1},
+        "research_pack_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "validation_ok": {"const": true},
+        "research_validation": {"type": "string"},
+        "research_validation_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "draft_slide_spec": {"type": "string"},
+        "draft_slide_spec_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "compiled_slide_spec": {"type": "string"},
+        "compiled_slide_spec_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

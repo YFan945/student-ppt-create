@@ -191,6 +191,21 @@ unresolved:
 | --- | --- | --- |
 | 首要指标 | 可信度、正确性、时效性、可追溯 | 分辨率、构图、版权、风格适配、可裁剪性 |
 
+## Evidence Map 的确定性边界
+
+`research_pack_to_evidence.py` 的产出受 `evidence-map.schema.json` 约束（编译器在写盘前
+验证，失败即退出码 2）。它的确定性要说清楚，避免过度承诺：
+
+| 性质 | 状态 |
+| --- | --- |
+| **语义内容确定性** | ✅ 同一份 pack 编译两次，`ref_map`、`evidence_ledger`、`source_index`、`semantic_sha256` 完全一致 |
+| **字节级位置无关确定性** | 🟡 完整 JSON 里 `provenance` 记录绝对路径，因此**相同内容 + 不同工作目录**会得到不同的文件字节 |
+
+`semantic_sha256` 刻意只覆盖语义内容，不含 `provenance`。**不要为了"字节也一样"把审计
+路径删掉**——路径是追溯所需的信息，而需要比较"是否是同一份证据"时用 `semantic_sha256`
+即可。冻结时绑定的是文件 SHA-256（含路径），所以跨机器的字节差异不会造成误判，只会
+让"换个目录重新编译"需要重新 freeze。
+
 ## 可验证标准
 
 - `scripts/validate_research_pack.py <pack>` 0 blocker；
