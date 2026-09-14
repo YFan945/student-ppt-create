@@ -1,36 +1,31 @@
 #!/usr/bin/env python3
-"""Compile a Research Pack into Evidence Ledger entries — deterministically.
+"""Compile a validated Research Pack into a deterministic Evidence Ledger and Slide Spec.
 
-Before this existed, the chain F03 -> E07 -> Slide 05 was assembled by the model
-reading `research-pack.json` and writing `evidence_ledger` by hand. That put free
-improvisation back into the one step the Research Pack was built to remove: the
-pack ids (F/D/S) and the ledger ids (E) had no mechanical relationship.
+Canonical allocation:
 
-This script owns that step. Allocation is fixed and predictable:
+    findings sorted by id -> data_points sorted by id -> quotes sorted by id
+    F/D/Q ids            -> E01, E02, ...
 
-    findings sorted by id, then data_points sorted by id  ->  E01, E02, ...
+When a draft Slide Spec is supplied, its evidence_refs may use either Research
+Pack ids (F/D/Q) or already allocated E ids. The compiler rewrites those refs,
+recomputes used_on_slides, replaces the ledger with the generated ledger, and can
+write a non-destructive compiled Slide Spec. No model hand-copy step is required.
 
-so a caller can reason about ids without running anything, and two runs over the
-same pack always produce the same ledger.
+A Research Pack that fails validate_research_pack.py is refused. If a validation
+report is supplied, it must be passing and hash-bound to the exact pack. The
+resulting evidence map records the pack, validation and Slide Spec hashes so the
+freeze gate can verify one provenance chain rather than three unrelated files.
 
-It is deliberately non-destructive: it never rewrites the Slide Spec. It emits
-`evidence-map.json` (ledger ready to merge, id map, source index, hashes) and, if
-given a spec, verifies that every `evidence_refs` entry resolves and records
-`used_on_slides` for you.
-
-Refuses to compile a pack that fails `validate_research_pack.py`; an invalid pack
-is not a deliverable and must not become evidence.
-
-Exit codes: 0 = compiled, 2 = pack invalid or a spec reference does not resolve.
+Exit codes: 0 = compiled, 2 = invalid/stale input or unresolved evidence refs.
 """
 
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import sys
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +35,6 @@ if str(HERE) not in sys.path:
 
 import validate_research_pack as pack_validator  # noqa: E402
 
-# Research Pack source type -> Slide Spec evidence_ledger source_type
 SOURCE_TYPE_MAP = {
     "paper": "paper",
     "official-database": "dataset",
@@ -71,6 +65,11 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_json(value: Any) -> str:
+    raw = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
 def load_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
@@ -78,142 +77,250 @@ def load_json(path: Path) -> dict[str, Any]:
     return value
 
 
+def write_structured(path: Path, value: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.suffix.lower() in {".yaml", ".yml"}:
+        try:
+            import yaml  # type: ignore
+        except ImportError as exc:  # pragma: no cover
+            raise SystemExit("PyYAML is required to write a YAML Slide Spec.") from exc
+        path.write_text(yaml.safe_dump(value, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    else:
+        path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
 def truncate(text: str, limit: int = TITLE_LIMIT) -> str:
     text = " ".join(str(text or "").split())
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
-def strongest_source(entry: dict[str, Any], by_id: dict[str, dict[str, Any]]) -> dict[str, Any]:
-    """The highest-tier source backing an entry — that is what the ledger cites."""
-    candidates = [by_id[str(ref)] for ref in entry.get("source_ids") or [] if str(ref) in by_id]
+def source_refs(kind: str, entry: dict[str, Any]) -> list[str]:
+    if kind == "quote":
+        source_id = str(entry.get("source_id") or "")
+        return [source_id] if source_id else []
+    return [str(ref) for ref in entry.get("source_ids") or []]
+
+
+def strongest_source(refs: list[str], by_id: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    candidates = [by_id[ref] for ref in refs if ref in by_id]
     if not candidates:
         return {}
-    return sorted(candidates, key=lambda s: (TIER_RANK.get(str(s.get("tier") or "?"), 5), str(s.get("id"))))[0]
+    return sorted(
+        candidates,
+        key=lambda source: (
+            TIER_RANK.get(str(source.get("tier") or "?"), 5),
+            str(source.get("id") or ""),
+        ),
+    )[0]
 
 
 def locator_of(source: dict[str, Any]) -> str:
     return str(source.get("url") or source.get("locator") or "").strip() or "(no locator)"
 
 
-def build_ledger(pack: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, str]]:
-    by_id = {str(s.get("id")): s for s in pack_validator.items(pack, "sources")}
-    findings = sorted(pack_validator.items(pack, "findings"), key=lambda e: str(e.get("id")))
-    data_points = sorted(pack_validator.items(pack, "data_points"), key=lambda e: str(e.get("id")))
+def quote_confidence(source: dict[str, Any]) -> str:
+    tier = str(source.get("tier") or "?")
+    if tier in {"S", "A"}:
+        return "high"
+    if tier in {"B", "C"}:
+        return "medium"
+    return "low"
 
+
+def build_ledger(pack: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    by_id = {str(source.get("id")): source for source in pack_validator.items(pack, "sources")}
+    findings = sorted(pack_validator.items(pack, "findings"), key=lambda entry: str(entry.get("id")))
+    data_points = sorted(pack_validator.items(pack, "data_points"), key=lambda entry: str(entry.get("id")))
+    quotes = sorted(pack_validator.items(pack, "quotes"), key=lambda entry: str(entry.get("id")))
+
+    entities = (
+        [("finding", entry) for entry in findings]
+        + [("data_point", entry) for entry in data_points]
+        + [("quote", entry) for entry in quotes]
+    )
     ledger: list[dict[str, Any]] = []
     ref_map: dict[str, str] = {}
 
-    for index, (kind, entry) in enumerate(
-        [("finding", e) for e in findings] + [("data_point", e) for e in data_points],
-        start=1,
-    ):
+    for index, (kind, entry) in enumerate(entities, start=1):
         evidence_id = f"E{index:02d}"
-        ref_map[str(entry.get("id"))] = evidence_id
-        source = strongest_source(entry, by_id)
+        pack_id = str(entry.get("id"))
+        ref_map[pack_id] = evidence_id
+        refs = source_refs(kind, entry)
+        source = strongest_source(refs, by_id)
+
         if kind == "finding":
             title = truncate(str(entry.get("claim") or ""))
-        else:
+            confidence = str(entry.get("confidence") or "medium")
+        elif kind == "data_point":
             title = truncate(f"{entry.get('meaning')}：{entry.get('value')}")
+            confidence = str(entry.get("confidence") or "medium")
+        else:
+            attribution = str(entry.get("attribution") or "").strip()
+            quote_text = truncate(str(entry.get("text") or ""))
+            title = truncate(f"{attribution}：{quote_text}" if attribution else quote_text)
+            confidence = quote_confidence(source)
+
         record: dict[str, Any] = {
             "id": evidence_id,
             "title": title,
             "source_type": SOURCE_TYPE_MAP.get(str(source.get("type") or "other"), "other"),
             "locator": locator_of(source),
-            "confidence": str(entry.get("confidence") or "medium"),
+            "source_ids": refs,
+            "confidence": confidence,
             "used_on_slides": [],
         }
+        if source.get("id"):
+            record["primary_source_id"] = str(source["id"])
         if source.get("publisher"):
             record["author"] = str(source["publisher"])
         if source.get("year"):
             record["date"] = str(source["year"])
-        limitations = []
+
+        limitations: list[str] = []
         if entry.get("conflict"):
             limitations.append("来源存在冲突，页面必须写成区间或加限定语")
+        if str(entry.get("notes") or "").strip():
+            limitations.append(str(entry["notes"]).strip())
         if str(source.get("tier") or "") == "D":
             limitations.append("仅有 D 级来源，只能作为用户观点引用")
         if limitations:
-            record["limitation"] = "；".join(limitations)
+            record["limitation"] = "；".join(dict.fromkeys(limitations))
         ledger.append(record)
 
     return ledger, ref_map
 
 
-def apply_used_on_slides(spec: dict[str, Any], ref_map: dict[str, str], ledger: list[dict[str, Any]]) -> list[str]:
-    """Fill used_on_slides; return the references that could not be resolved."""
-    by_evidence = {str(e["id"]): e for e in ledger}
+def compile_slide_spec(
+    spec: dict[str, Any],
+    ref_map: dict[str, str],
+    ledger: list[dict[str, Any]],
+) -> tuple[dict[str, Any], list[str]]:
+    """Return a compiled copy whose refs and ledger are mechanically consistent."""
+    compiled = copy.deepcopy(spec)
+    by_evidence = {str(entry["id"]): entry for entry in ledger}
     unresolved: list[str] = []
-    for slide in (spec.get("slides") or []):
+
+    for entry in ledger:
+        entry["used_on_slides"] = []
+
+    for slide in compiled.get("slides") or []:
         if not isinstance(slide, dict):
             continue
         slide_no = slide.get("id")
-        if not isinstance(slide_no, int):
-            continue
+        converted: list[str] = []
         for ref in slide.get("evidence_refs") or []:
             key = str(ref)
             evidence_id = key if key in by_evidence else ref_map.get(key)
             if evidence_id is None:
-                unresolved.append(f"slide {slide_no}: evidence_ref {key!r} does not resolve to any pack finding/data_point")
+                unresolved.append(
+                    f"slide {slide_no}: evidence_ref {key!r} does not resolve to any pack finding/data_point/quote"
+                )
                 continue
-            used = by_evidence[evidence_id]["used_on_slides"]
-            if slide_no not in used:
-                used.append(slide_no)
+            if evidence_id not in converted:
+                converted.append(evidence_id)
+            if isinstance(slide_no, int):
+                used = by_evidence[evidence_id]["used_on_slides"]
+                if slide_no not in used:
+                    used.append(slide_no)
+        if "evidence_refs" in slide or converted:
+            slide["evidence_refs"] = converted
+
     for entry in ledger:
         entry["used_on_slides"] = sorted(entry["used_on_slides"])
-    return unresolved
+    compiled["evidence_ledger"] = copy.deepcopy(ledger)
+    return compiled, unresolved
 
 
-def compile_pack(pack: dict[str, Any], spec: dict[str, Any] | None) -> dict[str, Any]:
+def source_index(pack: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    by_id = {str(source.get("id")): source for source in pack_validator.items(pack, "sources")}
+    return {
+        source_id: {
+            "title": source.get("title"),
+            "tier": source.get("tier"),
+            "type": source.get("type"),
+            "locator": locator_of(source),
+            "publisher": source.get("publisher"),
+            "year": source.get("year"),
+            "independence_group": source.get("independence_group"),
+        }
+        for source_id, source in sorted(by_id.items())
+    }
+
+
+def compile_pack(
+    pack: dict[str, Any],
+    spec: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     ledger, ref_map = build_ledger(pack)
+    compiled_spec = None
     unresolved: list[str] = []
     if spec is not None:
-        unresolved = apply_used_on_slides(spec, ref_map, ledger)
+        compiled_spec, unresolved = compile_slide_spec(spec, ref_map, ledger)
 
-    by_id = {str(s.get("id")): s for s in pack_validator.items(pack, "sources")}
-    return {
-        "version": "0.9",
-        "generated_at": datetime.now(UTC).isoformat(),
+    report: dict[str, Any] = {
+        "schema_version": "1.0",
         "topic": pack.get("topic"),
         "budget": pack.get("budget"),
         "ref_map": ref_map,
-        "source_index": {
-            sid: {
-                "title": source.get("title"),
-                "tier": source.get("tier"),
-                "type": source.get("type"),
-                "locator": locator_of(source),
-                "publisher": source.get("publisher"),
-                "year": source.get("year"),
-            }
-            for sid, source in sorted(by_id.items())
-        },
+        "source_index": source_index(pack),
         "evidence_ledger": ledger,
         "unresolved_retrieval": pack_validator.items(pack, "unresolved"),
         "unresolved_refs": unresolved,
     }
+    report["semantic_sha256"] = sha256_json(
+        {
+            "ref_map": report["ref_map"],
+            "source_index": report["source_index"],
+            "evidence_ledger": report["evidence_ledger"],
+            "unresolved_retrieval": report["unresolved_retrieval"],
+            "unresolved_refs": report["unresolved_refs"],
+        }
+    )
+    return report, compiled_spec
 
 
-def render(report: dict[str, Any], path: Path) -> str:
-    ledger = report["evidence_ledger"]
+def validate_report_for_pack(path: Path, pack_hash: str) -> tuple[bool, str | None]:
+    if not path.is_file():
+        return False, f"Research Pack validation report does not exist: {path}"
+    report = load_json(path)
+    if report.get("ok") is not True:
+        return False, "Research Pack validation report is not passing."
+    if report.get("research_pack_sha256") != pack_hash:
+        return False, "Research Pack validation report is stale or belongs to another pack."
+    return True, None
+
+
+def render(report: dict[str, Any], path: Path, compiled_spec: Path | None) -> str:
     blocked = bool(report["unresolved_refs"])
     state = "blocked" if blocked else "ok"
+    suffix = f" | compiled spec: {compiled_spec}" if compiled_spec else ""
     return (
-        f"research_pack_to_evidence: {state} — {len(ledger)} ledger entries from "
-        f"{len(report['ref_map'])} pack entities | {len(report['source_index'])} sources | "
-        f"unresolved refs {len(report['unresolved_refs'])} | map: {path}\n"
+        f"research_pack_to_evidence: {state} — {len(report['evidence_ledger'])} ledger entries from "
+        f"{len(report['ref_map'])} F/D/Q entities | {len(report['source_index'])} sources | "
+        f"unresolved refs {len(report['unresolved_refs'])} | map: {path}{suffix}\n"
         + "".join(f"  [major] {line}\n" for line in report["unresolved_refs"])
     )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("pack", type=Path, help="research-pack.json")
-    parser.add_argument("--slide-spec", type=Path, help="draft spec whose evidence_refs should be resolved")
+    parser.add_argument("pack", type=Path, help="research-pack.json (or .yaml)")
+    parser.add_argument("--validation-report", type=Path, help="passing report from validate_research_pack.py")
+    parser.add_argument("--slide-spec", type=Path, help="draft spec whose F/D/Q refs should be compiled")
+    parser.add_argument(
+        "--compiled-slide-spec",
+        type=Path,
+        help="write the compiled non-destructive Slide Spec; requires --slide-spec",
+    )
     parser.add_argument("--output", type=Path, help="defaults to <pack dir>/evidence-map.json")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
     if not args.pack.is_file():
         print(f"research_pack_to_evidence: Research Pack does not exist: {args.pack}", file=sys.stderr)
+        return 2
+    if args.compiled_slide_spec and not args.slide_spec:
+        print("research_pack_to_evidence: --compiled-slide-spec requires --slide-spec", file=sys.stderr)
         return 2
 
     pack = pack_validator.load(args.pack)
@@ -226,6 +333,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    pack_hash = sha256_file(args.pack)
+    validation_hash: str | None = None
+    if args.validation_report:
+        valid, error = validate_report_for_pack(args.validation_report, pack_hash)
+        if not valid:
+            print(f"research_pack_to_evidence: {error}", file=sys.stderr)
+            return 2
+        validation_hash = sha256_file(args.validation_report)
+
     spec = None
     if args.slide_spec:
         if not args.slide_spec.is_file():
@@ -233,15 +349,23 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         spec = pack_validator.load(args.slide_spec)
 
-    report = compile_pack(pack, spec)
-    report["provenance"] = {
-        "research_pack": str(args.pack),
-        "research_pack_sha256": sha256_file(args.pack),
+    report, compiled_spec = compile_pack(pack, spec)
+    provenance: dict[str, Any] = {
+        "research_pack": str(args.pack.resolve()),
+        "research_pack_sha256": pack_hash,
         "validation_ok": True,
     }
+    if args.validation_report:
+        provenance["research_validation"] = str(args.validation_report.resolve())
+        provenance["research_validation_sha256"] = validation_hash
     if args.slide_spec:
-        report["provenance"]["slide_spec"] = str(args.slide_spec)
-        report["provenance"]["slide_spec_sha256"] = sha256_file(args.slide_spec)
+        provenance["draft_slide_spec"] = str(args.slide_spec.resolve())
+        provenance["draft_slide_spec_sha256"] = sha256_file(args.slide_spec)
+    if args.compiled_slide_spec and compiled_spec is not None:
+        write_structured(args.compiled_slide_spec, compiled_spec)
+        provenance["compiled_slide_spec"] = str(args.compiled_slide_spec.resolve())
+        provenance["compiled_slide_spec_sha256"] = sha256_file(args.compiled_slide_spec)
+    report["provenance"] = provenance
 
     report_path = args.output or (args.pack.parent / "evidence-map.json")
     report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -250,7 +374,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
-        print(render(report, report_path), end="")
+        print(render(report, report_path, args.compiled_slide_spec), end="")
     return 2 if report["unresolved_refs"] else 0
 
 
