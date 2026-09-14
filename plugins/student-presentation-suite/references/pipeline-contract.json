@@ -1,0 +1,21 @@
+{
+  "contract_version": "1.0",
+  "manifest_version": "1.1",
+  "workflow_states": [
+    "intake_pending",
+    "intake_confirmed",
+    "planned",
+    "producing",
+    "qa",
+    "complete"
+  ],
+  "terminal_states": ["incomplete", "blocked"],
+  "qa_order": ["package", "rendered", "actual_content", "quality", "delivery"],
+  "max_repairs": 3,
+  "intake_confirmation_required": true,
+  "repeat_policy": {
+    "build_requires_changed_generator_after_repair": true,
+    "qa_reuses_identical_inputs": true,
+    "render_reuses_identical_pptx": true
+  }
+}
