@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Freeze a validated Slide Spec and prevent silent plan drift during production.
+"""Freeze a validated Slide Spec and prevent silent plan/evidence drift.
 
 The Slide Spec is the approved production plan. Once frozen, generator/readback
-failures must be fixed in the artifact, not by silently rewriting the plan.
-A genuine plan change must use the explicit `revise` command with a reason and
-a fresh passing validation report.
+failures must be fixed in the artifact, not by silently rewriting the plan. A
+research-backed plan is accepted only when Research Pack -> validation report ->
+evidence map -> compiled Slide Spec form one hash-linked provenance chain.
 """
 
 from __future__ import annotations
@@ -17,15 +17,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-LOCK_VERSION = "1.0"
-
-# Research Gate artifacts a freeze can bind. All optional: decks with no external
-# facts are still legitimate, they simply carry no research block.
+LOCK_VERSION = "1.1"
 RESEARCH_ARGS = (
     ("--research-pack", "research-pack.json to bind into the freeze"),
-    ("--research-validation", "validate_research_pack.py report to bind"),
-    ("--evidence-map", "evidence-map.json from research_pack_to_evidence.py"),
+    ("--research-validation", "validate_research_pack.py report bound to that pack"),
+    ("--evidence-map", "evidence-map.json bound to the pack, validation and compiled spec"),
 )
+RESEARCH_KEYS = {name.lstrip("-").replace("-", "_") for name, _ in RESEARCH_ARGS}
 
 
 def sha256_file(path: Path) -> str:
@@ -66,21 +64,62 @@ def validated_spec(spec: Path, report: Path) -> tuple[str, str]:
     return spec_hash, sha256_file(report)
 
 
-def bind_research(paths: dict[str, Path]) -> dict[str, Any]:
-    """Record the research artifacts a freeze depends on.
+def validate_research_chain(paths: dict[str, Path], spec_hash: str) -> dict[str, Any]:
+    """Verify all Research Gate artifacts belong to one exact evidence chain."""
+    if not paths:
+        return {}
+    missing_keys = sorted(RESEARCH_KEYS - set(paths))
+    extra_keys = sorted(set(paths) - RESEARCH_KEYS)
+    if missing_keys or extra_keys:
+        details = []
+        if missing_keys:
+            details.append(f"missing {missing_keys}")
+        if extra_keys:
+            details.append(f"unexpected {extra_keys}")
+        raise SystemExit(
+            "Research Gate is atomic: provide --research-pack, --research-validation and --evidence-map together ("
+            + "; ".join(details)
+            + ")."
+        )
 
-    The Research Gate is only real if the plan it froze is bound to the evidence it
-    was built from. Without these hashes a pack can be edited after freeze and
-    nothing notices that the deck now cites evidence nobody validated.
-    """
-    bound: dict[str, Any] = {}
     for name, path in sorted(paths.items()):
-        if path is None:
-            continue
         if not path.is_file():
             raise SystemExit(f"Research artifact does not exist: {name} -> {path}")
-        bound[name] = {"path": str(path.resolve()), "sha256": sha256_file(path)}
-    return bound
+
+    pack_path = paths["research_pack"]
+    validation_path = paths["research_validation"]
+    evidence_map_path = paths["evidence_map"]
+    pack_hash = sha256_file(pack_path)
+    validation_hash = sha256_file(validation_path)
+
+    validation = load_json(validation_path)
+    if validation.get("ok") is not True:
+        raise SystemExit("Research Pack validation report is not passing.")
+    if validation.get("research_pack_sha256") != pack_hash:
+        raise SystemExit("Research Pack validation report is stale or belongs to another pack.")
+
+    evidence_map = load_json(evidence_map_path)
+    if evidence_map.get("schema_version") != "1.0":
+        raise SystemExit("Evidence map schema_version is unsupported; re-run research_pack_to_evidence.py.")
+    if evidence_map.get("unresolved_refs"):
+        raise SystemExit("Evidence map still has unresolved Slide Spec evidence_refs.")
+    provenance = evidence_map.get("provenance") or {}
+    if provenance.get("research_pack_sha256") != pack_hash:
+        raise SystemExit("Evidence map does not belong to the supplied Research Pack.")
+    if provenance.get("research_validation_sha256") != validation_hash:
+        raise SystemExit("Evidence map does not belong to the supplied Research Pack validation report.")
+    if provenance.get("compiled_slide_spec_sha256") != spec_hash:
+        raise SystemExit("Evidence map was not compiled for the Slide Spec being frozen.")
+
+    return {
+        "research_pack": {"path": str(pack_path.resolve()), "sha256": pack_hash},
+        "research_validation": {"path": str(validation_path.resolve()), "sha256": validation_hash},
+        "evidence_map": {
+            "path": str(evidence_map_path.resolve()),
+            "sha256": sha256_file(evidence_map_path),
+            "semantic_sha256": evidence_map.get("semantic_sha256"),
+        },
+    }
 
 
 def make_lock(
@@ -93,7 +132,7 @@ def make_lock(
     research: dict[str, Path] | None = None,
 ) -> dict[str, Any]:
     spec_hash, report_hash = validated_spec(spec, validation_report)
-    lock = {
+    lock: dict[str, Any] = {
         "lock_version": LOCK_VERSION,
         "status": "frozen",
         "revision": revision,
@@ -105,7 +144,7 @@ def make_lock(
         "validation_report_sha256": report_hash,
         "frozen_at": datetime.now(UTC).isoformat(),
     }
-    bound = bind_research(research or {})
+    bound = validate_research_chain(research or {}, spec_hash)
     if bound:
         lock["research"] = bound
     return lock
@@ -116,6 +155,14 @@ def write_lock(path: Path, value: dict[str, Any]) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
+def research_paths_from_lock(lock: dict[str, Any]) -> dict[str, Path]:
+    out: dict[str, Path] = {}
+    for name, entry in (lock.get("research") or {}).items():
+        if isinstance(entry, dict) and entry.get("path"):
+            out[str(name)] = Path(str(entry["path"]))
+    return out
+
+
 def check_lock(lock_path: Path, spec_override: Path | None = None) -> dict[str, Any]:
     lock = load_lock(lock_path)
     errors: list[str] = []
@@ -124,23 +171,15 @@ def check_lock(lock_path: Path, spec_override: Path | None = None) -> dict[str, 
 
     spec_value = spec_override or Path(str(lock.get("slide_spec") or ""))
     validation_value = Path(str(lock.get("validation_report") or ""))
+    current_spec_hash: str | None = None
     if not spec_value.is_file():
         errors.append("Frozen Slide Spec is missing.")
-    elif lock.get("slide_spec_sha256") != sha256_file(spec_value):
-        errors.append(
-            "Frozen Slide Spec changed after approval. Fix the artifact instead, or use "
-            "`slide_spec_guard.py revise --reason ...` for an explicit plan revision."
-        )
-    for name, entry in (lock.get("research") or {}).items():
-        if not isinstance(entry, dict):
-            continue
-        path = Path(str(entry.get("path") or ""))
-        if not path.is_file():
-            errors.append(f"Bound research artifact is missing: {name}.")
-        elif entry.get("sha256") != sha256_file(path):
+    else:
+        current_spec_hash = sha256_file(spec_value)
+        if lock.get("slide_spec_sha256") != current_spec_hash:
             errors.append(
-                f"Bound research artifact changed after freeze: {name}. "
-                "Re-run the Research Gate and `revise` with a reason."
+                "Frozen Slide Spec changed after approval. Fix the artifact instead, or use "
+                "`slide_spec_guard.py revise --reason ...` for an explicit plan revision."
             )
 
     if not validation_value.is_file():
@@ -151,14 +190,34 @@ def check_lock(lock_path: Path, spec_override: Path | None = None) -> dict[str, 
         report = load_json(validation_value)
         if report.get("valid") is not True:
             errors.append("Frozen Slide Spec validation report no longer passes.")
-        if spec_value.is_file() and report.get("slide_spec_sha256") != sha256_file(spec_value):
+        if current_spec_hash and report.get("slide_spec_sha256") != current_spec_hash:
             errors.append("Frozen validation report does not match the current Slide Spec.")
+
+    research_paths = research_paths_from_lock(lock)
+    for name, entry in (lock.get("research") or {}).items():
+        if not isinstance(entry, dict):
+            errors.append(f"Bound research artifact metadata is invalid: {name}.")
+            continue
+        path = Path(str(entry.get("path") or ""))
+        if not path.is_file():
+            errors.append(f"Bound research artifact is missing: {name}.")
+        elif entry.get("sha256") != sha256_file(path):
+            errors.append(
+                f"Bound research artifact changed after freeze: {name}. "
+                "Re-run the Research Gate and `revise` with a reason."
+            )
+
+    if research_paths and current_spec_hash:
+        try:
+            validate_research_chain(research_paths, current_spec_hash)
+        except SystemExit as exc:
+            errors.append(f"Research provenance chain is no longer valid: {exc}")
 
     return {
         "ok": not errors,
         "errors": errors,
         "lock": lock,
-        "slide_spec_sha256": sha256_file(spec_value) if spec_value.is_file() else None,
+        "slide_spec_sha256": current_spec_hash,
         "lock_sha256": sha256_file(lock_path) if lock_path.is_file() else None,
     }
 
@@ -175,7 +234,7 @@ def parse_args() -> argparse.Namespace:
     for name, help_text in RESEARCH_ARGS:
         freeze.add_argument(name, type=Path, help=help_text)
 
-    check = sub.add_parser("check", help="Verify the frozen Slide Spec has not changed")
+    check = sub.add_parser("check", help="Verify the frozen Slide Spec and evidence chain have not changed")
     check.add_argument("--lock-file", type=Path, required=True)
     check.add_argument("--slide-spec", type=Path)
     check.add_argument("--json", action="store_true")
@@ -192,7 +251,6 @@ def parse_args() -> argparse.Namespace:
 
 
 def research_bindings(args: argparse.Namespace) -> dict[str, Path]:
-    """Collect whichever Research Gate artifacts the caller supplied."""
     out: dict[str, Path] = {}
     for name, _ in RESEARCH_ARGS:
         key = name.lstrip("-").replace("-", "_")
@@ -228,13 +286,19 @@ def main() -> int:
     previous = load_lock(args.lock_file)
     previous_hash = str(previous.get("slide_spec_sha256") or "") or None
     previous_revision = int(previous.get("revision") or 1)
+    research = research_bindings(args)
+    if previous.get("research") and not research:
+        raise SystemExit(
+            "This lock is research-backed. A revision must supply a freshly compiled Research Gate chain; "
+            "omitting it would silently detach the plan from its evidence."
+        )
     lock = make_lock(
         args.slide_spec,
         args.validation_report,
         revision=previous_revision + 1,
         reason=args.reason,
         parent_sha256=previous_hash,
-        research=research_bindings(args),
+        research=research,
     )
     lock["revised_at"] = lock.pop("frozen_at")
     write_lock(args.lock_file, lock)
