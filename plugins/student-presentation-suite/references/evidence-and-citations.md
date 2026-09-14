@@ -20,6 +20,21 @@ Never invent missing numbers, citations, user feedback, experiments, or survey
 results. If evidence is unavailable, mark the claim as a proposal, assumption,
 illustrative example, or evidence gap.
 
+## Delegated retrieval
+
+话题资料检索、事实与数据核查、案例与竞品搜索等**一切外部检索**都由子代理执行
+（见 `cost-discipline.md` CD-5）；主流程不直接发起检索。
+
+- 子代理把原始结果落盘到
+  `outputs/.pptx-work/<work-id>/research/<topic>.json`；
+- 回传主流程的只有 ≤ 20 行的结构化结论，每行含
+  `claim` / `value` / `year` / `source` / `url` / `confidence`；
+- 主流程把回传结论直接写成 ledger 条目，页面只引用 `E<n>`；
+- 检索原文不回灌主流程。
+
+这样 ledger 的每一条都能回溯到 `research/*.json` 中的一条记录，同时不把原文正文留
+在会话历史里反复重发。
+
 ## Evidence closure
 
 v0.7.1 要求引用形成完整闭环，而不是只在 Slide Spec 中“有 evidence id”就算完成：

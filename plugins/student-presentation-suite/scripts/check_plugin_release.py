@@ -26,6 +26,7 @@ REQUIRED_FILES = [
     "references/presentation-brief.schema.json",
     "references/content-workflow.md",
     "references/evidence-and-citations.md",
+    "references/cost-discipline.md",
     "references/revision-training-export.md",
     "skills/sp-outline/SKILL.md",
     "skills/sp-deck/SKILL.md",

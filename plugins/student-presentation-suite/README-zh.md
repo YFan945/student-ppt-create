@@ -148,6 +148,16 @@ dashboard/architecture/matrix/quote/summary/reference 等布局族。图片默�
 预览和用户要求的输出。content QA、asset、visual-inspection、QA manifest 等独立报告只保留给
 高风险编辑、排错或用户明确要求审计证据的场景。
 
+v0.8 的视觉门禁（Art Direction、composition 候选、探索证据）由一次运行覆盖：
+
+```powershell
+sh skills/sp-deck/scripts/run_gates.sh --art-direction <a.yaml> --slide-spec <s.yaml> --evidence-dir <work-id> --lock-file <lock.json>
+```
+
+通过时只回显 1 行，完整明细写入 `gates-report.json`；单个 gate 脚本仍可单独调用用于调试。
+工作方式约束（并行调用、定点编辑、写盘即弃、阶段小结、检索委派子代理）见
+`references/cost-discipline.md`。
+
 `complete` 使用 `workflow_guard.py transition --to complete --pptx <pptx> --delivery-report <report>`。
 发现 blocker 时最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重跑最终门禁”；
 仍有 blocker 则交付 `incomplete`。CI 继续渲染完整场景矩阵，但不会提交生成产物。
@@ -177,6 +187,7 @@ python scripts/create_revision_manifest.py old.yaml new.yaml --strict
 python scripts/manage_versions.py snapshot --output-root <project>\outputs --revision-id r1 --file <deck>
 python scripts/slide_spec_to_pptx_brief.py path\to\spec.yaml --output-dir <project>\outputs
 python scripts/bump_version.py 0.5.0 --dry-run  # 统一版本升级
+python scripts/session_cost.py --last 1  # 会话成本复盘（/sp-cost-report 命令等价）
 node scripts/run_with_pptxgenjs.js --probe
 python scripts/smoke_pptx.py
 ```

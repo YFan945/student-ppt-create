@@ -176,6 +176,18 @@ report binding the current PPTX, planning report, package report, previews, and 
 Separate content QA, asset, visual-inspection, and QA-manifest reports are advanced diagnostics,
 not normal deliverables.
 
+The v0.8 visual gates (Art Direction, composition candidates, exploration evidence) run in a single
+pass, so a passing run prints one line instead of four JSON reports:
+
+```powershell
+sh skills/sp-deck/scripts/run_gates.sh --art-direction <a.yaml> --slide-spec <s.yaml> --evidence-dir <work-id> --lock-file <lock.json>
+```
+
+Full detail still lands in `gates-report.json`, and every individual gate script stays callable
+for debugging a single check. The working habits that keep a run cheap — batching tool calls,
+in-place edits instead of whole-file rewrites, write-once artifacts, per-stage summaries, and
+delegating all external search to a subagent — are canonical in `references/cost-discipline.md`.
+
 At most one repair loop may change the
 spec/composer/generator and rebuild the complete candidate; a remaining QA blocker
 is fixed via the rework edge
@@ -219,6 +231,7 @@ python scripts/create_revision_manifest.py old.yaml new.yaml --strict
 python scripts/manage_versions.py snapshot --output-root <project>\outputs --revision-id r1 --file <deck>
 python scripts/slide_spec_to_pptx_brief.py path\to\spec.yaml --output-dir <project>\outputs
 python scripts/bump_version.py 0.5.0 --dry-run  # 统一版本升级
+python scripts/session_cost.py --last 1  # session cost review (same as /sp-cost-report)
 node scripts/run_with_pptxgenjs.js --probe
 python scripts/smoke_pptx.py
 ```

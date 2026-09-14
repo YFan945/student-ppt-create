@@ -1,7 +1,7 @@
 ---
 name: sp-outline
 description: Use only for a clearly student-owned academic context when the user explicitly requests a PPT or slide outline, not an editable deck. Do not use for generic presentations, standalone scripts, Q&A-only work, or non-student tasks.
-version: 0.8.0
+version: 0.9.0
 ---
 
 # Student Presentation
@@ -15,6 +15,7 @@ version: 0.8.0
 - 避免 AI 套话（"在当今快速发展..."、"具有重要意义..."）
 - 使用具体课程/项目背景，直接主张，承认局限
 - 按目录→逐页主张→PPT文案→演讲版→Slide Spec 分层生成
+- 全程遵守 `../../references/cost-discipline.md`：调用并行批量发出、禁止整文件重写、产物写盘即弃、检索一律委派子代理
 - 输出写入 `outputs/`，不得写入 `${CLAUDE_PLUGIN_ROOT}`
 
 ## 职责

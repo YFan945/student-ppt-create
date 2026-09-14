@@ -57,6 +57,14 @@ env check → 读取 image-sources.json，确认 search/generation/user-assets �
 
 保持"先解析能力，再规划构图"的顺序：不要先画好版式再发现拿不到图。
 
+**检索一律委派给子代理**（`cost-discipline.md` CD-5）：图片检索由子代理执行，主流程只
+接收结构化结果（`slide` / `purpose` / `provider_id` / `source_url` / `license` /
+`retrieved_at` / `alt_text` / `fallback`）与原始文件路径，不接收检索原始正文——原始结果
+落盘到 `outputs/.pptx-work/<work-id>/research/`。
+
+委派**不豁免**第 3 节的硬规则：子代理同样必须先确认 provider 就绪、权限为显式 `true`，
+并遵守"生图不得作为事实证据"与"无法记录来源的图片不得进入 composition"。
+
 ## 5. Provenance recording
 
 每张外部或生成 asset 除了 schema 必填字段（`slide`、`purpose`、`source`、`permission`、`alt_text`、`fallback`），还应记录：

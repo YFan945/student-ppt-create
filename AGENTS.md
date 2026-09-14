@@ -32,8 +32,11 @@ Inside the plugin package:
 
 - `.claude-plugin/plugin.json`: plugin manifest.
 - `skills/`: the three user-facing skill entrypoints and task-specific references.
-- `references/`: shared intake, standards, image policy, and Slide Spec contracts.
-- `scripts/`: environment checks, schema bridge, validation, and PPTX smoke tooling.
+- `references/`: shared intake, standards, cost discipline, image policy, and Slide Spec contracts.
+- `scripts/`: environment checks, schema bridge, validation, session cost review, and PPTX smoke tooling.
+- `skills/sp-deck/scripts/run_gates.sh`: single-run orchestrator for the v0.8 visual gates; a passing
+  run prints one line, and the full detail lands in `gates-report.json`.
+- `commands/sp-cost-report.md`: `/sp-cost-report` entrypoint for `scripts/session_cost.py`.
 - `shared/`: reusable Python implementation.
 - `tests/`: behavioral, schema, runtime, and delivery contracts.
 - `examples/`: routing and interaction examples.
@@ -56,6 +59,8 @@ Canonical ownership:
 - `references/evidence-and-citations.md`: source ledger and citation policy.
 - `references/revision-training-export.md`: locking, revisions, rehearsal, scoring, and export boundaries.
 - `references/image-strategy.md`: image sourcing and visual policy.
+- `references/cost-discipline.md`: how the work is carried out — batched tool calls,
+  in-place edits, write-once artifacts, per-stage summaries, delegated search, single-run gating.
 - `shared/pptx_runtime/cjk_fonts.py` + `pptx_tool.py cjk-fonts`: post-process generated decks
 - `shared/pptx_runtime/fetch_images.py` + `pptx_tool.py fetch-images`: execute the
   image-sources.json contract (permission gates enforced, provenance recorded).

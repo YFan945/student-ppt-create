@@ -4,7 +4,72 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
-## Unreleased
+## 0.9.0 — 2026-09-14
+
+> 注：本段此前为 `## Unreleased` 累积区。插件版本已推进到 0.9.0，故按 Keep a
+> Changelog 惯例改为版本标题；其中也包含更早未单独建标题的 0.7.x / 0.8.x 条目。
+
+### 会话成本约束：门禁合并、cost-discipline 条款与常驻复盘脚本（2026-09-14）
+
+起因：一次 12 页课程报告的实测开销为 **548 次 API 请求 × 平均 23.4 万 token 常驻
+上下文 = 1.29 亿 token、33.5 分钟**，而工具净执行时间合计只有 8.5 分钟。同一次会话
+里 `deck.js` 被整文件重写 4 遍，上下文从 2.6 万 token 单调涨到 44.2 万 token 且全程
+没有回落。这些都是工作方式问题，不是内容难度问题。
+
+- **新增 `skills/sp-deck/scripts/run_gates.py` + `run_gates.sh`**：把 Slide Spec
+  冻结检查、Art Direction 检查、composition 候选校验与 v0.8 探索证据门禁合并为
+  **一次进程内运行**。通过时 stdout 恰好 1 行；有阻塞时只列 blocker/major，并由
+  `--max-items` 封顶；完整明细写入 `gates-report.json`。
+  由于 visual-generation 门禁内部会重跑 Art Direction 与候选校验，编排层按
+  (severity, code, message, slide) 去重，同一问题不会被计数两次。
+  四个 gate 脚本仍是 canonical 实现，调试单个门禁时可直接调用。
+- **新增 `references/cost-discipline.md`**（canonical，已加入发布必需文件列表）：
+  七条工作方式约束。
+  - CD-1 合并工具调用（同轮并行发出）；
+  - CD-2 禁止整文件重写（已存在文件默认定点替换）；
+  - CD-3 产物写盘即弃（落盘后只按路径引用，不回读全文）；
+  - CD-4 阶段 checkpoint 小结落盘（`stage-<state>-summary.md`，≤30 行；**不改变
+    状态机、不新增门禁、不阻断任何步骤，也不引入任何强制清理**）；
+  - CD-5 检索一律委派子代理（图片/话题/事实核查，主流程只收 ≤20 行结构化结论）；
+  - CD-6 门禁一次运行；
+  - CD-7 汇报纪律（中间汇报只写状态、路径、问题项、下一步）。
+  `shared-standards.md` 补上归属说明；`image-sourcing.md` 与
+  `evidence-and-citations.md` 分别写明图片检索与话题检索的子代理契约，并明确
+  **委派不豁免图片权限门禁**；三个 SKILL.md 各加一条引用。
+- **新增 `scripts/session_cost.py` 与 `commands/sp-cost-report.md`**：解析
+  `<CLAUDE_CONFIG_DIR 或 ~/.claude>/projects/**/*.jsonl`，输出 token 账目、乘法模型
+  估算、上下文增长曲线、分桶统计、工具耗时与体积排名，并自动提示三类病灶——整文件
+  重写（CD-2）、请求/工具往返比过高（CD-1）、cache-read 占比过高。
+  支持 `--list` / `--last` / `--project` / `--session` / `--json`。
+  注意区分 `Write`（整文件，计入重写）与 `Edit`（定点，CD-2 期望做法）。
+- **新增测试**：`tests/test_run_gates_summary.py`（7 项，钉住"通过即一行、失败只列
+  问题项、Art Direction 阻塞不重复计数、`--max-items` 封顶、参数组合校验"）与
+  `tests/test_session_cost.py`（9 项，钉住乘法模型与实测总量一致、分桶统计、整文件
+  重写检测、Edit 不计入重写、三种输出模式）。
+- 文档同步：两份 README 补 `run_gates.sh` 与 `session_cost.py` 入口；
+  `check_plugin_release.py` 的 `REQUIRED_FILES` 增加 `references/cost-discipline.md`。
+- 验证：`ruff check` 全绿；新增 16 项测试全部通过；
+  `check_plugin_release.py --allow-untracked` 0 错误。
+
+### 修复 `bump_version.py`：回滚失效与 npm 依赖（2026-09-14）
+
+版本升级到 0.9.0 时暴露了两个缺陷，均已在本次修复：
+
+- **回滚是静默空操作**：`_set_key` / `_update_plugin_entry` 直接原地修改传入的 dict
+  并返回同一个对象，因此 `bump()` 里保留的「升级前快照」`package_old` 与写出的
+  `package_new` 是同一个已改过的 dict。npm 失败时 `_revert_package()` 把已经升级
+  过的值原样写回，却仍然打印「package.json 已回滚」——实测确实留下了
+  `package.json=0.9.0` 而 `plugin.json=0.8.0` 的半升级状态。现改为对传入数据做
+  深拷贝，回滚才是真的回滚。
+- **不再依赖 npm**：原实现用 `npm --prefix <plugin> install --package-lock-only`
+  同步 lockfile，实测 npm 仍按 **cwd** 解析（在仓库根目录运行时直接报
+  `ENOENT: E:\student-ppt-create\package.json`），且让发布流程依赖可用的 npm
+  安装。对一次纯粹的版本升级而言，该命令只会改写 lockfile 的两个字段，因此改为
+  直接编辑 `package-lock.json` 的 `version` 与 `packages[""].version`——确定、
+  离线可复现、且与 `scripts/check_installed_version.py` 读取的版本源一一对应。
+- 新增 4 项回归测试：updater 不得原地修改入参、lockfile 两个字段同步、重复调用
+  幂等（`unchanged`）、lockfile 缺失时返回 `missing`，以及覆盖字段与
+  `check_installed_version.py` 读取字段的一致性。
 
 ### 发布源统一：本仓库 main 取代 Personal-Student 的 claude-code 分支（2026-09-14）
 

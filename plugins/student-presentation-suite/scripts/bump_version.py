@@ -4,11 +4,9 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
+import copy
 import json
 import re
-import shutil
-import subprocess
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -41,11 +39,18 @@ FILES_TO_UPDATE = [
     ),
 ]
 SKILL_FILES = sorted((PLUGIN_ROOT / "skills").glob("*/SKILL.md"))
+LOCKFILE = PLUGIN_ROOT / "package-lock.json"
 
 
 def _set_key(data: dict, key: str, value: str) -> dict:
-    data[key] = value
-    return data
+    """返回设置了 ``key`` 的副本。
+
+    **不得原地修改传入的 dict**：``bump()`` 会保留升级前的对象用于回滚，原地更新
+    会让回滚把已经升级过的值原样写回去，变成静默的空操作。
+    """
+    updated = copy.deepcopy(data)
+    updated[key] = value
+    return updated
 
 
 def _update_plugin_entry(data: dict, version: str) -> dict:
@@ -54,8 +59,9 @@ def _update_plugin_entry(data: dict, version: str) -> dict:
         raise ValueError("marketplace.json 中未找到 plugins 列表")
     if plugins[0].get("name") != "student-presentation-suite":
         raise ValueError("marketplace.json 第一个插件不是 student-presentation-suite")
-    plugins[0]["version"] = version
-    return data
+    updated = copy.deepcopy(data)
+    updated["plugins"][0]["version"] = version
+    return updated
 
 
 def read_json(path: Path) -> dict:
@@ -68,6 +74,36 @@ def write_json(path: Path, data: dict) -> None:
         json.dumps(data, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def sync_package_lock(version: str, *, dry_run: bool = False) -> str:
+    """把 package-lock.json 的版本字段对齐，不经过 npm。
+
+    对一次纯粹的版本升级而言，``npm install --package-lock-only`` 只会改写
+    lockfile 的 ``version`` 与 ``packages[""].version`` 两个字段。改为直接改这两处
+    有两点好处：结果是确定的、可离线复现；并且不再依赖调用方的工作目录——早先的
+    实现用 ``npm --prefix``，实测 npm 仍按 cwd 解析，导致在仓库根目录运行时整个
+    升级失败。
+
+    返回 ``updated`` / ``unchanged`` / ``missing``。
+    """
+    if not LOCKFILE.is_file():
+        return "missing"
+    try:
+        data = read_json(LOCKFILE)
+    except (OSError, json.JSONDecodeError):
+        return "missing"
+    changed = False
+    if data.get("version") != version:
+        data["version"] = version
+        changed = True
+    root_package = (data.get("packages") or {}).get("")
+    if isinstance(root_package, dict) and root_package.get("version") != version:
+        root_package["version"] = version
+        changed = True
+    if changed and not dry_run:
+        write_json(LOCKFILE, data)
+    return "updated" if changed else "unchanged"
 
 
 def update_skill_version(path: Path, version: str, *, dry_run: bool = False) -> None:
@@ -111,13 +147,18 @@ def bump(target: str, dry_run: bool = False) -> int:
     old_version = current_version()
     print(f"当前版本: {old_version} → {target}")
 
-    # 先加载所有文件，避免中途失败留下半完成状态
+    # 先加载并校验所有文件，避免中途失败留下半完成状态
     loaded: list[tuple[Path, str, Callable, dict]] = []
     for path, desc, updater in FILES_TO_UPDATE:
         try:
             data = read_json(path)
         except (OSError, json.JSONDecodeError) as exc:
             print(f"✗ 无法读取 {path}: {exc}", file=sys.stderr)
+            return 1
+        try:
+            updater(data, target)
+        except ValueError as exc:
+            print(f"✗ {path}: {exc}", file=sys.stderr)
             return 1
         loaded.append((path, desc, updater, data))
 
@@ -132,57 +173,15 @@ def bump(target: str, dry_run: bool = False) -> int:
                 print(f"✗ 无法检查 {path}: {exc}", file=sys.stderr)
                 return 1
             print(f"  [dry-run] {path.parent.name}/SKILL.md version: {target}")
+        print(f"  [dry-run] package-lock.json: {sync_package_lock(target, dry_run=True)}")
         print(f"\n[dry-run] 版本升级完成: {old_version} → {target}")
         return 0
 
-    # 先写 package.json，再让 npm 同步 lockfile，最后写其余 JSON，确保 lockfile 版本一致
-    package_item = next((item for item in loaded if item[0].name == "package.json"), None)
-    if package_item is None:
-        print("✗ 未找到 package.json", file=sys.stderr)
-        return 1
-    package_path, package_desc, package_updater, package_old = package_item
-    package_new = package_updater(package_old, target)
-    write_json(package_path, package_new)
-    print(f"  ✓ {package_path.name} {package_desc}: {target}")
-
-    def _revert_package() -> None:
-        """npm 失败时回滚 package.json，避免半升级状态。"""
-        with contextlib.suppress(OSError):
-            write_json(package_path, package_old)
-
-    print("  正在同步 package-lock.json ...")
-    try:
-        # 不用 shell=True：Windows 上列表参数经 cmd.exe 会分裂；npm 在 Windows
-        # 实际是 npm.cmd，用 shutil.which 解析出可执行文件后直接调用。
-        npm = shutil.which("npm")
-        if npm is None:
-            raise FileNotFoundError("npm not found on PATH")
-        result = subprocess.run(
-            [npm, "--prefix", str(PLUGIN_ROOT), "install", "--package-lock-only"],
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=60,
-        )
-    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
-        _revert_package()
-        print(f"✗ npm 调用失败: {exc}", file=sys.stderr)
-        print("⚠ package.json 已回滚，请解决 npm 问题后重试。", file=sys.stderr)
-        return 1
-    if result.returncode != 0:
-        _revert_package()
-        print(f"✗ npm install --package-lock-only 失败: {result.stderr}", file=sys.stderr)
-        print("⚠ package.json 已回滚，请解决 npm 问题后重试。", file=sys.stderr)
-        return 1
-    print("  ✓ package-lock.json 已同步")
+    lock_state = sync_package_lock(target)
+    print(f"  ✓ package-lock.json: {lock_state}")
 
     for path, desc, updater, data in loaded:
-        if path.name == "package.json":
-            continue
-        updated = updater(data, target)
-        write_json(path, updated)
+        write_json(path, updater(data, target))
         print(f"  ✓ {path.name} {desc}: {target}")
     for path in SKILL_FILES:
         try:

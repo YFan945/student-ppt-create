@@ -9,8 +9,10 @@ language-level defaults, anti-AI wording, and group-presentation rules. Skill
 files should describe task-specific workflow and link here instead of redefining
 suite-wide thresholds. `presentation-intake.md` owns clarification and workflow
 states, `presentation-brief.md` owns global scenario/audience/control semantics,
-`slide-spec.md` owns structured handoff rules, and `image-strategy.md`
-owns source/visual policy.
+`slide-spec.md` owns structured handoff rules, `image-strategy.md`
+owns source/visual policy, and `cost-discipline.md` owns how the work is carried
+out: batched tool calls, in-place edits, write-once artifacts, stage summaries,
+delegated search, and single-run gating.
 
 ## Intent Routing
 

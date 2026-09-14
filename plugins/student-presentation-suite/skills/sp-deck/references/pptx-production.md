@@ -4,6 +4,37 @@
 
 生产前必须具备：已确认的 Production Summary、验证并冻结的 Presentation Brief / Slide Spec、明确 output prefix、selected visual style seed、selected design grammar，以及唯一 production mode。v0.8 create/rebuild 还必须先完成 Art Direction 与 composition exploration，不能从 Slide Spec 直接跳到 final `deck.js`。
 
+## Context discipline in production
+
+`../../references/cost-discipline.md` 的七条约束在本阶段的具体落法：
+
+- **检索委派（CD-5）**：本阶段需要补充图片或话题资料时，一律交给子代理执行，主流程
+  只接收 ≤ 20 行的结构化结论并写入 Evidence Ledger。委派不豁免 `image-sourcing.md`
+  的图片权限门禁。
+- **门禁一次运行（CD-6）**：Art Direction、composition 候选与 v0.8 探索证据由一次
+  `run_gates.sh` 覆盖，通过时只回显 1 行，明细写入 `gates-report.json`：
+
+```bash
+sh "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.sh" \
+  --art-direction outputs/.pptx-work/<work-id>/art-direction.yaml \
+  --slide-spec outputs/.pptx-work/<work-id>/slide-spec.yaml \
+  --evidence-dir outputs/.pptx-work/<work-id> \
+  --lock-file outputs/.pptx-work/<work-id>/slide-spec-lock.json
+```
+
+  wireframe 尚未生成时，可只校验候选文件：
+  `run_gates.sh --art-direction <...> --candidates <composition-candidates-N.json> [更多候选…]`。
+  单个 gate 脚本仍可直接调用，用于调试某个具体门禁。
+
+- **禁止整文件重写（CD-2）**：`deck.js` 按页或按区块拆分，一次修改只触及一个文件。
+  为修一处几何问题而重写整个生成器是本 suite 明确禁止的做法——它会让多个版本同时
+  留在会话历史里，此后每一轮都为废弃版本付费。
+- **写盘即弃（CD-3）**：冻结后的 `slide-spec.yaml`、`art-direction.yaml`、`deck.js`、
+  候选文件与各类报告只按路径引用，不回读全文；确认状态时读计数、字段名与 hash。
+- **阶段小结（CD-4）**：进入 `producing` 与 `qa` 时各写一份 ≤ 30 行的
+  `stage-<state>-summary.md`，后续阶段从小结入手。
+- **汇报纪律（CD-7）**：中间汇报只写状态、路径、问题项、下一步，不回显完整工具输出。
+
 ## Mode decision
 
 | Mode | 使用条件 | 生产机制 |
@@ -49,6 +80,9 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/art_direction_check.py" \
   <art-direction.yaml> --quality <high-score|standard> --output <art-direction-report.json> --json --strict
 ```
 
+单独调用只用于调试这个门禁；批量流程改用 `run_gates.sh`（CD-6），并把 `--json` 去掉——
+报告落盘即可，不需要回显。
+
 ### Visual Reference Retrieval
 
 每页在写坐标前，用 slide role、grammar、visual strategy、density、tags 和最近页面历史检索 2–3 个 recipe：
@@ -72,6 +106,8 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/visual_reference_select.py"
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/composition_candidate_check.py" \
   <composition-candidates-N.json> --quality <high-score|standard> --output <candidate-report-N.json> --json --strict
 ```
+
+多个候选文件一次校验用 `run_gates.sh --candidates <file> <file> …`，一次运行覆盖全部页。
 
 再生成低成本 wireframe：
 
