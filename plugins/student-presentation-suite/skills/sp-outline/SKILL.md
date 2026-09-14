@@ -36,7 +36,7 @@ version: 0.10.1
 6. 沿单一主线构建，按序生成：目录→每页主张/要点→PPT文案→演讲版→Slide Spec（用户表明将转 PPTX 时必写）。
 7. 每页内容幻灯片提供故事角色、主张、精简文案、可选视觉、证据引用、讲稿、时间、归属、转场。研究支持的 **draft Slide Spec** 在 `evidence_refs` 中直接使用 Research Pack 的 `F/D/Q` id；不要生成 `E<n>`、不要手写 Research Evidence Ledger。`confidence: low` 或 conflict 条目必须写成区间/限定语。`sp-deck` 后续由 `research_pack_to_evidence.py` 机械编译为 E ids、ledger 与 `used_on_slides`。
 8. 新手模式下解释关键结构/布局选择。用 `analyze_presentation_spec.py` 做结构/证据/密度风险检查；需要训练卡、Q&A、词汇表、提词版或修订元数据时运行 `build_support_outputs.py`。
-9. 如需文件输出并转 PPTX：若走过 Research Gate，写 `outputs/<topic>-brief.yaml` 与 **draft** `outputs/<topic>-slide-spec.yaml`，将 Brief、draft spec、Research Pack、research validation 一并交给 `sp-deck`；若是 C-only，则按普通无 research 流程交接。最终冻结的是 `sp-deck` 编译/验证后的 Slide Spec，而不是研究型 draft。
+9. 如需文件输出并转 PPTX：若走过 Research Gate，写 `outputs/<topic>-brief.yaml` 与 **draft** `outputs/<topic>-slide-spec.yaml`，将 Brief、draft spec、Research Pack、research validation 一并交给 `sp-deck`；若是 C-only，则按普通无 research 流程交接。最终冻结的是 `sp-deck` 编译/验证后的 Slide Spec，而不是研究型 draft。交给 `sp-deck` 时仍保留**完整 intake 门禁**，outline 阶段不能替代其 Production Summary 确认。
 
 ## 输出契约
 
