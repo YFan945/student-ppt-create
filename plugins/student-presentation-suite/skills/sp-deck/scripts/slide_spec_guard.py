@@ -3,8 +3,11 @@
 
 The Slide Spec is the approved production plan. Once frozen, generator/readback
 failures must be fixed in the artifact, not by silently rewriting the plan. A
-research-backed plan is accepted only when Research Pack -> validation report ->
-evidence map -> compiled Slide Spec form one hash-linked provenance chain.
+new research-backed plan is accepted only when Research Pack -> validation report
+-> evidence map -> compiled Slide Spec form one hash-linked provenance chain.
+
+Lock v1.0 remains readable for in-progress work created by older plugin versions;
+new freezes use v1.1 and receive the stronger provenance checks.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 LOCK_VERSION = "1.1"
+COMPATIBLE_LOCK_VERSIONS = {"1.0", LOCK_VERSION}
 RESEARCH_ARGS = (
     ("--research-pack", "research-pack.json to bind into the freeze"),
     ("--research-validation", "validate_research_pack.py report bound to that pack"),
@@ -166,7 +170,8 @@ def research_paths_from_lock(lock: dict[str, Any]) -> dict[str, Path]:
 def check_lock(lock_path: Path, spec_override: Path | None = None) -> dict[str, Any]:
     lock = load_lock(lock_path)
     errors: list[str] = []
-    if lock.get("lock_version") != LOCK_VERSION or lock.get("status") != "frozen":
+    lock_version = str(lock.get("lock_version") or "")
+    if lock_version not in COMPATIBLE_LOCK_VERSIONS or lock.get("status") != "frozen":
         errors.append("Slide Spec lock is invalid or is not frozen.")
 
     spec_value = spec_override or Path(str(lock.get("slide_spec") or ""))
@@ -207,7 +212,11 @@ def check_lock(lock_path: Path, spec_override: Path | None = None) -> dict[str, 
                 "Re-run the Research Gate and `revise` with a reason."
             )
 
-    if research_paths and current_spec_hash:
+    # New v1.1 locks must keep the full provenance chain valid. Legacy v1.0 locks
+    # remain readable so upgrading the plugin does not invalidate in-progress work;
+    # their existing file hashes are still checked above. Any revision upgrades the
+    # lock to v1.1 and therefore must supply a fresh, fully linked research chain.
+    if lock_version == LOCK_VERSION and research_paths and current_spec_hash:
         try:
             validate_research_chain(research_paths, current_spec_hash)
         except SystemExit as exc:
