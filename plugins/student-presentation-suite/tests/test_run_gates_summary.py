@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import io
 import json
+import shutil
 import sys
 import unittest
+import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -26,6 +28,7 @@ from test_helpers import load_module  # noqa: E402
 RUN_GATES = load_module(ROOT / "skills" / "sp-deck" / "scripts" / "run_gates.py")
 GOLDEN = ROOT / "examples" / "golden-sample"
 MAX_SUMMARY_LINES = 15
+HIGH_LEVERAGE = (1, 2, 5, 9)
 
 
 class RunGatesSummaryTests(unittest.TestCase):
@@ -35,14 +38,40 @@ class RunGatesSummaryTests(unittest.TestCase):
             code = RUN_GATES.main(argv)
         return code, buffer.getvalue()
 
+    def materialize_golden_evidence(self, root: Path) -> Path:
+        """Create a self-contained gate fixture instead of relying on untracked PPTX files.
+
+        The repository intentionally keeps the golden candidate/reference JSON small;
+        developer worktrees may also contain rendered `wireframes-*.pptx`, but CI gets a
+        clean checkout. The visual-generation gate only needs the wireframe package to
+        expose the same number of `ppt/slides/slideN.xml` entries as the candidate count,
+        so synthesize that minimal package for the contract test.
+        """
+        evidence = root / "golden-composition"
+        evidence.mkdir(parents=True, exist_ok=True)
+        source = GOLDEN / "composition"
+        for slide in HIGH_LEVERAGE:
+            candidate_name = f"composition-candidates-{slide}.json"
+            reference_name = f"references-slide-{slide}.json"
+            shutil.copyfile(source / candidate_name, evidence / candidate_name)
+            shutil.copyfile(source / reference_name, evidence / reference_name)
+
+            candidate_data = json.loads((evidence / candidate_name).read_text(encoding="utf-8"))
+            count = len(candidate_data.get("candidates") or [])
+            with zipfile.ZipFile(evidence / f"wireframes-{slide}.pptx", "w") as archive:
+                for page in range(1, count + 1):
+                    archive.writestr(f"ppt/slides/slide{page}.xml", "<p:sld/>")
+        return evidence
+
     def golden_args(self, out: Path) -> list[str]:
+        evidence = self.materialize_golden_evidence(out.parent)
         return [
             "--art-direction",
             str(GOLDEN / "art-direction.yaml"),
             "--slide-spec",
             str(GOLDEN / "slide-spec.yaml"),
             "--evidence-dir",
-            str(GOLDEN / "composition"),
+            str(evidence),
             "--output",
             str(out),
         ]
@@ -144,7 +173,6 @@ class RunGatesSummaryTests(unittest.TestCase):
             )
             self.assertEqual(2, code)
             lines = stdout.splitlines()
-            # 1 行汇总 + 2 行问题 + 1 行省略提示
             self.assertEqual(4, len(lines), stdout)
             self.assertTrue(lines[-1].startswith("  …"), lines[-1])
             report = json.loads(out.read_text(encoding="utf-8"))
