@@ -3,12 +3,35 @@
 中文 | [English](README.md)
 
 `student-presentation-suite` 是面向大学生课程汇报、答辩和小组展示的 Claude
-Code 插件。它将内容规划、可编辑 PPTX 生成和已有 deck 审查拆成独立 skill，
-并共享统一的需求表、Slide Spec 与质量标准。
+Code 插件。它将外部知识检索、内容规划、可编辑 PPTX 生成和已有 deck 审查拆成独立
+skill，并共享统一的需求表、Slide Spec 与质量标准。
 
 安装 ID：`student-presentation-suite@claude-personal`。
 
-## 三个 Skill
+管线：
+
+```text
+sp-research → sp-outline → sp-deck → sp-review
+ 证据层        内容层        生成层      审查层
+```
+
+## 四个 Skill
+
+### `sp-research`
+
+只负责**证据层**：判断哪些内容需要外部证据支持，检索高质量来源，做交叉验证与来源
+分级，产出结构化的 `research-pack.json` 供后续 skill 直接消费。
+
+设计宗旨是 *Search for evidence, not text*——不是"帮忙找点 PPT 内容"，而是"识别需要
+证据支持的论断并把它坐实"。它不决定版式、不设计页面、不生成 PPTX、不改视觉风格、
+不撰写成段讲稿；职责混在一起会污染后面每一层的产物。
+
+它同时是**上下文防火墙**：原始检索（搜索页、网页正文、论文摘要、失败信息）在子代理
+内部消化，主流程只接收压缩后的 Research Pack（约 10 万 token → 约 8 千 token）。
+
+规则见 `references/research-workflow.md`，产出形状见 `references/research-pack.schema.json`，
+校验用 `scripts/validate_research_pack.py`（会拦截"高置信度只靠单一来源""只拿 D 级来源
+支撑事实""标了冲突却没降置信度""检索受阻却静默降级"等问题）。
 
 ### `sp-outline`
 

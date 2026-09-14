@@ -4,6 +4,53 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## Unreleased
+
+### 新增 sp-research：把外部知识获取拆成独立一层（2026-09-14）
+
+此前外部检索是隐式的：既没有独立的角色定义，也没有产出契约。结果是"查了什么、查到
+多少、哪些没查到"全靠临场判断——上次真实运行中 WebFetch 被域名策略拦截、只能退到
+搜索摘要，却没有留下任何结构化记录，事后无法判断哪些数据需要复核。
+
+管线从三段扩到四段：
+
+```text
+sp-research → sp-outline → sp-deck → sp-review
+ 证据层        内容层        生成层      审查层
+```
+
+- **新增 `skills/sp-research/SKILL.md`**（第四个 skill，与其余三个同级）。职责边界写死：
+  只做证据层，**不决定版式、不设计页面、不生成 PPTX、不改视觉风格、不撰写成段讲稿**。
+  设计宗旨 *Search for evidence, not text*。
+- **新增 `references/research-workflow.md`**（canonical）：
+  - **A/B/C/D 四类判定**——时效性内容必须查、会被打分的内容尽量查、与外部事实无关的
+    不查、用户限定范围（"只根据我上传的论文"）的一律禁查。**知道什么时候不该搜索**比
+    会搜索更重要。
+  - **以 Claim 而非主题为调用单位**：不要 `research("生成式 AI")`，要按待证论断逐条查。
+  - **Source Tier S/A/B/C/D** 与"用途 → 最低 tier"的对应表。
+  - **交叉验证**：多源量级一致才给 high；不一致标 `conflict: true` 并把置信度降到 low，
+    冲突逐条记录。先怀疑口径，再怀疑数据。
+  - **知识缺口发现**：把"发展迅速"这类未量化陈述识别为缺口并去补。
+  - **可视化机会识别**：标出材料适合什么图形（line_chart / comparison / timeline /
+    taxonomy…），这是 PPT 研究与其他研究的分界。
+  - **三档预算**（simple 3/5、standard 8/12、deep 15/25）与 scenario 的映射。
+  - **检索受阻必须留痕**：打不开、付费、不可得一律进 `unresolved`，不许静默降级。
+- **新增 `references/research-pack.schema.json`**：Research Pack 是唯一交付物，
+  findings / data_points / quotes / sources / conflicts / knowledge_gaps /
+  visual_candidates / unresolved 全部规定形状，**不写自然语言小作文**。
+- **新增 `scripts/validate_research_pack.py` + 13 项测试**：schema 之外的语义规则才是
+  真正让 deck 站得住的部分——引用完整性、来源分级强制（high 置信度需 S/A 来源、
+  只靠 D 级不能支撑结论）、交叉验证（high 置信度数字需 ≥2 独立来源；标了冲突必须降
+  置信度且有对应记录）、预算上限、来源可追溯（必须有 url 或 locator）、未被引用的
+  来源提示。输出纪律与 `run_gates` 一致：通过时 1 行，有阻塞时只列问题项。
+- **打通 Claim → Evidence → Source 链路**（`evidence-and-citations.md` 新增一节）：
+  Research Pack 是外部事实的唯一入口；页面上任何外部数字都要能追到 finding/data_point
+  再到具体 source。`confidence: low` 或有冲突的条目，页面必须写成区间或加限定语。
+- **接线**：`sp-outline` 新增"Research Need Analysis"前置步骤（第 3 步，先查再排页）；
+  `sp-deck` 在参考文献列表里加入 Research Pack；`shared-standards.md` 补归属；
+  `AGENTS.md` 架构图与归属表更新；两份 README 加管线图与 `sp-research` 说明；
+  `check_plugin_release.py` 的 `REQUIRED_FILES` 增补 4 项。
+
 ## 0.9.1 — 2026-09-14
 
 ### 按第二轮实测修正成本模型：修复循环才是主导项（2026-09-14）

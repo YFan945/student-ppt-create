@@ -3,16 +3,46 @@
 [中文](README-zh.md) | English
 
 `student-presentation-suite` is a Claude Code plugin for student-owned
-university presentations. It separates content planning, editable PPTX
-production, and existing-deck review while sharing one intake, Slide Spec, and
-quality contract.
+university presentations. It separates evidence gathering, content planning,
+editable PPTX production, and existing-deck review while sharing one intake,
+Slide Spec, and quality contract.
 
 This plugin is installed as part of the `claude-plugins` repository. See the
 [root README](../../README.md) for installation instructions.
 
 Install ID: `student-presentation-suite@claude-personal`.
 
+## Pipeline
+
+```text
+sp-research → sp-outline → sp-deck → sp-review
+  evidence      content      build      review
+```
+
 ## Skills
+
+### `sp-research`
+
+Owns the evidence layer only: decides which content actually needs external
+support, retrieves high-quality sources, cross-checks numbers, grades each source
+by tier, and emits a structured `research-pack.json` for the later skills to
+consume.
+
+The design brief is *Search for evidence, not text* — not "find me some slide
+content", but "identify the claims that need evidence and settle them". It does
+not choose layouts, design pages, produce PPTX, touch the visual direction, or
+write prose speaker notes; mixing those responsibilities contaminates every
+layer downstream.
+
+It doubles as a context firewall: raw retrieval (result pages, article bodies,
+paper abstracts, failures) is absorbed inside a subagent, so the main flow only
+receives the compressed Research Pack (~100k tokens in, ~8k out).
+
+Rules live in `references/research-workflow.md`, the output shape in
+`references/research-pack.schema.json`, and `scripts/validate_research_pack.py`
+enforces them — rejecting high-confidence claims resting on a single source,
+fact claims supported only by tier D, conflicts that never lowered confidence,
+and retrieval that failed silently instead of being recorded.
 
 ### `sp-outline`
 

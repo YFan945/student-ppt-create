@@ -33,7 +33,8 @@ Inside the plugin package:
 - `.claude-plugin/plugin.json`: plugin manifest.
 - `skills/`: the three user-facing skill entrypoints and task-specific references.
 - `references/`: shared intake, standards, cost discipline, image policy, and Slide Spec contracts.
-- `scripts/`: environment checks, schema bridge, validation, session cost review, and PPTX smoke tooling.
+- `scripts/`: environment checks, schema bridge, validation, session cost review, Research Pack
+  validation, and PPTX smoke tooling.
 - `skills/sp-deck/scripts/run_gates.sh`: single-run orchestrator for the v0.8 visual gates; a passing
   run prints one line, and the full detail lands in `gates-report.json`.
 - `commands/sp-cost-report.md`: `/sp-cost-report` entrypoint for `scripts/session_cost.py`.
@@ -43,11 +44,19 @@ Inside the plugin package:
 
 ## Architecture And Ownership
 
-The suite has three skills with non-overlapping outcomes:
+The suite has four skills with non-overlapping outcomes, wired as a pipeline:
 
-- `student-presentation`: outline and speaking-plan work; never creates PPTX files.
-- `student-presentation-review`: read-only diagnosis by default.
-- `student-presentation-ppt`: editable PPTX creation and existing-deck improvement.
+```text
+sp-research → sp-outline → sp-deck → sp-review
+  evidence      content      build      review
+```
+
+- `sp-research`: evidence layer only — retrieve, grade, cross-check sources into a
+  Research Pack. Never chooses layouts, designs pages, produces PPTX, or writes
+  prose notes.
+- `sp-outline`: outline and speaking-plan work; never creates PPTX files.
+- `sp-review`: read-only diagnosis by default.
+- `sp-deck`: editable PPTX creation and existing-deck improvement.
 
 Canonical ownership:
 
@@ -59,6 +68,8 @@ Canonical ownership:
 - `references/evidence-and-citations.md`: source ledger and citation policy.
 - `references/revision-training-export.md`: locking, revisions, rehearsal, scoring, and export boundaries.
 - `references/image-strategy.md`: image sourcing and visual policy.
+- `references/research-workflow.md`: when and how external knowledge is gathered — A/B/C/D
+  classification, source tiers, cross-validation, budget bands, and the Research Pack contract.
 - `references/cost-discipline.md`: how the work is carried out — batched tool calls,
   in-place edits, write-once artifacts, per-stage summaries, delegated search, single-run gating.
 - `shared/pptx_runtime/cjk_fonts.py` + `pptx_tool.py cjk-fonts`: post-process generated decks

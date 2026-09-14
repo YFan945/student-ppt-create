@@ -20,10 +20,37 @@ Never invent missing numbers, citations, user feedback, experiments, or survey
 results. If evidence is unavailable, mark the claim as a proposal, assumption,
 illustrative example, or evidence gap.
 
+## Claim → Evidence → Source
+
+v0.9 起，外部知识经 `sp-research` 汇成 **Research Pack**，再进入 ledger。链路固定为：
+
+```text
+Slide 06
+  ↓  slide.evidence_refs
+Claim C06-01        ← research-pack findings / data_points
+  ↓  source_ids
+Source S08          ← research-pack sources（含 tier 与 url/locator）
+  ↓
+页面短引用 → 最终参考文献
+```
+
+规则：
+
+1. Research Pack 是**外部事实的唯一入口**。页面上任何外部数字都必须能追到 a
+   `finding` / `data_point`，再到具体 `source`；追不到的不许上屏。
+2. Research Pack 的 `confidence` 决定 ledger 的 `confidence` 与页面表述方式：`low`
+   或 `conflict: true` 的条目，页面必须写成区间或加限定语，不得当确定值陈述。
+3. `tier` 为 D 的来源只能作为"用户观点/舆论"引用，不得作为事实依据。
+4. 检索受阻（打不开、付费、不可得）必须留在 pack 的 `unresolved` 里；对应论断在页面
+   上要标注为无来源或降级表述，不得静默当作已证实。
+5. 规则与判定标准见 `research-workflow.md`；`scripts/validate_research_pack.py` 会强制
+   第 1、2、3 条。
+
 ## Delegated retrieval
 
 话题资料检索、事实与数据核查、案例与竞品搜索等**一切外部检索**都由子代理执行
-（见 `cost-discipline.md` CD-5）；主流程不直接发起检索。
+（见 `cost-discipline.md` CD-5）；主流程不直接发起检索。完整的研究规约与产出形状见
+`research-workflow.md` 与 `research-pack.schema.json`。
 
 - 子代理把原始结果落盘到
   `outputs/.pptx-work/<work-id>/research/<topic>.json`；

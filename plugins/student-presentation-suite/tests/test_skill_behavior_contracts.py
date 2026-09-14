@@ -186,6 +186,45 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("不修改文件", review)
         self.assertIn("完整 intake 门禁", planning)
 
+    def test_research_skill_stays_in_the_evidence_layer(self) -> None:
+        """sp-research 只做证据层：不排页、不生成、不改视觉、不写讲稿。"""
+        research = self.read("skills/sp-research/SKILL.md")
+        self.assertLessEqual(len(research.splitlines()), 80, "sp-research SKILL.md should stay compact")
+        for token in (
+            "references/research-workflow.md",
+            "research-pack.schema.json",
+            "validate_research_pack.py",
+            "不决定版式",
+            "不设计页面",
+            "不生成 PPTX",
+            "不撰写成段讲稿",
+        ):
+            self.assertIn(token, research)
+
+        # 上游把研究当作排页之前的前置步骤，下游知道去哪里查证数字
+        outline = self.read("skills/sp-outline/SKILL.md")
+        self.assertIn("sp-research", outline)
+        self.assertIn("Research Need Analysis", outline)
+        self.assertIn("research-pack.json", self.read("skills/sp-deck/SKILL.md"))
+
+    def test_research_contract_is_wired_into_the_evidence_chain(self) -> None:
+        evidence = self.read("references/evidence-and-citations.md")
+        self.assertIn("Claim → Evidence → Source", evidence)
+        self.assertIn("research-workflow.md", evidence)
+
+        workflow = self.read("references/research-workflow.md")
+        for token in (
+            "Search for evidence, not text",
+            "A 必须查",
+            "B 最好查",
+            "C 不用查",
+            "D 禁止查",
+            "unresolved",
+            "交叉验证",
+            "Tier",
+        ):
+            self.assertIn(token, workflow)
+
     def test_skill_files_stay_compact_and_reference_canonical_rules(self) -> None:
         paths = [
             ROOT / "skills/sp-outline/SKILL.md",

@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://student-presentation-suite.local/research-pack.schema.json",
+  "title": "Research Pack",
+  "description": "sp-research 的唯一交付物：把互联网原始信息压缩为可追溯、可引用的结构化结论，供 sp-outline 与 sp-deck 直接消费。规则见 research-workflow.md；本文件只约束形状，语义检查（来源分级、交叉验证、预算）见 scripts/validate_research_pack.py。",
+  "type": "object",
+  "required": ["version", "topic", "budget", "queries", "findings", "sources"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": "0.9"},
+    "topic": {"type": "string", "minLength": 1},
+    "generated_at": {"type": "string", "description": "ISO 8601"},
+    "budget": {
+      "enum": ["simple", "standard", "deep"],
+      "description": "决定 queries / sources 的上限；映射规则见 research-workflow.md"
+    },
+    "queries": {
+      "type": "array",
+      "description": "实际执行过的检索词，用于复现与审计。只记录执行了的，不记录计划中的。",
+      "items": {"type": "string", "minLength": 1}
+    },
+    "findings": {
+      "type": "array",
+      "description": "被证据支持的论述，是 sp-outline 的直接输入。",
+      "items": {
+        "type": "object",
+        "required": ["id", "claim", "confidence", "source_ids"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^F[0-9]{2,}$"},
+          "claim": {"type": "string", "minLength": 4},
+          "confidence": {"enum": ["high", "medium", "low"]},
+          "source_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+          "conflict": {"type": "boolean", "description": "来源之间存在实质分歧"},
+          "notes": {"type": "string"}
+        }
+      }
+    },
+    "data_points": {
+      "type": "array",
+      "description": "可以在页面上直接引用的数字。必须能落到具体来源，且 high 置信度需要多源。",
+      "items": {
+        "type": "object",
+        "required": ["id", "value", "meaning", "source_ids", "confidence"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^D[0-9]{2,}$"},
+          "value": {"type": "string", "minLength": 1},
+          "meaning": {"type": "string", "minLength": 2},
+          "year": {"type": "integer"},
+          "source_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+          "confidence": {"enum": ["high", "medium", "low"]},
+          "conflict": {"type": "boolean"}
+        }
+      }
+    },
+    "quotes": {
+      "type": "array",
+      "description": "直接引语。与 findings 分开，避免把观点当成事实。",
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "source_id"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^Q[0-9]{2,}$"},
+          "text": {"type": "string", "minLength": 2},
+          "attribution": {"type": "string"},
+          "source_id": {"type": "string"}
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "description": "全部来源。tier 见 research-workflow.md 的分级表。",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "type", "tier"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^S[0-9]{2,}$"},
+          "title": {"type": "string", "minLength": 2},
+          "type": {
+            "enum": [
+              "law-and-regulation",
+              "official-database",
+              "official-document",
+              "paper",
+              "standard",
+              "research-institute",
+              "university",
+              "international-organization",
+              "company-filing",
+              "news",
+              "industry-report",
+              "vendor-blog",
+              "community",
+              "personal-blog",
+              "other"
+            ]
+          },
+          "tier": {
+            "enum": ["S", "A", "B", "C", "D"],
+            "description": "S 官方文件/法规/官方数据库/论文原文/政府数据；A 顶会论文/权威机构/高校/国际组织/上市公司财报；B 主流媒体；C 技术或行业博客；D 论坛与个人内容"
+          },
+          "publisher": {"type": "string"},
+          "year": {"type": "integer"},
+          "url": {"type": "string"},
+          "locator": {"type": "string", "description": "无法给 URL 时的定位信息（DOI、卷期页、报告编号）"},
+          "credibility": {"enum": ["high", "medium", "low"]},
+          "accessed_at": {"type": "string"},
+          "notes": {"type": "string"}
+        }
+      }
+    },
+    "conflicts": {
+      "type": "array",
+      "description": "来源之间的实质分歧。宁可标出来，也不要随便挑一个数字。",
+      "items": {
+        "type": "object",
+        "required": ["id", "topic", "entries"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^C[0-9]{2,}$"},
+          "topic": {"type": "string", "minLength": 2},
+          "entries": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "object",
+              "required": ["value", "source_id"],
+              "additionalProperties": false,
+              "properties": {
+                "value": {"type": "string"},
+                "source_id": {"type": "string"}
+              }
+            }
+          },
+          "affected_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "受影响的 finding / data_point id"
+          },
+          "resolution": {"type": "string", "description": "如何取舍，或明确写未解决"}
+        }
+      }
+    },
+    "knowledge_gaps": {
+      "type": "array",
+      "description": "识别出的、需要外部证据但目前缺失的论述。",
+      "items": {
+        "type": "object",
+        "required": ["claim", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "claim": {"type": "string", "minLength": 2},
+          "reason": {"type": "string", "minLength": 2},
+          "research_needed": {"type": "array", "items": {"type": "string"}},
+          "resolved_by": {"type": "array", "items": {"type": "string"}},
+          "unresolved": {"type": "boolean"}
+        }
+      }
+    },
+    "visual_candidates": {
+      "type": "array",
+      "description": "适合可视化的材料。这是 PPT 研究与其他研究的分界点。",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "priority"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {"type": "string", "pattern": "^V[0-9]{2,}$"},
+          "source_ids": {"type": "array", "items": {"type": "string"}},
+          "finding_ids": {"type": "array", "items": {"type": "string"}},
+          "data_point_ids": {"type": "array", "items": {"type": "string"}},
+          "type": {
+            "enum": ["line_chart", "bar_chart", "comparison", "timeline", "taxonomy", "process", "table", "diagram", "kpi"]
+          },
+          "priority": {"enum": ["high", "medium", "low"]},
+          "rationale": {"type": "string"}
+        }
+      }
+    },
+    "unresolved": {
+      "type": "array",
+      "description": "执行受阻的记录。检索打不开、来源不可得时必须写在这里，不许静默降级。",
+      "items": {
+        "type": "object",
+        "required": ["query", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "query": {"type": "string"},
+          "reason": {"enum": ["access_blocked", "not_found", "tier_unavailable", "paywalled", "out_of_budget"]},
+          "impact": {"type": "string", "description": "对 PPT 论断的影响" }
+        }
+      }
+    },
+    "recommended_slide_usage": {
+      "type": "array",
+      "description": "建议用途，仅供参考；最终排页由 sp-outline 决定。",
+      "items": {
+        "type": "object",
+        "required": ["ref_id", "usage"],
+        "additionalProperties": false,
+        "properties": {
+          "ref_id": {"type": "string"},
+          "suggested_role": {"type": "string"},
+          "usage": {"type": "string"}
+        }
+      }
+    }
+  }
+}

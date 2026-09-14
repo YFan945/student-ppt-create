@@ -13,7 +13,7 @@ version: 0.9.1
 - 始终加载 `../../references/presentation-intake.md`、`../../references/shared-standards.md`。
 - 规划加载 `../../references/content-workflow.md`、`../../references/slide-spec.md`、`../../references/image-strategy.md`、`../../references/image-sourcing.md`、`references/pptx-production.md`。
 - 视觉选择加载 `references/visual-style-menu.md` 和一个 `references/visual-styles/<style>.md`；生产视觉必须加载 `references/pptx-design-grammar.md`、`references/pptx-art-direction.md`、`references/visual-reference-library.json`、`references/pptx-visual-engine.md`、`references/pptx-visual-critic.md`。
-- 引用加载 `../../references/evidence-and-citations.md`；版本/编辑加载 `../../references/revision-training-export.md`；低层规则见 `references/pptx-runtime.md`、`references/pptxgenjs-safety.md`、`references/pptx-editing.md`、`references/pptx-qa.md`。
+- 引用加载 `../../references/evidence-and-citations.md`；外部知识来源加载 `../../references/research-workflow.md` 与 `sp-research` 产出的 `research-pack.json`（页面上的每个外部数字都应能追到其中的 finding/data_point/source）；版本/编辑加载 `../../references/revision-training-export.md`；低层规则见 `references/pptx-runtime.md`、`references/pptxgenjs-safety.md`、`references/pptx-editing.md`、`references/pptx-qa.md`。
 - **全程遵守 `../../references/cost-discipline.md`**：调用并行批量发出、禁止整文件重写、产物写盘即弃、阶段小结落盘、检索一律委派子代理、门禁一次运行。
 
 ## State gate
