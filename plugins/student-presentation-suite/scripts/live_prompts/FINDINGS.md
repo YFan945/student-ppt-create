@@ -1,0 +1,60 @@
+# Item 14 真实 Live E2E — 实测结果与结论
+
+评审第 14 项要求"真实 Claude Code Live E2E"。本目录的 `smoke_research_fork.py` 是为此建的
+真实运行脚手架;两份 `run-*.md` 是 A 模式(联网)/ D 模式(禁网)的 Live E2E 提示词与运行单。
+以下是**真实 `claude` CLI 会话**跑出来的证据,不是估算。
+
+## 一、做了什么
+
+- `smoke_research_fork.py`:用 `claude -p --plugin-dir ... --output-format json` 加载插件,
+  真实调用 `/student-presentation-suite:sp-research`,再用结果 JSON 里的
+  `subagent_stats` / `terminal_reason` / `total_cost_usd` 断言机制,去契约路径
+  `outputs/.pptx-work/<work-id>/research-pack.json` 断言产物。
+- 支持 `--scenario {smoke,ai-agent-trends,d-mode}`、`--stream`(用 stream-json 抓全部事件,
+  确定性判断 fork 是否真发生)、`--validate`(跑 `validate_research_pack.py`)。
+- 两份 Live E2E 提示词 + 样例材料 + README,串起了
+  `sp-research 具名入参 → scope → validate_research_pack.py → research_pack_to_evidence.py
+  → slide_spec_guard freeze` 这条校验链,并附"事后复盘要记的数字"表。
+
+## 二、真实运行证据
+
+| 运行 | 模型 | 成本 | pack | validate | Web 检索 | 关键信号 |
+| --- | --- | --- | --- | --- | --- | --- |
+| A 模式(smoke) | deepseek-flash(默认) | $1.22 | 4F / 4S / 0 blockers | ok | `webSearchRequests=3` 真实发生;WebFetch 被环境拦截 | `RESEARCH_DONE` 信封正确返回 |
+| D 模式 | deepseek-flash | $0.77 | 7F / 1S / 0 blockers | ok | **`queries=[]`、source 全 `user-file`** | 明确记录"D 模式硬约束,未执行任何外部检索" |
+| A 模式 | claude-sonnet-4-5 | $0.65 | 1F / 2S / 0 blockers | ok | 同 A | artifact 同样成立 |
+| A 模式 + `--stream` | claude-sonnet-4-5 | $1.26 | 1F / 2S / 0 blockers | ok | 同 A | **事件流无 subagent/fork 事件** |
+
+> 实测产物(`outputs/_analysis/live-*.json`、`live-*-result.json`)在本机临时目录,
+> 仓库 `outputs/` 被 gitignore,不入库。复跑命令见 `README.md` 与 `run-*.md`。
+
+## 三、关键发现:机制/隔离半边在 `-p` 下没有 fork
+
+四次运行,**两次带 `--stream`(抓全部事件)确认**:
+
+- `subagent_stats.spawned = 0`,且事件流**没有任何 subagent/fork 事件**;
+- 主会话的 `permission_denials` 里出现的全是研究员该干的活:`ls references/`、`New-Item .../research`
+  目录、`python validate_research_pack.py`、`Glob **/research-fork-*/**` —— 说明 skill 是**内联跑在主会话里**,
+  不是隔离的子代理;
+- **已排除"模型不支持 fork"**:deepseek-flash 与 claude-sonnet-4-5 **都不 fork**;
+- 最可能根因:`context: fork` 在 **print(`-p`)模式不被 honor**,skill 在 `-p` 下被内联执行;
+  只有**交互/agent 会话**里 `context: fork` 才会真正 spawn 子代理。本脚手架用 `-p`,因此无法演示真实 fork。
+
+## 四、对 Item 14 的结论
+
+- **产物半边 ✅ 已确证**:真实模型 + 真实联网检索(WebSearch 真实发生)→ schema 合法 Research Pack
+  → 校验 0 blockers;**D 模式禁网契约成立**(`queries=[]`、source 全 `user-file`、无任何联网痕迹)。
+  这一半不再是"没测过",而是"每次真实跑都过"。
+- **隔离/机制半边 ⚠️ 本环境无法证实**:`-p` 模式下 `context: fork` 没触发隔离;真实交互会话里大概率成立,
+  但本环境(用 `-p`)**没能证实**。这正是评审卡在"真实运行验证 4/10"的那一半。
+
+## 五、建议的下一步(三选一,等 owner 定)
+
+1. **交互模式实测**:owner 在真实 `claude` 会话里手动 `/student-presentation-suite:sp-research`,
+   看 `subagent_stats` / 观察 raw 检索是否进入主会话,确认交互下隔离成立。
+2. **加固 fork**:把 `sp-research` 改成显式用 Agent 工具 spawn `presentation-researcher`,
+   而不依赖 `context: fork` 在 `-p` 下被忽略——这样无论调用方式都隔离。属较大改动,需 owner 点头。
+3. **接受产物半边证据**,把"隔离保证"标注为"依赖交互会话 fork,`-p` 不保证",据此关闭 Item 14。
+
+> 本目录的 `smoke_research_fork.py` 已具备 `--stream` 确定性探测能力:任何模型/模式下重跑,只要
+> 事件流出现 subagent/fork 事件,即证明 fork 真发生;否则即证明没发生。可作为后续验证的常驻工具。
