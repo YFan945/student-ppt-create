@@ -14,7 +14,7 @@ Never invent missing numbers, citations, feedback, experiments, or survey result
 
 ## Claim / Data / Quote → Evidence → Source
 
-The canonical invariant remains **Claim → Evidence → Source**; the research compiler makes the claim/data/quote-to-evidence hop mechanical rather than model-authored.
+The canonical invariant remains **Claim → Evidence → Source**; the research compiler makes the claim/data/quote-to-evidence hop mechanical rather than model-authored. The retrieval, source-tiering, conflict, budget, and A/B/C/D rules are owned by `research-workflow.md`; this file owns how validated research becomes slide evidence and citations.
 
 External knowledge enters through `sp-research` and the Research Pack. The canonical chain is:
 
