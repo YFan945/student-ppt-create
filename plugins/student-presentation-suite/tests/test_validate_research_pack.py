@@ -1,9 +1,4 @@
-"""Research Pack 契约的可执行定义。
-
-schema 只管形状；真正让一份 deck 站得住的是语义规则——来源够不够硬、数字有没有
-交叉验证、冲突有没有标出来、检索受阻有没有留下记录。这些规则写在
-`scripts/validate_research_pack.py` 里，这里逐条钉住。
-"""
+"""Research Pack 契约的可执行定义。"""
 
 from __future__ import annotations
 
@@ -71,7 +66,9 @@ def base_pack() -> dict:
         ],
         "conflicts": [],
         "knowledge_gaps": [],
-        "visual_candidates": [{"id": "V01", "type": "bar_chart", "priority": "high", "data_point_ids": ["D01"]}],
+        "visual_candidates": [
+            {"id": "V01", "type": "bar_chart", "priority": "high", "data_point_ids": ["D01"]}
+        ],
         "unresolved": [],
     }
 
@@ -131,12 +128,15 @@ class ResearchPackContractTests(unittest.TestCase):
             {
                 "id": "C01",
                 "topic": "幻觉率口径",
-                "entries": [{"value": "38%", "source_id": "S01"}, {"value": "52%", "source_id": "S02"}],
+                "entries": [
+                    {"value": "38%", "source_id": "S01"},
+                    {"value": "52%", "source_id": "S02"},
+                ],
                 "affected_ids": ["D01"],
             }
         ]
-        self.assertNotIn("conflict_must_downgrade_confidence", self.codes(fixed, "major"))
-        self.assertNotIn("conflict_not_recorded", self.codes(fixed, "major"))
+        report = self.module.validate(fixed)
+        self.assertTrue(report["ok"], report["problems"])
 
     def test_budget_caps_are_enforced(self) -> None:
         pack = base_pack()
@@ -152,15 +152,13 @@ class ResearchPackContractTests(unittest.TestCase):
     def test_bad_and_duplicate_ids_are_critical(self) -> None:
         pack = base_pack()
         pack["findings"].append(copy.deepcopy(pack["findings"][0]))
-        codes = self.codes(pack, "critical")
-        self.assertIn("duplicate_id", codes)
+        self.assertIn("duplicate_id", self.codes(pack, "critical"))
 
         pack2 = base_pack()
         pack2["findings"][0]["id"] = "finding-one"
         self.assertIn("bad_id", self.codes(pack2, "critical"))
 
     def test_two_rows_from_one_origin_are_not_two_sources(self) -> None:
-        """转载不算交叉验证。两个 source 共用 independence_group 时不能给 high。"""
         pack = base_pack()
         pack["sources"][1]["independence_group"] = pack["sources"][0]["independence_group"]
         self.assertIn("sources_are_not_independent", self.codes(pack, "major"))
@@ -179,7 +177,6 @@ class ResearchPackContractTests(unittest.TestCase):
         self.assertIn("tier_above_type_ceiling", self.codes(pack, "major"))
 
     def test_d_mode_requires_empty_queries_and_user_files_only(self) -> None:
-        """D 模式（只用用户材料）从文档要求变成可执行契约。"""
         pack = base_pack()
         pack["queries"] = []
         pack["sources"][1]["type"] = "news"
@@ -193,21 +190,29 @@ class ResearchPackContractTests(unittest.TestCase):
         clean["findings"][0]["source_ids"] = ["S01"]
         clean["data_points"][0]["source_ids"] = ["S01"]
         clean["data_points"][0]["confidence"] = "medium"
-        clean["visual_candidates"][0]["data_point_ids"] = ["D01"]
-        self.assertNotIn("sources_without_queries", self.codes(clean, "major"))
+        self.assertTrue(self.module.validate(clean)["ok"])
 
     def test_low_confidence_must_say_why(self) -> None:
         pack = base_pack()
         pack["data_points"][0]["confidence"] = "low"
         self.assertIn("low_confidence_without_reason", self.codes(pack, "major"))
 
+    def test_low_confidence_data_point_with_notes_is_valid(self) -> None:
+        pack = base_pack()
+        pack["data_points"][0]["confidence"] = "low"
+        pack["data_points"][0]["notes"] = "来源存在口径差异，因此只做保守区间表述"
+        report = self.module.validate(pack)
+        self.assertTrue(report["ok"], report["problems"])
+        self.assertNotIn("schema_violation", [p["code"] for p in report["problems"]])
+
     def test_blocked_retrieval_must_state_its_impact(self) -> None:
         pack = base_pack()
         pack["unresolved"] = [{"query": "IPCC AR6 原始表格", "reason": "access_blocked"}]
-        self.assertIn("blocked_retrieval_without_impact", self.codes(pack, "major"))
+        report = self.module.validate(pack)
+        self.assertFalse(report["ok"])
+        self.assertIn("schema_violation", [p["code"] for p in report["problems"]])
 
     def test_unknown_visual_reference_is_major_not_minor(self) -> None:
-        """把不存在的 D 编号喂给图表，比少写一个来源更危险。"""
         pack = base_pack()
         pack["visual_candidates"][0]["data_point_ids"] = ["D99"]
         self.assertIn("unknown_visual_ref", self.codes(pack, "major"))
@@ -232,6 +237,21 @@ class ResearchPackContractTests(unittest.TestCase):
         pack = base_pack()
         del pack["topic"]
         self.assertIn("schema_violation", self.codes(pack, "critical"))
+
+    def test_cli_binds_report_to_exact_pack_hash(self) -> None:
+        import contextlib
+        import io
+
+        with TemporaryDirectory() as tmp:
+            pack_path = Path(tmp) / "research-pack.json"
+            report_path = Path(tmp) / "validation.json"
+            pack_path.write_text(json.dumps(base_pack(), ensure_ascii=False), encoding="utf-8")
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = self.module.main([str(pack_path), "--output", str(report_path)])
+            self.assertEqual(0, code)
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(self.module.sha256_file(pack_path), report["research_pack_sha256"])
+            self.assertEqual(str(pack_path.resolve()), report["research_pack"])
 
     def test_cli_prints_one_line_when_ok_and_exits_two_when_blocked(self) -> None:
         import contextlib
