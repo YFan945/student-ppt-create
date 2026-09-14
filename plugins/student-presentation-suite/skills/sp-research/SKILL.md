@@ -5,71 +5,55 @@ version: 0.10.1
 context: fork
 agent: student-presentation-suite:presentation-researcher
 background: false
-argument-hint: "[work-id] [brief 或 slide-spec 路径] [scope: A|B|C|D]"
+argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
+arguments: [work_id, brief_path, scope, materials_path]
 ---
 
 # Student Presentation Research
 
 为需要外部知识支撑的内容提供**筛选过、可追溯、可引用、可直接进入 Slide Spec** 的研究材料。
+设计宗旨：**Search for evidence, not text.**
 
-设计宗旨：**Search for evidence, not text.** 不是"帮 PPT 找点内容"，而是"识别需要证据
-支持的论断，检索高质量来源，完成交叉验证，压缩成结构化 Research Pack"。
+## 隔离执行与输入
 
-## 执行方式：fork 到独立子代理
+本 skill 用 `context: fork` + `presentation-researcher` 在独立 context 中执行；原始网页、搜索轨迹和失败页不进入主对话。
+`background: false` 是刻意的：研究完成后才能进入排页。
 
-本 skill 带 `context: fork` + `agent: student-presentation-suite:presentation-researcher`，
-**不在主对话上下文里执行**：Claude Code 启动 `agents/presentation-researcher.md` 定义的
-子代理，把本文件作为它的 prompt。子代理看不到主对话历史，主流程也看不到它的搜索过程与
-原始网页——这是 Context Firewall 的**机制实现**，不是一条口头规则。
+解析后的输入是：
 
-因为 fork 后没有对话历史，调用时必须把信息作为参数传入，子代理只会读这些路径：
-`work-id`（决定输出目录）、Brief 或 Slide Spec 草稿的**路径**（传路径，不贴内容）、
-`scope: A|B|C|D`（D 模式必须显式声明才触发禁查）、D 模式的用户材料路径。
-`background: false` 是刻意的：研究必须先完成，`sp-outline` 才能开始排页。
+- work-id：`$work_id`
+- Brief / draft Slide Spec 路径：`$brief_path`
+- scope：`$scope`
+- D 模式用户材料路径：`$materials_path`
 
-## 职责
+`work_id` / `brief_path` / `scope` 缺失或 scope 不在 A/B/C/D 时，不猜参数，按 agent 的 `RESEARCH_BLOCKED` 契约返回；D 模式还必须有 `materials_path`。
 
-- 判断哪些内容该查、哪些不该查；检索、分级、交叉验证、留痕 → 本 skill
-- 排页、写正文、写讲稿 → `sp-outline`；可编辑 PPTX / 版式 / 视觉 → `sp-deck`；审查评分 → `sp-review`
+## 职责与硬约束
 
-**只做证据层**：不决定版式、不设计页面、不生成 PPTX、不改视觉风格、不撰写成段讲稿。
-
-## 快速约束
-
-- 加载 `../../references/research-workflow.md`（A/B/C/D 判定、分级、交叉验证、预算、留痕）
-- 加载 `../../references/evidence-and-citations.md`（Claim → Evidence → Source 链路）
-- 产出只按 `../../references/research-pack.schema.json` 的形状，**不写自然语言小作文**
-- 检索一律在子代理内完成；主流程只接收 Research Pack，不接收原始网页
-- 不编造数字、日期、机构、引文；查不到就进 `unresolved`，不许静默降级
-- 输出写入 `outputs/`，不得写入 `${CLAUDE_PLUGIN_ROOT}`
+- 检索、分级、交叉验证、知识缺口、留痕 → 本 skill；排页/讲稿 → `sp-outline`；PPTX/视觉 → `sp-deck`；审查 → `sp-review`
+- 加载 `../../references/research-workflow.md`、`../../references/evidence-and-citations.md`、`../../references/research-pack.schema.json`
+- 不决定版式、不设计页面、不生成 PPTX、不写成段讲稿；不编造数字、日期、机构或引文
+- 检索只在子代理内完成；主流程只接收文件路径和紧凑状态，不接收原始网页或搜索摘要
+- 输出只写 `${CLAUDE_PROJECT_DIR}/outputs/.pptx-work/<work-id>/`，不得写 `${CLAUDE_PLUGIN_ROOT}`
 
 ## 工作流
 
-1. **Research Need Analysis**：读 Presentation Brief 与 Slide Spec 草稿，把待证内容拆成
-   逐条 Claim，判定 A / B / C / D，并给出优先级。C 类不消耗预算，D 类立即停止检索。
-2. **定档位**：按 `scenario` 推导 `simple` / `standard` / `deep`（见 research-workflow.md
-   第七节），用户可覆盖。
-3. **逐 Claim 检索**：以 Claim 而非主题为调用单位；对每个待证论断选来源、取数、记录
-   `url` 或 `locator`。
-4. **分级与交叉验证**：按 Tier S/A/B/C/D 标注来源；数字必须多源比对，量级不一致时标
-   `conflict: true` 并把 `confidence` 降为 `low`，同时在 `conflicts` 里逐条列出取值与来源。
-5. **补知识缺口**：把"发展迅速"这类未量化陈述标为 `knowledge_gaps` 并去补；补不上的
-   明确标 `unresolved: true` 并写原因。
-6. **标可视化机会**：把适合画图的材料标成 `visual_candidates`（类型 + 优先级），只标
-   类型，不决定画法。
-7. **校验并交接**：运行 `python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_research_pack.py"
-   <research-pack.json>`，0 blocker 后把 `research-pack.json` 交给 `sp-outline`。
+1. **Research Need Analysis**：读 Brief / draft spec，把待证内容拆成逐条 Claim，判 A/B/C/D；C 不消耗预算，D 禁止联网。
+2. **预算**：按 scenario 选 simple / standard / deep（3/5、8/12、15/25 queries/sources），用户覆盖优先。
+3. **逐 Claim 检索**：只查需要被证明的论断；每个来源记录 `url` 或 `locator` 与 `independence_group`。
+4. **分级与交叉验证**：按 Tier S/A/B/C/D；高置信度数字必须来自 ≥2 个独立组；冲突则 `confidence: low` + `notes` + `conflicts`。
+5. **补缺口与可视化候选**：模糊陈述进入 `knowledge_gaps`；可画图内容进入 `visual_candidates`，只标类型与优先级。
+6. **受阻留痕**：打不开、付费、不可得、超预算全部写 `unresolved.reason + impact`，禁止静默降级。
+7. **校验**：运行 `validate_research_pack.py <pack> --output <work-dir>/research-pack-validation.json`；有 blocker 就修 pack 再验。
 
 ## 输出契约
 
-- 唯一交付物 `outputs/.pptx-work/<work-id>/research-pack.json`（形状见 schema）
-- 原始检索结果落盘 `outputs/.pptx-work/<work-id>/research/<topic>.json`，**不回传主流程**
-- `queries` 只记录**实际执行过**的检索词，用于复现与审计
-- 检索受阻写进 `unresolved`（`access_blocked` / `not_found` / `tier_unavailable` /
-  `paywalled` / `out_of_budget`），并写明对论断的影响
-- 校验报告 `research-pack-validation.json` 随 pack 一起留存
+- `research-pack.json`：唯一研究内容载体；形状必须符合 schema
+- `research-pack-validation.json`：必须 `ok: true`，并含当前 pack 的 `research_pack_sha256`
+- `research/<topic>.json`：原始检索留盘审计，**永不回传主流程**
+- `queries` 只记录实际执行过的检索词；D 模式必须为空且 sources 全为 `user-file`
+- 最终聊天返回严格服从 agent 的固定 `RESEARCH_DONE` / `RESEARCH_BLOCKED` envelope，不追加研究摘要
 
-## 与图片检索的分工
+## 与图片检索分工
 
-本 skill 只负责**知识**（事实、数据、论文、引用、证据）。照片、示意图、截图、Logo 等
-视觉素材走 `image-sourcing.md` 的能力声明与权限门禁，两者优化目标不同，不合并。
+本 skill 只负责知识证据。照片、截图、Logo、示意图等走 `image-sourcing.md`；可信度/时效性与分辨率/构图/版权是两套目标，不合并。
