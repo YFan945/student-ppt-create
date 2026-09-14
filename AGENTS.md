@@ -116,6 +116,18 @@ Do not restore the removed external `document-skills` dependency or copied runti
 - Use `python plugins/student-presentation-suite/scripts/bump_version.py <version>` to
   synchronize all version fields (marketplace.json, plugin.json, package.json,
   package-lock.json). Run `--dry-run` first to preview.
+
+### Version bump policy (owner's standing instruction)
+
+| 改动规模 | 要升哪一段 | 是否需要先问 |
+| --- | --- | --- |
+| 常规更新（补丁、小改、文档、内部重构） | **patch**（x.y.**Z**） | **不用问**，直接升 |
+| 较大改动（新增能力 / 新增工具 / 新增对外规则） | **minor**（x.**Y**.0） | **必须先问** |
+| 非常大（破坏性变更、契约或架构改变） | **major**（**X**.0.0） | **一定要问** |
+
+也就是说：任何提交的默认动作都是自动升 patch；只有当你判断这次改动够得上"较大"或
+"非常大"时，才停下来询问，不要自行升 minor 或 major。拿不准时按较小的一档处理，然后
+把问题抛给 owner。
 - Update schema, bridge, documentation, examples, and tests together when
   changing Slide Spec fields or workflow contracts.
 - Run `ruff check` on Python code and `npx eslint` + `npx prettier --check` on
