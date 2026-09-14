@@ -146,6 +146,17 @@
             "enum": ["user-file", "paper", "book", "website", "dataset", "survey", "experiment", "interview", "case", "other"]
           },
           "locator": { "type": "string", "minLength": 1 },
+          "source_ids": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^S[0-9]{2,}$" },
+            "uniqueItems": true,
+            "description": "All Research Pack sources backing this evidence entry."
+          },
+          "primary_source_id": {
+            "type": "string",
+            "pattern": "^S[0-9]{2,}$",
+            "description": "Strongest source used for the short citation/locator; the full source_ids set remains available for bibliography and audit."
+          },
           "author": { "type": "string" },
           "date": { "type": "string" },
           "confidence": { "enum": ["high", "medium", "low", "unverified"] },

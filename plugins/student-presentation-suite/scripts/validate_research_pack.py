@@ -1,27 +1,18 @@
 #!/usr/bin/env python3
 """Validate a Research Pack against the schema and the research contract.
 
-`research-pack.schema.json` only pins the shape. The rules that actually keep a
-deck honest are semantic, and they live here:
+`research-pack.schema.json` pins the shape; this module enforces the semantic
+rules that keep a deck honest: reference integrity, source strength, independent
+cross-validation, budget caps, traceability, D-mode provenance and explicit
+bookkeeping for degraded or blocked retrieval.
 
-  R1 引用完整性   每个 finding / data_point / quote 的 source_ids 必须存在
-  R2 来源分级     high 置信度的 finding 需要 S/A 级来源；data_point 至少 S/A/B
-  R3 交叉验证     high 置信度的 data_point 需要 >=2 个独立来源；
-                  conflict=true 的条目必须 confidence=low 且有对应 conflicts 记录
-  R4 未被引用     列了却没人用的来源，先提醒再决定删不删
-  R5 预算         queries / sources 不得超过所选档位的上限
-  R6 Tier D       tier D 来源不得支撑 medium 及以上的结论
-  R7 可追溯       每个来源必须有 url 或 locator
-
-检索受阻必须写进 `unresolved`，不许静默降级——这是上一次真实运行里
-"WebFetch 被域名策略拦截、只能拿搜索摘要"却没有留下记录的那条教训。
-
-Exit codes: 0 = ok（可能有 minor）, 2 = 存在 blocker。
+Exit codes: 0 = ok (minor findings allowed), 2 = blocker present.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -39,8 +30,6 @@ BUDGET_CAPS = {
 STRONG_TIERS = {"S", "A"}
 ACCEPTABLE_DATA_TIERS = {"S", "A", "B"}
 TIER_ORDER = {"S": 0, "A": 1, "B": 2, "C": 3, "D": 4}
-# A community post cannot be tier S no matter who wrote it. Without a ceiling the
-# tier field is self-assigned and therefore meaningless.
 TIER_CEILING_BY_TYPE = {
     "community": "D",
     "personal-blog": "D",
@@ -67,6 +56,14 @@ ID_PATTERNS = {
     "conflicts": re.compile(r"^C\d{2,}$"),
     "visual_candidates": re.compile(r"^V\d{2,}$"),
 }
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def load(path: Path) -> dict[str, Any]:
@@ -98,14 +95,12 @@ def schema_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     try:
         import jsonschema  # type: ignore
     except ImportError:
-        # Fail closed. Treating "cannot verify the shape" as "shape is fine" is how
-        # an unvalidated pack reaches the deck.
         return [
             issue(
                 "critical",
                 "schema_validator_unavailable",
                 "jsonschema is not installed, so the Research Pack shape cannot be verified. "
-                "Install the declared dependency (requirements.txt) instead of treating an unverified pack as valid.",
+                "Install the declared dependency instead of treating an unverified pack as valid.",
             )
         ]
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
@@ -124,7 +119,14 @@ def id_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
         for entry in items(pack, key):
             value = str(entry.get("id") or "")
             if not pattern.match(value):
-                out.append(issue("critical", "bad_id", f"{key} id {value!r} does not match {pattern.pattern}", entry=value))
+                out.append(
+                    issue(
+                        "critical",
+                        "bad_id",
+                        f"{key} id {value!r} does not match {pattern.pattern}",
+                        entry=value,
+                    )
+                )
             elif value in seen:
                 out.append(issue("critical", "duplicate_id", f"{key} id {value!r} is used twice", entry=value))
             seen.add(value)
@@ -132,28 +134,43 @@ def id_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def reference_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
-    """R1 + R7: every reference resolves, every source is reachable."""
+    """R1 + R7: every reference resolves, every source is traceable."""
     out: list[dict[str, Any]] = []
     source_ids = {str(entry.get("id")) for entry in items(pack, "sources")}
 
-    for key, field in (("findings", "source_ids"), ("data_points", "source_ids")):
+    for key in ("findings", "data_points"):
         for entry in items(pack, key):
-            refs = entry.get(field) or []
+            refs = entry.get("source_ids") or []
             missing = [ref for ref in refs if str(ref) not in source_ids]
             if missing:
                 out.append(
-                    issue("critical", "unknown_source_ref", f"{key} {entry.get('id')} references missing sources {missing}", entry=entry.get("id"))
+                    issue(
+                        "critical",
+                        "unknown_source_ref",
+                        f"{key} {entry.get('id')} references missing sources {missing}",
+                        entry=entry.get("id"),
+                    )
                 )
     for entry in items(pack, "quotes"):
         if str(entry.get("source_id")) not in source_ids:
             out.append(
-                issue("critical", "unknown_source_ref", f"quote {entry.get('id')} references missing source {entry.get('source_id')!r}", entry=entry.get("id"))
+                issue(
+                    "critical",
+                    "unknown_source_ref",
+                    f"quote {entry.get('id')} references missing source {entry.get('source_id')!r}",
+                    entry=entry.get("id"),
+                )
             )
     for entry in items(pack, "conflicts"):
         for sub in entry.get("entries") or []:
             if isinstance(sub, dict) and str(sub.get("source_id")) not in source_ids:
                 out.append(
-                    issue("critical", "unknown_source_ref", f"conflict {entry.get('id')} references missing source {sub.get('source_id')!r}", entry=entry.get("id"))
+                    issue(
+                        "critical",
+                        "unknown_source_ref",
+                        f"conflict {entry.get('id')} references missing source {sub.get('source_id')!r}",
+                        entry=entry.get("id"),
+                    )
                 )
 
     ref_pools = {
@@ -165,8 +182,6 @@ def reference_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
         for field, pool in ref_pools.items():
             for ref in entry.get(field) or []:
                 if str(ref) not in pool:
-                    # Major, not minor: a dangling reference here means a chart is
-                    # built from data that does not exist in the pack.
                     out.append(
                         issue(
                             "major",
@@ -179,7 +194,12 @@ def reference_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     for entry in items(pack, "sources"):
         if not str(entry.get("url") or "").strip() and not str(entry.get("locator") or "").strip():
             out.append(
-                issue("major", "source_not_traceable", f"source {entry.get('id')} has neither url nor locator", entry=entry.get("id"))
+                issue(
+                    "major",
+                    "source_not_traceable",
+                    f"source {entry.get('id')} has neither url nor locator",
+                    entry=entry.get("id"),
+                )
             )
     return out
 
@@ -196,18 +216,35 @@ def tier_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
         used = tiers_of(entry)
         if entry.get("confidence") == "high" and not (used & STRONG_TIERS):
             out.append(
-                issue("major", "weak_source_for_high_confidence", f"finding {entry.get('id')} claims high confidence but has no S/A source", entry=entry.get("id"), tiers=sorted(used))
+                issue(
+                    "major",
+                    "weak_source_for_high_confidence",
+                    f"finding {entry.get('id')} claims high confidence but has no S/A source",
+                    entry=entry.get("id"),
+                    tiers=sorted(used),
+                )
             )
         if entry.get("confidence") in {"high", "medium"} and used and used <= {"D"}:
             out.append(
-                issue("major", "tier_d_cannot_support_claim", f"finding {entry.get('id')} rests only on tier D sources", entry=entry.get("id"))
+                issue(
+                    "major",
+                    "tier_d_cannot_support_claim",
+                    f"finding {entry.get('id')} rests only on tier D sources",
+                    entry=entry.get("id"),
+                )
             )
 
     for entry in items(pack, "data_points"):
         used = tiers_of(entry)
         if not (used & ACCEPTABLE_DATA_TIERS):
             out.append(
-                issue("major", "weak_source_for_data_point", f"data_point {entry.get('id')} has no S/A/B source", entry=entry.get("id"), tiers=sorted(used))
+                issue(
+                    "major",
+                    "weak_source_for_data_point",
+                    f"data_point {entry.get('id')} has no S/A/B source",
+                    entry=entry.get("id"),
+                    tiers=sorted(used),
+                )
             )
     return out
 
@@ -215,7 +252,10 @@ def tier_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
 def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     """R3 + conflict bookkeeping + genuine independence."""
     out: list[dict[str, Any]] = []
-    groups = {str(entry.get("id")): str(entry.get("independence_group") or "") for entry in items(pack, "sources")}
+    groups = {
+        str(entry.get("id")): str(entry.get("independence_group") or "")
+        for entry in items(pack, "sources")
+    }
     conflict_targets: set[str] = set()
     for entry in items(pack, "conflicts"):
         for ref in entry.get("affected_ids") or []:
@@ -227,11 +267,14 @@ def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
         if entry.get("confidence") == "high":
             if len(refs) < 2:
                 out.append(
-                    issue("major", "high_confidence_needs_cross_check", f"data_point {entry.get('id')} claims high confidence from a single source", entry=entry.get("id"))
+                    issue(
+                        "major",
+                        "high_confidence_needs_cross_check",
+                        f"data_point {entry.get('id')} claims high confidence from a single source",
+                        entry=entry.get("id"),
+                    )
                 )
             else:
-                # Two rows are not two sources. A wire story and a site carrying
-                # that same wire story share one origin and prove nothing.
                 distinct = {groups.get(ref) or f"?{ref}" for ref in refs}
                 if len(distinct) < 2:
                     out.append(
@@ -245,27 +288,46 @@ def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                     )
         if flagged and entry.get("confidence") != "low":
             out.append(
-                issue("major", "conflict_must_downgrade_confidence", f"data_point {entry.get('id')} is flagged conflicting but not lowered to low confidence", entry=entry.get("id"))
+                issue(
+                    "major",
+                    "conflict_must_downgrade_confidence",
+                    f"data_point {entry.get('id')} is flagged conflicting but not lowered to low confidence",
+                    entry=entry.get("id"),
+                )
             )
         if flagged and str(entry.get("id")) not in conflict_targets:
             out.append(
-                issue("major", "conflict_not_recorded", f"data_point {entry.get('id')} is flagged conflicting but no conflicts entry references it", entry=entry.get("id"))
+                issue(
+                    "major",
+                    "conflict_not_recorded",
+                    f"data_point {entry.get('id')} is flagged conflicting but no conflicts entry references it",
+                    entry=entry.get("id"),
+                )
             )
 
     for entry in items(pack, "findings"):
         if entry.get("conflict") and entry.get("confidence") != "low":
             out.append(
-                issue("major", "conflict_must_downgrade_confidence", f"finding {entry.get('id')} is flagged conflicting but not lowered to low confidence", entry=entry.get("id"))
+                issue(
+                    "major",
+                    "conflict_must_downgrade_confidence",
+                    f"finding {entry.get('id')} is flagged conflicting but not lowered to low confidence",
+                    entry=entry.get("id"),
+                )
             )
         if entry.get("conflict") and str(entry.get("id")) not in conflict_targets:
             out.append(
-                issue("major", "conflict_not_recorded", f"finding {entry.get('id')} is flagged conflicting but no conflicts entry references it", entry=entry.get("id"))
+                issue(
+                    "major",
+                    "conflict_not_recorded",
+                    f"finding {entry.get('id')} is flagged conflicting but no conflicts entry references it",
+                    entry=entry.get("id"),
+                )
             )
     return out
 
 
 def budget_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
-    """R5: no searching twenty pages for one sentence."""
     out: list[dict[str, Any]] = []
     band = str(pack.get("budget") or "")
     caps = BUDGET_CAPS.get(band)
@@ -275,17 +337,26 @@ def budget_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     sources = pack.get("sources") or []
     if len(queries) > caps["queries"]:
         out.append(
-            issue("major", "budget_exceeded", f"{len(queries)} queries exceed the {band} cap of {caps['queries']}", budget=band)
+            issue(
+                "major",
+                "budget_exceeded",
+                f"{len(queries)} queries exceed the {band} cap of {caps['queries']}",
+                budget=band,
+            )
         )
     if len(sources) > caps["sources"]:
         out.append(
-            issue("major", "budget_exceeded", f"{len(sources)} sources exceed the {band} cap of {caps['sources']}", budget=band)
+            issue(
+                "major",
+                "budget_exceeded",
+                f"{len(sources)} sources exceed the {band} cap of {caps['sources']}",
+                budget=band,
+            )
         )
     return out
 
 
 def hygiene_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
-    """R4 + unresolved bookkeeping."""
     out: list[dict[str, Any]] = []
     cited: set[str] = set()
     for key in ("findings", "data_points"):
@@ -300,21 +371,23 @@ def hygiene_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
 
     for entry in items(pack, "sources"):
         if str(entry.get("id")) not in cited:
-            out.append(issue("minor", "unused_source", f"source {entry.get('id')} is listed but never used", entry=entry.get("id")))
-
-    for gap in items(pack, "knowledge_gaps"):
-        if gap.get("unresolved") and not gap.get("reason"):
-            out.append(issue("minor", "unresolved_gap_without_reason", f"knowledge gap {gap.get('claim')!r} is unresolved without a reason"))
+            out.append(
+                issue(
+                    "minor",
+                    "unused_source",
+                    f"source {entry.get('id')} is listed but never used",
+                    entry=entry.get("id"),
+                )
+            )
     return out
 
 
 def contract_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
-    """Claims the pack makes about itself that must be checkable, not just asserted."""
+    """Claims the pack makes about itself that must be checkable."""
     out: list[dict[str, Any]] = []
     sources = items(pack, "sources")
     queries = pack.get("queries") or []
 
-    # A tier is self-assigned, so cap it by source type.
     for entry in sources:
         source_type = str(entry.get("type") or "")
         tier = str(entry.get("tier") or "")
@@ -330,8 +403,6 @@ def contract_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                 )
             )
 
-    # D mode is a real contract, not a note in the docs: no queries means the only
-    # possible provenance is the user's own material, and vice versa.
     user_files = [entry for entry in sources if str(entry.get("type")) == "user-file"]
     if not queries and sources and len(user_files) != len(sources):
         others = sorted(str(entry.get("id")) for entry in sources if str(entry.get("type")) != "user-file")
@@ -351,8 +422,6 @@ def contract_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
             )
         )
 
-    # Degradation has to be discoverable. A low-confidence entry with no explanation
-    # is indistinguishable from one that was simply guessed.
     for key in ("findings", "data_points"):
         for entry in items(pack, key):
             if entry.get("confidence") == "low" and not str(entry.get("notes") or "").strip():
@@ -368,7 +437,11 @@ def contract_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     for entry in items(pack, "unresolved"):
         if not str(entry.get("impact") or "").strip():
             out.append(
-                issue("major", "blocked_retrieval_without_impact", f"unresolved query {entry.get('query')!r} does not say how it affects the deck")
+                issue(
+                    "major",
+                    "blocked_retrieval_without_impact",
+                    f"unresolved query {entry.get('query')!r} does not say how it affects the deck",
+                )
             )
     return out
 
@@ -400,6 +473,7 @@ def validate(pack: dict[str, Any]) -> dict[str, Any]:
             "queries": len(pack.get("queries") or []),
             "findings": len(items(pack, "findings")),
             "data_points": len(items(pack, "data_points")),
+            "quotes": len(items(pack, "quotes")),
             "sources": len(items(pack, "sources")),
             "conflicts": len(items(pack, "conflicts")),
             "visual_candidates": len(items(pack, "visual_candidates")),
@@ -416,10 +490,15 @@ def render(report: dict[str, Any], path: Path, *, verbose: bool, max_items: int)
     lines = [
         f"validate_research_pack: {state} — blockers {counts['blockers']} "
         f"(critical {counts['critical']}, major {counts['major']}), minor {counts['minor']} | "
-        f"{inv['findings']}F/{inv['data_points']}D/{inv['sources']}S/{inv['conflicts']}C/"
-        f"{inv['visual_candidates']}V/{inv['unresolved']}U | budget {report['budget']} | report: {path}"
+        f"{inv['findings']}F/{inv['data_points']}D/{inv['quotes']}Q/{inv['sources']}S/"
+        f"{inv['conflicts']}C/{inv['visual_candidates']}V/{inv['unresolved']}U | "
+        f"budget {report['budget']} | report: {path}"
     ]
-    visible = report["problems"] if verbose else [p for p in report["problems"] if p["severity"] in {"critical", "major"}]
+    visible = (
+        report["problems"]
+        if verbose
+        else [p for p in report["problems"] if p["severity"] in {"critical", "major"}]
+    )
     limit = len(visible) if max_items <= 0 else max_items
     for item in visible[:limit]:
         lines.append(f"  [{item['severity']}] {item['code']} — {item['message']}")
@@ -443,6 +522,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     report = validate(load(args.pack))
+    report["research_pack"] = str(args.pack.resolve())
+    report["research_pack_sha256"] = sha256_file(args.pack)
     report_path = args.output or (args.pack.parent / "research-pack-validation.json")
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

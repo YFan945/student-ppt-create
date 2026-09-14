@@ -13,7 +13,7 @@ version: 0.10.1
 - 始终加载 `../../references/presentation-intake.md`、`../../references/shared-standards.md`。
 - 规划加载 `../../references/content-workflow.md`、`../../references/slide-spec.md`、`../../references/image-strategy.md`、`../../references/image-sourcing.md`、`references/pptx-production.md`。
 - 视觉选择加载 `references/visual-style-menu.md` 和一个 `references/visual-styles/<style>.md`；生产视觉必须加载 `references/pptx-design-grammar.md`、`references/pptx-art-direction.md`、`references/visual-reference-library.json`、`references/pptx-visual-engine.md`、`references/pptx-visual-critic.md`。
-- 引用加载 `../../references/evidence-and-citations.md`；外部知识来源加载 `../../references/research-workflow.md` 与 `sp-research` 产出的 `research-pack.json`（页面上的每个外部数字都应能追到其中的 finding/data_point/source）；版本/编辑加载 `../../references/revision-training-export.md`；低层规则见 `references/pptx-runtime.md`、`references/pptxgenjs-safety.md`、`references/pptx-editing.md`、`references/pptx-qa.md`。
+- 引用加载 `../../references/evidence-and-citations.md`；外部知识来源加载 `../../references/research-workflow.md` 与 `sp-research` 产出的 Research Pack；版本/编辑加载 `../../references/revision-training-export.md`；低层规则见 `references/pptx-runtime.md`、`references/pptxgenjs-safety.md`、`references/pptx-editing.md`、`references/pptx-qa.md`。
 - **全程遵守 `../../references/cost-discipline.md`**：调用并行批量发出、禁止整文件重写、产物写盘即弃、阶段小结落盘、检索一律委派子代理、门禁一次运行。
 
 ## State gate
@@ -31,14 +31,14 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" <init | confirm --summa
 
 1. **Intake**：按 `references/presentation-intake.md` 收集需求；其中配图选项的可用性以 `check_claude_pptx_env.py` 解析的 image capability（`image_search_ready` / `image_generation_ready` / `user_assets_ready`，见 `../../references/image-sourcing.md`）为准，不得承诺不可用能力。完整 Production Summary 经用户确认后继续。
 2. **Mode**：按 source deck/edit intent 唯一确定 `create` / `edit_ooxml` / `rebuild_from_source`。
-3. **Research Gate + Plan + Freeze**：**只要 deck 依赖任何外部事实（数字、政策、引文），先过 Research Gate** —— 跑 `sp-research` 得到 `research-pack.json`，`validate_research_pack.py` 0 blocker，再用 `research_pack_to_evidence.py` 编译出 `evidence-map.json`；Slide Spec 的 `evidence_ledger` 用编译结果，`evidence_refs` 引用它分配的 `E<n>`，**不要手工写 ledger**。D 模式（用户限定只用自带材料）跳过检索但同样要出 pack。查不到的外部事实不阻断，但页面必须标明无来源。然后验证 Brief 与 Slide Spec；`slide_spec_guard.py freeze` 绑定 spec/report SHA-256 后转 `planned`，之后禁止静默改 plan；按 `cost-discipline.md` CD-4 写下 `stage-planned-summary.md`。
+3. **Research Gate + Compile + Freeze**：只要 deck 依赖外部事实（数字、政策、引文），先跑 `sp-research` 得到 `research-pack.json` + `research-pack-validation.json`；D 模式禁止联网但同样产出 pack。排页阶段的 draft Slide Spec 可以在 `evidence_refs` 里直接写 Research Pack 的 `F/D/Q` id，**不得手写 Research Evidence Ledger**。随后运行 `research_pack_to_evidence.py --validation-report ... --slide-spec <draft> --compiled-slide-spec <compiled> --output <evidence-map>`，由程序确定性完成 `F/D/Q → E<n>`、完整 `source_ids` / `primary_source_id`、`used_on_slides` 和 ledger。再验证 **compiled Slide Spec**，并用 `slide_spec_guard.py freeze` 同时传 `--research-pack`、`--research-validation`、`--evidence-map`；三者缺一或任一 provenance hash 对不上当前 compiled spec 都不得 freeze。不含外部事实的 deck 可不带 Research Gate。查不到的事实只能降级/标注无来源，不得伪造。
 4. **Art Direction**：visual style 只作为 seed；根据 design grammar 生成 `art-direction.yaml`，具体决定色彩支配、字体尺度、图片裁切、图标语言、图表语法、组件语言、motif、背景节奏、asset mix，并明确 3–5 个 `high_leverage_slides`；其校验由第 7 步的门禁运行统一完成。
 5. **Reference Retrieval**：每页按 role/grammar/visual strategy/density/tags 调 `visual_reference_select.py` 取 2–3 个正向视觉参考 recipe；high-leverage 页必须把结果保存为 `references-slide-<slide>.json`。36 layouts 继续作为二级 inspiration/fallback。
 6. **Multi-candidate Composition**：每个 high-leverage 页先写 2–3 个不同 silhouette 的 `composition-candidates-<slide>.json`，经 `run_gates.sh --candidates`（等价于 `composition_candidate_check.py`）后用 `scripts/composition_wireframe.js` 生成 `wireframes-<slide>.pptx` 并渲染观察；选择理由必须记录。普通页至少参考检索结果形成一个明确 composition intent。
 7. **Gates（一次运行）**：final `deck.js` 之前、最迟 QA 前运行 `scripts/run_gates.sh`，一次覆盖 frozen plan、Art Direction、composition 候选与 v0.8 探索证据，绑定 Slide Spec / Art Direction 及每个 high-leverage 页的 reference-selection、candidate、wireframe hash；通过时只回显 1 行，完整明细写入 `gates-report.json`。缺任一探索证据不得交付。
 8. **Production**：进入 `producing` 前先 `slide_spec_guard.py check`。create/rebuild 先跑 `copy_fit_preflight.py` 确认文案能逐字上屏，再写最终生成器；生成器按 CD-2 拆为 `deck.js`（装配）+ `pages/pNN-*.js`（每页一文件），便于不同页并行修复。每个真实 text/shape/image/chart/line 登记进 `scripts/pptx-element-registry.js`，`registry.assertSafe()` 在写盘前通过。helper 的可用 API 读 `references/pptxgenjs-helper-api.md` 或 `node scripts/pptx-helpers.js --describe`，不要用内联探针试探。composer 仅用于锁定/兼容/fallback。
 9. **Actual Artifact Check**：用 `${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py validate` 做 package validation，再运行 `pptx_actual_content_check.py --strict` 与冻结 Slide Spec 回读对比；随后运行 `pptx_rendered_check.py`（默认失败收紧）回读渲染产物，量测实际字号层级（≥1.45×）、图表轴显式 min/max 与底部留白（≤25%），不信任任何声明值。失败修 `deck.js`/PPTX，不能倒改 spec。
-10. **Spec Revision**：只有计划本身错误、需求变化或事实/结构问题时才 `slide_spec_guard.py revise --reason <原因>`；revision 保留 parent hash，并重新生成受影响 artifact/visual-generation report。
+10. **Spec Revision**：只有计划本身错误、需求变化或事实/结构问题时才 `slide_spec_guard.py revise --reason <原因>`；研究支持的 spec 修订时必须重新编译 Research Gate chain 并重新传三件 research artifacts，不能静默丢掉 evidence provenance。revision 保留 parent hash，并重新生成受影响 artifact/visual-generation report。
 11. **Render-conditioned QA**：完整渲染所有页，写绑定当前 PPTX hash 的 `visual-review.json`；检查工程缺陷之外，还评 hierarchy、focal point、composition、visual interest、whitespace、Art Direction alignment、reference/candidate intent、AI-template feel 和 deck rhythm。
 12. **Quality + Repair**：`pptx_quality_gate_v071.py --strict` 继续检查视觉、节奏、Evidence Closure 和 speaker timing。blocker 进入一次正式 `qa → producing`，内部最多 3 次 `render → critique → revise artifact → rebuild → validate/readback → render`；不收敛则 `incomplete`。
 13. **Complete**：PPTX、spec lock、Art Direction、`visual-generation-report.json`、package、actual-content、preview、visual review、quality report 全通过后运行 `pptx_delivery_check_v08.py --strict --visual-reviewed --visual-review-report <visual-review.json>`——裸 `--visual-reviewed` 布尔量不构成复核证据，报告必须经 `pptx_sha256` 绑定当前 PPTX；复核 finding 标 `resolved` 时必须附 `resolved_evidence`（修复前后 sha256），否则按未解决阻断。再转 `complete`。所有模式输出新文件，禁止覆盖 source deck。
@@ -46,7 +46,9 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" <init | confirm --summa
 ## Generation core contract
 
 ```text
-Production Summary → Brief / Frozen Slide Spec
+Production Summary → Brief
+→ Research Pack + Validation → Draft Slide Spec
+→ Evidence Compiler → Compiled/Frozen Slide Spec
 → Design Grammar → Art Direction
 → Visual Reference Retrieval
 → Multi-candidate Composition + Wireframe Selection
@@ -57,10 +59,10 @@ Production Summary → Brief / Frozen Slide Spec
 → Rhythm + Evidence + Timing Gate → Controlled Repair → v0.8 Delivery
 ```
 
-核心原则：模型先做 art direction 和视觉方案搜索，再写坐标；reference 是可变形的正向先验而不是固定模板；runtime 负责安全和 plan-vs-actual；render critic 负责最终页面质量。不得把“无 overflow/overlap”、模型一次性自评通过，或没有 hash 证据的“我已经比较过多个方案”当作设计完成。
+核心原则：模型负责研究判断、内容与视觉智能；compiler/gate 负责证据转换、hash provenance 和不可绕过的确定性。不得把模型一次性自评、手工搬 ledger、无 hash 的“已经验证”当作完成。
 
 ## Output contract
 
-仅写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目 `outputs/`。中间文件位于 `outputs/.pptx-work/<work-id>/`，至少保留 `slide-spec-lock.json`、`art-direction.yaml`、阶段小结 `stage-*.md`、high-leverage `references-slide-*.json`、composition candidates/wireframes、`gates-report.json` 和 `visual-generation-report.json`。最终交付 PPTX、speaker notes、preview/contact sheet、package report、`actual-content-report.json`、`visual-review.json`、`quality-report.json` 和 v0.8 delivery report；编辑任务另含 change summary。
+仅写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目 `outputs/`。研究型 deck 的 work dir 至少保留 `research-pack.json`、`research-pack-validation.json`、draft/compiled Slide Spec、`evidence-map.json`、`slide-spec-lock.json`；其余中间文件包括 `art-direction.yaml`、阶段小结、high-leverage references/candidates/wireframes、`gates-report.json`、`visual-generation-report.json`。最终交付 PPTX、speaker notes、preview/contact sheet、package report、`actual-content-report.json`、`visual-review.json`、`quality-report.json` 和 v0.8 delivery report；编辑任务另含 change summary。
 
 交付完成后提示可运行 `sp-review` 做只读复核/评分，并报告绝对路径、页数、visual-generation/package/readback/quality/visual QA 状态与剩余限制。

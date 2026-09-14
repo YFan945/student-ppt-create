@@ -50,7 +50,8 @@
           "year": {"type": "integer"},
           "source_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
           "confidence": {"enum": ["high", "medium", "low"]},
-          "conflict": {"type": "boolean"}
+          "conflict": {"type": "boolean"},
+          "notes": {"type": "string", "description": "低置信度、口径差异或其他限制的说明"}
         }
       }
     },
@@ -191,12 +192,12 @@
       "description": "执行受阻的记录。检索打不开、来源不可得时必须写在这里，不许静默降级。",
       "items": {
         "type": "object",
-        "required": ["query", "reason"],
+        "required": ["query", "reason", "impact"],
         "additionalProperties": false,
         "properties": {
           "query": {"type": "string"},
           "reason": {"enum": ["access_blocked", "not_found", "tier_unavailable", "paywalled", "out_of_budget"]},
-          "impact": {"type": "string", "description": "对 PPT 论断的影响" }
+          "impact": {"type": "string", "minLength": 1, "description": "对 PPT 论断的影响" }
         }
       }
     },
