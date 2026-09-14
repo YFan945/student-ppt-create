@@ -4,7 +4,7 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
-## Unreleased
+## 0.10.4 — 2026-09-15
 
 ### sp-deck 收敛为 Pipeline CLI：结构约束取代提示词规则（P0-1/P0-2/P0-3）
 
