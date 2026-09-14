@@ -15,13 +15,13 @@ version: 0.10.1
 - 避免 AI 套话（"在当今快速发展..."、"具有重要意义..."）
 - 使用具体课程/项目背景，直接主张，承认局限
 - 按目录→逐页主张→PPT文案→演讲版→Slide Spec 分层生成
-- 全程遵守 `../../references/cost-discipline.md`：调用并行批量发出、禁止整文件重写、产物写盘即弃、检索一律委派子代理
+- 全程遵守 `../../references/cost-discipline.md`：调用并行批量发出、禁止整文件重写、产物写盘即弃、外部检索一律委派子代理
 - 输出写入 `outputs/`，不得写入 `${CLAUDE_PLUGIN_ROOT}`
 
 ## 职责
 
 - 大纲、结构、讲稿 → 本 skill
-- 外部事实、数据、引用的检索与交叉验证 → `sp-research`（先跑，再排页）
+- 外部事实、数据、引用的检索与交叉验证 → `sp-research`（需要时先跑，再排页）
 - 可编辑 PPTX/PowerPoint 文件 → `sp-deck`
 - 审查/评分/诊断已有文件 → `sp-review`
 - 不得声称能创建 .pptx 文件
@@ -30,14 +30,14 @@ version: 0.10.1
 
 1. 加载 `../../references/presentation-intake.md`，使用 outline-only 模式。
 2. 加载 `../../references/presentation-brief.md`，分类场景、受众、结构、交互和质量模式。仅确认会影响故事/时间/证据/归属的约束。
-3. **Research Need Analysis**：动手排页之前先跑 `sp-research`。把待证内容拆成逐条 Claim，判定 A/B/C/D（时效性必须查、会被打分的尽量查、无关的不查、用户限定范围的禁查），由 `sp-research` 产出 `research-pack.json` + passing validation report。不要先写完正文再补来源。D 类时禁止联网，只整理用户材料。
+3. **Research Need Analysis**：排页前先在主流程里只做“是否需要证据”的轻量判定，把待证内容拆成 Claim 并标 A/B/C/D；**这一步本身不联网**。若存在 A/B Claim，则调用 `sp-research`；D 类也调用 `sp-research`，但显式传 `scope:D` 与用户材料路径，由隔离子代理在禁网模式生成 Research Pack。若全部是 C（仅重排/概括用户已有内容、过渡页等），**不要启动子代理，也不要制造空 Research Pack**。只要调用过 `sp-research`，必须拿到 `research-pack.json` + passing validation report 后才能排页。不要先写正文再补来源。
 4. 按需加载：`slide-structures.md`、`transition-phrases.md`、`group-handoff.md`、`qa-prediction.md`、`../../references/content-workflow.md`、`../../references/evidence-and-citations.md`、`../../references/research-workflow.md`、`../../references/revision-training-export.md`、`../../references/slide-spec.md`、`../../references/image-strategy.md`。
 5. 宽泛主题时，根据时长和证据提供 2-3 个角度选择。
 6. 沿单一主线构建，按序生成：目录→每页主张/要点→PPT文案→演讲版→Slide Spec（用户表明将转 PPTX 时必写）。
 7. 每页内容幻灯片提供故事角色、主张、精简文案、可选视觉、证据引用、讲稿、时间、归属、转场。研究支持的 **draft Slide Spec** 在 `evidence_refs` 中直接使用 Research Pack 的 `F/D/Q` id；不要生成 `E<n>`、不要手写 Research Evidence Ledger。`confidence: low` 或 conflict 条目必须写成区间/限定语。`sp-deck` 后续由 `research_pack_to_evidence.py` 机械编译为 E ids、ledger 与 `used_on_slides`。
 8. 新手模式下解释关键结构/布局选择。用 `analyze_presentation_spec.py` 做结构/证据/密度风险检查；需要训练卡、Q&A、词汇表、提词版或修订元数据时运行 `build_support_outputs.py`。
-9. 如需文件输出并转 PPTX，写 `outputs/<topic>-brief.yaml` 与 **draft** `outputs/<topic>-slide-spec.yaml`，分别按 schema 校验；将 Brief、draft spec、Research Pack 和 research validation 路径一起交给 `sp-deck`。最终冻结的是 `sp-deck` 编译出的 Slide Spec，不是这份 draft。
+9. 如需文件输出并转 PPTX：若走过 Research Gate，写 `outputs/<topic>-brief.yaml` 与 **draft** `outputs/<topic>-slide-spec.yaml`，将 Brief、draft spec、Research Pack、research validation 一并交给 `sp-deck`；若是 C-only，则按普通无 research 流程交接。最终冻结的是 `sp-deck` 编译/验证后的 Slide Spec，而不是研究型 draft。
 
 ## 输出契约
 
-使用 `outputs/<topic>-outline.md`、`outputs/<topic>-speaker-notes.md`、`outputs/<topic>-handoff-plan.md`；转 PPTX 时另写 `outputs/<topic>-brief.yaml` 与 draft `outputs/<topic>-slide-spec.yaml`。不得写入 `${CLAUDE_PLUGIN_ROOT}`。
+使用 `outputs/<topic>-outline.md`、`outputs/<topic>-speaker-notes.md`、`outputs/<topic>-handoff-plan.md`；转 PPTX 时另写 `outputs/<topic>-brief.yaml` 与 `outputs/<topic>-slide-spec.yaml`。研究型 spec 是 draft，普通 C-only spec 可直接按既有流程使用。不得写入 `${CLAUDE_PLUGIN_ROOT}`。
