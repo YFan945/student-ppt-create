@@ -14,6 +14,8 @@ Never invent missing numbers, citations, feedback, experiments, or survey result
 
 ## Claim / Data / Quote → Evidence → Source
 
+The canonical invariant remains **Claim → Evidence → Source**; the research compiler makes the claim/data/quote-to-evidence hop mechanical rather than model-authored.
+
 External knowledge enters through `sp-research` and the Research Pack. The canonical chain is:
 
 ```text
