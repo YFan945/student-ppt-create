@@ -4,7 +4,7 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
-## Unreleased
+## 0.10.2 — 2026-09-14
 
 ### 合并 PR #18：research 子系统的证据链与门禁加固（2026-09-14）
 
