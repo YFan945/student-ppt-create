@@ -15,8 +15,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       PYTHONUTF8: "1"
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -44,6 +42,8 @@ jobs:
         env:
           PYTHONPATH: "${{ github.workspace }}/plugins/student-presentation-suite"
           PYTHONIOENCODING: "utf-8"
+          TEMP: ${{ runner.temp }}
+          TMP: ${{ runner.temp }}
         run: |
           python -m json.tool plugins/student-presentation-suite/references/slide-spec.schema.json | Out-Null
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
