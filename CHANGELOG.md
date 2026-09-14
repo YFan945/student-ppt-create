@@ -4,6 +4,17 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## 0.10.5 — 2026-09-15
+
+### Pipeline 1.0 hardening：状态权威、幂等执行、真实渲染与成本控制
+
+- **机器契约成为事实源**：新增 `references/pipeline-contract.json`，统一 QA 顺序、repair 上限、manifest 版本与重复执行策略，避免 SKILL / workflow / pipeline 三套语义继续漂移。
+- **Intake 与生产状态真正衔接**：`ppt_pipeline plan` 必须验证 `intake_confirmed` 与 Production Summary SHA256；plan 后 `build-manifest.json` 成为生产阶段权威状态并镜像 legacy workflow state。
+- **执行成本硬约束**：禁止无 repair 的重复 build；repair 后 generator fingerprint 未变化拒绝重建；相同 PPTX / visual-review / previews 的 QA 直接复用；repair budget 在代码层固定为 3。
+- **真实 Render 进入 Pipeline**：新增 `ppt_pipeline render`，统一 raster render、全页 PNG 与 `contact-sheet.png` 生成；相同 PPTX hash 复用 render 结果，视觉 critique 默认只读 contact sheet。
+- **语义契约与成本基准补强**：新增 pipeline semantic contract tests；benchmark 增加 render events、rendered pages、QA runs 与 QA stage wall time，为后续 6-deck 成本对比提供可量化数据。
+- **验证**：PR #19 的 Linux / Windows runtime、424 项测试、release checks、security scan、Claude manifest、scenario render matrix 与完整 visual gallery 全部通过。
+
 ## 0.10.4 — 2026-09-15
 
 ### sp-deck 收敛为 Pipeline CLI：结构约束取代提示词规则（P0-1/P0-2/P0-3）
