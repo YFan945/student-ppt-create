@@ -9,6 +9,23 @@ Codex 发行记录不在此维护。
 > 注：本段此前为 `## Unreleased` 累积区。插件版本已推进到 0.9.0，故按 Keep a
 > Changelog 惯例改为版本标题；其中也包含更早未单独建标题的 0.7.x / 0.8.x 条目。
 
+### CI 维护：升级 GitHub Actions 运行时（2026-09-14）
+
+`validate.yml` 里的四个官方 action 都还跑在 Node 20 上，GitHub 已标记其弃用并强制
+转到 Node 24，每次 CI 都会产生弃用注解。按"升到第一个 node24 主版本"做最小升级——
+逐个读取各主版本 `action.yml` 的 `using` 字段确认，不是凭印象：
+
+| Action | 原 | 现 |
+| --- | --- | --- |
+| `actions/checkout` | v4（node20） | **v5**（node24） |
+| `actions/setup-python` | v5（node20） | **v6**（node24） |
+| `actions/setup-node` | v4（node20） | **v5**（node24） |
+| `actions/setup-dotnet` | v4（node20） | **v5**（node24） |
+
+共 18 处引用，升级后不再有 Node.js 20 弃用注解。更大的主版本（checkout v7 /
+setup-python v7 / setup-node v7 / setup-dotnet v6）留给已配置的 Dependabot
+（`github-actions`，每月、分组、上限 1）跟进，避免在这次发布里引入额外破坏面。
+
 ### 会话成本约束：门禁合并、cost-discipline 条款与常驻复盘脚本（2026-09-14）
 
 起因：一次 12 页课程报告的实测开销为 **548 次 API 请求 × 平均 23.4 万 token 常驻
