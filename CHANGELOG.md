@@ -4,7 +4,7 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
-## Unreleased
+## 0.10.3 — 2026-09-14
 
 ### Evidence Map 补 schema 与管线级 E2E（2026-09-14）
 
