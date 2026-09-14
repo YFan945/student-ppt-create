@@ -4,6 +4,34 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## Unreleased
+
+### sp-deck 收敛为 Pipeline CLI：结构约束取代提示词规则（P0-1/P0-2/P0-3）
+
+- **新增 `skills/sp-deck/scripts/ppt_pipeline.py`**：生产段从"Agent 手动编排十几个脚本"收敛为
+  单一入口 `plan / build / qa / repair / complete / status`，全部状态写在唯一的
+  `build-manifest.json`（含 spec/lock/art-direction/pptx/各报告的 SHA256、build/repair 计数、
+  转换历史）。
+- **执行层状态机（P0-2）**：`build` 前必须 `plan`（freeze + copy-fit preflight），每次 build
+  复查锁——改了 spec 不重新 plan 直接拒绝；`qa` 前必须有 build；`complete` 前必须 QA 全绿
+  且 delivery 阶段真实运行过。SKILL 里一批"不得……"规则从此由程序拒绝兜底。
+- **QA 从 batch 改为真 DAG（P0-3）**：`qa` 按 package → rendered → actual-content → quality →
+  delivery 依序执行，**上一级刚产出的报告直接喂给下一级**（delivery 消费本轮的
+  `qa-package / qa-actual-content / qa-quality`），Agent 不再手工传一堆报告路径；每份报告
+  以 SHA256 绑进 manifest；失败级即停，防止下游对着陈旧产物出报告。
+- **文档修正**：0.9.1 条目声称 `run_gates.sh` 扩展了一个 QA 聚合参数，与事实不符——
+  `run_gates.py` 从未有该参数，QA 门禁实际由 `--pptx` 启用（`.sh` 只是解释器包装，透传全部
+  参数）。历史条目按原貌保留，特此更正。
+- **新增 `tests/test_cli_doc_contract.py`**：扫描 README / README-zh / CHANGELOG Unreleased /
+  SKILL.md / references 中出现的脚本与 `--flag`，逐一对照真实 `--help` 语料（含
+  `slide_spec_guard.py`、`pptx_tool.py` 的子命令），防止 CLI 与文档再次漂移。
+- **新增 `tests/test_ppt_pipeline.py`（18 项）**：状态机拒绝路径（无 plan 不得 build、QA 无
+  blocker 不得 repair、无 delivery 不得 complete）、锁复查、QA DAG 接线（delivery 消费本轮
+  报告）与失败即停。
+- CI：push 触发分支移除已删除的 `improve/ppt-generation-core-v0.7`。
+- 新增 `benchmarks/decks.json`（6 类固定 deck 定义）与 `scripts/benchmark_report.py`（汇总各
+  work-dir 的 build/repair/最终 blocker 指标），为 release 基准提供骨架。
+
 ## 0.10.3 — 2026-09-14
 
 ### Evidence Map 补 schema 与管线级 E2E（2026-09-14）

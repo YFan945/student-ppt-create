@@ -1,0 +1,47 @@
+{
+  "benchmark_version": "1.0",
+  "description": "固定 6 类 deck 基准。每次 release 前各跑一次，用 scripts/benchmark_report.py 汇总 build-manifest 指标，形成 0.10 -> 1.0 的可比基线。brief 字段是 Presentation Brief 的最小占位，跑基准时按各仓库实际 intake 模板补全。",
+  "decks": [
+    {
+      "id": "course-report-zh",
+      "type": "中文课程汇报",
+      "brief": { "topic": "<课程主题>", "scenario": "coursework", "language": "Chinese", "duration_min": 8, "slide_count": 10 },
+      "scope": "A"
+    },
+    {
+      "id": "course-report-en",
+      "type": "英文课程汇报",
+      "brief": { "topic": "<course topic>", "scenario": "coursework", "language": "English", "duration_min": 8, "slide_count": 10 },
+      "scope": "A"
+    },
+    {
+      "id": "thesis-defense",
+      "type": "论文答辩（D 模式，仅用户论文）",
+      "brief": { "topic": "<论文题目>", "scenario": "defense", "language": "Chinese", "duration_min": 12, "slide_count": 12 },
+      "scope": "D",
+      "materials": "<user-paper-path>"
+    },
+    {
+      "id": "data-heavy",
+      "type": "数据型汇报（多图表）",
+      "brief": { "topic": "<数据主题>", "scenario": "coursework", "language": "Chinese", "duration_min": 10, "slide_count": 12, "notes": "至少 4 个 data_points，触发 chart/kpi 可视化" },
+      "scope": "A"
+    },
+    {
+      "id": "image-heavy",
+      "type": "图片型汇报（图片证据）",
+      "brief": { "topic": "<图片主题>", "scenario": "coursework", "language": "Chinese", "duration_min": 8, "slide_count": 10, "notes": "至少 4 页依赖图片证据，触发 image-sourcing" },
+      "scope": "A"
+    },
+    {
+      "id": "existing-improve",
+      "type": "已有 PPT 改进",
+      "brief": { "topic": "<已有 PPT 主题>", "scenario": "revision", "language": "Chinese", "duration_min": 8, "slide_count": 10, "notes": "输入为既有 .pptx，走 revision manifest 路径" },
+      "scope": "C"
+    }
+  ],
+  "metrics": {
+    "source": "outputs/.pptx-work/<work-id>/build-manifest.json",
+    "recorded": ["builds", "repairs", "final blockers", "plan->complete minutes", "session tokens (session_cost.py)"]
+  }
+}
