@@ -179,7 +179,7 @@ jobs:
       - name: Pip audit
         run: |
           python -m pip install pip-audit
-          pip-audit -r plugins/student-presentation-suite/requirements.txt -r plugins/student-presentation-suite/requirements-claude-pptx.txt -c plugins/student-presentation-suite/requirements-lock.txt
+          pip-audit -r plugins/student-presentation-suite/requirements-lock.txt
       - name: Npm audit policy gate
         run: python plugins/student-presentation-suite/scripts/npm_audit_gate.py --json
       - name: NuGet audit
