@@ -119,6 +119,17 @@ Do not restore the removed external `document-skills` dependency or copied runti
 
 ### Version bump policy (owner's standing instruction)
 
+**"更新版本号" 在本项目里与"打 tag + 建 GitHub Release"是同一个表述，两者完全等价。**
+owner 说"更新版本号"时，完整动作固定为下面四步，缺一不可，**不要再就"要不要打 tag /
+建 Release"二次询问**——那已经包含在这句话里了：
+
+1. `bump_version.py <version>`（先 `--dry-run` 预览）
+2. CHANGELOG 的 `## Unreleased` 改为 `## <version> — <date>`
+3. 提交并推送
+4. 创建 annotated tag `v<version>` 并 `gh release create` 建 GitHub Release
+
+升哪一段按下表判断：
+
 | 改动规模 | 要升哪一段 | 是否需要先问 |
 | --- | --- | --- |
 | 常规更新（补丁、小改、文档、内部重构） | **patch**（x.y.**Z**） | **不用问**，直接升 |
@@ -127,7 +138,8 @@ Do not restore the removed external `document-skills` dependency or copied runti
 
 也就是说：任何提交的默认动作都是自动升 patch；只有当你判断这次改动够得上"较大"或
 "非常大"时，才停下来询问，不要自行升 minor 或 major。拿不准时按较小的一档处理，然后
-把问题抛给 owner。
+把问题抛给 owner。（"是否升 minor / major"需要问；但"升完要不要打 tag / 建 Release"
+不需要问。）
 - Update schema, bridge, documentation, examples, and tests together when
   changing Slide Spec fields or workflow contracts.
 - Run `ruff check` on Python code and `npx eslint` + `npx prettier --check` on
