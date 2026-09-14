@@ -28,6 +28,14 @@ Codex 发行记录不在此维护。
 - **新增 `tests/test_ppt_pipeline.py`（18 项）**：状态机拒绝路径（无 plan 不得 build、QA 无
   blocker 不得 repair、无 delivery 不得 complete）、锁复查、QA DAG 接线（delivery 消费本轮
   报告）与失败即停。
+- **统一版本化 CLI（P1-4）**：新增稳定入口 `skills/sp-deck/scripts/delivery_check.py` 与
+  `quality_gate.py`，以 `--core v07|v071|v08` dispatch 到内部实现（默认 v08 / v071）；
+  `pptx_delivery_check_v07.py` 等历史脚本保留为内部模块与测试对象，不再作为平级 CLI 暴露。
+  `references/pptx-qa.md` 的示例命令与入口约定同步更新。版本应进入 schema 与数据，而不是
+  继续进入脚本文件名。
+- **Python 依赖 constraints lock（第 11 节）**：新增 `requirements-lock.txt`（36 个包的精确
+  闭包，由 requirements*.txt 范围解析生成，含 ruff 钉版）；CI 全部安装行与 pip-audit 改为
+  `-c` 约束安装，消除"CI 每次装到不同版本"的漂移面。范围仍是唯一事实源，升级后重新生成 lock。
 - CI：push 触发分支移除已删除的 `improve/ppt-generation-core-v0.7`。
 - 新增 `benchmarks/decks.json`（6 类固定 deck 定义）与 `scripts/benchmark_report.py`（汇总各
   work-dir 的 build/repair/最终 blocker 指标），为 release 基准提供骨架。

@@ -2,6 +2,8 @@
 
 v0.7.1 默认 QA 仍按四个阶段组织：Plan Freeze、Actual Artifact、Render + Quality Critic、Delivery。普通任务不生成旧式冗长审计链，但必须保存最小的 spec lock、package、actual-content、visual-review、quality 和 delivery 报告。
 
+**CLI 入口约定**：对外只使用稳定入口 `quality_gate.py` 与 `delivery_check.py`（`--core v07|v071|v08` 选择实现，默认 v08；本文示例显式传 `--core v071` 以对应当前四阶段契约）。`pptx_quality_gate_v071.py`、`pptx_delivery_check_v071.py` 等历史脚本保留为内部实现模块，不再作为平级 CLI 调用；`ppt_pipeline.py qa` 与 `run_gates.py` 在内部直接按版本 dispatch（delivery 用 v08）。
+
 兼容性说明：v0.6 的“三道门禁”和 v0.7 仅依赖 `--visual-reviewed` 的交付形式仍保留兼容脚本，但新的 `sp-deck` 不得把它们当作完整高质量证明。
 
 ## Gate 1 — Plan Freeze
@@ -121,7 +123,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" render <pptx> \
 完成真实看图报告后运行统一质量 gate：
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_quality_gate_v071.py" \
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/quality_gate.py" --core v071 \
   --pptx <pptx> --slide-spec <slide-spec.yaml> \
   --spec-lock <slide-spec-lock.json> \
   --visual-report <visual-review.json> \
@@ -189,7 +191,7 @@ workflow state 仍只记录一次正式 `qa → producing` 返工边；该正式
 v0.7.1 默认使用新的 delivery wrapper。除了 preview/package/spec/actual-content，还要求 frozen spec 与 `quality-report.json` 全部绑定当前 artifact。
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_delivery_check_v071.py" \
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/delivery_check.py" --core v071 \
   --strict --visual-reviewed \
   --visual-review-report <visual-review.json> \
   --pptx <pptx> --slide-spec <slide-spec.yaml> \

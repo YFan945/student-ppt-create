@@ -18,6 +18,7 @@ REQUIRED_FILES = [
     "README-zh.md",
     "requirements.txt",
     "requirements-claude-pptx.txt",
+    "requirements-lock.txt",
     "package.json",
     "package-lock.json",
     "references/pptx-runtime-provenance.md",
