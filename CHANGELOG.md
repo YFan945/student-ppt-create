@@ -4,7 +4,7 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
-## Unreleased
+## 0.10.1 — 2026-09-14
 
 ### sp-research 从"提示词规则"升级为真正的独立子代理（2026-09-14）
 
