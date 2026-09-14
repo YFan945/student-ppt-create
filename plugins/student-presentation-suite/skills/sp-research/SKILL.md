@@ -32,7 +32,7 @@ arguments: [work_id, brief_path, scope, materials_path]
 
 - 检索、分级、交叉验证、知识缺口、留痕 → 本 skill；排页/讲稿 → `sp-outline`；PPTX/视觉 → `sp-deck`；审查 → `sp-review`
 - 加载 `../../references/research-workflow.md`、`../../references/evidence-and-citations.md`、`../../references/research-pack.schema.json`
-- 不决定版式、不设计页面、不生成 PPTX、不写成段讲稿；不编造数字、日期、机构或引文
+- 不决定版式、不设计页面、不生成 PPTX、不改视觉风格、不撰写成段讲稿；不编造数字、日期、机构或引文
 - 检索只在子代理内完成；主流程只接收文件路径和紧凑状态，不接收原始网页或搜索摘要
 - 输出只写 `${CLAUDE_PROJECT_DIR}/outputs/.pptx-work/<work-id>/`，不得写 `${CLAUDE_PLUGIN_ROOT}`
 
