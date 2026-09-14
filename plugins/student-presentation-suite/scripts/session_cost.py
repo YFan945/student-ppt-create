@@ -110,6 +110,7 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
             if isinstance(usage, dict):
                 requests.append(
                     {
+                        "ts": stamp,
                         "context": (usage.get("input_tokens") or 0)
                         + (usage.get("cache_creation_input_tokens") or 0)
                         + (usage.get("cache_read_input_tokens") or 0),
@@ -167,6 +168,12 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
     cache_read = sum(item["cache_read"] for item in requests)
     output = sum(item["output"] for item in requests)
     duration = (last_ts - first_ts).total_seconds() if (first_ts and last_ts) else None
+    # Wall clock includes any idle before the first request and after the last
+    # one (a stalled balance error, a long think, a tab left open). Per-request
+    # cost has to be measured against the span the model was actually working,
+    # otherwise a single stall inflates every request in the report.
+    stamps = [item["ts"] for item in requests if item["ts"]]
+    work_span = (stamps[-1] - stamps[0]).total_seconds() if len(stamps) >= 2 else None
 
     buckets: Counter[str] = Counter()
     for value in contexts:
@@ -198,6 +205,8 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
         "started_at": first_ts.isoformat() if first_ts else None,
         "ended_at": last_ts.isoformat() if last_ts else None,
         "duration_sec": round(duration, 1) if duration else None,
+        "work_span_sec": round(work_span, 1) if work_span else None,
+        "idle_sec": round(duration - work_span, 1) if (duration and work_span) else None,
         "requests": len(requests),
         "tool_calls": sum(tool_calls.values()),
         "tool_calls_by_name": dict(tool_calls.most_common()),
@@ -215,7 +224,7 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
             "buckets": dict(buckets),
             "heavy_requests": sum(1 for value in contexts if value >= HEAVY_CONTEXT),
         },
-        "per_request_sec": round(duration / len(requests), 2) if (duration and requests) else None,
+        "per_request_sec": round(work_span / len(requests), 2) if (work_span and requests) else None,
         "assistant_text_chars": text_chars,
         "assistant_thinking_chars": thinking_chars,
         "context_curve": [
@@ -254,6 +263,14 @@ def warnings(summary: dict[str, Any]) -> list[str]:
             f"cache-read 占总量 {tokens['cache_read'] / tokens['total'] * 100:.1f}%；"
             "这部分是同一份上下文的重复计费，不是新增工作"
         )
+    work = summary.get("work_span_sec")
+    span = summary.get("duration_sec")
+    idle = summary.get("idle_sec")
+    if work and span and idle is not None and idle > work * 0.5:
+        notes.append(
+            f"空转 {idle / 60:.1f} 分钟，占墙钟 {idle / span * 100:.0f}%（长于工作时长的一半）；"
+            "排查中断点：余额/限流报错、等待用户确认、子代理未回收"
+        )
     return notes
 
 
@@ -266,7 +283,11 @@ def render_markdown(summary: dict[str, Any], source: Path) -> str:
         "",
         f"- file: `{source}`",
         f"- window: {summary['started_at']} → {summary['ended_at']}"
-        + (f" ({duration / 60:.1f} min)" if duration else ""),
+        + (f"\n- time: work span {summary['work_span_sec'] / 60:.1f} min"
+           f" | idle {summary['idle_sec'] / 60:.1f} min"
+           f" | wall clock {duration / 60:.1f} min"
+           if (duration and summary["work_span_sec"] and summary["idle_sec"] is not None)
+           else f" ({duration / 60:.1f} min)" if duration else ""),
         "",
         "## Headline",
         f"- requests: **{summary['requests']}** | tool calls: {summary['tool_calls']}"

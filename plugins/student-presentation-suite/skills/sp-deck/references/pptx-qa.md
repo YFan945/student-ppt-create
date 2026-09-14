@@ -157,7 +157,30 @@ Render
 
 最多 3 个 design repair iterations。每轮应减少 blocker；若连续一轮无改善，应换构图、改视觉层级、压缩讲稿或重新组织 reference area，不得只微调坐标。
 
+**一轮 iteration 必须修完所有阻断页，禁止按页分批。** 实测过一次反例：13 页 deck 的
+修复被切成 P12 → P7/P9/P13 → P2/P8 → P10 → P6 五批，每批都走完整套
+`编辑 → 构建 → 渲染 → 读图 → 判断`，构建 18 次、渲染 20 次、逐张读渲染图 36 次，
+约 5300 万 token——占整次生成成本的 45%。按页分批时"最多 3 轮"会悄悄滚成 5 轮以上。
+同因的 blocker（比如都是行高或同一处文案）必须在同一轮一次改完。
+
+**修复循环只看 contact sheet，禁止逐张 Read 渲染 PNG。** 上图 `full render` 之后只读
+一张拼好的 contact sheet（或按页裁剪的少量局部放大），不要 `Read` 每一页的
+`*.png`——36 次读图就是 36 次全上下文请求。需要看细节时再针对那一页放大一次。
+
 **Spec revision 不是普通 repair 手段。** 只有 plan 本身错误时才走 `slide_spec_guard.py revise --reason ...`；revision 后重新校验并重新生成。
+
+**能在写生成器之前发现的问题，不要留到 readback。** 动手写 `deck.js` 之前先跑：
+
+```bash
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/copy_fit_preflight.py" \
+  --slide-spec <slide-spec.yaml> --art-direction <art-direction.yaml> \
+  --output <work-dir>/copy-fit-report.json
+```
+
+它按字号与区域宽度算术地判断 `title` / `claim` / `slide_copy` 能不能逐字上屏。
+`pptx_actual_content_check.py` 要求这些文案**逐字**出现，Spec 里写 60–90 字的策划性
+claim 必然在 readback 阶段炸成几十个 blocker，进而迫使生成器整文件重写、整条修复链
+重来。这一步把那次返工提前到"改 Spec 还很便宜"的时候。
 
 workflow state 仍只记录一次正式 `qa → producing` 返工边；该正式返工内部允许最多 3 个受控 render-repair iterations。
 

@@ -885,3 +885,45 @@ module.exports = {
   // 全局
   applyTokens,
 };
+
+/**
+ * Machine-readable description of the exported surface.
+ *
+ * Reading this file to learn the API costs a few thousand tokens and is easy to
+ * get wrong. `node scripts/pptx-helpers.js --describe` prints the same
+ * information from the live exports, so it can never drift from the code.
+ * `references/pptxgenjs-helper-api.md` carries the prose layer.
+ */
+function describeApi() {
+  const entries = [];
+  for (const [name, value] of Object.entries(module.exports)) {
+    if (typeof value === 'function') {
+      const head = String(value)
+        .split('\n')[0]
+        .replace(/\s*\{$/, '')
+        .trim();
+      entries.push({ name, kind: 'function', signature: head, arity: value.length });
+    } else {
+      entries.push({ name, kind: 'constant', value });
+    }
+  }
+  return {
+    canvas: { slideWIn: SLIDE_W_IN, slideHIn: SLIDE_H_IN },
+    safeTitleFonts: SAFE_TITLE_FONTS,
+    safeBodyFonts: SAFE_BODY_FONTS,
+    safeCjkTitleFonts: SAFE_CJK_TITLE_FONTS,
+    safeCjkBodyFonts: SAFE_CJK_BODY_FONTS,
+    balanceRoles: BALANCE_ROLES,
+    entries,
+  };
+}
+
+if (require.main === module) {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--describe')) {
+    process.stdout.write(`${JSON.stringify(describeApi(), null, 2)}\n`);
+  } else {
+    process.stdout.write('Usage: node scripts/pptx-helpers.js --describe\n');
+    process.exit(argv.length ? 2 : 0);
+  }
+}

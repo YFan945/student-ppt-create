@@ -4,6 +4,46 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## Unreleased
+
+### 按第二轮实测修正成本模型：修复循环才是主导项（2026-09-14）
+
+第二轮（v0.9.0 规则已生效）实测：**501 次请求 × 平均 23.3 万上下文 = 1.17 亿 token、
+工作时长 37.2 分钟**。相比第一轮 token 只降 9%，时长反而涨 11%——说明 CD-1…CD-7
+打偏了。按调用归因：**渲染-修复循环占 45%**（18 次构建 + 20 次渲染 + 36 次逐张读
+渲染图 + 40 次 deck.js 定点修），QA 门禁重跑 20%，API 内联探针 10%。
+
+- **新增 `skills/sp-deck/scripts/copy_fit_preflight.py`**：在写生成器**之前**，按字号
+  与区域宽度算术判断 `title` / `claim` / `slide_copy` 能否逐字上屏，并核对每页字数
+  上限（默认 80，来源行与图注不计）。第二轮 r2 返工（readback 30 blocker → 生成器
+  整文件重写 → 整条修复链重来）在算术上是可预知的，这一步把它提前到"改 Spec 还很
+  便宜"的时候。附 7 项测试（含金样例必须仍然通过，防止检查过严误伤）。
+- **`run_gates.sh` 扩展 `--qa`**：一次运行覆盖 actual-content / rendered / quality /
+  delivery（缺哪个必需输入就跳过哪个），输出仍是 1 行 + 问题项。第二轮这四个门禁
+  被分开调用了 14 / 9 / 7 / 7 次；现在合成 1 次。真实产物实测：`ok — blockers 0 |
+  gates: actual-content, rendered`。附 3 项测试。
+- **新增 `references/pptxgenjs-helper-api.md` + `pptx-helpers.js --describe`**：
+  `--describe` 从 live exports 生成 API 清单（画布、安全字体、29 个导出的名称/签名/
+  元数），不会与代码漂移；文档负责"什么时候用哪个"。用来取代第二轮的 25 次内联探针。
+- **`pptx-element-registry.js` 几何前移**：新增 `footerTop`（内容不得越过来源行，
+  报 `content_overflow_bottom`）与 `textOverflowErrorRatio`（默认 1.2，超出即为
+  `text_overflow` 错误而非 warning）。第二轮 P9 末行越界、P12 表格压到底部说明都只有
+  渲染后才被发现。
+- **规约收紧**：
+  - `pptx-qa.md`：一轮 repair iteration 必须**一次修完所有阻断页**，禁止按页分批
+    （附第二轮的实测反例）；修复循环**只看 contact sheet**，禁止逐张 Read 渲染 PNG；
+    写 `deck.js` 前先跑 `copy_fit_preflight.py`。
+  - `cost-discipline.md` CD-4：小结**必须被消费**——进入新阶段时入手材料只有小结 +
+    本阶段要改的那一个产物，上阶段产物默认不重读（附"三份小结都写了但上下文仍涨到
+    40.9 万"的反例）。
+  - `cost-discipline.md` CD-2 与 `pptx-production.md`：生成器拆分为 `deck.js`（装配）
+    + `pages/pNN-*.js`（每页一文件），明确**不是**"一个文件里每页一个函数"——第二
+    轮正是按后者执行，规则形同虚设。同时说明拆分本身的收益边界：它几乎不省 token，
+    价值在于让不同页的修复可并行发出。
+  - `SKILL.md`：生产步骤串起 `copy_fit_preflight → pages/ 拆分 --→ helper API 走
+    `pptxgenjs-helper-api.md`。
+- `check_plugin_release.py` 的 `REQUIRED_FILES` 增加 `pptxgenjs-helper-api.md`。
+
 ## 0.9.0 — 2026-09-14
 
 > 注：本段此前为 `## Unreleased` 累积区。插件版本已推进到 0.9.0，故按 Keep a

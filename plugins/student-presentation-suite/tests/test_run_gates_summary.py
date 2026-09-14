@@ -160,6 +160,44 @@ class RunGatesSummaryTests(unittest.TestCase):
             self.assertTrue(report["ok"])
             self.assertIn("problems", report)
 
+    def test_qa_mode_accepts_a_pptx_without_art_direction(self) -> None:
+        """QA-only runs have no Art Direction; the front-end gate must not be forced."""
+        with TemporaryDirectory() as tmp:
+            out = Path(tmp) / "gates-report.json"
+            code, stdout = self.invoke(
+                ["--pptx", str(Path(tmp) / "absent.pptx"), "--output", str(out)]
+            )
+            self.assertEqual(2, code)
+            self.assertNotIn("nothing to check", stdout)
+            report = json.loads(out.read_text(encoding="utf-8"))
+            self.assertNotIn("art_direction", report["gates"])
+
+    def test_qa_mode_survives_a_missing_pptx_and_still_reports(self) -> None:
+        with TemporaryDirectory() as tmp:
+            out = Path(tmp) / "gates-report.json"
+            code, _ = self.invoke(
+                ["--pptx", str(Path(tmp) / "absent.pptx"), "--output", str(out)]
+            )
+            self.assertEqual(2, code)
+            report = json.loads(out.read_text(encoding="utf-8"))
+            self.assertIn("rendered", report["gates"])
+            self.assertTrue(any(p["gate"] == "rendered" for p in report["problems"]))
+
+    def test_qa_mode_merges_actual_content_when_spec_is_given(self) -> None:
+        with TemporaryDirectory() as tmp:
+            spec = Path(tmp) / "slide-spec.yaml"
+            spec.write_text("schema_version: '2.0'\nslides: []\n", encoding="utf-8")
+            out = Path(tmp) / "gates-report.json"
+            self.invoke(
+                [
+                    "--pptx", str(Path(tmp) / "absent.pptx"),
+                    "--slide-spec", str(spec),
+                    "--output", str(out),
+                ]
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            self.assertIn("actual-content", report["gates"])
+
     def test_missing_argument_combination_is_refused(self) -> None:
         code, stdout = self.invoke(["--art-direction", str(GOLDEN / "art-direction.yaml")])
         self.assertEqual(2, code)

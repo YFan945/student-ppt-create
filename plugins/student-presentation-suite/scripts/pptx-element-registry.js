@@ -18,6 +18,11 @@ const DEFAULTS = {
   overlapTolerance: 0.015,
   minTextW: 0.05,
   minTextH: 0.05,
+  // Generators set footerTop to the y of the source line; content crossing it
+  // used to survive until the rendered check, which costs a full build+render.
+  footerTop: null,
+  // requiredH / boxH above this ratio is a real overflow, not a "may overflow".
+  textOverflowErrorRatio: 1.2,
 };
 
 function finite(v) {
@@ -151,9 +156,33 @@ class SlideElementRegistry {
           message: 'Element exceeds slide canvas.',
         });
       }
+      const footerTop = this.options.footerTop;
+      if (
+        footerTop !== null &&
+        footerTop !== undefined &&
+        !isDecorative(el) &&
+        box.b > footerTop + this.options.overlapTolerance
+      ) {
+        errors.push({
+          code: 'content_overflow_bottom',
+          element: el.id,
+          bbox: box,
+          footerTop,
+          message: 'Element crosses the footer/source line.',
+        });
+      }
       if (el.type === 'text') {
         const fit = estimateTextFit(el);
-        if (!fit.ok) warnings.push({ code: 'text_may_overflow', element: el.id, ...fit });
+        if (!fit.ok) {
+          const severe =
+            fit.boxH > 0 && fit.requiredH > fit.boxH * this.options.textOverflowErrorRatio;
+          const issue = {
+            code: severe ? 'text_overflow' : 'text_may_overflow',
+            element: el.id,
+            ...fit,
+          };
+          (severe ? errors : warnings).push(issue);
+        }
       }
     }
 

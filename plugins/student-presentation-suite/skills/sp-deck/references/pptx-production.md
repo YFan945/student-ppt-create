@@ -26,9 +26,13 @@ sh "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.sh" \
   `run_gates.sh --art-direction <...> --candidates <composition-candidates-N.json> [更多候选…]`。
   单个 gate 脚本仍可直接调用，用于调试某个具体门禁。
 
-- **禁止整文件重写（CD-2）**：`deck.js` 按页或按区块拆分，一次修改只触及一个文件。
+- **禁止整文件重写（CD-2）**：生成器按页拆成 `deck.js` + `pages/pNN-*.js`，**不是**
+  "一个文件里每页一个函数"。`deck.js` 只做装配与共享定义（tokens、helpers、registry、
+  网格常量），页面坐标一律在 `pages/` 下，每页一个文件、导出一个 `function (ctx)`。
+  `run_with_pptxgenjs.js --output <x.pptx> <deck.js>` 的入口契约不变。
   为修一处几何问题而重写整个生成器是本 suite 明确禁止的做法——它会让多个版本同时
-  留在会话历史里，此后每一轮都为废弃版本付费。
+  留在会话历史里，此后每一轮都为废弃版本付费。拆分的主要收益是让不同页的修复能
+  **在同一轮并行发出**（同一文件的多处 Edit 无法安全并行），而不是省写入体积。
 - **写盘即弃（CD-3）**：冻结后的 `slide-spec.yaml`、`art-direction.yaml`、`deck.js`、
   候选文件与各类报告只按路径引用，不回读全文；确认状态时读计数、字段名与 hash。
 - **阶段小结（CD-4）**：进入 `producing` 与 `qa` 时各写一份 ≤ 30 行的
@@ -129,6 +133,8 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" render <wireframes-N.pptx> -
 4. 最终真实元素必须进入 `${CLAUDE_PLUGIN_ROOT}/scripts/pptx-element-registry.js`。`preflightSlide()` 只是 composition-level safety preflight，不替代 registry；composer 仅为 deterministic fallback / compatibility path，不是默认生成器。
 5. generator 在 `pptx.writeFile()` 前调用 `registry.assertSafe()`。阻断实际越界、明显文字重叠等几何错误；warning 在最终 render 中确认。
 6. `deck.js` 从 `process.argv[2]` 接收输出路径；每个输出只创建一个 pptxgen 实例。
+   按 CD-2，`deck.js` 只做装配，页面实现放在同目录 `pages/pNN-*.js`（每页一文件、
+   导出 `function (ctx)`），使不同页的修复可并行发出。
 7. 执行：
 
 ```bash

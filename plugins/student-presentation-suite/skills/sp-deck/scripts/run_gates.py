@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -170,6 +171,172 @@ def collect_candidates(args: argparse.Namespace, gates: dict[str, Any], problems
     }
 
 
+def _qa_severity(report: dict[str, Any], issue: dict[str, Any]) -> str:
+    """QA gates are not consistent about severity labels; normalise them."""
+    severity = str(issue.get("severity") or "").lower()
+    if severity in {"critical", "major", "blocker"}:
+        return "critical" if severity == "critical" else "major"
+    if severity == "minor":
+        return "minor"
+    # Unknown label: treat a failing gate's findings as blockers rather than
+    # silently dropping them.
+    return "major" if not report.get("ok", True) else "minor"
+
+
+def _qa_gate(
+    name: str,
+    script: str,
+    argv: list[str],
+    gates: dict[str, Any],
+    problems: list[dict[str, Any]],
+    report_path: Path,
+) -> None:
+    result = subprocess.run(
+        [sys.executable, str(HERE / script), *argv],
+        check=False,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if not report_path.is_file():
+        gates[name] = {"ok": False, "checked": True, "exit_code": result.returncode}
+        problems.append(
+            problem(
+                name,
+                "critical",
+                f"{script}_missing_report",
+                f"{script} produced no report (exit {result.returncode}): "
+                f"{shorten((result.stderr or result.stdout or '').strip(), 160)}",
+            )
+        )
+        return
+
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    issues = report.get("issues") if isinstance(report.get("issues"), list) else []
+    for issue in issues:
+        if not isinstance(issue, dict):
+            continue
+        severity = _qa_severity(report, issue)
+        problems.append(
+            problem(
+                name,
+                severity,
+                str(issue.get("code") or f"{script}_issue"),
+                str(issue.get("message") or issue.get("detail") or issue.get("problem") or issue),
+                slide=issue.get("slide"),
+            )
+        )
+    gates[name] = {
+        "ok": bool(report.get("ok", result.returncode == 0)),
+        "checked": True,
+        "exit_code": result.returncode,
+        "issue_count": len(issues),
+        "report": str(report_path),
+    }
+    if issues:
+        return
+    if not report.get("ok", True):
+        problems.append(
+            problem(
+                name,
+                "major" if result.returncode else "minor",
+                f"{script}_failed",
+                f"{script} reported not ok without itemised issues (exit {result.returncode}).",
+            )
+        )
+
+
+def collect_qa(args: argparse.Namespace, gates: dict[str, Any], problems: list[dict[str, Any]], workdir: Path) -> None:
+    """Run the QA-side gates in one command.
+
+    These live behind separate CLIs with their own required inputs, so instead of
+    reimplementing them this shells out per gate and merges the JSON reports into
+    the single problem list. The saving is not process time, it is turning four or
+    five round-trips into one.
+    """
+    if not getattr(args, "pptx", None):
+        return
+    pptx = str(args.pptx)
+    spec = str(args.slide_spec) if args.slide_spec else ""
+
+    if spec:
+        _qa_gate(
+            "actual-content",
+            "pptx_actual_content_check.py",
+            [pptx, spec, "--output", str(workdir / "qa-actual-content.json")],
+            gates,
+            problems,
+            workdir / "qa-actual-content.json",
+        )
+
+    _qa_gate(
+        "rendered",
+        "pptx_rendered_check.py",
+        ["--pptx", pptx, "--output", str(workdir / "qa-rendered.json")],
+        gates,
+        problems,
+        workdir / "qa-rendered.json",
+    )
+
+    if spec and args.spec_lock and args.visual_report:
+        _qa_gate(
+            "quality",
+            "pptx_quality_gate_v071.py",
+            [
+                "--pptx", pptx,
+                "--slide-spec", spec,
+                "--spec-lock", str(args.spec_lock),
+                "--visual-report", str(args.visual_report),
+                "--output", str(workdir / "qa-quality.json"),
+            ],
+            gates,
+            problems,
+            workdir / "qa-quality.json",
+        )
+
+    delivery_inputs = [
+        spec,
+        args.spec_lock,
+        args.art_direction,
+        args.visual_generation_report,
+        args.quality_report,
+        args.package_report,
+        args.slide_spec_report,
+        args.actual_content_report,
+    ]
+    if all(delivery_inputs):
+        argv = [
+            "--pptx", pptx,
+            "--slide-spec", spec,
+            "--spec-lock", str(args.spec_lock),
+            "--art-direction", str(args.art_direction),
+            "--visual-generation-report", str(args.visual_generation_report),
+            "--quality-report", str(args.quality_report),
+            "--package-report", str(args.package_report),
+            "--slide-spec-report", str(args.slide_spec_report),
+            "--actual-content-report", str(args.actual_content_report),
+            "--visual-reviewed",
+            "--output", str(workdir / "qa-delivery.json"),
+        ]
+        if args.visual_review_report:
+            argv += ["--visual-review-report", str(args.visual_review_report)]
+        if args.notes:
+            argv += ["--notes", str(args.notes)]
+        for preview in args.preview or []:
+            argv += ["--preview", str(preview)]
+        if args.allow_missing_preview:
+            argv.append("--allow-missing-preview")
+        _qa_gate(
+            "delivery",
+            "pptx_delivery_check_v08.py",
+            argv,
+            gates,
+            problems,
+            workdir / "qa-delivery.json",
+        )
+
+
 def collect_visual_generation(args: argparse.Namespace, gates: dict[str, Any], problems: list[dict[str, Any]]) -> None:
     if not args.evidence_dir:
         return
@@ -198,15 +365,18 @@ def collect_visual_generation(args: argparse.Namespace, gates: dict[str, Any], p
         problems.append(problem_from("visual-generation", item, slide=item.get("slide")))
 
 
-def run(args: argparse.Namespace) -> dict[str, Any]:
+def run(args: argparse.Namespace, workdir: Path | None = None) -> dict[str, Any]:
     problems: list[dict[str, Any]] = []
     gates: dict[str, Any] = {}
+    qa_dir = workdir or (args.output.parent if args.output else Path.cwd())
 
     if getattr(args, "lock_file", None):
         collect_lock(args, gates, problems)
-    collect_art_direction(args, gates, problems)
+    if getattr(args, "art_direction", None):
+        collect_art_direction(args, gates, problems)
     collect_candidates(args, gates, problems)
     collect_visual_generation(args, gates, problems)
+    collect_qa(args, gates, problems, qa_dir)
 
     problems = dedupe(problems)
     counts = {severity: sum(1 for item in problems if item["severity"] == severity) for severity in SEVERITIES}
@@ -262,7 +432,11 @@ def render(report: dict[str, Any], report_path: Path, *, verbose: bool, max_item
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--art-direction", type=Path, required=True, help="art-direction.yaml|json (Art Direction gate)")
+    parser.add_argument(
+        "--art-direction",
+        type=Path,
+        help="art-direction.yaml|json (Art Direction gate); required unless --pptx is used alone",
+    )
     parser.add_argument("--evidence-dir", type=Path, help="work dir holding references/candidates/wireframes (v0.8 gate)")
     parser.add_argument("--slide-spec", type=Path, help="frozen Slide Spec; required with --evidence-dir")
     parser.add_argument("--lock-file", type=Path, help="slide-spec-lock.json; enables the frozen-plan check")
@@ -274,6 +448,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=None,
         help="composition-candidates-N.json files to validate directly (per-slide step before wireframes exist)",
     )
+    qa = parser.add_argument_group("QA gates", "one command for the post-build gates instead of four round-trips")
+    qa.add_argument("--pptx", type=Path, help="candidate PPTX; enables the QA gates")
+    qa.add_argument("--spec-lock", type=Path, help="slide-spec-lock.json (quality + delivery)")
+    qa.add_argument("--visual-report", type=Path, help="visual-review.json (quality gate)")
+    qa.add_argument("--visual-review-report", type=Path, help="visual-review.json bound to the PPTX (delivery)")
+    qa.add_argument("--visual-generation-report", type=Path, help="visual-generation-report.json (delivery)")
+    qa.add_argument("--quality-report", type=Path, help="quality-report.json (delivery)")
+    qa.add_argument("--package-report", type=Path, help="package validation report (delivery)")
+    qa.add_argument("--slide-spec-report", type=Path, help="Slide Spec validation report (delivery)")
+    qa.add_argument("--actual-content-report", type=Path, help="actual-content report (delivery)")
+    qa.add_argument("--notes", type=Path, help="speaker notes file (delivery)")
+    qa.add_argument("--preview", type=Path, nargs="+", action="extend", default=None, help="preview images (delivery)")
+    qa.add_argument("--allow-missing-preview", action="store_true", help="relax the delivery preview requirement")
     parser.add_argument("--quality", choices=["high-score", "standard"], default="high-score")
     parser.add_argument("--output", type=Path, help="merged report path; defaults to <evidence-dir>/gates-report.json")
     parser.add_argument("--json", action="store_true", help="print the merged report instead of the summary")
@@ -284,15 +471,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    if not args.evidence_dir and not args.candidates:
-        print("run_gates: nothing to check — pass --evidence-dir and/or --candidates", file=sys.stderr)
+    if not args.evidence_dir and not args.candidates and not args.pptx:
+        print(
+            "run_gates: nothing to check — pass --evidence-dir, --candidates and/or --pptx",
+            file=sys.stderr,
+        )
         return 2
     if args.evidence_dir and not args.slide_spec:
         print("run_gates: --slide-spec is required together with --evidence-dir", file=sys.stderr)
         return 2
+    if not args.art_direction and not args.pptx:
+        print("run_gates: --art-direction is required unless running QA gates with --pptx", file=sys.stderr)
+        return 2
 
-    report = run(args)
     report_path = args.output or ((args.evidence_dir or Path.cwd()) / "gates-report.json")
+    report = run(args, report_path.parent)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 

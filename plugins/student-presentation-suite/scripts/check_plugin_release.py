@@ -33,6 +33,7 @@ REQUIRED_FILES = [
     "skills/sp-deck/references/pptx-production.md",
     "skills/sp-deck/references/pptx-runtime.md",
     "skills/sp-deck/references/pptxgenjs-safety.md",
+    "skills/sp-deck/references/pptxgenjs-helper-api.md",
     "skills/sp-deck/references/pptx-editing.md",
     "skills/sp-deck/references/pptx-qa.md",
     "skills/sp-deck/references/layout-library.json",
