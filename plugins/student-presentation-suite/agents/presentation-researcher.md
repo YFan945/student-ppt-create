@@ -68,9 +68,11 @@ If required inputs are missing or the pack cannot be made valid within the budge
 ```text
 RESEARCH_BLOCKED
 reason: <one concise sentence>
-pack: <path if one exists, otherwise ->
-validation: <path if one exists, otherwise ->
+pack: -
+validation: -
 status: blocked
 ```
+
+If a partial artifact exists, replace `-` only with its path; never append a prose research summary.
 
 Canonical rules: `references/research-workflow.md`; evidence chain: `references/evidence-and-citations.md`.
