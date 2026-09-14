@@ -2,6 +2,10 @@
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
 version: 0.10.0
+context: fork
+agent: student-presentation-suite:presentation-researcher
+background: false
+argument-hint: "[work-id] [brief 或 slide-spec 路径] [scope: A|B|C|D]"
 ---
 
 # Student Presentation Research
@@ -11,16 +15,24 @@ version: 0.10.0
 设计宗旨：**Search for evidence, not text.** 不是"帮 PPT 找点内容"，而是"识别需要证据
 支持的论断，检索高质量来源，完成交叉验证，压缩成结构化 Research Pack"。
 
+## 执行方式：fork 到独立子代理
+
+本 skill 带 `context: fork` + `agent: student-presentation-suite:presentation-researcher`，
+**不在主对话上下文里执行**：Claude Code 启动 `agents/presentation-researcher.md` 定义的
+子代理，把本文件作为它的 prompt。子代理看不到主对话历史，主流程也看不到它的搜索过程与
+原始网页——这是 Context Firewall 的**机制实现**，不是一条口头规则。
+
+因为 fork 后没有对话历史，调用时必须把信息作为参数传入，子代理只会读这些路径：
+`work-id`（决定输出目录）、Brief 或 Slide Spec 草稿的**路径**（传路径，不贴内容）、
+`scope: A|B|C|D`（D 模式必须显式声明才触发禁查）、D 模式的用户材料路径。
+`background: false` 是刻意的：研究必须先完成，`sp-outline` 才能开始排页。
+
 ## 职责
 
-- 判断哪些内容该查、哪些不该查 → 本 skill
-- 检索、分级、交叉验证、留痕 → 本 skill
-- 排页、写正文、写讲稿 → `sp-outline`
-- 可编辑 PPTX / 版式 / 视觉 → `sp-deck`
-- 审查与评分 → `sp-review`
+- 判断哪些内容该查、哪些不该查；检索、分级、交叉验证、留痕 → 本 skill
+- 排页、写正文、写讲稿 → `sp-outline`；可编辑 PPTX / 版式 / 视觉 → `sp-deck`；审查评分 → `sp-review`
 
-**只做证据层。** 不决定版式、不设计页面、不生成 PPTX、不改视觉风格、不撰写成段讲稿。
-职责混在一起会污染后面每一层的产物。
+**只做证据层**：不决定版式、不设计页面、不生成 PPTX、不改视觉风格、不撰写成段讲稿。
 
 ## 快速约束
 

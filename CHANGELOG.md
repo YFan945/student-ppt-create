@@ -4,6 +4,51 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## Unreleased
+
+### sp-research 从"提示词规则"升级为真正的独立子代理（2026-09-14）
+
+0.10.0 交付的 `sp-research` 只是 Skill，而普通 Skill 默认在主对话上下文里运行。这
+意味着文档里写的"检索一律在子代理内完成"**只是一条提示词规则**——从运行机制上并没有
+保证主流程不会吃到原始搜索结果，Context Firewall 实际上是空的。
+
+- **P0｜真正 fork**（`skills/sp-research/SKILL.md`）：
+  - frontmatter 增加 `context: fork`、`agent: student-presentation-suite:presentation-researcher`、
+    `background: false`、`argument-hint`；
+  - **新增 `agents/presentation-researcher.md`**（插件级 subagent，Claude Code 官方支持
+    插件 `agents/` 目录，注册名带插件前缀）。它是隔离执行的系统提示，自包含；
+  - 因为 fork 的子代理**看不到主对话历史**，SKILL.md 新增「执行方式」一节，明确调用时
+    必须把 `work-id` / brief 路径 / `scope (A|B|C|D)` / 用户材料路径作为参数传入；
+  - `background: false` 是刻意的：研究必须先完成，`sp-outline` 才能开始排页。
+- **P0｜Research Pack → Evidence Ledger 确定性桥接**：
+  - **新增 `scripts/research_pack_to_evidence.py`**：按固定规则（findings 按 id 排序、再
+    data_points 按 id 排序 → `E01, E02, …`）编译出 `evidence-map.json`（ledger + `F/D/S→E`
+    映射 + 来源索引 + 三个哈希）。同一 pack 编译两次必须完全一致；
+  - **拒绝编译未通过校验的 pack**——未经验证的 pack 不是交付物，不许变成证据；
+  - `slide_spec_guard.py freeze` 新增 `--research-pack` / `--research-validation` /
+    `--evidence-map`，把三者哈希绑进冻结锁；`check` 会发现冻结后被改动的 research 产物。
+    三个参数都是可选的，不含外部事实的 deck 不受影响。
+- **P1｜校验器补 8 个漏洞**（`validate_research_pack.py`）：
+  - `independence_group` 成为必填字段，交叉验证改为**按独立组计数**——两篇转载同一个报告
+    不再算"两个来源"。这正是文档写"≥2 个独立来源"而代码只查 `len(refs) >= 2` 的落差；
+  - `finding` 标了冲突却无对应 `conflicts` 记录（原先只查 data_point）；
+  - `jsonschema` 缺失时改为 **fail-closed**（原先直接跳过 schema 校验）；
+  - **D 模式变成契约**：`queries` 为空 ⇔ 所有来源必须是 `user-file`，两个方向都查；
+  - **来源 tier 按 type 设上限**（个人博客不能自称 S 级）；
+  - `visual_candidate` 引用不存在的 finding/data/source 由 minor 升 **major**（把不存在
+    的数据喂给图表比少写来源更危险）；
+  - low 置信度必须写 `notes` 说明原因——静默降级要能被看见；
+  - `unresolved` 必须写 `impact`。
+  - `research-pack.schema.json`：新增 `user-file` 来源类型、`independence_group`，
+    `version` 升到 `0.10`。
+- **文档｜消除双轨协议**：`evidence-and-citations.md` 里旧的"子代理返回 ≤20 行、
+  主流程据此手写 ledger 条目"与新的 Research Pack 协议并存，等于两个交接协议。已删除
+  旧协议，只保留 canonical path（pack + 校验报告 + compact summary）。
+- **`sp-deck` 第 3 步加入 Research Gate**：只要 deck 依赖外部事实，freeze 前必须先有
+  通过校验的 pack 与编译出的 evidence map，`evidence_refs` 引用分配的 `E<n>`。
+- 测试：Research Pack 契约 13 → **20 项**，新增 `test_research_pack_to_evidence.py`
+  **16 项**（含编译确定性、拒绝无效 pack、freeze 绑定与篡改检测）。
+
 ## 0.10.0 — 2026-09-14
 
 ### 新增 sp-research：把外部知识获取拆成独立一层（2026-09-14）

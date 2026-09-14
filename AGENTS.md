@@ -31,7 +31,11 @@ implementation line and is not supported here.
 Inside the plugin package:
 
 - `.claude-plugin/plugin.json`: plugin manifest.
-- `skills/`: the three user-facing skill entrypoints and task-specific references.
+- `agents/`: plugin-scoped subagents. `presentation-researcher.md` is the isolated
+  executor that `sp-research` forks into (`context: fork`, `background: false`), so
+  raw retrieval never reaches the main conversation context. Plugin subagents register
+  as `<plugin>:<agent>` and may not use `hooks`, `mcpServers`, or `permissionMode`.
+- `skills/`: the four user-facing skill entrypoints and task-specific references.
 - `references/`: shared intake, standards, cost discipline, image policy, and Slide Spec contracts.
 - `scripts/`: environment checks, schema bridge, validation, session cost review, Research Pack
   validation, and PPTX smoke tooling.

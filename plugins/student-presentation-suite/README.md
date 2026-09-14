@@ -34,9 +34,24 @@ not choose layouts, design pages, produce PPTX, touch the visual direction, or
 write prose speaker notes; mixing those responsibilities contaminates every
 layer downstream.
 
-It doubles as a context firewall: raw retrieval (result pages, article bodies,
-paper abstracts, failures) is absorbed inside a subagent, so the main flow only
-receives the compressed Research Pack (~100k tokens in, ~8k out).
+It doubles as a context firewall — and that is a **mechanism**, not a prompt
+convention: `sp-research` carries `context: fork` +
+`agent: student-presentation-suite:presentation-researcher` + `background: false`
+in its frontmatter, so it does **not** run in the main conversation context.
+Claude Code starts the subagent defined in `agents/presentation-researcher.md`
+with its own context window; the subagent cannot see the conversation history and
+the main flow never receives its search trail or raw pages (~100k tokens in, ~8k
+out). `background: false` is deliberate: research must finish before `sp-outline`
+starts planning.
+
+The hop from Research Pack to Slide Spec is deterministic too:
+`scripts/research_pack_to_evidence.py` compiles `evidence-map.json` by a fixed rule
+(findings sorted by id, then data_points sorted by id, to `E01, E02, …`) rather
+than letting the model hand-write ledger entries. Compiling the same pack twice
+yields an identical ledger, and a pack that fails validation is refused outright.
+`slide_spec_guard.py freeze` can bind the three hashes —
+`research-pack.json`, its validation report, and `evidence-map.json` — into the
+frozen lock; editing any of them afterwards makes `check` fail immediately.
 
 Rules live in `references/research-workflow.md`, the output shape in
 `references/research-pack.schema.json`, and `scripts/validate_research_pack.py`

@@ -26,8 +26,19 @@ sp-research → sp-outline → sp-deck → sp-review
 证据支持的论断并把它坐实"。它不决定版式、不设计页面、不生成 PPTX、不改视觉风格、
 不撰写成段讲稿；职责混在一起会污染后面每一层的产物。
 
-它同时是**上下文防火墙**：原始检索（搜索页、网页正文、论文摘要、失败信息）在子代理
-内部消化，主流程只接收压缩后的 Research Pack（约 10 万 token → 约 8 千 token）。
+它同时是**上下文防火墙**——而且是**机制**，不是提示词约定：`sp-research` 的
+frontmatter 带 `context: fork` + `agent: student-presentation-suite:presentation-researcher`
++ `background: false`，因此它**不在主对话上下文里运行**。Claude Code 会启动
+`agents/presentation-researcher.md` 定义的子代理，给它独立 context window；子代理
+看不到主对话历史，主流程也拿不到它的搜索过程与原始网页（约 10 万 token → 约 8 千）。
+`background: false` 是有意的：研究必须先完成，`sp-outline` 才能开始排页。
+
+Research Pack 到 Slide Spec 的转换同样是确定性的：`scripts/research_pack_to_evidence.py`
+按固定规则（findings 按 id 排序、再 data_points 按 id 排序 → `E01, E02, …`）编译出
+`evidence-map.json`，不由模型手写 ledger。同一个 pack 编译两次得到完全相同的 ledger，
+且未通过校验的 pack 会被拒绝编译。`slide_spec_guard.py freeze` 可把
+`research-pack.json` / 校验报告 / `evidence-map.json` 三个哈希一起绑进冻结锁——
+它们之后被改动，`check` 会立即失败。
 
 规则见 `references/research-workflow.md`，产出形状见 `references/research-pack.schema.json`，
 校验用 `scripts/validate_research_pack.py`（会拦截"高置信度只靠单一来源""只拿 D 级来源

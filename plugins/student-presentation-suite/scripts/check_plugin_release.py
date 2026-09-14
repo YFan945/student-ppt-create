@@ -29,6 +29,7 @@ REQUIRED_FILES = [
     "references/cost-discipline.md",
     "references/research-workflow.md",
     "references/research-pack.schema.json",
+    "agents/presentation-researcher.md",
     "references/revision-training-export.md",
     "skills/sp-outline/SKILL.md",
     "skills/sp-research/SKILL.md",

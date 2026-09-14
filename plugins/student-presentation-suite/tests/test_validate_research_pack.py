@@ -25,7 +25,7 @@ SCRIPT = ROOT / "scripts" / "validate_research_pack.py"
 
 def base_pack() -> dict:
     return {
-        "version": "0.9",
+        "version": "0.10",
         "topic": "多模态大模型幻觉",
         "budget": "standard",
         "queries": ["LVLM hallucination survey 2026", "multimodal hallucination benchmark"],
@@ -54,6 +54,7 @@ def base_pack() -> dict:
                 "title": "LVLM Hallucination Survey",
                 "type": "paper",
                 "tier": "A",
+                "independence_group": "cvpr-2026-survey",
                 "publisher": "CVPR",
                 "year": 2026,
                 "url": "https://example.org/s01",
@@ -63,6 +64,7 @@ def base_pack() -> dict:
                 "title": "Hallucination Benchmark",
                 "type": "paper",
                 "tier": "S",
+                "independence_group": "arxiv-2601-benchmark",
                 "year": 2026,
                 "locator": "arXiv:2601.00001",
             },
@@ -124,6 +126,7 @@ class ResearchPackContractTests(unittest.TestCase):
         fixed = base_pack()
         fixed["data_points"][0]["conflict"] = True
         fixed["data_points"][0]["confidence"] = "low"
+        fixed["data_points"][0]["notes"] = "两个来源口径不同，取区间表述"
         fixed["conflicts"] = [
             {
                 "id": "C01",
@@ -156,10 +159,70 @@ class ResearchPackContractTests(unittest.TestCase):
         pack2["findings"][0]["id"] = "finding-one"
         self.assertIn("bad_id", self.codes(pack2, "critical"))
 
+    def test_two_rows_from_one_origin_are_not_two_sources(self) -> None:
+        """转载不算交叉验证。两个 source 共用 independence_group 时不能给 high。"""
+        pack = base_pack()
+        pack["sources"][1]["independence_group"] = pack["sources"][0]["independence_group"]
+        self.assertIn("sources_are_not_independent", self.codes(pack, "major"))
+
+    def test_a_conflicting_finding_must_be_recorded(self) -> None:
+        pack = base_pack()
+        pack["findings"][0]["conflict"] = True
+        pack["findings"][0]["confidence"] = "low"
+        pack["findings"][0]["notes"] = "两项研究结论方向相反"
+        self.assertIn("conflict_not_recorded", self.codes(pack, "major"))
+
+    def test_tier_cannot_exceed_what_the_source_type_supports(self) -> None:
+        pack = base_pack()
+        pack["sources"][0]["type"] = "personal-blog"
+        pack["sources"][0]["tier"] = "S"
+        self.assertIn("tier_above_type_ceiling", self.codes(pack, "major"))
+
+    def test_d_mode_requires_empty_queries_and_user_files_only(self) -> None:
+        """D 模式（只用用户材料）从文档要求变成可执行契约。"""
+        pack = base_pack()
+        pack["queries"] = []
+        pack["sources"][1]["type"] = "news"
+        self.assertIn("sources_without_queries", self.codes(pack, "major"))
+
+        clean = base_pack()
+        clean["queries"] = []
+        for source in clean["sources"]:
+            source["type"] = "user-file"
+            source["tier"] = "S"
+        clean["findings"][0]["source_ids"] = ["S01"]
+        clean["data_points"][0]["source_ids"] = ["S01"]
+        clean["data_points"][0]["confidence"] = "medium"
+        clean["visual_candidates"][0]["data_point_ids"] = ["D01"]
+        self.assertNotIn("sources_without_queries", self.codes(clean, "major"))
+
+    def test_low_confidence_must_say_why(self) -> None:
+        pack = base_pack()
+        pack["data_points"][0]["confidence"] = "low"
+        self.assertIn("low_confidence_without_reason", self.codes(pack, "major"))
+
+    def test_blocked_retrieval_must_state_its_impact(self) -> None:
+        pack = base_pack()
+        pack["unresolved"] = [{"query": "IPCC AR6 原始表格", "reason": "access_blocked"}]
+        self.assertIn("blocked_retrieval_without_impact", self.codes(pack, "major"))
+
+    def test_unknown_visual_reference_is_major_not_minor(self) -> None:
+        """把不存在的 D 编号喂给图表，比少写一个来源更危险。"""
+        pack = base_pack()
+        pack["visual_candidates"][0]["data_point_ids"] = ["D99"]
+        self.assertIn("unknown_visual_ref", self.codes(pack, "major"))
+
     def test_unused_source_is_a_minor_not_a_blocker(self) -> None:
         pack = base_pack()
         pack["sources"].append(
-            {"id": "S03", "title": "Unused", "type": "news", "tier": "B", "url": "https://example.org/s03"}
+            {
+                "id": "S03",
+                "title": "Unused",
+                "type": "news",
+                "tier": "B",
+                "independence_group": "unused",
+                "url": "https://example.org/s03",
+            }
         )
         report = self.module.validate(pack)
         self.assertTrue(report["ok"])

@@ -43,8 +43,17 @@ Source S08          ← research-pack sources（含 tier 与 url/locator）
 3. `tier` 为 D 的来源只能作为"用户观点/舆论"引用，不得作为事实依据。
 4. 检索受阻（打不开、付费、不可得）必须留在 pack 的 `unresolved` 里；对应论断在页面
    上要标注为无来源或降级表述，不得静默当作已证实。
-5. 规则与判定标准见 `research-workflow.md`；`scripts/validate_research_pack.py` 会强制
-   第 1、2、3 条。
+5. `E<n>` 由 `scripts/research_pack_to_evidence.py` **确定性分配**，不由模型手写：
+
+   ```text
+   findings 按 id 排序 → data_points 按 id 排序 → E01, E02, …
+   research-pack.json  →  evidence-map.json（ledger + F/D/S→E 映射 + 来源索引 + 哈希）
+   ```
+
+   同一个 pack 编译两次必须得到完全相同的 ledger。该脚本同时拒绝编译未通过
+   `validate_research_pack.py` 的 pack——未经验证的 pack 不是交付物，不许变成证据。
+6. 规则与判定标准见 `research-workflow.md`；`scripts/validate_research_pack.py` 会强制
+   第 1、2、3 条，`research_pack_to_evidence.py` 会强制第 5 条。
 
 ## Delegated retrieval
 
@@ -52,15 +61,23 @@ Source S08          ← research-pack sources（含 tier 与 url/locator）
 （见 `cost-discipline.md` CD-5）；主流程不直接发起检索。完整的研究规约与产出形状见
 `research-workflow.md` 与 `research-pack.schema.json`。
 
-- 子代理把原始结果落盘到
-  `outputs/.pptx-work/<work-id>/research/<topic>.json`；
-- 回传主流程的只有 ≤ 20 行的结构化结论，每行含
-  `claim` / `value` / `year` / `source` / `url` / `confidence`；
-- 主流程把回传结论直接写成 ledger 条目，页面只引用 `E<n>`；
-- 检索原文不回灌主流程。
+**只有一条交接协议**（v0.10 起）。子代理回传三项，且只有这三项：
 
-这样 ledger 的每一条都能回溯到 `research/*.json` 中的一条记录，同时不把原文正文留
-在会话历史里反复重发。
+```text
+research-pack.json              结构化研究结论（唯一内容载体）
+research-pack-validation.json   validate_research_pack.py 的校验结果
+compact summary                 几行状态：覆盖了哪些 claim、哪些没查到
+```
+
+主流程消费的是 `research-pack.json` 这份文件，**不是**任何临时文本格式。早期文档里
+"子代理返回 ≤20 行结论、主流程据此手写 ledger 条目"的做法已废止——它让模型在最后
+一步重新自由发挥，而这一步正是 Research Pack 要消灭的。
+
+随之固定两条：
+
+- 原始检索结果落盘 `outputs/.pptx-work/<work-id>/research/<topic>.json`，**不回传**；
+- `F/D/S` → `E` 的转换由 `scripts/research_pack_to_evidence.py` 确定性地完成，
+  见下一节。子代理不写 ledger 条目。
 
 ## Evidence closure
 
