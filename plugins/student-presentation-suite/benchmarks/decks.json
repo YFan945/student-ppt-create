@@ -1,6 +1,6 @@
 {
-  "benchmark_version": "1.0",
-  "description": "固定 6 类 deck 基准。每次 release 前各跑一次，用 scripts/benchmark_report.py 汇总 build-manifest 指标，形成 0.10 -> 1.0 的可比基线。brief 字段是 Presentation Brief 的最小占位，跑基准时按各仓库实际 intake 模板补全。",
+  "benchmark_version": "1.1",
+  "description": "固定 6 类 deck 基准。每次 release 前各跑一次，用 scripts/benchmark_report.py 汇总 build-manifest 的确定性执行成本，并用 session_cost.py 补模型 request/context 成本，形成 0.10 -> 1.0 可比基线。brief 字段是 Presentation Brief 最小占位，跑基准时按实际 intake 模板补全。",
   "decks": [
     {
       "id": "course-report-zh",
@@ -41,7 +41,21 @@
     }
   ],
   "metrics": {
-    "source": "outputs/.pptx-work/<work-id>/build-manifest.json",
-    "recorded": ["builds", "repairs", "final blockers", "plan->complete minutes", "session tokens (session_cost.py)"]
+    "manifest_source": "outputs/.pptx-work/<work-id>/build-manifest.json",
+    "session_source": "scripts/session_cost.py",
+    "recorded": [
+      "builds",
+      "repairs",
+      "render events",
+      "rendered pages",
+      "QA runs",
+      "QA stage wall time",
+      "final blockers",
+      "plan->complete minutes",
+      "session requests",
+      "average context",
+      "token-context cost",
+      "tool-call buckets"
+    ]
   }
 }
