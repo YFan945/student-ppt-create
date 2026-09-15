@@ -17,12 +17,12 @@ idna==3.19
 jsonschema==4.26.0
 jsonschema-specifications==2025.9.1
 lxml==6.1.3
-magika==0.6.3
+magika==1.0.3
 markdownify==1.2.3
 markitdown==0.1.7
-mpmath==1.3.0
-numpy==2.4.6
-onnxruntime==1.20.1
+mpmath==1.4.1
+numpy==2.5.3
+onnxruntime==1.30.0
 packaging==26.3
 pillow==12.3.0
 protobuf==7.36.1
