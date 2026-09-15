@@ -25,6 +25,7 @@ import hashlib
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -119,6 +120,59 @@ def bind(path: Path) -> dict[str, Any]:
 def stable_hash(value: Any) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def pptx_path(manifest: dict[str, Any]) -> Path:
+    return Path(str(((manifest.get("build") or {}).get("pptx") or {}).get("path") or ""))
+
+
+def render_is_current(manifest: dict[str, Any]) -> bool:
+    """Render evidence is only valid for the PPTX hash it was produced from.
+
+    `build` clears manifest['render'], so a rebuilt deck can never claim the
+    previous contact sheet. Existence of a PNG on disk is not evidence.
+    """
+    render = manifest.get("render") or {}
+    recorded = str(render.get("pptx_sha256") or "")
+    if not recorded:
+        return False
+    pptx = pptx_path(manifest)
+    if not pptx.is_file() or recorded != sha256_file(pptx):
+        return False
+    contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
+    pages = [Path(str(item.get("path"))) for item in render.get("pages") or []]
+    if not contact.is_file() or not pages:
+        return False
+    return all(page.is_file() for page in pages)
+
+
+def archive_stale_render(work_dir: Path, manifest: dict[str, Any]) -> list[str]:
+    """Move the previous build's render evidence out of the canonical paths.
+
+    Files are kept under `stale/render-<sha8>/` for audit. Leaving them at
+    `contact-sheet.png` / `render/` made a rebuilt deck look already rendered,
+    so a repaired deck could be visually reviewed against the old images.
+    """
+    render = manifest.get("render") or {}
+    candidates: list[Path] = []
+    contact = (render.get("contact_sheet") or {}).get("path")
+    if contact:
+        candidates.append(Path(str(contact)))
+    candidates.extend(Path(str(item.get("path"))) for item in render.get("pages") or [])
+    existing = [path for path in candidates if path.is_file()]
+    if not existing:
+        return []
+    label = str(render.get("pptx_sha256") or "unknown")[:8]
+    target = work_dir / "stale" / f"render-{label}"
+    target.mkdir(parents=True, exist_ok=True)
+    moved: list[str] = []
+    for path in existing:
+        destination = target / path.name
+        if destination.exists():
+            destination.unlink()
+        shutil.move(str(path), str(destination))
+        moved.append(str(destination))
+    return moved
 
 
 def write_stage_summary(work_dir: Path, state: str, lines: list[str]) -> Path:
@@ -528,11 +582,17 @@ def cmd_build(args: argparse.Namespace) -> int:
         "build_count": int(build_info.get("build_count") or 0) + 1,
         "pending_repair": False,
     })
+    stale_moved = archive_stale_render(work_dir, manifest)
+    if stale_moved:
+        build_info["stale_evidence"] = stale_moved
     manifest["render"] = {}
     manifest["qa"] = {}
     before = str(manifest.get("state"))
     manifest["state"] = "producing"
-    record(manifest, "build", before, "producing", generator_fingerprint=fingerprint)
+    record(
+        manifest, "build", before, "producing",
+        generator_fingerprint=fingerprint, stale_render_moved=len(stale_moved),
+    )
     save_manifest(work_dir, manifest)
     write_stage_summary(
         work_dir,
@@ -541,6 +601,7 @@ def cmd_build(args: argparse.Namespace) -> int:
             f"- pptx: `{pptx}` sha256 {build_info['pptx']['sha256'][:12]}",
             f"- builds: {build_info['build_count']} repairs: {build_info.get('repair_count', 0)}",
             f"- generator files: {len(build_info.get('generator_files') or [])}",
+            f"- previous render evidence archived: {len(stale_moved)}",
             "- next: `ppt_pipeline.py render`, then Read contact-sheet + blocker PNGs (CD-9)",
         ],
     )
@@ -583,14 +644,18 @@ def cmd_render(args: argparse.Namespace) -> int:
     require_state(manifest, {"producing", "qa"}, "render")
     assert manifest is not None
     validate_manifest_authorization(manifest)
-    pptx = Path(str(((manifest.get("build") or {}).get("pptx") or {}).get("path") or ""))
+    pptx = pptx_path(manifest)
     if not pptx.is_file():
         raise RefusedError("no built PPTX in manifest")
     pptx_sha = sha256_file(pptx)
-    previous = manifest.get("render") or {}
-    old_pages = [Path(str(item.get("path"))) for item in previous.get("pages") or []]
-    old_contact = Path(str((previous.get("contact_sheet") or {}).get("path") or ""))
-    if previous.get("pptx_sha256") == pptx_sha and old_contact.is_file() and old_pages and all(p.is_file() for p in old_pages):
+    if render_is_current(manifest):
+        render = manifest.get("render") or {}
+        old_contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
+        record(
+            manifest, "render", str(manifest.get("state")), str(manifest.get("state")),
+            page_count=int(render.get("page_count") or 0), reused=True,
+        )
+        save_manifest(work_dir, manifest)
         print(f"ppt_pipeline: render reused — {old_contact}")
         return 0
 
@@ -632,7 +697,7 @@ def cmd_qa(args: argparse.Namespace) -> int:
     require_state(manifest, QA_FROM, "qa")
     assert manifest is not None
     validate_manifest_authorization(manifest)
-    pptx = Path(str(((manifest.get("build") or {}).get("pptx") or {}).get("path") or ""))
+    pptx = pptx_path(manifest)
     if not pptx.is_file():
         raise RefusedError("no built PPTX in manifest")
     visual_review = args.visual_review.resolve() if args.visual_review else None
@@ -643,6 +708,8 @@ def cmd_qa(args: argparse.Namespace) -> int:
     old_report = Path(str((old_qa.get("report") or {}).get("path") or ""))
     if manifest.get("state") == "qa" and old_qa.get("input_fingerprint") == fingerprint and old_report.is_file():
         ok = bool(old_qa.get("ok"))
+        record(manifest, "qa", "qa", "qa", reused=True, blockers=int(old_qa.get("blockers") or 0))
+        save_manifest(work_dir, manifest)
         print(f"ppt_pipeline: QA reused — {'ok' if ok else 'blocked'} | {old_report}")
         return 0 if ok else 2
 
@@ -818,20 +885,10 @@ def cmd_next(args: argparse.Namespace) -> int:
                 "Put v0.8 composition JSON in composition/."
             )
         elif state == "producing":
-            contact = work_dir / "contact-sheet.png"
-            if not contact.is_file():
-                payload["next_command"] = (
-                    f'{python} "{pipeline}" render --work-dir "{work_dir}"'
-                )
-                payload["notes"] = (
-                    "run render first; then Read contact-sheet + blocker page PNGs "
-                    "in ONE parallel round (CD-9)"
-                )
-            else:
-                payload["read_images"] = [
-                    str(contact),
-                    str(work_dir / "render"),
-                ]
+            if render_is_current(manifest):
+                render = manifest.get("render") or {}
+                contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
+                payload["read_images"] = [str(contact), str(work_dir / "render")]
                 payload["next_command"] = (
                     f'{python} "{pipeline}" qa --work-dir "{work_dir}" '
                     f'--visual-review "{work_dir / "visual-review.json"}"'
@@ -839,6 +896,14 @@ def cmd_next(args: argparse.Namespace) -> int:
                 payload["notes"] = (
                     "CD-9: Read contact-sheet + blocker page PNGs in ONE parallel round; "
                     "same PPTX hash must not be re-read"
+                )
+            else:
+                payload["next_command"] = (
+                    f'{python} "{pipeline}" render --work-dir "{work_dir}"'
+                )
+                payload["notes"] = (
+                    "no render evidence for the current PPTX hash; run render first, then "
+                    "Read the new contact-sheet + blocker page PNGs in ONE parallel round (CD-9)"
                 )
         elif state == "qa":
             qa = manifest.get("qa") or {}

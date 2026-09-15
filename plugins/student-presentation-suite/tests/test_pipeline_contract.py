@@ -53,6 +53,13 @@ class PipelineContractTests(unittest.TestCase):
         self.assertIs(policy["qa_reuses_identical_inputs"], True)
         self.assertIs(policy["render_reuses_identical_pptx"], True)
 
+    def test_stale_evidence_and_scaffold_pages_are_refused(self) -> None:
+        """Render evidence must belong to the current PPTX; stubs must not build."""
+        policy = self.contract["repeat_policy"]
+        self.assertIs(policy["build_invalidates_render_evidence"], True)
+        self.assertIs(policy["render_evidence_must_match_current_pptx"], True)
+        self.assertIs(policy["no_scaffold_pages_at_build"], True)
+
     def test_skill_delegates_execution_semantics_to_contract(self) -> None:
         self.assertIn("pipeline-contract.json", self.skill)
         self.assertIn("build-manifest.json", self.skill)

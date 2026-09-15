@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.11.1
+version: 0.12.0
 ---
 
 # Student Presentation PPT
@@ -37,11 +37,11 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" status --w
 2. **Mode**：按 source deck/edit intent 唯一确定 `create` / `edit_ooxml` / `rebuild_from_source`。
 3. **Research Gate + Compile**：依赖外部事实时先跑 `sp-research` 产生 `research-pack.json` 与 validation，再由 `research_pack_to_evidence.py` 确定性完成 `F/D/Q → E<n>` 与 Evidence Ledger；research-backed freeze 必须同时绑定 pack、validation、evidence map。
 4. **Art Direction**：visual style 只作为 seed，形成 `art-direction.yaml` 与 3–5 个 high-leverage slides。
-5. **Plan**：`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证已确认 Production Summary、执行 copy-fit preflight、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/`、建立 `build-manifest.json` 并绑定输入 SHA256。缺少 `pages/` 或页数对不上 spec 时 `build` 直接拒绝。需求或 spec 需要重 plan 时，先重新确认 Production Summary，再 `plan --force`。
+5. **Plan**：`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证已确认 Production Summary、执行 copy-fit preflight、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/`、建立 `build-manifest.json` 并绑定输入 SHA256。缺少 `pages/`、页数对不上 spec、或任一页仍带 scaffold marker（`student-presentation-suite-scaffold`，即该页从未实现）时 `build` 直接拒绝；**完成一页就删掉该页的 marker 注释**，`deck.js` 作为纯装配文件允许保留它。需求或 spec 需要重 plan 时，先重新确认 Production Summary，再 `plan --force`。
 6. **Reference + Composition**：high-leverage 页保存 reference selection、2–3 个 silhouette candidates 与 wireframe 选择证据；普通页保留明确 composition intent。
 7. **Exploration Gates**：final generator 前运行一次 `run_gates.sh`，只把 blocker 回到上下文，完整结果写盘。缺任一探索证据不得交付。
 8. **Build**：生成器拆为 `deck.js` + `pages/pNN-*.js`；调用 `ppt_pipeline.py build --work-dir <wd> --entry <deck.js>`。成功 build 后再次 build 会被拒绝；只有 QA blocker → `repair` → generator 实际变化后才允许重建。底层 `run_with_pptxgenjs.js` / `pptx_tool.py` 由 pipeline 调度，Agent 不再手工编排。
-9. **Render**：调用 `ppt_pipeline.py render --work-dir <wd>`。Pipeline 一次渲染全部页面并生成 `contact-sheet.png`，同一 PPTX hash 重复调用直接复用。视觉 critique **必须看图**（CD-9）：contact sheet 与 blocker 页 PNG 同一轮并行 Read；同一 sha256 不重读。
+9. **Render**：调用 `ppt_pipeline.py render --work-dir <wd>`。Pipeline 一次渲染全部页面并生成 `contact-sheet.png`，同一 PPTX hash 重复调用直接复用。**渲染证据只对产生它的那个 PPTX hash 有效**：`build` 会清空 `manifest.render` 并把上一次的 contact sheet / 页面 PNG 归档到 `stale/render-<sha8>/`，所以 repair 后必须重新 render，`next` 会据此把下一步指向 `render` 而不是 `qa`。视觉 critique **必须看图**（CD-9）：contact sheet 与 blocker 页 PNG 同一轮并行 Read；同一 sha256 不重读。
 10. **Visual Critique**：基于当前渲染图写绑定当前 PPTX 的 `visual-review.json`；评 hierarchy、focal point、composition、visual interest、whitespace、Art Direction alignment、reference/candidate intent、AI-template feel 和 deck rhythm。
 11. **QA DAG**：`ppt_pipeline.py qa --work-dir <wd> --visual-review <visual-review.json> [--preview <contact-sheet.png>]`。顺序唯一来自 machine contract：`package → rendered → actual-content → quality → delivery`；本轮报告自动喂给下一级并绑定 SHA256，失败即停；相同输入重复 QA 自动复用。
 12. **Repair**：只有 QA blocker 才运行 `ppt_pipeline.py repair --reason <摘要>`；程序记录 repair budget。修改 generator 后重新 `build → render → critique → qa`。generator hash 未变化时 build 直接拒绝；超过预算转 `incomplete`，运行时/关键输入不可用时转 `blocked`，不得继续循环。

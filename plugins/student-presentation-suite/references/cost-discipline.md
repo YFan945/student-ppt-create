@@ -87,7 +87,11 @@ outputs/.pptx-work/<work-id>/
 
 参考文档（`references/*.md`、schema、layout/reference 库）同理：**先摘后弃**。读完立刻把
 用得到的规则提炼成检查清单或结论，而不是把原文段落复制到 summary、brief 或其它产物里。
-同一份参考文档在一次任务中只读一次；需要再次确认时读差异部分，不重读整篇。
+同一份参考文档**在每个会话中**只读一次；需要再次确认时读差异部分，不重读整篇。
+`cost_guard.py` 的作用域是会话级：seen 状态写在
+`outputs/.pptx-work/.guard/seen-<session>.json`，所以上一个任务的已读记录不会让下一个任务的
+首次读取被拒；去重键是 **resolved path + sha256**，不同目录的同名文档不会互相冲突，
+文档内容更新后也允许重读。
 
 **可验证**：同一产物的全文读取次数 ≤ 1；同一条规则不会同时出现在多个产物中；此后只出现
 路径引用与摘要。
@@ -122,8 +126,11 @@ outputs/.pptx-work/<work-id>/
 ## CD-5 检索一律委派 `sp-research`
 
 **任何外部检索——图片检索、话题资料检索、事实与数据核查、案例与竞品搜索——一律
-交给 `sp-research`（`context: fork` + `presentation-researcher`）。主流程不直接发起检索，
-也不 spawn 名叫 `researcher` 的通用 teammate。**
+交给 `sp-research`，由它显式 spawn `student-presentation-suite:presentation-researcher`
+执行。主流程不直接发起检索，也不 spawn 名叫 `researcher` 的通用 teammate。**
+
+隔离靠显式 spawn，不靠 `context: fork`——后者在 `claude -p` 下不被 honor，skill 会被内联进
+主会话，检索上下文于是计入主 context（详见 `live_prompts/FINDINGS.md` 的两次实测）。
 
 子代理契约：
 
@@ -202,8 +209,14 @@ DeepSeek Flash 视觉按约 1300×1300 缩放，**每张图封顶 1024 token**�
 **同一轮并行 Read**。hash 变了（新的 render）才允许再读。`ppt_pipeline.py next`
 在 `producing` 状态会列出本轮 `read_images`。
 
+**读图前先确认图属于当前 PPTX**：`build` 会把上一版渲染证据归档到
+`stale/render-<sha8>/`，因此 repair 后 `contact-sheet.png` 一定不存在，直到重新 render。
+`next` 只有比对 `manifest.render.pptx_sha256` 与当前 PPTX hash 一致时才把下一步指向 `qa`；
+否则指向 `render`。**旧图不得用于视觉 critique**——那是针对上一版 PPT 的判断。
+
 **可验证**：同一 PNG sha256 的 Read 次数 ≤ 1；含图的回合里 `Read` 次数 > 1
-（并行发出），而不是每张图单独一轮。
+（并行发出），而不是每张图单独一轮；`visual-review.json` 绑定的渲染图 SHA256 与
+`manifest.render.contact_sheet.sha256` 同源。
 
 ## 条款索引
 

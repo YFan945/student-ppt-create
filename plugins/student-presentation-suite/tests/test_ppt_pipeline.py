@@ -21,6 +21,14 @@ pp = importlib.util.module_from_spec(_SPEC)
 sys.modules.setdefault("ppt_pipeline", pp)
 _SPEC.loader.exec_module(pp)
 
+_SCAFFOLD_SPEC = importlib.util.spec_from_file_location(
+    "generator_scaffold", ROOT / "skills" / "sp-deck" / "scripts" / "generator_scaffold.py"
+)
+assert _SCAFFOLD_SPEC is not None and _SCAFFOLD_SPEC.loader is not None
+scaffold = importlib.util.module_from_spec(_SCAFFOLD_SPEC)
+sys.modules.setdefault("generator_scaffold", scaffold)
+_SCAFFOLD_SPEC.loader.exec_module(scaffold)
+
 
 def ns(command: str, work_dir: Path, **extra: Any) -> argparse.Namespace:
     base: dict[str, Any] = {"work_dir": work_dir}
@@ -172,9 +180,16 @@ class PipelineTestCase(unittest.TestCase):
         return json.loads((self.work / pp.MANIFEST_NAME).read_text(encoding="utf-8"))
 
     def entry(self) -> Path:
+        """Return a buildable generator.
+
+        `plan` scaffolds pages that carry SCAFFOLD_MARKER and build refuses
+        those, so this fixture strips the marker — the way an implemented page
+        would look. `unimplemented_entry()` keeps the stubs for gate tests.
+        """
         entry = self.work / "deck.js"
         pages = self.work / "pages"
         if entry.is_file() and any(pages.glob("p*.js")):
+            self.implement_scaffolded_pages()
             return entry
         pages.mkdir(exist_ok=True)
         (pages / "p01-cover.js").write_text(
@@ -182,6 +197,12 @@ class PipelineTestCase(unittest.TestCase):
         )
         entry.write_text("require('./pages/p01-cover.js');\n", encoding="utf-8")
         return entry
+
+    def implement_scaffolded_pages(self) -> None:
+        for page in (self.work / "pages").glob("p*.js"):
+            text = page.read_text(encoding="utf-8")
+            if scaffold.SCAFFOLD_MARKER in text:
+                page.write_text(text.replace(scaffold.SCAFFOLD_MARKER, "implemented"), encoding="utf-8")
 
 
 class StateMachineTests(PipelineTestCase):
@@ -327,6 +348,30 @@ class BuildTests(PipelineTestCase):
             leftover.unlink()
         rc = pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)])
         self.assertEqual(rc, 2)
+
+    def test_build_refuses_pages_that_are_still_scaffold_stubs(self) -> None:
+        """A stub-only deck must fail at build, not after render and visual QA."""
+        self.prepared()
+        entry = self.work / "deck.js"
+        stub = next((self.work / "pages").glob("p*.js"))
+        self.assertIn(scaffold.SCAFFOLD_MARKER, stub.read_text(encoding="utf-8"))
+        self.assertEqual(
+            pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 2
+        )
+        self.implement_scaffolded_pages()
+        self.assertEqual(
+            pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 0
+        )
+
+    def test_deck_js_may_keep_the_scaffold_marker(self) -> None:
+        """deck.js is assembly-only; the marker gate applies to pages/ only."""
+        self.prepared()
+        deck = (self.work / "deck.js").read_text(encoding="utf-8")
+        self.assertIn(scaffold.SCAFFOLD_MARKER, deck)
+        self.implement_scaffolded_pages()
+        self.assertEqual(
+            pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.work / "deck.js")]), 0
+        )
 
     def test_next_after_plan_points_at_build(self) -> None:
         self.plan(self.files)

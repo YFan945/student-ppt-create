@@ -16,6 +16,9 @@
   "repeat_policy": {
     "build_requires_changed_generator_after_repair": true,
     "qa_reuses_identical_inputs": true,
-    "render_reuses_identical_pptx": true
+    "render_reuses_identical_pptx": true,
+    "build_invalidates_render_evidence": true,
+    "render_evidence_must_match_current_pptx": true,
+    "no_scaffold_pages_at_build": true
   }
 }

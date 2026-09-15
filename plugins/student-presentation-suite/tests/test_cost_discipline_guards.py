@@ -85,6 +85,48 @@ class CostGuardTests(unittest.TestCase):
         self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(ref))))
         self.assertEqual(2, self.run_guard(self.event("Read", file_path=str(ref))))
 
+    def test_seen_state_is_scoped_to_the_session(self) -> None:
+        """One task must not silence the next task's first reference read."""
+        ref = Path(self.cwd) / "references" / "cost-discipline.md"
+        ref.parent.mkdir(parents=True, exist_ok=True)
+        ref.write_text("# CD\n", encoding="utf-8")
+        first = self.run_guard({**self.event("Read", file_path=str(ref)), "session_id": "task-a"})
+        second = self.run_guard({**self.event("Read", file_path=str(ref)), "session_id": "task-b"})
+        self.assertEqual(0, first)
+        self.assertEqual(0, second)
+        again = self.run_guard({**self.event("Read", file_path=str(ref)), "session_id": "task-a"})
+        self.assertEqual(2, again)
+
+    def test_same_named_references_in_different_dirs_do_not_collide(self) -> None:
+        one = Path(self.cwd) / "references" / "cost-discipline.md"
+        two = Path(self.cwd) / "other" / "references" / "cost-discipline.md"
+        for path, body in ((one, "# one\n"), (two, "# two\n")):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body, encoding="utf-8")
+        self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(one))))
+        self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(two))))
+
+    def test_updated_reference_may_be_read_again(self) -> None:
+        ref = Path(self.cwd) / "references" / "cost-discipline.md"
+        ref.parent.mkdir(parents=True, exist_ok=True)
+        ref.write_text("# CD v1\n", encoding="utf-8")
+        self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(ref))))
+        ref.write_text("# CD v2\n", encoding="utf-8")
+        self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(ref))))
+
+    def test_seen_store_lives_under_the_work_root_guard_dir(self) -> None:
+        ref = Path(self.cwd) / "references" / "cost-discipline.md"
+        ref.parent.mkdir(parents=True, exist_ok=True)
+        ref.write_text("# CD\n", encoding="utf-8")
+        rc = self.run_guard(
+            {**self.event("Read", file_path=str(ref)), "session_id": "task-a"}
+        )
+        self.assertEqual(0, rc)
+        store = cost_guard.seen_store(self.cwd, "task-a")
+        self.assertTrue(store.is_file())
+        self.assertEqual(store.name, "seen-task-a.json")
+        self.assertIn(".guard", store.parts)
+
 
 class ResearchEnvelopeTests(unittest.TestCase):
     def test_compact_done_envelope_passes(self) -> None:

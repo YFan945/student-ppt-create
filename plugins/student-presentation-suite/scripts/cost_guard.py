@@ -4,6 +4,11 @@
 Blocks plugin-source archaeology, teammate-style research, and re-reading the
 same PNG (same sha256). Does *not* block first-time image reads — DeepSeek
 Flash caps each image at 1024 tokens.
+
+Seen state lives at `outputs/.pptx-work/.guard/seen-<session>.json`: scoped to
+the hook session, so one task's read never silences the next task's first read.
+References are keyed by resolved path + sha256, so same-named files in different
+directories do not collide and an updated reference may be re-read.
 """
 
 from __future__ import annotations
@@ -41,18 +46,35 @@ def sha256_file(path: Path) -> str | None:
         return None
 
 
-def work_dir_from_cwd(cwd: str) -> Path:
-    root = Path(cwd or ".")
-    candidate = root / "outputs" / ".pptx-work"
-    return candidate if candidate.is_dir() else root
+def repo_root_from_cwd(cwd: str) -> Path:
+    """Find the project root so all work-ids share one guard directory."""
+    start = Path(cwd or ".").resolve()
+    for candidate in (start, *start.parents):
+        if (candidate / ".git").exists() or (candidate / "outputs" / ".pptx-work").is_dir():
+            return candidate
+    return start
 
 
-def seen_store(cwd: str) -> Path:
-    return work_dir_from_cwd(cwd) / "cost-guard-seen.json"
+def session_key(event: dict) -> str:
+    """Seen state is per session.
+
+    One task must never silence the next task's first read, so the store is
+    keyed by the hook's session id rather than shared across the whole
+    `.pptx-work` root (which was the pre-0.11.2 behaviour).
+    """
+    session = str(event.get("session_id") or "").strip()
+    if not session:
+        cwd = str(event.get("cwd") or os.getcwd())
+        session = "cwd-" + hashlib.sha256(str(Path(cwd or ".").resolve()).encode("utf-8")).hexdigest()[:12]
+    return re.sub(r"[^A-Za-z0-9._-]", "_", session)[:80]
 
 
-def load_seen(cwd: str) -> dict:
-    path = seen_store(cwd)
+def seen_store(cwd: str, session: str) -> Path:
+    return repo_root_from_cwd(cwd) / "outputs" / ".pptx-work" / ".guard" / f"seen-{session}.json"
+
+
+def load_seen(cwd: str, session: str) -> dict:
+    path = seen_store(cwd, session)
     if not path.is_file():
         return {"refs": {}, "images": {}}
     try:
@@ -66,8 +88,8 @@ def load_seen(cwd: str) -> dict:
     return value
 
 
-def save_seen(cwd: str, seen: dict) -> None:
-    path = seen_store(cwd)
+def save_seen(cwd: str, session: str, seen: dict) -> None:
+    path = seen_store(cwd, session)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(seen, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
@@ -93,7 +115,7 @@ def check_bash(command: str) -> str | None:
     return None
 
 
-def check_read(path_str: str, cwd: str) -> str | None:
+def check_read(path_str: str, cwd: str, session: str) -> str | None:
     raw = Path(path_str)
     path = raw if raw.is_absolute() else Path(cwd) / raw
     suffix = path.suffix.lower()
@@ -101,15 +123,15 @@ def check_read(path_str: str, cwd: str) -> str | None:
         digest = sha256_file(path)
         if not digest:
             return None
-        seen = load_seen(cwd)
-        previous = (seen.get("images") or {}).get(str(path.resolve()))
-        if previous == digest:
+        seen = load_seen(cwd, session)
+        resolved = str(path.resolve())
+        if (seen.get("images") or {}).get(resolved) == digest:
             return (
                 "cost_guard: same PNG sha256 was already read (CD-9). "
                 "Only re-read after a new render changes the hash."
             )
-        seen.setdefault("images", {})[str(path.resolve())] = digest
-        save_seen(cwd, seen)
+        seen.setdefault("images", {})[resolved] = digest
+        save_seen(cwd, session, seen)
         return None
     text = str(path).replace("\\", "/")
     if suffix in {".py", ".js"} and PLUGIN_PATH.search(text):
@@ -118,15 +140,17 @@ def check_read(path_str: str, cwd: str) -> str | None:
             "Run `ppt_pipeline.py next --work-dir <wd>` or `node pptx-helpers.js --describe`."
         )
     if "/references/" in text and text.endswith(".md"):
-        seen = load_seen(cwd)
-        key = path.name
-        if seen.get("refs", {}).get(key):
+        seen = load_seen(cwd, session)
+        key = str(path.resolve())
+        digest = sha256_file(path)
+        previous = (seen.get("refs") or {}).get(key)
+        if previous is not None and (digest is None or previous == digest):
             return (
-                f"cost_guard: {key} was already read this task (CD-3). "
+                f"cost_guard: {path.name} was already read this session (CD-3). "
                 "Use the checklist you extracted; do not reload the full reference."
             )
-        seen.setdefault("refs", {})[key] = True
-        save_seen(cwd, seen)
+        seen.setdefault("refs", {})[key] = digest or True
+        save_seen(cwd, session, seen)
     return None
 
 
@@ -137,7 +161,8 @@ def check_agent(payload: dict) -> str | None:
     if name == "researcher" or dest == "researcher":
         return (
             "cost_guard: do not spawn a generic researcher teammate. "
-            "Use Skill `sp-research` (context: fork) only."
+            "Use Skill `sp-research`, which spawns "
+            "`student-presentation-suite:presentation-researcher` itself."
         )
     return None
 
@@ -153,6 +178,7 @@ def main(argv: list[str] | None = None) -> int:
     name = str(event.get("tool_name") or event.get("tool") or "")
     tool_input = event.get("tool_input") or event.get("input") or {}
     cwd = str(event.get("cwd") or os.getcwd())
+    session = session_key({**event, "cwd": cwd})
     if name == "Bash":
         msg = check_bash(str(tool_input.get("command") or ""))
         return refuse(msg) if msg else 0
@@ -164,7 +190,7 @@ def main(argv: list[str] | None = None) -> int:
             return refuse(
                 "cost_guard: do not Grep plugin source. Run `ppt_pipeline.py next`."
             )
-        msg = check_read(path, cwd) if path else None
+        msg = check_read(path, cwd, session) if path else None
         return refuse(msg) if msg else 0
     if name in {"Agent", "SendMessage"}:
         msg = check_agent({"tool_input": tool_input, **event})

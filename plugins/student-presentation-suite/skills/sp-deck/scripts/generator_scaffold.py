@@ -178,6 +178,14 @@ def scaffold_generator(work_dir: Path, spec_path: Path) -> dict[str, Any]:
     }
 
 
+def scaffolded_pages(files: list[Path]) -> list[str]:
+    """Page modules that still carry the stub marker, i.e. never implemented."""
+    return [
+        path.name for path in files
+        if SCAFFOLD_MARKER in path.read_text(encoding="utf-8")
+    ]
+
+
 def assert_page_split(entry: Path, spec_path: Path) -> None:
     """Refuse a build whose generator is not split one-file-per-slide."""
     spec = load_spec(spec_path)
@@ -198,9 +206,17 @@ def assert_page_split(entry: Path, spec_path: Path) -> None:
             "Run `ppt_pipeline.py plan` so scaffold can create the stubs."
         )
     text = entry.read_text(encoding="utf-8")
-    missing = [path.name for path in files if f"./pages/{path.name}" not in text and path.name not in text]
+    missing = [path.name for path in files if f"./pages/{path.name}" not in text]
     if missing:
         raise ValueError(
             "deck.js must require every page module; missing "
             + ", ".join(missing)
+        )
+    unimplemented = scaffolded_pages(files)
+    if unimplemented:
+        raise ValueError(
+            "pages/ still contain the scaffold marker — those pages were never implemented: "
+            + ", ".join(unimplemented)
+            + ". Implement each page and delete the marker comment before building; "
+            "a stub-only deck must not reach build, render or QA."
         )
