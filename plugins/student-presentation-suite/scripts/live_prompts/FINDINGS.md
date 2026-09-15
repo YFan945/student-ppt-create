@@ -58,3 +58,23 @@
 
 > 本目录的 `smoke_research_fork.py` 已具备 `--stream` 确定性探测能力:任何模型/模式下重跑,只要
 > 事件流出现 subagent/fork 事件,即证明 fork 真发生;否则即证明没发生。可作为后续验证的常驻工具。
+
+## 六、0.11.2 的处理:采纳建议 2,改为显式 spawn
+
+上述第五节的三选一,最终选了 **2(加固 fork)**,理由是它让隔离在**所有调用模式**下成立,
+而不只是交互会话:
+
+- `skills/sp-research/SKILL.md` 移除 frontmatter 的 `context: fork` / `agent:` / `background: false`,
+  正文改为显式契约:**主流程用 Agent 工具 spawn
+  `student-presentation-suite:presentation-researcher`,前台等待,并把 work-id、brief 路径、
+  scope、materials 路径写进 spawn 的 prompt 文本**(子代理既看不到主对话,也读不到 frontmatter
+  的参数绑定)。
+- `smoke_research_fork.py` 的判定收紧:**只接受 `subagent_stats.spawned >= 1`**。
+  `context: fork` 的 fork 事件不再算替代证据——它恰恰是本次失败的来源。
+- 同步更新 `README.md` / `README-zh.md` / `AGENTS.md` / `references/cost-discipline.md`(CD-5) /
+  `skills/sp-outline/SKILL.md`,把"靠 `context: fork` 隔离"的表述换成"靠显式 spawn 隔离",并注明
+  不得回退到 `context: fork`。
+
+**仍需实测确认的一点**:显式 spawn 之后要重跑一次
+`smoke_research_fork.py --scenario smoke --stream`,断言 `spawned >= 1`。
+上面的改动是机制层面的;C 类产物证据(Research Pack 校验链)不受影响。

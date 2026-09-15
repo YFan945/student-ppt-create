@@ -1,7 +1,7 @@
 # Live E2E — 场景 D：仅用用户论文，禁止联网
 
 **对应评审第 14 项的「真实运行验证 · D 模式」一半。**
-目标：在真实 `claude` CLI 会话里，让 `sp-research` fork 出子代理，但**严格不联网**，
+目标：在真实 `claude` CLI 会话里，让 `sp-research` spawn 出 `presentation-researcher` 子代理，但**严格不联网**，
 只用 `--materials` 指向的用户材料产出 Research Pack。这是验证"检索隔离 / 禁网契约"的关键。
 
 ## 1. sp-research 具名入参

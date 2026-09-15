@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Live smoke test: does `sp-research` actually fork a real, isolated subagent,
+"""Live smoke test: does `sp-research` actually spawn a real, isolated subagent,
 and does that subagent write a schema-shaped Research Pack to the contract path?
 
 Item 14 of the review is really two questions, conflated into one "Live E2E":
 
-  MECHANISM  Does `context: fork` + `agent: <plugin>:<name>` actually launch the
-             plugin subagent, in its own context, foreground, without the raw
-             retrieval reaching the main session?
+  MECHANISM  Does the skill launch `presentation-researcher` in its own context,
+             foreground, without the raw retrieval reaching the main session?
   ARTIFACT   Does that subagent produce a Research Pack at
              `${CLAUDE_PROJECT_DIR}/outputs/.pptx-work/<work-id>/research-pack.json`
              that is valid JSON with findings + sources?
@@ -20,6 +19,14 @@ The instrument is `claude -p --output-format json`: its result carries
 `subagent_stats.spawned` and `started_in_background` — the difference between
 "the docs say retrieval is isolated" and "the runtime spawned a foreground
 subagent".
+
+The accepted evidence changed in 0.11.2. Earlier revisions relied on `context: fork`
+in the skill frontmatter, and this scaffold also accepted a fork event in the
+stream as proof. Two live runs showed that under `claude -p` no subagent was
+spawned *and* no fork event was emitted, while the skill ran inline in the main
+session — so `context: fork` is no longer the isolation mechanism (see
+`live_prompts/FINDINGS.md`). The skill now spawns explicitly, and **only**
+`subagent_stats.spawned >= 1` counts as the mechanism being real.
 
 Usage:
     # default minimal smoke (scope A, inline brief)
@@ -128,43 +135,34 @@ def mechanism_verdict(
 ) -> tuple[bool, list[str], list[str]]:
     """Did a real, foreground subagent run? Independent of what it produced.
 
-    `subagent_stats.spawned` is the primary signal, but Claude Code's `context: fork`
-    for skills may spawn a forked context that is NOT counted as an Agent-tool subagent,
-    so it never shows up in `subagent_stats`. When `--stream` is used we also watch the
-    event stream for explicit subagent/fork events, which lets us tell the two apart:
-
-      H1  fork happened, but subagent_stats does not track skill-forks  -> ok, with note
-      H2  no fork at all (skill ran inline in the main session)          -> failed
+    Since the isolation contract moved from `context: fork` to an explicit Agent-tool
+    spawn, `subagent_stats.spawned >= 1` is the *only* accepted evidence. A
+    `context: fork` skill might have forked a context that this counter does not
+    track, which is exactly why that mechanism was abandoned: two live runs showed
+    `spawned = 0` with no subagent event while the skill ran inline in the main
+    session. An explicit spawn is always counted, so spawn count alone now decides.
     """
     fork_event_types = fork_event_types or set()
     problems: list[str] = []
     notes: list[str] = []
     stats = payload.get("subagent_stats")
     if not isinstance(stats, dict):
-        problems.append("result carries no subagent_stats - cannot tell whether the fork happened")
+        problems.append("result carries no subagent_stats - cannot tell whether the spawn happened")
         return False, problems, notes
 
     spawned = stats.get("spawned") or 0
     background = stats.get("started_in_background") or 0
-    fork_happened = spawned >= 1 or bool(fork_event_types)
-    if not fork_happened:
-        # The skill declares context: fork, so a run that spawns nothing AND emits no
-        # fork event means the isolation never happened and every claim about the
-        # firewall is unbacked.
+    if spawned < 1:
+        detail = f" (fork/subagent events seen: {sorted(fork_event_types)})" if fork_event_types else ""
         problems.append(
-            f"no subagent was spawned (subagent_stats.spawned={spawned}) and no subagent/fork "
-            "event was emitted; context: fork did not take effect"
-        )
-    elif spawned < 1 and fork_event_types:
-        notes.append(
-            f"subagent_stats.spawned=0 but explicit subagent/fork events seen "
-            f"({sorted(fork_event_types)}); the fork occurred but is not counted in "
-            "subagent_stats (skill-fork is not tracked as an Agent-tool spawn)"
+            f"no subagent was spawned (subagent_stats.spawned={spawned}){detail}; "
+            "sp-research must spawn student-presentation-suite:presentation-researcher through "
+            "the Agent tool - an explicit spawn is always counted here"
         )
     if background:
         problems.append(
-            f"{background} subagent(s) ran in the background; sp-research declares background: false "
-            "so the pipeline cannot proceed on an unfinished Research Pack"
+            f"{background} subagent(s) ran in the background; sp-research requires a foreground "
+            "spawn so the pipeline cannot proceed on an unfinished Research Pack"
         )
     denials = payload.get("permission_denials") or []
     if denials:

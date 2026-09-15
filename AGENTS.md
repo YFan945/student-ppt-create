@@ -32,9 +32,11 @@ Inside the plugin package:
 
 - `.claude-plugin/plugin.json`: plugin manifest.
 - `agents/`: plugin-scoped subagents. `presentation-researcher.md` is the isolated
-  executor that `sp-research` forks into (`context: fork`, `background: false`), so
-  raw retrieval never reaches the main conversation context. Plugin subagents register
-  as `<plugin>:<agent>` and may not use `hooks`, `mcpServers`, or `permissionMode`.
+  executor that `sp-research` spawns explicitly through the Agent tool, so raw
+  retrieval never reaches the main conversation context. Do **not** reintroduce
+  `context: fork` as the isolation mechanism: it is not honored under `claude -p`,
+  where the skill is inlined into the main session. Plugin subagents register as
+  `<plugin>:<agent>` and may not use `hooks`, `mcpServers`, or `permissionMode`.
 - `skills/`: the four user-facing skill entrypoints and task-specific references.
 - `references/`: shared intake, standards, cost discipline, image policy, and Slide Spec contracts.
 - `scripts/`: environment checks, schema bridge, validation, session cost review, Research Pack
@@ -206,18 +208,21 @@ dependencies are mode-specific; use `--mode create`, `edit_ooxml`, or
 
 ## Release Procedure
 
-1. Confirm the current branch is `claude-code`.
+1. Confirm the current branch is `main` — it is the single publishable source of truth.
 2. Review the complete worktree diff and exclude unrelated files.
 3. Run `python plugins/student-presentation-suite/scripts/bump_version.py <version>`
    to synchronize all version fields.
 4. Update documentation and `CHANGELOG.md`.
 5. Run the full validation suite.
-6. Commit the release changes and **push directly to `claude-code`**.
-7. Delete any temporary or release branches; keep only `main` and `claude-code`.
-8. Verify the remote `claude-code` SHA and create the release tag.
+6. Commit the release changes and **push directly to `main`**.
+7. Create an **annotated** tag `v<version>`. Lightweight tags are not used: every
+   release tag except `v0.11.0` is annotated, and `v0.11.1` had to be re-tagged.
+8. Create the GitHub Release, matching the existing title style:
+   `gh release create v<version> --title "v<version> — <one-line theme>" --notes-file <file>`.
 
-Only the repository owner may push directly to `claude-code`. All other contributors
+Only the repository owner may push directly to `main`. All other contributors
 must open a pull request from a fork or topic branch and pass the required status
 checks before merging.
 
-Do not merge or push these Claude Code plugin changes to `main`.
+Do not publish, install, or point documentation at the retired
+`YFan945/Personal-Student` `claude-code` branch.

@@ -26,12 +26,18 @@ sp-research → sp-outline → sp-deck → sp-review
 证据支持的论断并把它坐实"。它不决定版式、不设计页面、不生成 PPTX、不改视觉风格、
 不撰写成段讲稿；职责混在一起会污染后面每一层的产物。
 
-它同时是**上下文防火墙**——而且是**机制**，不是提示词约定：`sp-research` 的
-frontmatter 带 `context: fork` + `agent: student-presentation-suite:presentation-researcher`
-+ `background: false`，因此它**不在主对话上下文里运行**。Claude Code 会启动
-`agents/presentation-researcher.md` 定义的子代理，给它独立 context window；子代理
-看不到主对话历史，主流程也拿不到它的搜索过程与原始网页（约 10 万 token → 约 8 千）。
-`background: false` 是有意的：研究必须先完成，`sp-outline` 才能开始排页。
+它同时是**上下文防火墙**——而且是**机制**，不是提示词约定：主流程通过 Agent 工具
+**显式 spawn `agents/presentation-researcher.md`**（`subagent_type:
+student-presentation-suite:presentation-researcher`，前台等待），检索因此**不在主对话
+上下文里运行**。子代理看不到主对话历史，主流程也拿不到它的搜索过程与原始网页
+（约 10 万 token → 约 8 千）。spawn 的 prompt 里必须写全 work-id、brief 路径、scope 与
+materials 路径——子代理既读不到 frontmatter 的参数绑定，也看不到本次对话。前台是有意的：
+研究必须先完成，`sp-outline` 才能开始排页。
+
+早先的版本依赖本 skill frontmatter 里的 `context: fork`。该机制在 **`claude -p`（print）
+模式下不被 honor**：两次 Live 实测都是 `subagent_stats.spawned = 0`、事件流里没有任何
+subagent 事件，主 session 甚至替研究员跑掉了它自己的命令。显式 spawn 在交互与 print
+两种模式下行为一致，这才让防火墙成为机制而不是约定。
 
 Research Pack 到 Slide Spec 的转换同样是确定性的：`scripts/research_pack_to_evidence.py`
 按固定规则（findings 按 id 排序、再 data_points 按 id 排序 → `E01, E02, …`）编译出

@@ -1,10 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.11.1
-context: fork
-agent: student-presentation-suite:presentation-researcher
-background: false
+version: 0.12.0
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
@@ -16,8 +13,17 @@ arguments: [work_id, brief_path, scope, materials_path]
 
 ## 隔离执行与输入
 
-本 skill 用 `context: fork` + `presentation-researcher` 在独立 context 中执行；原始网页、搜索轨迹和失败页不进入主对话。
-`background: false` 是刻意的：研究完成后才能进入排页。
+**检索必须在独立 context 中运行，且靠显式 spawn，不靠 `context: fork`。**
+`context: fork` 在 `claude -p`（print）模式下不被 honor，skill 会被内联进主会话——真实 Live E2E
+两次测得 `subagent_stats.spawned = 0`、事件流无任何 subagent 事件，主 session 甚至替研究员执行了
+`validate_research_pack.py`。所以本 skill 的隔离契约是：
+
+1. 主流程调用 Agent 工具，`subagent_type` 取 `student-presentation-suite:presentation-researcher`；
+2. **前台等待**（`run_in_background` 保持 false）：研究完成才能进入排页；
+3. 子代理看不到本次对话，也读不到本文件里的 `$work_id` 等绑定——**四个参数必须写进 spawn 的
+   prompt 文本**，缺任何一个就让它按 `RESEARCH_BLOCKED` 契约返回，不要替它猜；
+4. 主流程只接收它返回的 `RESEARCH_DONE` / `RESEARCH_BLOCKED` 信封，不接收原始网页、搜索轨迹
+   或失败页。
 
 解析后的输入是：
 

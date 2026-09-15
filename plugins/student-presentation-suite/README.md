@@ -35,14 +35,22 @@ write prose speaker notes; mixing those responsibilities contaminates every
 layer downstream.
 
 It doubles as a context firewall — and that is a **mechanism**, not a prompt
-convention: `sp-research` carries `context: fork` +
-`agent: student-presentation-suite:presentation-researcher` + `background: false`
-in its frontmatter, so it does **not** run in the main conversation context.
-Claude Code starts the subagent defined in `agents/presentation-researcher.md`
-with its own context window; the subagent cannot see the conversation history and
-the main flow never receives its search trail or raw pages (~100k tokens in, ~8k
-out). `background: false` is deliberate: research must finish before `sp-outline`
-starts planning.
+convention: the main flow **spawns `agents/presentation-researcher.md` explicitly**
+through the Agent tool (`subagent_type:
+student-presentation-suite:presentation-researcher`, foreground), so retrieval never
+runs in the main conversation context. The subagent cannot see the conversation
+history and the main flow never receives its search trail or raw pages (~100k
+tokens in, ~8k out). Passing the work-id, brief path, scope and materials path in
+the spawn prompt is required — the subagent reads neither the frontmatter
+arguments nor the conversation. Foreground is deliberate: research must finish
+before `sp-outline` starts planning.
+
+An earlier revision relied on `context: fork` in this skill's frontmatter. That
+mechanism is **not honored under `claude -p` (print mode)**: two live runs measured
+`subagent_stats.spawned = 0` with no subagent event in the stream, and the main
+session ended up running the researcher's own commands. Explicit spawn behaves the
+same in interactive and print sessions, which is what makes the firewall a
+mechanism rather than a convention.
 
 The hop from Research Pack to Slide Spec is deterministic too:
 `scripts/research_pack_to_evidence.py` compiles `evidence-map.json` by a fixed rule

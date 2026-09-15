@@ -1,7 +1,7 @@
 # Live E2E — 场景 A：2026 AI Agent 趋势（联网）
 
 **对应评审第 14 项的「真实运行验证 · A 模式」一半。**
-目标：在真实 `claude` CLI 会话里，让 `sp-research` 真正 fork 出子代理，完成**联网**检索并产出 Research Pack。
+目标：在真实 `claude` CLI 会话里，让 `sp-research` 真正 spawn 出 `presentation-researcher` 子代理，完成**联网**检索并产出 Research Pack。
 
 ## 1. sp-research 具名入参
 
