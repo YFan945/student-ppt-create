@@ -4,6 +4,82 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## 0.12.0 — 2026-09-15
+
+### 执行层修复：渲染证据与当前 PPTX 绑定、stub 页不得构建、guard 状态按会话隔离
+
+来源：2026-09-15 对 `6df9086` / 0.11.1 的第三方评审。四项问题先在真实代码上逐条复现
+（`outputs/_verify/repro_review_0915.py`），再修。
+
+- **渲染证据绑定当前 PPTX**：`ppt_pipeline.py next` 在 `producing` 状态改为比对
+  `manifest.render.pptx_sha256` 与当前 PPTX hash，不再只看 `contact-sheet.png` 是否存在。
+  此前 repair → rebuild 之后 `build` 已清空 `manifest.render`，但磁盘上的旧图仍在，
+  `next` 会把下一步指向 `qa`，模型于是用**上一版**的渲染图做视觉 critique。
+- **build 归档失效渲染证据**：`build` 把上一次的 contact sheet 与页面 PNG 移到
+  `stale/render-<sha8>/`（保留审计痕迹但并不留在约定路径），并在 build 历史里写入
+  `stale_render_moved`。缓存判断本身仍在 `render` 内按 hash 进行，未改动。
+- **stub 页不得进入 build**：`assert_page_split()` 拒绝任何仍含
+  `student-presentation-suite-scaffold` 的 `pages/*.js`；`deck.js` 作为纯装配文件允许保留
+  marker。此前只显示标题的 scaffold 页也能通过 build gate，要到 render 与视觉 QA 才暴露。
+- **`cost_guard` 状态按会话隔离**：seen 状态从 `.pptx-work/cost-guard-seen.json`（被所有任务
+  共享）改为 `outputs/.pptx-work/.guard/seen-<session>.json`；reference 去重键从 `path.name`
+  改为 resolved path + sha256，不同目录的同名文档不再冲突，文档更新后允许重读。
+- **缓存收益可观测**：`render` / `qa` 命中复用时写入 `reused` 记录，`benchmark_report.py`
+  新增 `r_reuse` / `q_reuse` 列。此前复用分支不写 history，成本报告只能看到"花了多少"，
+  看不到"机械门禁省了多少"，6-deck 基准将无法归因。
+- **契约补强**：`pipeline-contract.json` 的 `repeat_policy` 增补
+  `build_invalidates_render_evidence`、`render_evidence_must_match_current_pptx`、
+  `no_scaffold_pages_at_build` 三条，并在 `test_pipeline_contract.py` 加断言。
+- **新增测试**：`next` 路由（无证据 / 证据新鲜 / stale 图存在但 manifest 已清空）、
+  stale 归档、复用记录、scaffold gate（含 `deck.js` 豁免）、guard 会话隔离与同名文档不冲突。
+
+### 成本基准可执行化：6-deck runner
+
+- **新增 `scripts/benchmark_run.py`**：`benchmarks/decks.json` 自 0.10.5 起已定义 6 类 deck，
+  但从未真实跑过——brief 仍是 `<课程主题>` 占位符，也没有 runner，所以 0.11.x 的成本收益一直
+  没有数据。本脚本把每个 deck 跑成一次真实的 `claude -p` 会话，再从该 deck 的
+  `build-manifest.json` 读回确定性成本、从 CLI result 读回模型成本，汇总写入
+  `benchmarks/baseline-<version>-<date>.json`，供折回 `decks.json` 的 `live_baseline`。
+  - 占位符 topic 与不存在的 materials 路径在**花钱之前**就被拒绝；
+  - `--all` 必须为每个 deck 提供 `--topic-deck id=topic`，防止对占位符跑基准；
+  - `--dry-run` 只写 invocation 不调用 CLI；`--report` 只汇总既有记录；
+  - 复用计数（`render_reused` / `qa_reused`）与 `stale_evidence_moved` 一并入报告，
+    成本对比从"花了多少"升级为"花了多少 + 机械门禁省了多少"。
+- **新增 `tests/test_benchmark_run.py`（22 项）**：占位符拦截、invocation 契约（work-id、
+  页数、scope、intake 已确认、禁止追问）、预算与 session 固定、`modelUsage` token 汇总、
+  `.cmd` shim 拒绝、intake 预确认、manifest 缺失不抛异常、汇总只统计真实运行并标注被截断的 deck。
+- **首个真实数据点（pilot，`course-report-zh`，2026-09-15）**：一次真实 `claude -p` 会话产出
+  10 页 deck（`deck.pptx` 54 KB + 10 页全渲染 + contact sheet），**73 turns / 8.95M token-context /
+  $8.04 / 36.7 分钟**；对比 0.10 基线（307 requests / 82.5M）是 **请求 −76%、token −89%**。
+  其中 `cache_read` 占 8.78M，真正的新增 input 只有 171 k。
+  该轮在 `render` 之后撞上 `--max-budget-usd 8` 被截断（`terminal_reason: budget_exhausted`），
+  **QA/delivery 尚未执行**，因此这两个数字是**下界**；报告用 `truncated_decks` / `comparable`
+  显式标注，避免被当成完整 deck 成本。
+- **成本口径修正**：单个 10 页 deck 的完整成本**大于 $8**，6-deck 基准应按 **$60~90** 预算，
+  而不是先前估的 $6~36（原估偏低的来源：低估了 research + spec + 逐页 generator 的迭代轮数）。
+  `benchmark_run.py` 的 `--budget-usd` 默认值因此从 8 上调到 **14**。
+- **无人值守的前置条件**：`sp-deck` 的 intake 门禁要求 Production Summary 被确认，`-p` 单轮会话里
+  没有人能回答，模型会停在 intake 追问题目（第一次 pilot 就是这样，49 秒结束、零产物）。
+  runner 因此自带 `prepare_intake()`：生成 `production-summary.md` 并调
+  `workflow_guard.py init` / `confirm --force` 推到 `intake_confirmed`，invocation 声明 intake 已完成。
+  任何后续自动化（CI smoke、批量回归）都必须先过这一步。
+
+### Research 隔离改为显式 spawn
+
+- **`sp-research` 不再依赖 `context: fork`**：frontmatter 移除 `context: fork` / `agent:` /
+  `background: false`，正文改为显式契约——主流程用 Agent 工具 spawn
+  `student-presentation-suite:presentation-researcher`，前台等待，并把 work-id、brief 路径、
+  scope、materials 路径写进 spawn 的 prompt 文本（子代理看不到主对话，也读不到 frontmatter
+  的参数绑定）。原因见 `scripts/live_prompts/FINDINGS.md`：两次 Live 实测在 `claude -p` 下
+  `subagent_stats.spawned = 0`、事件流无任何 subagent 事件，skill 实际内联跑在主会话里，
+  主 session 甚至替研究员执行了 `validate_research_pack.py`。
+- **判定标准收紧**：`smoke_research_fork.py` 只接受 `subagent_stats.spawned >= 1`，
+  不再把 `context: fork` 的 fork 事件当作替代证据。
+- **文档同步**：`README.md` / `README-zh.md` / `AGENTS.md` / `references/cost-discipline.md`（CD-5）/
+  `skills/sp-outline/SKILL.md` / `live_prompts/*` 统一为"靠显式 spawn 隔离"，并注明不得回退到
+  `context: fork`。
+- **待实测**：改完后需重跑 `smoke_research_fork.py --scenario smoke --stream` 断言 `spawned >= 1`。
+
 ## 0.11.1 — 2026-09-15
 
 - **静态溢出 CI 按真实行距判定裁切**：gallery / `inspect_pptx` 不再把 0.85 填充率的 `text-vertical-overflow-risk` 当失败。只有估算高度超过文本框（`fill > 1.0`，`text-vertical-overflow`）才拦 CI。行高优先读 PPTX 里的 `a:spcPts`（helpers 写出的 `fontSize * 1.18`），缺省才回落 1.18，不再用 1.4 去误报已经按 1.18 排过的标题。
