@@ -190,9 +190,10 @@ claude
 后才会开始生成。这样可避免在关键信息不完整时直接产出错误文件。
 
 插件通过 `workflow_guard.py` 状态机命令（init/confirm/transition）记录状态，
-并在项目输出目录保存已确认摘要的哈希和工作流状态。PreToolUse hook 已移除，
-命令不再自动拦截；状态由 SKILL 文本自律维护——状态未推进到 `intake_confirmed`
-前不运行生产脚本。
+并在项目输出目录保存已确认摘要的哈希和工作流状态。`ppt_pipeline.py` 会拒绝非法
+生产步骤。另有一条窄的 PreToolUse hook（`cost_guard.py`）拦截插件源码考古、
+未变 PNG 的重读和名叫 `researcher` 的 teammate——它不替代 intake 确认门禁，
+也不禁止第一次读图。状态未推进到 `intake_confirmed` 前仍不运行生产脚本。
 
 生成结果默认写入当前项目的 `outputs/` 目录，不会写进插件安装目录。修改已有
 PPT 时也不会覆盖原文件。

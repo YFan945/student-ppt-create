@@ -147,6 +147,44 @@ class SessionCostTests(unittest.TestCase):
         self.assertEqual(0, code)
         self.assertIn("requests: **3**", stdout)
 
+    def test_triplicate_assistant_records_count_as_one_request(self) -> None:
+        path = Path(self._tmp.name) / "triple.jsonl"
+        stamp = T0.isoformat()
+        usage = {
+            "input_tokens": 500,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 99_500,
+            "output_tokens": 40,
+        }
+        records = [
+            {
+                "type": "assistant",
+                "timestamp": stamp,
+                "message": {"usage": usage, "content": []},
+            },
+            {
+                "type": "assistant",
+                "timestamp": stamp,
+                "message": {"usage": usage, "content": []},
+            },
+            {
+                "type": "assistant",
+                "timestamp": stamp,
+                "message": {
+                    "usage": usage,
+                    "content": [tool_use("t9", "Bash", DECK)],
+                },
+            },
+        ]
+        with path.open("w", encoding="utf-8") as stream:
+            for record in records:
+                stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        summary = SESSION_COST.profile(SESSION_COST.read_records(path))
+        self.assertEqual(1, summary["requests"])
+        self.assertEqual(1, summary["tokens"]["fresh_input"] // 500)
+        self.assertEqual(100_040, summary["tokens"]["total"])
+        self.assertEqual(1, summary["tool_calls"])
+
 
 if __name__ == "__main__":
     unittest.main()

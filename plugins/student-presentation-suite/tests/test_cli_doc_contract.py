@@ -46,6 +46,7 @@ PYTHON_SCRIPTS: dict[str, Path] = {
     "bump_version.py": RESEARCH_SCRIPTS / "bump_version.py",
     "session_cost.py": RESEARCH_SCRIPTS / "session_cost.py",
     "smoke_research_fork.py": RESEARCH_SCRIPTS / "smoke_research_fork.py",
+    "assert_research_envelope.py": RESEARCH_SCRIPTS / "assert_research_envelope.py",
     "benchmark_report.py": RESEARCH_SCRIPTS / "benchmark_report.py",
 }
 # JS entries: the flag must appear literally in the source (no argparse help).

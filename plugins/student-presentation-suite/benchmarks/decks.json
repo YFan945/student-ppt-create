@@ -57,5 +57,15 @@
       "token-context cost",
       "tool-call buckets"
     ]
+  },
+  "live_baseline_0_10": {
+    "session": "c7682916-75e3-4088-95bb-e198e22e795e",
+    "plugin_cache": "0.10.5",
+    "tokens_deduped": 82500000,
+    "api_calls_deduped": 307,
+    "peak_context": 456000,
+    "target_tokens": 25000000,
+    "target_peak_context": 150000,
+    "notes": "Carbon-neutral PV vs wind /sp-deck on DeepSeek Flash 1M. session_cost.py now collapses usage-identical assistant rows within 2s; raw jsonl triple-counts. Keep v0.8 exploration; the 0.11.0 mechanical gates target ≤25M tokens and peak ≤150k."
   }
 }

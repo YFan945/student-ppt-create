@@ -188,6 +188,16 @@ def artifact_verdict(pack: Path) -> tuple[bool, str]:
     return True, f"{pack} ({len(findings)} findings, {len(sources)} sources)"
 
 
+def main_flow_leaked_retrieval(payload: dict[str, Any]) -> list[str]:
+    """CD-5: the parent result must not carry raw retrieval tools."""
+    blob = json.dumps(payload.get("result") or payload.get("result_text") or "", ensure_ascii=False)
+    problems: list[str] = []
+    for marker in ("WebSearch", "WebFetch"):
+        if marker in blob:
+            problems.append(f"main transcript contains {marker}")
+    return problems
+
+
 def run_validator(pack: Path) -> str:
     validator = Path(__file__).resolve().parent / "validate_research_pack.py"
     if not validator.is_file():
@@ -361,6 +371,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     mechanism_ok, mechanism_problems, mechanism_notes = mechanism_verdict(payload, fork_event_types)
+    mechanism_problems.extend(main_flow_leaked_retrieval(payload))
+    if mechanism_problems:
+        mechanism_ok = False
     pack = pack_path(project_dir, work_id)
     artifact_ok, artifact_note = artifact_verdict(pack)
 

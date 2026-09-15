@@ -135,7 +135,17 @@ class PipelineTestCase(unittest.TestCase):
             "visual_review": self.work / "visual-review.json",
             "pptx": self.work / "deck.pptx",
         }
-        files["spec"].write_text("{}", encoding="utf-8")
+        files["spec"].write_text(
+            json.dumps(
+                {
+                    "meta": {"slide_count": 1, "topic": "test"},
+                    "slides": [
+                        {"id": 1, "title": "Title", "kind": "cover", "role": "opening"},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
         files["lock"].write_text("{}", encoding="utf-8")
         files["art"].write_text("{}", encoding="utf-8")
         files["vgr"].write_text("{}", encoding="utf-8")
@@ -162,11 +172,15 @@ class PipelineTestCase(unittest.TestCase):
         return json.loads((self.work / pp.MANIFEST_NAME).read_text(encoding="utf-8"))
 
     def entry(self) -> Path:
-        pages = self.work / "pages"
-        pages.mkdir(exist_ok=True)
-        (pages / "p01-title.js").write_text("export default () => {}", encoding="utf-8")
         entry = self.work / "deck.js"
-        entry.write_text("export default () => {}", encoding="utf-8")
+        pages = self.work / "pages"
+        if entry.is_file() and any(pages.glob("p*.js")):
+            return entry
+        pages.mkdir(exist_ok=True)
+        (pages / "p01-cover.js").write_text(
+            "module.exports = function (ctx) {};\n", encoding="utf-8"
+        )
+        entry.write_text("require('./pages/p01-cover.js');\n", encoding="utf-8")
         return entry
 
 
@@ -227,6 +241,10 @@ class PlanTests(PipelineTestCase):
         self.assertEqual(len([c for c in runner.calls if "freeze" in c]), 1)
         mirrored = json.loads(self.workflow_state.read_text(encoding="utf-8"))
         self.assertEqual(mirrored["state"], "planned")
+        self.assertTrue((self.work / "pages" / "p01-cover.js").is_file())
+        self.assertTrue((self.work / "deck.js").is_file())
+        self.assertTrue((self.work / "stage-planned-summary.md").is_file())
+        self.assertTrue((self.work / "composition").is_dir())
 
     def test_replan_without_force_is_refused(self) -> None:
         files = self.write_inputs()
@@ -267,6 +285,11 @@ class BuildTests(PipelineTestCase):
         self.assertEqual(manifest["build"]["build_count"], 1)
         self.assertTrue(manifest["build"]["generator_fingerprint"])
         self.assertFalse(manifest["build"]["pending_repair"])
+        pptx = manifest["build"]["pptx"]
+        self.assertTrue(Path(pptx["path"]).is_file())
+        generator_paths = [Path(f["path"]).name for f in manifest["build"]["generator_files"]]
+        self.assertIn("deck.js", generator_paths)
+        self.assertIn("p01-cover.js", generator_paths)
 
     def test_identical_repeat_build_is_refused(self) -> None:
         self.prepared()
@@ -284,7 +307,8 @@ class BuildTests(PipelineTestCase):
         pp.save_manifest(self.work, manifest)
         self.assertEqual(pp.main(["repair", "--work-dir", str(self.work), "--reason", "fix"]), 0)
         self.assertEqual(pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 2)
-        entry.write_text("export default () => { /* changed */ }", encoding="utf-8")
+        page = next((self.work / "pages").glob("p*.js"))
+        page.write_text(page.read_text(encoding="utf-8") + "\n/* changed */\n", encoding="utf-8")
         self.assertEqual(pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 0)
 
     def test_repair_budget_is_hard_limited(self) -> None:
@@ -295,6 +319,24 @@ class BuildTests(PipelineTestCase):
         manifest["build"]["repair_count"] = pp.MAX_REPAIRS
         pp.save_manifest(self.work, manifest)
         self.assertEqual(pp.main(["repair", "--work-dir", str(self.work), "--reason", "again"]), 2)
+
+    def test_build_without_pages_is_refused(self) -> None:
+        self.prepared()
+        entry = self.work / "deck.js"
+        for leftover in (self.work / "pages").glob("*.js"):
+            leftover.unlink()
+        rc = pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)])
+        self.assertEqual(rc, 2)
+
+    def test_next_after_plan_points_at_build(self) -> None:
+        self.plan(self.files)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = pp.main(["next", "--work-dir", str(self.work), "--json"])
+        self.assertEqual(rc, 0)
+        payload = json.loads(buffer.getvalue())
+        self.assertEqual("planned", payload["state"])
+        self.assertIn("build", payload["next_command"])
 
     def test_build_rechecks_the_freeze(self) -> None:
         self.prepared()

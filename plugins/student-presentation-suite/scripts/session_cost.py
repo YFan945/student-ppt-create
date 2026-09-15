@@ -83,7 +83,36 @@ def block_text(block: Any) -> str:
         )
     if isinstance(content, str):
         return content
-    return "" if content is None else json.dumps(content, ensure_ascii=False)
+    return "" if content is None else json.dumps(content, ensure_ascii=False                )
+
+
+def collapse_duplicate_requests(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Merge 2–3 assistant snapshots that Claude Code writes for one API call.
+
+    Copies share a timestamp (or land within 2s) and identical usage. Counting
+    each copy inflated session_cost reports by ~2× on DeepSeek Flash runs.
+    """
+    collapsed: list[dict[str, Any]] = []
+    for item in requests:
+        if collapsed:
+            prev = collapsed[-1]
+            gap = 999.0
+            if item["ts"] and prev["ts"]:
+                gap = (item["ts"] - prev["ts"]).total_seconds()
+            same = (
+                item["context"] == prev["context"]
+                and item["fresh"] == prev["fresh"]
+                and item["cache_read"] == prev["cache_read"]
+                and item["cache_write"] == prev["cache_write"]
+                and item["output"] == prev["output"]
+            )
+            if gap <= 2.0 and same:
+                prev["copies"] = int(prev.get("copies") or 1) + 1
+                continue
+        row = dict(item)
+        row["copies"] = 1
+        collapsed.append(row)
+    return collapsed
 
 
 def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -162,6 +191,7 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
                 if finish and entry["start"]:
                     entry["sec"] = (finish - entry["start"]).total_seconds()
 
+    requests = collapse_duplicate_requests(requests)
     contexts = [item["context"] for item in requests]
     fresh = sum(item["fresh"] for item in requests)
     cache_write = sum(item["cache_write"] for item in requests)

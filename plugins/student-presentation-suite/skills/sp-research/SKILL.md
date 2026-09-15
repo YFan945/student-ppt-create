@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.10.5
+version: 0.11.0
 context: fork
 agent: student-presentation-suite:presentation-researcher
 background: false
@@ -31,9 +31,9 @@ arguments: [work_id, brief_path, scope, materials_path]
 ## 职责与硬约束
 
 - 检索、分级、交叉验证、知识缺口、留痕 → 本 skill；排页/讲稿 → `sp-outline`；PPTX/视觉 → `sp-deck`；审查 → `sp-review`
-- 加载 `../../references/research-workflow.md`、`../../references/evidence-and-citations.md`、`../../references/research-pack.schema.json`
+- 按需各读一次 `../../references/research-workflow.md`、`../../references/evidence-and-citations.md`、`../../references/research-pack.schema.json`；不要 grep 插件源码
 - 不决定版式、不设计页面、不生成 PPTX、不改视觉风格、不撰写成段讲稿；不编造数字、日期、机构或引文
-- 检索只在子代理内完成；主流程只接收文件路径和紧凑状态，不接收原始网页或搜索摘要
+- 检索只在本 fork 内完成；主流程只接收文件路径和紧凑 envelope，不接收原始网页或搜索摘要。`validate_research_pack.py` 是 pack 唯一的 `ok: true`；回传正文用 `assert_research_envelope.py` 校验
 - 输出只写 `${CLAUDE_PROJECT_DIR}/outputs/.pptx-work/<work-id>/`，不得写 `${CLAUDE_PLUGIN_ROOT}`
 
 ## 工作流
@@ -52,7 +52,7 @@ arguments: [work_id, brief_path, scope, materials_path]
 - `research-pack-validation.json`：必须 `ok: true`，并含当前 pack 的 `research_pack_sha256`
 - `research/<topic>.json`：原始检索留盘审计，**永不回传主流程**
 - `queries` 只记录实际执行过的检索词；D 模式必须为空且 sources 全为 `user-file`
-- 最终聊天返回严格服从 agent 的固定 `RESEARCH_DONE` / `RESEARCH_BLOCKED` envelope，不追加研究摘要
+- 最终聊天返回严格服从 agent 的固定 `RESEARCH_DONE` / `RESEARCH_BLOCKED` envelope（`assert_research_envelope.py` 可校验），不追加研究摘要。主对话不得出现 WebSearch / WebFetch
 
 ## 与图片检索分工
 

@@ -229,9 +229,17 @@ sh skills/sp-deck/scripts/run_gates.sh --art-direction <a.yaml> --slide-spec <s.
 ```
 
 Full detail still lands in `gates-report.json`, and every individual gate script stays callable
-for debugging a single check. The working habits that keep a run cheap — batching tool calls,
-in-place edits instead of whole-file rewrites, write-once artifacts, per-stage summaries, and
-delegating all external search to a subagent — are canonical in `references/cost-discipline.md`.
+for debugging a single check. Production after intake is dispatched by
+`skills/sp-deck/scripts/ppt_pipeline.py next --work-dir <wd> --json` (plan scaffolds
+`deck.js` + `pages/pNN-*.js`; build refuses a monolithic generator). The working habits
+that keep a run cheap — batching tool calls, in-place edits, write-once artifacts,
+per-stage summaries, `sp-research` forks instead of a generic researcher teammate,
+DeepSeek vision reads in one parallel round (CD-9), and staying inside a 200k-shaped
+window (CD-8) — are canonical in `references/cost-discipline.md`.
+`scripts/session_cost.py` collapses usage-identical assistant rows within 2 seconds so
+JSONL triple-counts do not inflate the report. `scripts/cost_guard.py` is the PreToolUse
+hook that blocks plugin-source archaeology and same-hash PNG re-reads without forbidding
+the first image Read.
 
 At most one repair loop may change the
 spec/composer/generator and rebuild the complete candidate; a remaining QA blocker

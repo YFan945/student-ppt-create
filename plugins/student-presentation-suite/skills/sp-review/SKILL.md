@@ -1,7 +1,7 @@
 ---
 name: sp-review
 description: Use only for a clearly student-owned academic context when the user explicitly asks to review, audit, score, critique, compare, or diagnose an existing PPT/PPTX/PowerPoint deck or rendered export.
-version: 0.10.5
+version: 0.11.0
 ---
 
 # Student Presentation Review
@@ -16,7 +16,7 @@ version: 0.10.5
 - 分级：Critical（阻断理解/评分/表达）、Major（应修复）、Minor（润色）
 - 静态 XML 风险是信号，不替代渲染检查
 - 视觉结论需要渲染证据支撑
-- 全程遵守 `../../references/cost-discipline.md`：调用并行批量发出、禁止整文件重写、产物写盘即弃、检索一律委派子代理
+- 全程遵守 `../../references/cost-discipline.md`：调用并行批量发出、禁止整文件重写、产物写盘即弃、检索只走 `sp-research`；渲染图按 CD-9 同一轮并行 Read，同一 hash 不重读
 - 输出写入 `outputs/`，不得修改源文件
 
 ## 职责
@@ -27,8 +27,8 @@ version: 0.10.5
 
 ## 工作流
 
-1. 加载 `../../references/presentation-intake.md`，使用 review-only 模式。
-2. 按需加载：
+1. 按需读一次 `../../references/presentation-intake.md`，使用 review-only 模式；提炼清单后不再重读。
+2. 缺哪条规则再读哪份（各一次）：
    - `references/review-checklist.md` — 审查维度与严重度
    - `references/review-output-format.md` — 报告格式
    - `../../references/content-workflow.md` — 故事顺序检查

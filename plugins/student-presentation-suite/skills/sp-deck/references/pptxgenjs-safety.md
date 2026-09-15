@@ -30,8 +30,10 @@ fallback，不是逐页模板。逐页渲染检查是 complete 交付
 ## 文本与列表
 
 9. 列表：每一项设 `bullet: true`，禁止在文本里写字面量 `•`（会渲染成双子弹）。数组项
-   除最后一项外设 `breakLine: true`。段间距用 `paraSpaceAfter`，不要用 `lineSpacing`
-   （会产生巨大间隙）。
+   除最后一项外设 `breakLine: true`。段间距用 `paraSpaceAfter`。行距必须用**磅值**
+   `lineSpacing: fontSize * 1.18`（与 helper / registry / 实际渲染一致）。禁止
+   `lineSpacingMultiple`（它乘的是字体自然行高 ≈1.2× 字号，不是字号本身）；禁止把
+   `lineSpacing` 写成 `1.18` 这种倍数——pptxgenjs 会当成 1.18 磅，文字不可见。
 10. 文本框有内建内边距——文字要与形状/线条/图标对齐到同一 x 时设 `margin: 0`。
 11. 字号下限由共享 design tokens 决定；不得为了适配而在脚本中静默突破。
 

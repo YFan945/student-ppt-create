@@ -10,6 +10,10 @@
 // ── 单位常量 ──────────────────────────────────────────────
 
 const CM_PER_INCH = 2.54;
+// Shared with copy_fit_preflight.py and pptx-element-registry.js.
+const CJK_EM = 1.0;
+const LATIN_EM = 0.58;
+const LINE_SPACING_FACTOR = 1.18;
 
 // 16:9 幻灯片默认尺寸（英寸）
 const SLIDE_W_IN = 10;
@@ -264,7 +268,7 @@ function cornerRadius(tokens) {
 
 /**
  * 估算文本在给定盒子里需要的行数。
- * 中文 ≈ 字号×0.035cm/字，英文 ≈ 字号×0.021cm/字
+ * 中文 1.0 em、拉丁 0.58 em（与 copy_fit_preflight.py 相同）。
  * @param {string} text - 文本内容
  * @param {number} boxW - 盒子宽度 (inches)
  * @param {number} fontSize - 字号 (pt)
@@ -282,7 +286,8 @@ function estimateTextFit(text, boxW, boxH, fontSize, isCJK) {
   }
   const boxWCm = boxW * CM_PER_INCH;
   const boxHCm = boxH * CM_PER_INCH;
-  const charWidthCm = fontSize * (isCJK ? 0.035 : 0.021);
+  const charWidthIn = (fontSize * (isCJK ? CJK_EM : LATIN_EM)) / 72;
+  const charWidthCm = charWidthIn * CM_PER_INCH;
   const charsPerLine = Math.max(1, Math.floor(boxWCm / charWidthCm));
 
   const paragraphs = text.split('\n');
@@ -290,7 +295,7 @@ function estimateTextFit(text, boxW, boxH, fontSize, isCJK) {
   for (const p of paragraphs) {
     totalLines += Math.max(1, Math.ceil(p.length / charsPerLine));
   }
-  const lineHeightCm = ((fontSize * 1.4) / 72) * CM_PER_INCH;
+  const lineHeightCm = ((fontSize * LINE_SPACING_FACTOR) / 72) * CM_PER_INCH;
   const textHeightCm = totalLines * lineHeightCm;
   const fillRatio = textHeightCm / boxHCm;
 
@@ -434,7 +439,7 @@ function balancedBox(text, box, policy) {
   const margin = policy.margin === undefined ? 8 : policy.margin;
   const margins = Array.isArray(margin) ? margin : [margin, margin, margin, margin];
   const usableW = box.w - ((margins[1] || 0) + (margins[3] || 0)) / 72;
-  const charWidthCm = min * 0.035;
+  const charWidthCm = ((min * CJK_EM) / 72) * CM_PER_INCH;
   const charsPerLine = Math.max(1, Math.floor((usableW * CM_PER_INCH) / charWidthCm));
   const length = plain.length;
   if (charsPerLine < 6 || length <= charsPerLine) return null;
@@ -496,6 +501,15 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
   ]) {
     delete pptxOptions[key];
   }
+  delete pptxOptions.lineSpacingMultiple;
+  const factor =
+    Number.isFinite(Number(pptxOptions.lineSpacing)) && Number(pptxOptions.lineSpacing) <= 4
+      ? Number(pptxOptions.lineSpacing)
+      : LINE_SPACING_FACTOR;
+  const lineSpacingPt =
+    Number.isFinite(Number(pptxOptions.lineSpacing)) && Number(pptxOptions.lineSpacing) > 4
+      ? Number(pptxOptions.lineSpacing)
+      : Number((fit.fontSize * factor).toFixed(2));
   return slide.addText(text, {
     ...pptxOptions,
     x: textBox.x,
@@ -508,6 +522,7 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
     align: pptxOptions.align || policy.align,
     valign: pptxOptions.valign || (shortReadingText ? 'mid' : policy.valign),
     margin: pptxOptions.margin === undefined ? (policy.margin ?? 8) : pptxOptions.margin,
+    lineSpacing: lineSpacingPt,
   });
 }
 
@@ -636,7 +651,6 @@ function addTitle(slide, text, area, tokens, lang) {
 function addBody(slide, text, area, tokens, lang, opts) {
   const textStr = Array.isArray(text) ? text.join('\n') : text;
   const options = {
-    lineSpacingMultiple: 1.3,
     paraSpaceAfter:
       (opts && opts.spacing ? spacing(tokens, opts.spacing) : spacing(tokens, 1)) * 72,
   };
@@ -845,6 +859,9 @@ module.exports = {
   // 常量
   SLIDE_W_IN,
   SLIDE_H_IN,
+  CJK_EM,
+  LATIN_EM,
+  LINE_SPACING_FACTOR,
 
   // Token 辅助
   color,

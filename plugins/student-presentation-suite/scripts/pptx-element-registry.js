@@ -52,11 +52,18 @@ function estimateTextFit(el) {
 
   const cjk = (text.match(/[\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
   const latin = Math.max(0, text.length - cjk);
-  // Conservative average character widths in inches at 72pt/in.
-  const estimatedWidth = (cjk * fontSize * 0.92 + latin * fontSize * 0.52) / 72;
+  // Must match copy_fit_preflight.py (CJK_EM=1.0, LATIN_EM=0.58) and
+  // pptx-helpers.js. KaiTi/DengXian advance is a full em; 0.92 leaked wraps.
+  const estimatedWidth = (cjk * fontSize * 1.0 + latin * fontSize * 0.58) / 72;
   const usableW = Math.max(DEFAULTS.minTextW, box.w - (el.paddingX || 0));
   const estimatedLines = Math.max(1, Math.ceil(estimatedWidth / usableW));
-  const lineHeight = ((el.lineSpacing || 1.18) * fontSize) / 72;
+  // pptxgenjs `lineSpacing` is POINTS. Values <= 4 are treated as a legacy
+  // multiplier so older generators that passed 1.18 still analyze. Helpers
+  // now emit fontSize * 1.18 points.
+  const spacing = el.lineSpacing;
+  const lineHeightPt =
+    finite(spacing) && spacing > 4 ? spacing : (finite(spacing) ? spacing : 1.18) * fontSize;
+  const lineHeight = lineHeightPt / 72;
   const requiredH = estimatedLines * lineHeight + (el.paddingY || 0);
   return {
     ok: requiredH <= box.h * 1.03,

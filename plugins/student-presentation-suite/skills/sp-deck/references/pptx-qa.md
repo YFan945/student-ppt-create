@@ -165,9 +165,11 @@ Render
 约 5300 万 token——占整次生成成本的 45%。按页分批时"最多 3 轮"会悄悄滚成 5 轮以上。
 同因的 blocker（比如都是行高或同一处文案）必须在同一轮一次改完。
 
-**修复循环只看 contact sheet，禁止逐张 Read 渲染 PNG。** 上图 `full render` 之后只读
-一张拼好的 contact sheet（或按页裁剪的少量局部放大），不要 `Read` 每一页的
-`*.png`——36 次读图就是 36 次全上下文请求。需要看细节时再针对那一页放大一次。
+**修复循环必须看图，但同一轮并行读、同一 hash 不重读（CD-9）。** DeepSeek Flash
+把每张图缩放到约 1300×1300 并封顶 1024 token，读 PNG 本身不贵；贵的是串行读和
+对未变 PPTX 再读一遍。`full render` 之后在**同一轮**并行 Read contact sheet 以及
+每一张 blocker 页 PNG。不要逐张串行；不要在 hash 未变时重读。`ppt_pipeline.py next`
+会列出本轮该读的图。
 
 **Spec revision 不是普通 repair 手段。** 只有 plan 本身错误时才走 `slide_spec_guard.py revise --reason ...`；revision 后重新校验并重新生成。
 

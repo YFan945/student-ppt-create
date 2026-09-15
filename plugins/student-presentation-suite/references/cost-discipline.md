@@ -23,7 +23,7 @@
 - 269 次工具调用产生了 548 次请求——每次工具调用平均消耗 2 个全上下文往返；
 - 16 次联网检索的原始结果全程留驻；44 份 reference 一次性读入后全程携带。
 
-这些都不是内容问题，而是工作方式问题。下面七条是硬约束。
+这些都不是内容问题，而是工作方式问题。下面九条是硬约束。
 
 ## CD-1 合并工具调用
 
@@ -119,29 +119,33 @@ outputs/.pptx-work/<work-id>/
 **可验证**：三个状态各存在一份小结；每份行数 ≤ 30；**进入新阶段时的第一次读取是
 小结**，而不是上阶段产物的全文；同一份大产物在一次任务中不会被第二次整篇读回。
 
-## CD-5 检索一律委派子代理
+## CD-5 检索一律委派 `sp-research`
 
 **任何外部检索——图片检索、话题资料检索、事实与数据核查、案例与竞品搜索——一律
-交给子代理执行。主流程不直接发起检索。**
+交给 `sp-research`（`context: fork` + `presentation-researcher`）。主流程不直接发起检索，
+也不 spawn 名叫 `researcher` 的通用 teammate。**
 
 子代理契约：
 
 - **输入**：检索意图、需要的字段清单、允许的来源范围、时间范围。
 - **产出 ①（落盘）**：原始结果写入
   `outputs/.pptx-work/<work-id>/research/<topic>.json`。
-- **产出 ②（回传主流程）**：**结构化结论，不超过 20 行**，每行含
-  `claim` / `value` / `year` / `source` / `url` / `confidence`。
-- **禁止**把检索结果的原始正文回灌主流程。
+- **产出 ②（回传主流程）**：固定 `RESEARCH_DONE` / `RESEARCH_BLOCKED` envelope
+  （`scripts/assert_research_envelope.py` 可校验），外加 pack 路径。
+  `validate_research_pack.py` 是 pack 唯一的 `ok: true`。
+- **禁止**把检索结果的原始正文回灌主流程；主对话不得出现 WebSearch / WebFetch。
 
-主流程把回传结论直接写入 Evidence Ledger（见 `evidence-and-citations.md`），页面只
-引用 `E<n>`。图片检索的额外许可要求见 `image-sourcing.md`——委派给子代理**不豁免**
-图片权限门禁，子代理同样必须先确认 `image_search_ready` / `image_generation_ready`。
+主流程只收 envelope 与 pack 路径；`research_pack_to_evidence.py` 再编译 `E<n>` ledger
+（见 `evidence-and-citations.md`）。图片检索的额外许可要求见 `image-sourcing.md`——
+委派给 `sp-research` **不豁免**图片权限门禁，同样必须先确认 `image_search_ready` /
+`image_generation_ready`。
 
 理由：检索原文体积大、留存久；委派之后，主流程在历史里只保留一小段结构化结论，
 而完整原文仍然可查。
 
-**可验证**：主流程不出现直接的外部检索调用；Evidence Ledger 的每一条都能对应到
-`research/*.json` 中的一条记录。
+**可验证**：主流程不出现直接的外部检索调用，也不出现名叫 `researcher` 的 teammate；
+Evidence Ledger 的每一条都能对应到 `research/*.json` 中的一条记录；回传正文通过
+`assert_research_envelope.py`。
 
 ## CD-6 门禁一次运行
 
@@ -175,6 +179,32 @@ sh "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.sh" \
 
 **可验证**：中间汇报中不出现超过 20 行的原始工具输出粘贴。
 
+## CD-8 按 200k 窗口工作
+
+管线按 **200k 上下文**设计。模型提供 1M 窗口不是跳过压缩的许可证：峰值仍应
+≤150k，任务总量目标 ≤25M token（一次实测 12 页课程报告在未加约束时约 82.5M
+去重 token / 307 次请求 / 峰值 456k）。
+
+- 进入新阶段只读 `stage-<state>-summary.md` 与本阶段要改的那一个产物。
+- 下一动作以 `ppt_pipeline.py next --work-dir <wd> [--json]` 为准，不要 `--help`
+  插件脚本、不要 grep 插件源码。`scripts/cost_guard.py` 会拦截这些考古动作。
+- 不要把 SKILL 或 20 份 reference 在每一回合重新灌入。
+
+**可验证**：`session_cost.py` 去重后的峰值 context ≤150k；同一 reference 全文读取
+次数 ≤ 1。
+
+## CD-9 读图：并行、一次、看图
+
+DeepSeek Flash 视觉按约 1300×1300 缩放，**每张图封顶 1024 token**。禁止的是
+**串行** Read 和 **同一 sha256 再读**，不是 Read PNG 本身。
+
+视觉 QA 与 wireframe 选择**必须看图**：contact sheet 与全部 blocker 页 PNG 在
+**同一轮并行 Read**。hash 变了（新的 render）才允许再读。`ppt_pipeline.py next`
+在 `producing` 状态会列出本轮 `read_images`。
+
+**可验证**：同一 PNG sha256 的 Read 次数 ≤ 1；含图的回合里 `Read` 次数 > 1
+（并行发出），而不是每张图单独一轮。
+
 ## 条款索引
 
 | 条款 | 针对的实测问题 |
@@ -186,6 +216,8 @@ sh "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.sh" \
 | CD-5 | 检索原文体积大、留存久；委派后主流程只留结构化结论 |
 | CD-6 | 三个门禁各自打印一份完整 JSON 报告 |
 | CD-7 | 中间步骤回显完整工具输出 |
+| CD-8 | 1M 窗口被当成可以不压缩；峰值涨到 45 万 |
+| CD-9 | 禁止读图导致模型不看 wireframe/渲染；或串行读同一 hash |
 
 ## 与其它 references 的关系
 

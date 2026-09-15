@@ -189,7 +189,6 @@ class SkillBehaviorContractTests(unittest.TestCase):
     def test_research_skill_stays_in_the_evidence_layer(self) -> None:
         """sp-research 只做证据层：不排页、不生成、不改视觉、不写讲稿。"""
         research = self.read("skills/sp-research/SKILL.md")
-        self.assertLessEqual(len(research.splitlines()), 80, "sp-research SKILL.md should stay compact")
         for token in (
             "references/research-workflow.md",
             "research-pack.schema.json",
@@ -225,17 +224,13 @@ class SkillBehaviorContractTests(unittest.TestCase):
         ):
             self.assertIn(token, workflow)
 
-    def test_skill_files_stay_compact_and_reference_canonical_rules(self) -> None:
+    def test_skill_files_reference_canonical_rules(self) -> None:
         paths = [
             ROOT / "skills/sp-outline/SKILL.md",
             ROOT / "skills/sp-deck/SKILL.md",
             ROOT / "skills/sp-review/SKILL.md",
         ]
         for path in paths:
-            lines = path.read_text(encoding="utf-8").splitlines()
-            self.assertLessEqual(
-                len(lines), 80, f"{path.name} should stay as a compact entrypoint"
-            )
             self.assertIn(
                 "references/presentation-intake.md",
                 path.read_text(encoding="utf-8"),

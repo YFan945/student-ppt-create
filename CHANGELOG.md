@@ -4,6 +4,23 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## 0.11.0 — 2026-09-15
+
+### 成本修复：机械门禁取代「请模型省 token」
+
+一次实测 `/sp-deck`（光伏 vs 风电，DeepSeek Flash 1M，去重后约 82.5M token / 307 次请求 / 峰值 456k）说明：v0.8 的探索证据、多轮 intake、hybrid-adaptive 和看图 QA 都要保留，贵的是「始终加载 20 份 reference、整文件 generator、串行读图、提示词版 CD-2」。本版把那些变成程序拒绝。叠在 0.10.5 的 pipeline hardening（intake 绑定、幂等 build/QA、`render` + contact sheet）之上。
+
+- **SKILL 不再有 80 行上限**。测试改为要求引用 canonical 规则；entry 文件可以写清 dispatch。
+- **行距与 CJK 宽度对齐**：pptxgenjs 发出 `lineSpacing` 点数（`fontSize * 1.18`），禁止 `lineSpacingMultiple`；CJK 宽 1.0 em / 拉丁 0.58，与 `copy_fit_preflight.py` 一致。
+- **`session_cost.py` 去重**：2 秒内用量相同的 assistant 行合并为一次请求，避免 JSONL 三份重复。
+- **生成器按页拆分成为 build 门禁**：`ppt_pipeline.py plan` scaffold `deck.js` + `pages/pNN-*.js` + `composition/`；`build` 在页数 ≠ spec id 或 `deck.js` 未 require 各页时直接拒绝。golden sample 同步拆成 9 个 page 模块。
+- **`ppt_pipeline.py next --json`**：告诉模型读什么、下一步跑哪条命令、本轮该并行 Read 哪些图；阶段小结由管线写入 `stage-*-summary.md`。
+- **CD-8 / CD-9**：管线按 200k 窗口设计（1M 不是跳过压缩的许可证）；DeepSeek 每图封顶 1024 token，视觉 QA **必须看图**，contact sheet 与 blocker 页 PNG 同一轮并行 Read，同一 sha256 不重读。
+- **`cost_guard.py` + `hooks/hooks.json`**：PreToolUse 拦截插件源码 grep/Read、第二次整篇读同一 reference、未变 PNG 重读、名叫 `researcher` 的 teammate；**不拦截第一次读图**。
+- **研究回传 envelope**：`assert_research_envelope.py` 只接受 `RESEARCH_DONE` / `RESEARCH_BLOCKED`；`smoke_research_fork.py` 若在主对话看到 WebSearch/WebFetch 则判机制失败。`validate_research_pack.py` 仍是 pack 唯一的 `ok: true`。
+
+目标（保持 v0.8 探索）：单次任务 ≤25M token，峰值 ≤150k。基线记在 `benchmarks/decks.json` 的 `live_baseline_0_10`。
+
 ## 0.10.5 — 2026-09-15
 
 ### Pipeline 1.0 hardening：状态权威、幂等执行、真实渲染与成本控制
@@ -11,7 +28,7 @@ Codex 发行记录不在此维护。
 - **机器契约成为事实源**：新增 `references/pipeline-contract.json`，统一 QA 顺序、repair 上限、manifest 版本与重复执行策略，避免 SKILL / workflow / pipeline 三套语义继续漂移。
 - **Intake 与生产状态真正衔接**：`ppt_pipeline plan` 必须验证 `intake_confirmed` 与 Production Summary SHA256；plan 后 `build-manifest.json` 成为生产阶段权威状态并镜像 legacy workflow state。
 - **执行成本硬约束**：禁止无 repair 的重复 build；repair 后 generator fingerprint 未变化拒绝重建；相同 PPTX / visual-review / previews 的 QA 直接复用；repair budget 在代码层固定为 3。
-- **真实 Render 进入 Pipeline**：新增 `ppt_pipeline render`，统一 raster render、全页 PNG 与 `contact-sheet.png` 生成；相同 PPTX hash 复用 render 结果，视觉 critique 默认只读 contact sheet。
+- **真实 Render 进入 Pipeline**：新增 `ppt_pipeline render`，统一 raster render、全页 PNG 与 `contact-sheet.png` 生成；相同 PPTX hash 复用 render 结果。
 - **语义契约与成本基准补强**：新增 pipeline semantic contract tests；benchmark 增加 render events、rendered pages、QA runs 与 QA stage wall time，为后续 6-deck 成本对比提供可量化数据。
 - **验证**：PR #19 的 Linux / Windows runtime、424 项测试、release checks、security scan、Claude manifest、scenario render matrix 与完整 visual gallery 全部通过。
 

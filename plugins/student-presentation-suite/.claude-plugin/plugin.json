@@ -4,9 +4,10 @@
   "author": {
     "name": "YFan945"
   },
-  "version": "0.10.5",
+  "version": "0.11.0",
   "homepage": "https://github.com/YFan945/student-ppt-create/tree/main",
   "repository": "https://github.com/YFan945/student-ppt-create/tree/main/plugins/student-presentation-suite",
+  "hooks": "./hooks/hooks.json",
   "license": "MIT",
   "keywords": [
     "presentation",

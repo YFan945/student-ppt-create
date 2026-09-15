@@ -189,8 +189,13 @@ sh skills/sp-deck/scripts/run_gates.sh --art-direction <a.yaml> --slide-spec <s.
 ```
 
 通过时只回显 1 行，完整明细写入 `gates-report.json`；单个 gate 脚本仍可单独调用用于调试。
-工作方式约束（并行调用、定点编辑、写盘即弃、阶段小结、检索委派子代理）见
-`references/cost-discipline.md`。
+生产段用 `skills/sp-deck/scripts/ppt_pipeline.py next --work-dir <wd> --json` 发现下一步
+（`plan` 会 scaffold `deck.js` + `pages/pNN-*.js`，整文件生成器会被 `build` 拒绝）。
+工作方式约束（并行调用、定点编辑、写盘即弃、阶段小结、检索走 `sp-research` fork、
+CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）见
+`references/cost-discipline.md`。`session_cost.py` 会在 2 秒内合并用量相同的 assistant
+记录，避免 JSONL 三份重复把成本放大。`cost_guard.py` 作为 PreToolUse hook 拦截插件源码
+考古和未变 PNG 的重读，但不拦截第一次读图。
 
 `complete` 使用 `workflow_guard.py transition --to complete --pptx <pptx> --delivery-report <report>`。
 发现 blocker 时最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重跑最终门禁”；

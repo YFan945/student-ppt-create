@@ -5,6 +5,17 @@ The agent owns semantic and visual judgement. This CLI owns execution order,
 state, rendering, idempotence, QA dependencies, repair budget, and delivery.
 Production is driven by one build-manifest.json; the legacy workflow state is
 used only as the intake authorization source and is mirrored automatically.
+
+    plan      verify intake, freeze, preflight, scaffold pages/  -> planned
+    build     run the generator; refuses unsplitted deck.js      -> producing
+    render    raster pages + contact-sheet.png (hash-cached)
+    qa        fail-fast QA DAG                                   -> qa
+    repair    QA blockers -> producing (budget from contract)
+    complete  qa + delivery ok                                   -> complete
+    status    one-line manifest summary
+    next      what to read and which command to run next
+
+Exit codes: 0 = ok, 2 = refused (illegal state, failed gate, missing input).
 """
 
 from __future__ import annotations
@@ -24,6 +35,10 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+import generator_scaffold as _scaffold  # noqa: E402
+
 ROOT = HERE.parents[2]
 PPTX_TOOL = ROOT / "scripts" / "pptx_tool.py"
 BUILDER = ROOT / "scripts" / "run_with_pptxgenjs.js"
@@ -104,6 +119,21 @@ def bind(path: Path) -> dict[str, Any]:
 def stable_hash(value: Any) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def write_stage_summary(work_dir: Path, state: str, lines: list[str]) -> Path:
+    """CD-4: the pipeline writes the ≤30-line stage entry, not the model."""
+    path = work_dir / f"stage-{state}-summary.md"
+    body = [f"# stage-{state}", ""]
+    for line in lines:
+        if line is None:
+            continue
+        body.append(line)
+        if len(body) >= 32:
+            break
+    body.append("")
+    path.write_text("\n".join(body), encoding="utf-8")
+    return path
 
 
 def record(manifest: dict[str, Any], command: str, before: str, after: str, **extra: Any) -> None:
@@ -422,9 +452,28 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
     fresh["state"] = "planned"
     record(fresh, "plan", "(absent)", "planned")
+    scaffold_info = _scaffold.scaffold_generator(work_dir, spec)
+    fresh["scaffold"] = {
+        "slides": scaffold_info["slides"],
+        "pages": scaffold_info["pages"],
+    }
+    summary = write_stage_summary(
+        work_dir,
+        "planned",
+        [
+            f"- spec: `{spec}`",
+            f"- art-direction: `{art}`",
+            f"- pages scaffolded: {scaffold_info['slides']} → `pages/`",
+            f"- composition dir: `{work_dir / 'composition'}`",
+            "- next: fill `pages/pNN-*.js` (parallel Edit), then `ppt_pipeline.py build`",
+            "- do not re-read the Slide Spec or Art Direction unless the hash changed",
+        ],
+    )
+    fresh["stage_summary"] = bind(summary)
     save_manifest(work_dir, fresh)
     mirror_workflow_state(fresh, "planned")
     print(f"ppt_pipeline: planned — {manifest_path(work_dir)}")
+    print(f"ppt_pipeline: scaffolded {scaffold_info['slides']} page module(s) under {work_dir / 'pages'}")
     return 0
 
 
@@ -455,6 +504,10 @@ def cmd_build(args: argparse.Namespace) -> int:
     entry = args.entry.resolve()
     if not entry.is_file():
         raise RefusedError(f"generator entry does not exist: {entry}")
+    try:
+        _scaffold.assert_page_split(entry, spec)
+    except ValueError as exc:
+        raise RefusedError(str(exc)) from exc
     fingerprint, bindings = generator_fingerprint(entry)
     previous = str(build_info.get("generator_fingerprint") or "")
     if state == "producing" and build_info.get("pending_repair") and previous == fingerprint:
@@ -481,6 +534,16 @@ def cmd_build(args: argparse.Namespace) -> int:
     manifest["state"] = "producing"
     record(manifest, "build", before, "producing", generator_fingerprint=fingerprint)
     save_manifest(work_dir, manifest)
+    write_stage_summary(
+        work_dir,
+        "producing",
+        [
+            f"- pptx: `{pptx}` sha256 {build_info['pptx']['sha256'][:12]}",
+            f"- builds: {build_info['build_count']} repairs: {build_info.get('repair_count', 0)}",
+            f"- generator files: {len(build_info.get('generator_files') or [])}",
+            "- next: `ppt_pipeline.py render`, then Read contact-sheet + blocker PNGs (CD-9)",
+        ],
+    )
     mirror_workflow_state(manifest, "producing")
     print(f"ppt_pipeline: built {pptx.name} (builds {build_info['build_count']}, repairs {build_info.get('repair_count', 0)})")
     return 0
@@ -619,7 +682,22 @@ def cmd_qa(args: argparse.Namespace) -> int:
     record(manifest, "qa", before, "qa", input_fingerprint=fingerprint)
     save_manifest(work_dir, manifest)
     mirror_workflow_state(manifest, "qa")
-    print(f"ppt_pipeline: {'ok' if qa_report['ok'] else 'blocked'} — blockers {blockers} | report: {qa_report_path}")
+    names = ", ".join(name for name, data in reports.items() if data.get("checked")) or "none"
+    line = (
+        f"ppt_pipeline: {'ok' if qa_report['ok'] else 'blocked'} — blockers {blockers} "
+        f"(critical {counts['critical']}, major {counts['major']}), minor {counts['minor']} | "
+        f"stages: {names} | report: {qa_report_path}"
+    )
+    write_stage_summary(
+        work_dir,
+        "qa",
+        [
+            f"- {line}",
+            f"- report: `{qa_report_path}`",
+            "- next: `ppt_pipeline.py complete` if ok, else `repair --reason …` then rebuild",
+        ],
+    )
+    print(line)
     for item in problems[: args.max_items]:
         print(f"  [{item['severity']}] {item['gate']}/{item['code']} — {str(item['message'])[:200]}")
     return 0 if qa_report["ok"] else 2
@@ -666,6 +744,15 @@ def cmd_complete(args: argparse.Namespace) -> int:
     manifest["state"] = "complete"
     record(manifest, "complete", before, "complete")
     save_manifest(work_dir, manifest)
+    write_stage_summary(
+        work_dir,
+        "complete",
+        [
+            "- QA green; delivery stage ran and was hash-bound.",
+            f"- pptx: `{((manifest.get('build') or {}).get('pptx') or {}).get('path')}`",
+            "- do not re-inject /sp-deck; run sp-review only if the user asks",
+        ],
+    )
     mirror_workflow_state(manifest, "complete")
     print("ppt_pipeline: complete — delivery and intake authorization are hash-bound")
     return 0
@@ -684,6 +771,107 @@ def cmd_status(args: argparse.Namespace) -> int:
         f"repairs {build.get('repair_count', 0)}/{MAX_REPAIRS}, rendered {render.get('page_count', 0)} | "
         f"qa {'ok' if qa.get('ok') else str(qa.get('blockers', '-')) + ' blockers'}"
     )
+    return 0
+
+
+def cmd_next(args: argparse.Namespace) -> int:
+    """Tell the model what to read and which command to run. CD-1/CD-3/CD-4/CD-9."""
+    work_dir = args.work_dir
+    manifest = load_manifest(work_dir)
+    python = sys.executable
+    pipeline = HERE / "ppt_pipeline.py"
+    if not manifest:
+        payload = {
+            "state": "(absent)",
+            "read": [],
+            "forbidden_to_read": ["${CLAUDE_PLUGIN_ROOT}/references/*.md"],
+            "read_images": [],
+            "next_command": (
+                f'{python} "{pipeline}" plan --work-dir "{work_dir}" '
+                "--slide-spec <compiled-spec> --validation-report <report> "
+                "--art-direction <art-direction.yaml>"
+            ),
+            "allowed_writes": ["production-summary.md", "art-direction.yaml", "slide-spec.yaml"],
+            "notes": "intake first; do not grep plugin source — this command is the discovery API",
+        }
+    else:
+        state = str(manifest.get("state") or "(absent)")
+        summary = work_dir / f"stage-{state}-summary.md"
+        read = [str(summary)] if summary.is_file() else []
+        forbidden = ["slide-spec.yaml", "art-direction.yaml", "research-pack.json"]
+        payload = {
+            "state": state,
+            "read": read,
+            "forbidden_to_read": forbidden,
+            "read_images": [],
+            "next_command": "",
+            "allowed_writes": ["pages/pNN-*.js"],
+            "notes": "different pages must be Edit'ed in the same turn (CD-1, CD-2)",
+        }
+        entry = work_dir / "deck.js"
+        if state == "planned":
+            payload["next_command"] = (
+                f'{python} "{pipeline}" build --work-dir "{work_dir}" --entry "{entry}"'
+            )
+            payload["notes"] = (
+                "fill pages/pNN-*.js with parallel Edit, then build. "
+                "Put v0.8 composition JSON in composition/."
+            )
+        elif state == "producing":
+            contact = work_dir / "contact-sheet.png"
+            if not contact.is_file():
+                payload["next_command"] = (
+                    f'{python} "{pipeline}" render --work-dir "{work_dir}"'
+                )
+                payload["notes"] = (
+                    "run render first; then Read contact-sheet + blocker page PNGs "
+                    "in ONE parallel round (CD-9)"
+                )
+            else:
+                payload["read_images"] = [
+                    str(contact),
+                    str(work_dir / "render"),
+                ]
+                payload["next_command"] = (
+                    f'{python} "{pipeline}" qa --work-dir "{work_dir}" '
+                    f'--visual-review "{work_dir / "visual-review.json"}"'
+                )
+                payload["notes"] = (
+                    "CD-9: Read contact-sheet + blocker page PNGs in ONE parallel round; "
+                    "same PPTX hash must not be re-read"
+                )
+        elif state == "qa":
+            qa = manifest.get("qa") or {}
+            if qa.get("ok"):
+                payload["next_command"] = f'{python} "{pipeline}" complete --work-dir "{work_dir}"'
+            else:
+                payload["next_command"] = (
+                    f'{python} "{pipeline}" repair --work-dir "{work_dir}" --reason "<summary>"'
+                )
+                payload["notes"] = "fix every blocker page in one parallel Edit round, then build + qa"
+        elif state == "complete":
+            payload["next_command"] = "(done)"
+            payload["notes"] = "do not re-inject /sp-deck"
+        else:
+            payload["next_command"] = f'{python} "{pipeline}" status --work-dir "{work_dir}"'
+
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
+    print(f"state: {payload['state']}")
+    print("read:")
+    for item in payload["read"] or ["(none)"]:
+        print(f"  - {item}")
+    print("forbidden_to_read:")
+    for item in payload["forbidden_to_read"]:
+        print(f"  - {item}")
+    if payload.get("read_images"):
+        print("read_images (same turn, parallel):")
+        for item in payload["read_images"]:
+            print(f"  - {item}")
+    print(f"next_command: {payload['next_command']}")
+    print(f"allowed_writes: {', '.join(payload['allowed_writes'])}")
+    print(f"notes: {payload['notes']}")
     return 0
 
 
@@ -739,6 +927,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     status = sub.add_parser("status", help="one-line manifest summary")
     status.add_argument("--work-dir", type=Path, required=True)
     status.set_defaults(func=cmd_status)
+
+    nxt = sub.add_parser("next", help="what to read and which command to run next")
+    nxt.add_argument("--work-dir", type=Path, required=True)
+    nxt.add_argument("--json", action="store_true")
+    nxt.set_defaults(func=cmd_next)
+
     return parser.parse_args(argv)
 
 

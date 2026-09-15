@@ -200,9 +200,11 @@ only after you confirm it.
 
 The suite records this boundary through `workflow_guard.py` state commands
 (init/confirm/transition); the approved summary hash and workflow state are
-stored in the project output directory. State is enforced by SKILL text
-self-discipline — the PreToolUse hook is removed, so no command is intercepted
-automatically.
+stored in the project output directory. `ppt_pipeline.py` refuses illegal
+production steps. A narrow PreToolUse hook (`cost_guard.py`) blocks plugin-source
+archaeology, same-hash PNG re-reads, and a generic `researcher` teammate — it does
+not replace the intake confirmation gate, and it does not forbid the first image
+Read.
 
 Deliverables are written to the active project's `outputs/` directory, never
 to the plugin installation. Existing source decks are never overwritten.
