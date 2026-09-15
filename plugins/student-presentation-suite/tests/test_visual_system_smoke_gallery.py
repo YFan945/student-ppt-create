@@ -4,7 +4,13 @@ import json
 import unittest
 from pathlib import Path
 
-from scripts.visual_system_smoke_gallery import layout_deck_source, style_deck_source, svg_atlas_source
+from scripts.visual_system_smoke_gallery import (
+    clipping_overflow_pages,
+    generate_one,
+    layout_deck_source,
+    style_deck_source,
+    svg_atlas_source,
+)
 from shared.design_tokens import resolve_design_tokens
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +31,41 @@ class VisualSystemSmokeGalleryTests(unittest.TestCase):
                 self.assertNotIn("H.addStyleMotif", source)
                 self.assertIn("没有可靠素材时，用图表、关系图或留白，不制造纪实感", source)
                 self.assertIn("SVG.addCornerDecoration", source)
+
+    def test_gallery_ci_fails_only_on_clipping_not_risk_band(self) -> None:
+        findings = [
+            {
+                "slide": 2,
+                "risk": ["text-vertical-overflow-risk"],
+                "overflow_estimate": {"fill_ratio_raw": 0.99},
+            },
+            {
+                "slide": 4,
+                "risk": ["text-vertical-overflow-risk"],
+                "overflow_estimate": {"fill_ratio_raw": 1.0},
+            },
+            {
+                "slide": 5,
+                "risk": ["text-vertical-overflow"],
+                "overflow_estimate": {"fill_ratio_raw": 1.05},
+            },
+        ]
+        self.assertEqual([5], clipping_overflow_pages(findings))
+
+    def test_academic_rigorous_style_gallery_does_not_clip(self) -> None:
+        import tempfile
+
+        tokens = resolve_design_tokens("academic-rigorous")
+        with tempfile.TemporaryDirectory() as tmp:
+            result = generate_one(
+                Path(tmp),
+                "style-academic-rigorous",
+                style_deck_source(tokens),
+                False,
+                6,
+            )
+        self.assertEqual(0, result["static_qa"]["text_overflow_clip_count"])
+
 
     def test_layout_gallery_contains_all_36_layout_ids(self) -> None:
         registry = json.loads((ROOT / "skills" / "sp-deck" / "references" / "layout-library.json").read_text(encoding="utf-8"))

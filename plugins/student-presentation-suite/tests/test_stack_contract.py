@@ -33,6 +33,7 @@ from shared.pptx_runtime.package import count_registered_slides  # noqa: E402
 from shared.pptx_static_core import (  # noqa: E402
     DEFAULT_SLIDE_HEIGHT_EMU,
     DEFAULT_SLIDE_WIDTH_EMU,
+    LINE_HEIGHT_RATIO,
     slide_size,
 )
 
@@ -105,6 +106,20 @@ class StackContractTests(unittest.TestCase):
         # sldIdLst 直系子元素口径（pptx_runtime.package）必须一致。
         self.assertEqual(3, count_slide_files(self.deck))
         self.assertEqual(3, count_registered_slides(self.deck))
+
+    def test_line_spacing_constants_agree_across_stacks(self) -> None:
+        code = (
+            "const H = require(process.argv[1] + '/scripts/pptx-helpers.js');"
+            "console.log(H.LINE_SPACING_FACTOR);"
+        )
+        result = subprocess.run(
+            ["node", "-e", code, str(ROOT)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+        self.assertEqual(LINE_HEIGHT_RATIO, float(result.stdout.strip()))
 
     def test_font_ratio_sources_agree(self) -> None:
         sys.path.insert(0, str(ROOT / "skills" / "sp-deck" / "scripts"))

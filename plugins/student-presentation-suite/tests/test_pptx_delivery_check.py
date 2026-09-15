@@ -136,6 +136,40 @@ class PptxDeliveryCheckTests(unittest.TestCase):
 
         self.assertEqual(0, result["blocker_like_count"])
 
+    def test_overflow_risk_band_is_not_blocker_like(self) -> None:
+        result = summarize_static_risks(
+            {
+                "findings": [
+                    {
+                        "slide": 2,
+                        "shape": 1,
+                        "text_preview": "数据与证据页突出可追溯结论",
+                        "char_count": 13,
+                        "min_font_pt": 40,
+                        "risk": ["text-vertical-overflow-risk"],
+                    }
+                ]
+            }
+        )
+        self.assertEqual(0, result["blocker_like_count"])
+
+    def test_actual_text_clipping_is_blocker_like(self) -> None:
+        result = summarize_static_risks(
+            {
+                "findings": [
+                    {
+                        "slide": 2,
+                        "shape": 1,
+                        "text_preview": "长到一定会裁切的标题文字需要两行以上",
+                        "char_count": 20,
+                        "min_font_pt": 32,
+                        "risk": ["text-vertical-overflow"],
+                    }
+                ]
+            }
+        )
+        self.assertEqual(1, result["blocker_like_count"])
+
     def test_qa_manifest_binds_current_pptx_and_decodable_preview(self) -> None:
         module = load_module(SCRIPT)
         with tempfile.TemporaryDirectory() as tmp:

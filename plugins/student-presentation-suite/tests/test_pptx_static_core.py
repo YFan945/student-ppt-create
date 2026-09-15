@@ -378,7 +378,7 @@ class PptxStaticCoreTests(unittest.TestCase):
         )
         self.assertIsNotNone(overflow)
         # 22pt 中文: 字宽≈0.77cm, 10cm/0.77≈13 字/行, 120 字需 10 行
-        # 行高≈1.09cm, 10 行≈10.9cm > 5cm → fill_ratio > 1.0
+        # 行高 1.18× ≈ 0.92cm, 10 行≈9.2cm > 5cm → fill_ratio > 1.0
         self.assertGreater(overflow["fill_ratio"], 1.0)
 
     def test_cjk_text_fits_in_large_box(self) -> None:
@@ -446,12 +446,12 @@ class PptxStaticCoreTests(unittest.TestCase):
         self.assertEqual(2.0, formatted["horizontal_margin_cm"])
 
     def test_pptx_with_overflowing_cjk_text_is_flagged(self) -> None:
-        """生成的 PPTX 中长文本应触发 text-vertical-overflow-risk"""
+        """生成的 PPTX 中长文本应触发真实裁切标记 text-vertical-overflow"""
         with tempfile.TemporaryDirectory() as tmp:
             pptx = Path(tmp) / "overflow.pptx"
             # ~100 中文字 + 24pt + 8cm×3cm 盒子 → 确定溢出
             # 24pt 字宽≈0.84cm, 8cm/0.84≈9 字/行, 100 字≈12 行
-            # 行高≈1.19cm, 12 行≈14.3cm > 3cm → fill_ratio > 4.0
+            # 行高 1.18× ≈ 1.00cm, 12 行≈12cm > 3cm → fill_ratio > 4.0
             chinese_text = (
                 "人工智能技术正在深刻改变教育的面貌从个性化学习路径到智能评估系统"
                 "自适应学习平台可以显著提升学生的学习效率和参与度"
@@ -470,7 +470,7 @@ class PptxStaticCoreTests(unittest.TestCase):
             )
             result = core.inspect_pptx(pptx)
         risks = result["findings"][0]["risk"] if result["findings"] else []
-        self.assertIn("text-vertical-overflow-risk", risks)
+        self.assertIn("text-vertical-overflow", risks)
         self.assertIn("overflow_estimate", result["findings"][0])
 
     def test_pptx_with_short_text_no_overflow_flag(self) -> None:
@@ -492,6 +492,35 @@ class PptxStaticCoreTests(unittest.TestCase):
             result = core.inspect_pptx(pptx)
         risks = result["findings"][0]["risk"] if result["findings"] else []
         self.assertNotIn("text-vertical-overflow-risk", risks)
+        self.assertNotIn("text-vertical-overflow", risks)
+
+    def test_explicit_spc_pts_drives_line_height(self) -> None:
+        from xml.etree import ElementTree as ET
+
+        xml = """<p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+          <p:txBody><a:p><a:pPr><a:lnSpc><a:spcPts val="5074"/></a:lnSpc></a:pPr></a:p></p:txBody>
+        </p:sp>"""
+        self.assertEqual(50.74, core.shape_line_height_pt(ET.fromstring(xml), 43.0))
+
+    def test_line_height_fallback_matches_helpers(self) -> None:
+        overflow = core.estimate_text_overflow(
+            chars=10, is_cjk=True, font_size_pt=32,
+            box_width_emu=int(20 * core.EMU_PER_CM),
+            box_height_emu=int(10 * core.EMU_PER_CM),
+        )
+        self.assertIsNotNone(overflow)
+        self.assertAlmostEqual(32 * core.LINE_HEIGHT_RATIO, overflow["line_height_pt"], places=2)
+
+    def test_fill_between_risk_and_clipping_is_advisory(self) -> None:
+        overflow = core.estimate_text_overflow(
+            chars=10, is_cjk=True, font_size_pt=32,
+            box_width_emu=int(20 * core.EMU_PER_CM),
+            box_height_emu=int(1.45 * core.EMU_PER_CM),
+            line_height_pt=32 * 1.18,
+        )
+        self.assertIsNotNone(overflow)
+        self.assertGreater(overflow["fill_ratio_raw"], core.OVERFLOW_BOX_FILL_RATIO)
+        self.assertLessEqual(overflow["fill_ratio_raw"], core.CLIPPING_FILL_RATIO)
 
 
     # ── CJK detection across languages ──────────────────

@@ -4,6 +4,10 @@
 `student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
 Codex 发行记录不在此维护。
 
+## 0.11.1 — 2026-09-15
+
+- **静态溢出 CI 按真实行距判定裁切**：gallery / `inspect_pptx` 不再把 0.85 填充率的 `text-vertical-overflow-risk` 当失败。只有估算高度超过文本框（`fill > 1.0`，`text-vertical-overflow`）才拦 CI。行高优先读 PPTX 里的 `a:spcPts`（helpers 写出的 `fontSize * 1.18`），缺省才回落 1.18，不再用 1.4 去误报已经按 1.18 排过的标题。
+
 ## 0.11.0 — 2026-09-15
 
 ### 成本修复：机械门禁取代「请模型省 token」

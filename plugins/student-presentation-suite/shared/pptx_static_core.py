@@ -10,6 +10,7 @@ import posixpath
 import re
 import zipfile
 from collections import Counter
+from contextlib import suppress
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
@@ -28,11 +29,15 @@ TEXT_CHARS_PER_CM_LIMIT = 18
 CHINESE_PARAGRAPH_LIMIT = 160
 LATIN_PARAGRAPH_LIMIT = 220
 
-# 垂直溢出预估常量（基于 22pt 中文 / 20pt 英文的最小字号约束）
+# 垂直溢出预估常量。字宽与 pptx-helpers.js / copy_fit_preflight.py 对齐
+# （1.0 em CJK ≈ 字号 × 0.035cm；0.58 em 拉丁 ≈ 字号 × 0.021cm）。
+# 行高优先读 OOXML a:spcPts；缺失时用 helpers 实际写出的 fontSize * 1.18，
+# 不再用 1.4 去惩罚已经按 1.18 排过的标题。
 CJK_CHAR_WIDTH_RATIO = 0.035   # 中文字宽 ≈ 字号 × 0.035cm
 LATIN_CHAR_WIDTH_RATIO = 0.021  # 英文平均字宽 ≈ 字号 × 0.021cm
-LINE_HEIGHT_RATIO = 1.4          # 行高 ≈ 字号 × 1.4
+LINE_HEIGHT_RATIO = 1.18         # 与 pptx-helpers.js LINE_SPACING_FACTOR 一致
 OVERFLOW_BOX_FILL_RATIO = 0.85   # 文字总高超过盒高 85% 时判定溢出风险
+CLIPPING_FILL_RATIO = 1.0        # 文字总高超过盒高才算真实裁切
 HEADING_PLACEHOLDER_TYPES = {"title", "ctrTitle", "subTitle"}
 PRIMARY_TITLE_PLACEHOLDER_TYPES = {"title", "ctrTitle"}
 BODY_PLACEHOLDER_TYPES = {"body", "dt", "ftr", "sldNum"}
@@ -380,6 +385,7 @@ def estimate_text_overflow(
     horizontal_margin_emu: int = 0,
     vertical_margin_emu: int = 0,
     bullet_indent_emu: int = 0,
+    line_height_pt: float | None = None,
 ) -> dict[str, float] | None:
     """预估文字在给定字号下是否会垂直溢出文本框。
 
@@ -403,7 +409,8 @@ def estimate_text_overflow(
         )
     else:
         est_lines = (chars + chars_per_line - 1) // chars_per_line  # ceil
-    line_height_cm = font_size_pt * LINE_HEIGHT_RATIO / 72 * 2.54
+    spacing_pt = line_height_pt if line_height_pt and line_height_pt > 0 else font_size_pt * LINE_HEIGHT_RATIO
+    line_height_cm = spacing_pt / 72 * 2.54
     text_height_cm = est_lines * line_height_cm
     fill_ratio = text_height_cm / box_height_cm if box_height_cm > 0 else 999
 
@@ -417,6 +424,7 @@ def estimate_text_overflow(
         "vertical_margin_cm": round(vertical_margin_emu / EMU_PER_CM, 2),
         "bullet_indent_cm": round(bullet_indent_emu / EMU_PER_CM, 2),
         "est_lines": est_lines,
+        "line_height_pt": round(spacing_pt, 2),
         "line_height_cm": round(line_height_cm, 2),
         "text_height_cm": round(text_height_cm, 1),
         "fill_ratio": round(fill_ratio, 2),           # 展示用舍入
@@ -508,6 +516,25 @@ def text_layout_inputs(el: ET.Element) -> tuple[list[str], int, int, int]:
             except ValueError:
                 continue
     return paragraphs, horizontal_margin, vertical_margin, max(indents, default=0)
+
+
+def shape_line_height_pt(el: ET.Element, font_size_pt: float | None) -> float | None:
+    """Read the largest explicit paragraph line spacing from OOXML.
+
+    pptxgenjs writes helpers' `lineSpacing` as `a:spcPts` (hundredths of a point).
+    Percentage spacing (`a:spcPct`, 100000 = 100%) is converted with the shape font.
+    """
+    values: list[float] = []
+    for ln_spc in el.findall(".//a:pPr/a:lnSpc", NS):
+        spc_pts = ln_spc.find("a:spcPts", NS)
+        if spc_pts is not None:
+            with suppress(KeyError, ValueError):
+                values.append(int(spc_pts.attrib["val"]) / 100.0)
+        spc_pct = ln_spc.find("a:spcPct", NS)
+        if spc_pct is not None and font_size_pt:
+            with suppress(KeyError, ValueError):
+                values.append(font_size_pt * int(spc_pct.attrib["val"]) / 100_000.0)
+    return max(values) if values else None
 
 
 def expanded_connector_bounds(el: ET.Element, bounds: dict[str, int]) -> dict[str, int]:
@@ -686,7 +713,7 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                             risk.append("high-text-density-overflow-risk")
                         if bounds["cx"] < SMALL_TEXT_BOX_WIDTH_EMU or bounds["cy"] < SMALL_TEXT_BOX_HEIGHT_EMU:
                             risk.append("small-text-box-risk")
-                        # 垂直溢出预估：文字总高 vs 盒高
+                        # 垂直溢出预估：优先用 OOXML 行距，缺省才回落到 1.18。
                         overflow = estimate_text_overflow(
                             chars, is_cjk, min_size,
                             bounds["cx"], bounds["cy"],
@@ -694,9 +721,14 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                             horizontal_margin_emu=horizontal_margin,
                             vertical_margin_emu=vertical_margin,
                             bullet_indent_emu=bullet_indent,
+                            line_height_pt=shape_line_height_pt(container, min_size),
                         )
-                        if overflow and overflow["fill_ratio_raw"] > OVERFLOW_BOX_FILL_RATIO:
-                            risk.append("text-vertical-overflow-risk")
+                        if overflow:
+                            fill = overflow["fill_ratio_raw"]
+                            if fill > CLIPPING_FILL_RATIO:
+                                risk.append("text-vertical-overflow")
+                            elif fill > OVERFLOW_BOX_FILL_RATIO:
+                                risk.append("text-vertical-overflow-risk")
                         if (
                             bounds["x"] < 0
                             or bounds["y"] < 0
@@ -757,6 +789,7 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                                 horizontal_margin_emu=horizontal_margin,
                                 vertical_margin_emu=vertical_margin,
                                 bullet_indent_emu=bullet_indent,
+                                line_height_pt=shape_line_height_pt(container, min_size),
                             )
                             if overflow_detail:
                                 finding["overflow_estimate"] = overflow_detail
@@ -968,7 +1001,7 @@ def summarize_static_risks(static_result: dict[str, object]) -> dict[str, object
     )
     blocker_risks = {
         "high-text-density-overflow-risk",
-        "text-vertical-overflow-risk",
+        "text-vertical-overflow",
         "paragraph-heavy-slide-text",
         "heading-font-size-below-24pt",
         "shape-outside-slide",

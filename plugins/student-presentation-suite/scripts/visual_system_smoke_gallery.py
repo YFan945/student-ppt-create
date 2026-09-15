@@ -246,6 +246,26 @@ pptx.writeFile({{ fileName: process.argv[2] }});
 """
 
 
+def clipping_overflow_pages(findings: list[dict[str, object]]) -> list[int]:
+    """Pages where estimated text is taller than the box.
+
+    The 0.85 fill band is an advisory `text-vertical-overflow-risk` for review.
+    Render-matrix CI only fails on actual clipping (`fill > 1.0` or the
+    dedicated `text-vertical-overflow` flag).
+    """
+    pages: set[int] = set()
+    for finding in findings:
+        risks = finding.get("risk") or []
+        if "text-vertical-overflow" in risks:
+            pages.add(int(finding["slide"]))
+            continue
+        estimate = finding.get("overflow_estimate") or {}
+        fill = estimate.get("fill_ratio_raw")
+        if fill is not None and float(fill) > 1.0:
+            pages.add(int(finding["slide"]))
+    return sorted(pages)
+
+
 def generate_one(work: Path, name: str, source_text: str, render: bool, expected_pages: int) -> dict[str, object]:
     target_dir = work / name
     target_dir.mkdir(parents=True, exist_ok=True)
@@ -258,14 +278,15 @@ def generate_one(work: Path, name: str, source_text: str, render: bool, expected
     static_result = inspect_pptx(pptx)
     if "error" in static_result:
         raise RuntimeError(f"{name}: static QA failed: {static_result['error']}")
-    text_overflow = [
+    findings = static_result.get("findings", [])
+    clipped = clipping_overflow_pages(findings)
+    if clipped:
+        raise RuntimeError(f"{name}: static text clipping on pages {clipped}")
+    overflow_risks = [
         finding
-        for finding in static_result.get("findings", [])
-        if "text-vertical-overflow-risk" in finding.get("risk", [])
+        for finding in findings
+        if "text-vertical-overflow-risk" in (finding.get("risk") or [])
     ]
-    if text_overflow:
-        pages = sorted({int(item["slide"]) for item in text_overflow})
-        raise RuntimeError(f"{name}: static text overflow risks on pages {pages}")
     previews: list[str] = []
     if render:
         render_dir = target_dir / "render"
@@ -280,8 +301,9 @@ def generate_one(work: Path, name: str, source_text: str, render: bool, expected
         "package_report": str(report),
         "previews": previews,
         "static_qa": {
-            "finding_count": len(static_result.get("findings", [])),
-            "text_overflow_count": 0,
+            "finding_count": len(findings),
+            "text_overflow_risk_count": len(overflow_risks),
+            "text_overflow_clip_count": 0,
         },
     }
 
