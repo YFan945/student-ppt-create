@@ -429,5 +429,3 @@ CI lints skills and tests Python 3.11/3.12 with Claude Code 2.1.272 and Ruff 0.1
 Run the release workflow on main: every validation job must pass before annotated
 tag and GitHub Release creation. PowerPoint compatibility is tracked separately
 using references/powerpoint-smoke.md; LibreOffice success is not Office certification.
-
-Live benchmarks must pass `--project-dir <project-outside-marketplace>` when launched from this repository; baselines are written to the run directory, never the installed plugin.

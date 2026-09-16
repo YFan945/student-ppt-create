@@ -253,5 +253,3 @@ python scripts/smoke_pptx.py
 QA 自动接入 speaker-notes.md 和当前预览；独立 visual-critic 读取全部页图，hook 凭据和图片 hash 在 QA/complete 复核。A/B/D research 需要真实研究员凭据。next 输出紧凑阶段契约。图片 provider command 需用户独立批准 SHA256，项目 JSON 不能自行授权。
 
 CI 扫描 skills，测试 Python 3.11/3.12，固定 Claude Code 2.1.272、Ruff 0.16.7。main 上运行 release workflow，全部检查通过后才创建 annotated tag 和 GitHub Release。PowerPoint 独立验收使用 references/powerpoint-smoke.md，LibreOffice 通过不代表 Office 已验收。
-
-从本仓库运行真实 benchmark 时须传 `--project-dir <仓库外项目>`；baseline 写入运行目录，不写安装插件。

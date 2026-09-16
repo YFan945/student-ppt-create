@@ -612,6 +612,29 @@ def cmd_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def enforce_page_copy_fidelity(work_dir: Path, spec: Path) -> None:
+    """Refuse a build whose page modules paraphrase the Slide Spec copy.
+
+    `pptx_actual_content_check.py` can only run after the deck is built and
+    rendered, so a paraphrased page is normally discovered at QA -- after build,
+    render and the first QA stage have been paid for. Comparing the page modules
+    against the Spec first turns that cascade into a single Edit.
+    """
+    pages_dir = work_dir / "pages"
+    if not pages_dir.is_dir():
+        return
+    report = work_dir / "page-copy-fidelity.json"
+    proc = _runner([
+        sys.executable, str(HERE / "page_copy_fidelity_check.py"),
+        "--slide-spec", str(spec), "--pages-dir", str(pages_dir), "--output", str(report),
+    ])
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RefusedError(
+            f"page copy fidelity blocked build; restore the planned copy verbatim: {detail[:600]}"
+        )
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     work_dir = args.work_dir.resolve()
     manifest = load_manifest(work_dir)
@@ -650,6 +673,7 @@ def cmd_build(args: argparse.Namespace) -> int:
             _scaffold.assert_page_split(entry, spec)
         except ValueError as exc:
             raise RefusedError(str(exc)) from exc
+        enforce_page_copy_fidelity(work_dir, spec)
         fingerprint, bindings = generator_fingerprint(entry)
     previous = str(build_info.get("generator_fingerprint") or "")
     if state == "producing" and build_info.get("pending_repair") and previous == fingerprint:

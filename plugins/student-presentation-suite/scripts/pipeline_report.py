@@ -112,7 +112,7 @@ def main(argv: list[str] | None = None) -> int:
     root = args.work_root or default_work_root()
     manifests = sorted(root.glob(f"*/{MANIFEST_NAME}"))
     if not manifests:
-        print(f"benchmark_report: no {MANIFEST_NAME} under {root}", file=sys.stderr)
+        print(f"pipeline_report: no {MANIFEST_NAME} under {root}", file=sys.stderr)
         return 2
     rows: list[dict[str, Any]] = []
     for path in manifests:

@@ -2,6 +2,39 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased
+
+### 移除 6-deck live benchmark runner
+
+- 删除 `scripts/benchmark_run.py`、`benchmarks/`（`decks.json` 与 0.11.1 baseline）
+  以及 `tests/test_benchmark_run.py`。真实无头跑测要花真实费用，而两次实测都在
+  build 之前停住：一次缺 isolated research receipt（`research-execution.json` 只能由
+  真实派发的子代理产生），一次模型在 `planned` 状态就 end_turn、从未执行 build。
+  确定性门禁已能覆盖同类问题，无需用真实消费去复现。
+- `benchmark_report.py` **保留**并更名为 `scripts/pipeline_report.py`（测试同步更名）：
+  它汇总 `build-manifest.json` 的执行成本（builds / repairs / render / qa / blockers），
+  属于日常报告工具，不是 live benchmark 的一部分。
+- 四个 README（中英各两份）移除 live benchmark 的操作说明。
+
+### build 前拦截改写文案：page copy fidelity gate
+
+来源：2026-09-16 复盘 0.11.1 pilot 的 11 个 QA blocker（8 个 `planned_copy_missing`
++ 3 个 `missing_key_claim`）。这些阻塞全部来自 `actual_content` 阶段，而
+`pptx_actual_content_check.py` 只能在 build + render **之后**运行，于是"页面改写了
+Spec 原文"这件事每次都要等昂贵的阶段付完钱才被发现——v0.8 run 2 的 30 blocker
+（见 `copy_fit_preflight.py` docstring）也是同一条 cascade。
+
+- **新增 `skills/sp-deck/scripts/page_copy_fidelity_check.py`**：在 `build` 之前比对
+  `pages/*.js` 与 Slide Spec，要求 `title` / `claim` / `slide_copy` **逐字**出现在对应
+  页面源码中；缺失即 exit 2，并逐条打印需要恢复的原文。页面按**序号**映射（`p01-*` 对应
+  `spec.slides[0]`）——文件名里的 slug 不是 slide id（`p03-lcoe.js`、`p05-90.js`），
+  按名字匹配不可靠。判定复用 `pptx_actual_content_check` 的 `normalize` /
+  `compact_fragments`，避免两套"逐字"规则漂移。
+- **`ppt_pipeline.py build` 接入该门禁**（`assert_page_split` 之后、生成之前）：
+  改写文案现在在 build 前被拒，修复代价是一次 Edit 而不是整轮 rebuild。
+- **拼接的字面量不算改写**：`'a' + 'b'` 视为携带原文，只有真正的改写才拦截。
+- 新增 `tests/test_page_copy_fidelity_check.py`（11 个用例，含正向/负向/序号映射/拼接）。
+
 ## 0.13.0 — 2026-09-16
 
 ### 生产执行链路与发布治理

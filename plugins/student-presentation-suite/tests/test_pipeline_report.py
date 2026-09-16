@@ -1,4 +1,4 @@
-"""Unit tests for benchmark_report: manifest aggregation and table rendering."""
+"""Unit tests for pipeline_report: manifest aggregation and table rendering."""
 
 from __future__ import annotations
 
@@ -12,15 +12,15 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT = ROOT / "scripts" / "benchmark_report.py"
+SCRIPT = ROOT / "scripts" / "pipeline_report.py"
 
-_SPEC = importlib.util.spec_from_file_location("benchmark_report", SCRIPT)
+_SPEC = importlib.util.spec_from_file_location("pipeline_report", SCRIPT)
 br = importlib.util.module_from_spec(_SPEC)
-sys.modules.setdefault("benchmark_report", br)
+sys.modules.setdefault("pipeline_report", br)
 _SPEC.loader.exec_module(br)
 
 
-class BenchmarkReportTests(unittest.TestCase):
+class PipelineReportTests(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name) / ".pptx-work"
