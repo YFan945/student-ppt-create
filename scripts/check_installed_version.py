@@ -9,7 +9,7 @@ import os
 import re
 import shutil
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,12 +51,12 @@ def parse_details_version(text: str) -> str | None:
 
 def command_output(*args: str) -> str:
     executable = shutil.which(args[0]) or args[0]
-    if os.name == "nt" and not Path(executable).suffix:
+    if os.name == "nt" and not PurePath(executable).suffix:
         command_shim = shutil.which(f"{args[0]}.cmd")
         if command_shim:
             executable = command_shim
     command: tuple[str, ...]
-    if Path(executable).suffix.lower() in {".cmd", ".bat"}:
+    if PurePath(executable).suffix.lower() in {".cmd", ".bat"}:
         command = (
             os.environ.get("ComSpec", "cmd.exe"),
             "/d",

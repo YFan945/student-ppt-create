@@ -12,6 +12,7 @@
 - Research 与独立 visual critic 以实际子代理 hook 凭据绑定产物；next 输出紧凑阶段契约。
 - 图片 provider command 须由独立 CLI SHA256 授权，项目 JSON 不能自行授权。
 - CI 覆盖 skills，固定 Claude Code/Ruff/pip-audit，测试 Python 3.11/3.12；release workflow 必须等待全部验证。
+- 可执行文件后缀解析使用 PurePath，避免 Linux/Python 3.11 的 Windows shim 模拟触发 WindowsPath 实例化错误。
 - 增加 PowerPoint 独立 smoke/checklist，修正文档中的未发布版本和旧发布线表述。
 
 ## 0.12.0 — 2026-09-15
