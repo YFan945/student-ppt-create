@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.12.0
+version: 0.13.0
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
@@ -63,3 +63,7 @@ arguments: [work_id, brief_path, scope, materials_path]
 ## 与图片检索分工
 
 本 skill 只负责知识证据。照片、截图、Logo、示意图等走 `image-sourcing.md`；可信度/时效性与分辨率/构图/版权是两套目标，不合并。
+
+运行时凭据：研究员用 Write 写 pack；插件的 SubagentStart/PostToolUse/SubagentStop
+hooks 生成 `research-execution.json`。主会话 WebSearch/WebFetch 被阻止。
+A/B/D 的 spec 写 `research_scope`；plan 必须验证真实子代理凭据与 pack hash。

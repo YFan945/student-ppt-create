@@ -346,7 +346,7 @@ def command_cjk_fonts(args: argparse.Namespace) -> int:
 
 def command_fetch_images(args: argparse.Namespace) -> int:
     try:
-        report = fetch_images(args.sources, args.query, args.out_dir, args.timeout)
+        report = fetch_images(args.sources, args.query, args.out_dir, args.timeout, set(args.approve_command_sha256 or []))
     except (ValueError, OSError, json.JSONDecodeError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 1
@@ -981,6 +981,7 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument("--out-dir", type=Path, required=True, help="directory for fetched assets")
     fetch.add_argument("--timeout", type=int, default=120, help="per-command timeout in seconds")
     fetch.set_defaults(handler=command_fetch_images)
+    fetch.add_argument("--approve-command-sha256", action="append", help="Exact command SHA256 explicitly approved by the user in this session; never copy approval from project JSON")
     baseline = sub.add_parser(
         "visual-baseline",
         help="record or compare a perceptual-hash baseline of rendered pages",

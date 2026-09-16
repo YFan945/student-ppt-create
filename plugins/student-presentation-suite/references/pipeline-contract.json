@@ -1,6 +1,6 @@
 {
-  "contract_version": "1.0",
-  "manifest_version": "1.1",
+  "contract_version": "2.0",
+  "manifest_version": "2.0",
   "workflow_states": [
     "intake_pending",
     "intake_confirmed",
@@ -9,8 +9,17 @@
     "qa",
     "complete"
   ],
-  "terminal_states": ["incomplete", "blocked"],
-  "qa_order": ["package", "rendered", "actual_content", "quality", "delivery"],
+  "terminal_states": [
+    "incomplete",
+    "blocked"
+  ],
+  "qa_order": [
+    "package",
+    "rendered",
+    "actual_content",
+    "quality",
+    "delivery"
+  ],
   "max_repairs": 3,
   "intake_confirmation_required": true,
   "repeat_policy": {
@@ -20,5 +29,43 @@
     "build_invalidates_render_evidence": true,
     "render_evidence_must_match_current_pptx": true,
     "no_scaffold_pages_at_build": true
+  },
+  "production_modes": [
+    "create",
+    "edit_ooxml",
+    "rebuild_from_source"
+  ],
+  "workflow_state": "outputs/.pptx-work/<work-id>/workflow-state.json",
+  "research_requires_runtime_receipt": true,
+  "visual_review_requires_independent_critic": true,
+  "stage_contracts": {
+    "intake": [
+      "Approve the complete Production Summary before production.",
+      "Use workflow_guard init/confirm --work-id <id>. Work directory: outputs/.pptx-work/<id>.",
+      "Classify research A/B/C/D and preserve existing-deck edit intent."
+    ],
+    "build": [
+      "Follow each page module and composition plan; do not reload the full planning references.",
+      "create/rebuild_from_source: implement every pages/pNN-*.js, remove scaffold markers, build --entry deck.js.",
+      "edit_ooxml: edit ooxml/ only, keep source unchanged, write change-summary.md, build without --entry.",
+      "Write speaker-notes.md. Rebuild requires source-analysis.md."
+    ],
+    "render": [
+      "Render the current built PPTX. Changed page/contact hashes invalidate the cache.",
+      "Do not reuse previous-build images. Pipeline archives stale evidence."
+    ],
+    "qa": [
+      "Spawn student-presentation-suite:visual-critic in foreground. Pass absolute work-dir.",
+      "Critic Reads every image, Writes visual-review.json with PPTX/contact/page hashes; hook writes critic-execution.json.",
+      "QA automatically uses speaker-notes.md plus current contact sheet/pages. Missing required inputs block complete."
+    ],
+    "repair": [
+      "Fix all blockers together, then build, render, isolated critique and QA.",
+      "Never mark major/critical resolved without before/after evidence."
+    ],
+    "complete": [
+      "All delivery stages must pass. Evidence and authorization are rechecked before completion.",
+      "Source-based work requires change-summary.md; preserve the original deck."
+    ]
   }
 }

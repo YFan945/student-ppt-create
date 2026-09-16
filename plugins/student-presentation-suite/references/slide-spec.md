@@ -194,3 +194,11 @@ When `sp-review` receives Slide Spec YAML plus a deck:
 - compare planned title, layout, visual, timing, and owner against the actual deck
 - flag missing visuals, changed claims, lost handoff lines, or timing drift
 - treat mismatches as risks, not automatic errors, when the final deck improves clarity
+
+## Pipeline research classification
+
+Set top-level `research_scope: A|B|C|D`. A/B/D require a validated Research Pack,
+evidence map and runtime-generated researcher receipt at plan. External-source
+ledger entries also trigger this requirement even if scope was omitted. C is only
+for decks that need no external facts. Source-deck mode is derived from source_deck
+and edit_intent; a PDF/image source is rebuilt, never silently treated as create.

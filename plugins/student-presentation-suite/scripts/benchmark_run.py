@@ -120,9 +120,9 @@ def resolve_materials(deck: dict[str, Any], override: str | None) -> str | None:
     return str(path.resolve())
 
 
-def state_file_path(project_dir: Path) -> Path:
+def state_file_path(project_dir: Path, work_id: str) -> Path:
     """Must match `ppt_pipeline.default_workflow_state` for CLAUDE_PROJECT_DIR."""
-    return project_dir / "outputs" / ".student-presentation-state.json"
+    return project_dir / "outputs" / ".pptx-work" / work_id / "workflow-state.json"
 
 
 def production_summary(deck: dict[str, Any], topic: str, work_id: str, materials: str | None) -> str:
@@ -169,7 +169,7 @@ def prepare_intake(
     work.mkdir(parents=True, exist_ok=True)
     summary = work / "production-summary.md"
     summary.write_text(production_summary(deck, topic, work_id, materials), encoding="utf-8")
-    state = state_file_path(project_dir)
+    state = state_file_path(project_dir, work_id)
     guard = PLUGIN_ROOT / "scripts" / "workflow_guard.py"
     python = os.environ.get("PYTHON") or sys.executable
     steps = [
@@ -544,7 +544,7 @@ def main(argv: list[str] | None = None) -> int:
         help="continue an interrupted deck session (needs --deck); skips intake and finished stages",
     )
     parser.add_argument("--report", action="store_true", help="only aggregate the current run, spend nothing")
-    parser.add_argument("--project-dir", type=Path, help="CLAUDE_PROJECT_DIR for the runs (default: repo root)")
+    parser.add_argument("--project-dir", type=Path, help="CLAUDE_PROJECT_DIR for the runs (default: cwd; production must be outside marketplace)")
     parser.add_argument("--run-id", help="run directory name (default: version-timestamp)")
     parser.add_argument("--topic", help="override the deck topic (decks.json ships placeholders)")
     parser.add_argument("--materials", help="override the materials path for scope C/D decks")
@@ -560,7 +560,9 @@ def main(argv: list[str] | None = None) -> int:
 
     document = load_decks()
     version = plugin_version()
-    project_dir = (args.project_dir or PLUGIN_ROOT.parents[1]).resolve()
+    project_dir = (args.project_dir or Path.cwd()).resolve()
+    if not args.report and not args.dry_run and project_dir.is_relative_to(PLUGIN_ROOT.parents[1]):
+        raise RefusedError("pass --project-dir outside the marketplace repository for live benchmarks")
     run_id = args.run_id or f"{version}-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     run_dir = project_dir / "outputs" / ".benchmark" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -619,7 +621,7 @@ def main(argv: list[str] | None = None) -> int:
     print_summary(report)
     print(f"benchmark_run: report -> {report_path}")
     if records and not args.dry_run and not args.report:
-        baseline_path = PLUGIN_ROOT / "benchmarks" / f"baseline-{version}-{datetime.now().strftime('%Y%m%d')}.json"
+        baseline_path = run_dir / f"baseline-{version}-{datetime.now().strftime('%Y%m%d')}.json"
         baseline_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print(f"benchmark_run: baseline -> {baseline_path}")
         print("benchmark_run: fold the totals into decks.json's live_baseline once all six decks are in")

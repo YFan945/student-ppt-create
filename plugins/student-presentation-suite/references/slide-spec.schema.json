@@ -101,6 +101,7 @@
         }
       ]
     },
+    "research_scope": {"enum": ["A", "B", "C", "D"]},
     "source_deck": {
       "type": "string",
       "minLength": 1,

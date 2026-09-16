@@ -80,3 +80,7 @@ status: blocked
 If a partial artifact exists, replace `-` only with its path; never append a prose research summary.
 
 Canonical rules: `references/research-workflow.md`; evidence chain: `references/evidence-and-citations.md`.
+
+Use Write for research-pack.json (not a shell heredoc): successful child Write and
+SubagentStop hooks bind its final hash in research-execution.json. Do not write or
+forge that receipt yourself. The main plan refuses a missing or stale receipt.

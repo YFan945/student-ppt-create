@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import sys
 import unittest
@@ -15,6 +16,17 @@ TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAC
 
 
 class FetchImagesTests(unittest.TestCase):
+    def test_project_permission_cannot_authorize_local_command(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            contract = self._make_contract(root, allow_web=True)
+            report = fetch_images(contract, ["generated cover"], root / "fetched")
+            self.assertFalse(report["ok"])
+            self.assertIn("independent user approval", " ".join(report["gate_reasons"]))
+            self.assertEqual(list((root / "fetched").iterdir()), [])
+
     def _make_contract(self, tmp: Path, allow_web: bool) -> Path:
         assets = tmp / "assets"
         assets.mkdir(exist_ok=True)
@@ -68,7 +80,7 @@ class FetchImagesTests(unittest.TestCase):
             contract = self._make_contract(tmp_path, allow_web=False)
             out = tmp_path / "fetched"
             report = fetch_images(
-                contract, ["lab photo", "生成封面"], out
+                contract, ["lab photo", "生成封面"], out, approved_commands={hashlib.sha256(json.loads(contract.read_text(encoding="utf-8"))["providers"][1]["command"].encode()).hexdigest()}
             )
             statuses = {r["query"]: r for r in report["records"]}
             self.assertEqual("user-photos", statuses["lab photo"]["provider_id"])

@@ -19,6 +19,7 @@ Safety model:
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import re
 import shlex
@@ -36,7 +37,7 @@ def _slug(text: str) -> str:
     return slug[:60] or "query"
 
 
-def _check_gates(sources: dict[str, Any]) -> tuple[list[dict], list[str]]:
+def _check_gates(sources: dict[str, Any], approved_commands: set[str] | None = None) -> tuple[list[dict], list[str]]:
     """Return (runnable providers, skip reasons) after permission + env gates."""
     permission = sources.get("permission") or {}
     runnable: list[dict[str, Any]] = []
@@ -53,6 +54,11 @@ def _check_gates(sources: dict[str, Any]) -> tuple[list[dict], list[str]]:
         if kind == "image-generation" and not permission.get("allow_generation"):
             reasons.append(f"{pid}: generation not permitted (allow_generation=false)")
             continue
+        if kind in {"web-search", "image-generation"}:
+            command_hash = hashlib.sha256(str(provider.get("command") or "").encode("utf-8")).hexdigest()
+            if command_hash not in (approved_commands or set()):
+                reasons.append(f"{pid}: command requires independent user approval: {command_hash}")
+                continue
         missing = [cmd for cmd in provider.get("requires", []) if not shutil.which(cmd)]
         if missing:
             reasons.append(f"{pid}: required commands missing: {', '.join(missing)}")
@@ -136,11 +142,12 @@ def fetch_images(
     queries: list[str],
     out_dir: Path,
     timeout_sec: int = 120,
+    approved_commands: set[str] | None = None,
 ) -> dict[str, Any]:
     """Run the contract for every query. Returns a report dict."""
     sources = json.loads(Path(sources_path).read_text(encoding="utf-8"))
     out_dir.mkdir(parents=True, exist_ok=True)
-    runnable, gate_reasons = _check_gates(sources)
+    runnable, gate_reasons = _check_gates(sources, approved_commands)
     now = datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
     records: list[dict[str, Any]] = []
 

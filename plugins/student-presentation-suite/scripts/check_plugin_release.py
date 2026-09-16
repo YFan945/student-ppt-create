@@ -326,6 +326,7 @@ def main() -> None:
     errors: list[str] = []
     check_structure(errors)
     check_manifest(errors)
+    check_current_documentation(errors)
     reference_graph = check_script_reference_graph(errors)
     check_runtime_contract(errors)
     check_embedded_runtime(errors)
@@ -347,6 +348,29 @@ def main() -> None:
         print("插件发布检查通过。")
     if errors:
         raise SystemExit(1)
+
+
+def check_current_documentation(errors: list[str]) -> None:
+    """Current guidance may cite published suite versions, never draft releases.
+
+    Historical changelog sections are intentionally excluded from branch checks.
+    Dependency/CLI versions are not suite release numbers.
+    """
+    changelog = (REPOSITORY_ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    published = set(re.findall(r"^## (\d+\.\d+\.\d+)\b", changelog, re.M))
+    published.add(json.loads((ROOT / ".claude-plugin/plugin.json").read_text())["version"])
+    paths = [REPOSITORY_ROOT / "README.md", REPOSITORY_ROOT / "README-zh.md", ROOT / "README.md", ROOT / "README-zh.md", ROOT / "scripts/live_prompts/README.md", *sorted((ROOT / "skills").glob("*/SKILL.md"))]
+    for path in paths:
+        text = path.read_text(encoding="utf-8")
+        text = re.sub(r"Ruff\s+\d+\.\d+\.\d+", "Ruff", text)
+        text = text.replace("v0.7.1", "quality-core")  # quality contract, not a plugin release
+        if re.search(r"(?:github\.com/YFan945/Personal-Student/(?:tree|blob)/claude-code|本文件记录\s*`claude-code`)", text):
+            errors.append(f"Retired publication source in {path.name}")
+        for version in set(re.findall(r"(?<![\d.])0\.\d+\.\d+(?![\d.])", text)) - published:
+            errors.append(f"Unpublished suite version {version} in {path.name}")
+    introduction = changelog.split("\n## ", 1)[0]
+    if "claude-code" in introduction or "Codex 发行" in introduction:
+        errors.append("Changelog introduction must describe this repository's main release line")
 
 
 if __name__ == "__main__":

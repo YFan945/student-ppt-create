@@ -180,7 +180,7 @@ npm --prefix plugins/student-presentation-suite ci
 $env:PYTHONPATH=(Resolve-Path "plugins/student-presentation-suite").Path
 
 # Lint checks
-ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/tests/
+ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/skills/ plugins/student-presentation-suite/tests/
 npx --prefix plugins/student-presentation-suite eslint plugins/student-presentation-suite/scripts/*.js
 npx --prefix plugins/student-presentation-suite prettier --check plugins/student-presentation-suite/scripts/*.js
 
@@ -215,7 +215,7 @@ dependencies are mode-specific; use `--mode create`, `edit_ooxml`, or
 4. Update documentation and `CHANGELOG.md`.
 5. Run the full validation suite.
 6. Commit the release changes and **push directly to `main`**.
-7. Create an **annotated** tag `v<version>`. Lightweight tags are not used: every
+7. Wait for the exact main commit’s `validate` workflow and `release-ready` check to succeed. Then create an **annotated** tag `v<version>`. Lightweight tags are not used: every
    release tag except `v0.11.0` is annotated, and `v0.11.1` had to be re-tagged.
 8. Create the GitHub Release, matching the existing title style:
    `gh release create v<version> --title "v<version> — <one-line theme>" --notes-file <file>`.

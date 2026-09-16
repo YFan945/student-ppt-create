@@ -335,3 +335,21 @@ This is a suite-owned implementation; no ECMA/ISO XSD files from the
 
 See the repository [README](../../README.md), [AGENTS.md](../../AGENTS.md), and
 [CHANGELOG.md](../../CHANGELOG.md) for installation, maintenance, and releases.
+
+## 0.13 production integrity
+
+Production uses per-work authorization in `outputs/.pptx-work/<work-id>/workflow-state.json`.
+Initialize/confirm with `--work-id`; legacy global states require fresh confirmation.
+The pipeline dispatches create, edit_ooxml (unpack/edit/pack), and rebuild_from_source
+(source-analysis.md required). Source-based deliveries require change-summary.md.
+QA auto-binds speaker-notes.md and current previews. An isolated visual-critic must
+read every page; runtime receipts and image hashes are verified before QA/complete.
+A/B/D research requires an isolated researcher receipt. `next --json` provides a
+compact stage contract. Image provider commands require independent user-approved
+command SHA256 flags; project JSON cannot authorize execution.
+CI lints skills and tests Python 3.11/3.12 with Claude Code 2.1.272 and Ruff 0.16.7.
+Run the release workflow on main: every validation job must pass before annotated
+tag and GitHub Release creation. PowerPoint compatibility is tracked separately
+using references/powerpoint-smoke.md; LibreOffice success is not Office certification.
+
+Live benchmarks must pass `--project-dir <project-outside-marketplace>` when launched from this repository; baselines are written to the run directory, never the installed plugin.

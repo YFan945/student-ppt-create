@@ -1,7 +1,7 @@
 ---
 name: sp-review
 description: Use only for a clearly student-owned academic context when the user explicitly asks to review, audit, score, critique, compare, or diagnose an existing PPT/PPTX/PowerPoint deck or rendered export.
-version: 0.12.0
+version: 0.13.0
 ---
 
 # Student Presentation Review
@@ -51,7 +51,7 @@ version: 0.12.0
 ## 评审结论标签
 
 `complete` / `incomplete` / `blocked` 是评审报告的结论标签，仅描述审查完成度；
-本 skill 不调用 `workflow_guard.py`，不写 `.student-presentation-state.json`。
+本 skill 不调用 `workflow_guard.py`，不写 `workflow-state.json`。
 
 - 静态扫描 + 渲染检查完成 → `complete`
 - 审查有用但缺少渲染证据 → `incomplete`；声明视觉结论未经核实

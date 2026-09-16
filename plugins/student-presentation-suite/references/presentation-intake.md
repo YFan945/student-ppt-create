@@ -38,7 +38,7 @@ Confirm every item before production:
 | Rubric/required sections | No supplied rubric; use standard academic structure | Controls scoring priorities |
 | Source material | User material plus stable general background | Controls evidence boundaries |
 | Template/branding | No required template, logo, or brand | Controls layout constraints |
-| Source deck (新建/改进) | No existing deck → create new | Decides `production_mode`: an editable `.pptx`/`.potx` source → `edit_ooxml`; a corrupt source or non-PPTX (PDF/preview) → `rebuild_from_source`/`create`; otherwise `create` |
+| Source deck (新建/改进) | No existing deck → create new | Decides `production_mode`: an editable `.pptx`/`.potx` source → `edit_ooxml`; a corrupt source or non-PPTX (PDF/preview) → `rebuild_from_source`; otherwise `create` |
 | Edit intent | None (new deck) | For improvements: `incremental` / `rebuild-clean-copy` / `fix-specific`; `rebuild-clean-copy` overrides the edit_ooxml default |
 | Image strategy | `hybrid-adaptive`：生成能力可用且获准时制作关键插图，否则采用确定性图表/形状 | Controls sourcing and production |
 | Visual style | Recommend three topic-fit styles; choose one only after confirmation | Controls visual direction |
@@ -84,7 +84,7 @@ reply.
    - `调整方案` → 修改页数/配色/内容后重新确认
    - `更换视觉风格` → 回到风格选择（Round 3a）重新选
    - `Other`（自由输入，例如"改为仅大纲"）
-   用户选中"确认"后，才调用 `confirm --summary-file <summary>` 落 `intake_confirmed`。
+   用户选中"确认"后，才调用 `confirm --work-id <work-id> --summary-file <summary>` 落 `intake_confirmed`。
 7. 任何一轮询问之后需要用户表态时，一律用 `AskUserQuestion` 继续，不要以纯文本
    收尾中断会话。
 8. Do not run environment checks, generation scripts, rendering, or delivery
@@ -237,3 +237,10 @@ For PPTX work, persist this state under the active project with
 `scripts/workflow_guard.py`. The workflow gate is tracked through the state
 commands as a process convention; the summary file hash is retained as the
 auditable confirmation boundary.
+
+## Work isolation
+
+Use `workflow_guard.py init --work-id <work-id>` and confirm with the same identifier.
+The state is `outputs/.pptx-work/<work-id>/workflow-state.json`; each manifest binds
+its work_id, state path and summary SHA256. Never reset another deck to start a new deck.
+Legacy global states are not automatically trusted: use a new work-id and reconfirm.

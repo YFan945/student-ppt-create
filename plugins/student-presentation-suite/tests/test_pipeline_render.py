@@ -57,6 +57,7 @@ class PipelineRenderTests(unittest.TestCase):
         self.state.write_text(
             json.dumps({
                 "state": "producing",
+                "work_id": "work",
                 "summary_file": str(self.summary),
                 "summary_sha256": pp.sha256_file(self.summary),
             }), encoding="utf-8",
@@ -149,6 +150,7 @@ class NextRoutingTests(unittest.TestCase):
         self.state.write_text(
             json.dumps({
                 "state": "producing",
+                "work_id": "work",
                 "summary_file": str(self.summary),
                 "summary_sha256": pp.sha256_file(self.summary),
             }), encoding="utf-8",

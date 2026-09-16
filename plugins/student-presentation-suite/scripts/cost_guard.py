@@ -60,9 +60,11 @@ def session_key(event: dict) -> str:
 
     One task must never silence the next task's first read, so the store is
     keyed by the hook's session id rather than shared across the whole
-    `.pptx-work` root (which was the pre-0.11.2 behaviour).
+    `.pptx-work` root (which was the pre-0.12.0 behaviour).
     """
     session = str(event.get("session_id") or "").strip()
+    if event.get("agent_id"):
+        session += "-" + str(event["agent_id"])
     if not session:
         cwd = str(event.get("cwd") or os.getcwd())
         session = "cwd-" + hashlib.sha256(str(Path(cwd or ".").resolve()).encode("utf-8")).hexdigest()[:12]

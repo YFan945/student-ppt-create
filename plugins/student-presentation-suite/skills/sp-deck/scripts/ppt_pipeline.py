@@ -21,6 +21,7 @@ Exit codes: 0 = ok, 2 = refused (illegal state, failed gate, missing input).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import math
@@ -31,13 +32,14 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
+
 import generator_scaffold as _scaffold  # noqa: E402
 
 ROOT = HERE.parents[2]
@@ -78,7 +80,7 @@ def sha256_file(path: Path) -> str:
 
 
 def now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def manifest_path(work_dir: Path) -> Path:
@@ -143,7 +145,7 @@ def render_is_current(manifest: dict[str, Any]) -> bool:
     pages = [Path(str(item.get("path"))) for item in render.get("pages") or []]
     if not contact.is_file() or not pages:
         return False
-    return all(page.is_file() for page in pages)
+    return all(binding_is_current(item) for item in [render["contact_sheet"], *render["pages"]])
 
 
 def archive_stale_render(work_dir: Path, manifest: dict[str, Any]) -> list[str]:
@@ -160,6 +162,8 @@ def archive_stale_render(work_dir: Path, manifest: dict[str, Any]) -> list[str]:
         candidates.append(Path(str(contact)))
     candidates.extend(Path(str(item.get("path"))) for item in render.get("pages") or [])
     existing = [path for path in candidates if path.is_file()]
+    if any(not path.resolve().is_relative_to(work_dir.resolve()) for path in existing):
+        raise RefusedError("render archive cannot move files outside work-dir")
     if not existing:
         return []
     label = str(render.get("pptx_sha256") or "unknown")[:8]
@@ -197,14 +201,17 @@ def record(manifest: dict[str, Any], command: str, before: str, after: str, **ex
 
 
 def default_workflow_state(work_dir: Path) -> Path:
-    configured = os.environ.get("CLAUDE_PROJECT_DIR")
-    if configured:
-        return Path(configured).expanduser().resolve() / "outputs" / ".student-presentation-state.json"
+    return work_dir.resolve() / "workflow-state.json"
+
+
+def validate_work_dir(work_dir: Path) -> None:
+    project = Path(os.environ.get("CLAUDE_PROJECT_DIR") or Path.cwd()).resolve()
+    allowed = project / "outputs" / ".pptx-work"
     resolved = work_dir.resolve()
-    # canonical work dir: <project>/outputs/.pptx-work/<work-id>
-    if resolved.parent.name == ".pptx-work" and resolved.parent.parent.name == "outputs":
-        return resolved.parent.parent / ".student-presentation-state.json"
-    return resolved.parent / ".student-presentation-state.json"
+    if resolved.parent != allowed.resolve() or resolved.name.startswith("."):
+        raise RefusedError(f"work-dir must be outputs/.pptx-work/<work-id> under {project}")
+    if resolved.is_relative_to(ROOT.resolve()) or (ROOT.parents[1] / ".claude-plugin/marketplace.json").is_file() and resolved.is_relative_to(ROOT.parents[1]):
+        raise RefusedError("work-dir must not be inside the installed plugin or marketplace repository")
 
 
 def validate_intake(state_path: Path) -> dict[str, Any]:
@@ -235,6 +242,33 @@ def validate_manifest_authorization(manifest: dict[str, Any]) -> None:
         raise RefusedError("manifest has no valid intake authorization binding; re-plan")
     if sha256_file(summary_path) != summary_sha:
         raise RefusedError("Production Summary changed after plan; re-confirm and re-plan")
+    state = load_json(state_path) or {}
+    if state.get("work_id") != manifest.get("work_id") or state.get("summary_sha256") != summary_sha:
+        raise RefusedError("workflow work_id or confirmed summary no longer matches manifest")
+    if state.get("state") != manifest.get("state"):
+        raise RefusedError("workflow authorization was reset or revoked; re-confirm and re-plan")
+    source = manifest.get("source")
+    if source and not binding_is_current(source):
+        raise RefusedError("source deck changed after plan; restore source or re-confirm and re-plan")
+    if any(not binding_is_current(item) for item in (manifest.get("inputs") or {}).values()):
+        raise RefusedError("planned input changed or disappeared; re-plan")
+    if manifest.get("research") and not binding_is_current(manifest["research"]["execution"]):
+        raise RefusedError("research execution receipt changed after plan")
+
+
+def binding_is_current(binding: dict[str, Any]) -> bool:
+    path = Path(str(binding.get("path") or ""))
+    return path.is_file() and binding.get("sha256") == sha256_file(path)
+
+
+def execution_receipt(work_dir: Path, role: str, artifact: Path) -> dict[str, Any]:
+    receipt = load_json(work_dir / f"{role}-execution.json") or {}
+    expected = "presentation-researcher" if role == "research" else "visual-critic"
+    if receipt.get("agent") != f"student-presentation-suite:{expected}" or not receipt.get("agent_id") or receipt.get("spawn_verified") is not True or receipt.get("work_id") != work_dir.name:
+        raise RefusedError(f"missing successful isolated {role} runtime receipt")
+    if receipt.get("artifact") != bind(artifact):
+        raise RefusedError(f"{role} artifact changed after isolated execution")
+    return receipt
 
 
 def mirror_workflow_state(manifest: dict[str, Any], state: str, *, reason: str | None = None) -> None:
@@ -243,6 +277,8 @@ def mirror_workflow_state(manifest: dict[str, Any], state: str, *, reason: str |
     current = load_json(path)
     if not current:
         raise RefusedError(f"workflow state disappeared after plan: {path}")
+    if current.get("work_id") != manifest.get("work_id"):
+        raise RefusedError("cannot mirror another work_id's authorization")
     current["state"] = state
     current["updated_at"] = now()
     current["pipeline_manifest"] = str(manifest_path(Path(str(manifest.get("work_dir") or "."))))
@@ -379,6 +415,8 @@ def normalise_severity(report: dict[str, Any], issue: dict[str, Any]) -> str:
 
 def collect(stage: Stage) -> tuple[bool, list[dict[str, Any]], dict[str, Any]]:
     started = time.monotonic()
+    # A failed command must not inherit a previous run's successful report.
+    stage.report.unlink(missing_ok=True)
     proc = _runner(stage.argv)
     duration_ms = int((time.monotonic() - started) * 1000)
     if not stage.report.is_file():
@@ -398,13 +436,13 @@ def collect(stage: Stage) -> tuple[bool, list[dict[str, Any]], dict[str, Any]]:
         **({"slide": issue.get("slide")} if issue.get("slide") is not None else {}),
     } for issue in issues if isinstance(issue, dict)]
     binding = {
-        "ok": bool(report.get("ok", proc.returncode == 0)), "checked": True,
+        "ok": report.get("ok") is True and proc.returncode == 0, "checked": True,
         "exit_code": proc.returncode, "duration_ms": duration_ms,
         "issue_count": len(issues), **bind(stage.report),
     }
-    if not issues and not binding["ok"]:
+    if not binding["ok"] and not any(item["severity"] in {"critical", "major"} for item in problems):
         problems.append({
-            "gate": stage.name, "severity": "major" if proc.returncode else "minor",
+            "gate": stage.name, "severity": "major",
             "code": f"{stage.name}_failed",
             "message": f"{stage.name} reported not ok without itemised issues (exit {proc.returncode}).",
         })
@@ -442,6 +480,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
     workflow_state_path = (args.workflow_state or default_workflow_state(work_dir)).resolve()
     intake = validate_intake(workflow_state_path)
+    if workflow_state_path != default_workflow_state(work_dir) or intake.get("work_id") != work_dir.name:
+        raise RefusedError("intake must belong to this work_id and use its workflow-state.json")
 
     spec = args.slide_spec.resolve()
     validation_report = args.validation_report.resolve()
@@ -449,12 +489,32 @@ def cmd_plan(args: argparse.Namespace) -> int:
     for label, path in (("Slide Spec", spec), ("validation report", validation_report), ("Art Direction", art)):
         if not path.is_file():
             raise RefusedError(f"{label} does not exist: {path}")
+    import yaml
+
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from slide_spec_to_pptx_brief import derive_production_mode, validate_production_source
+
+    spec_data = yaml.safe_load(spec.read_text(encoding="utf-8"))
+    if not isinstance(spec_data, dict):
+        raise RefusedError("Slide Spec must be an object")
+    if spec_data.get("source_deck"):
+        source = Path(spec_data["source_deck"]).expanduser()
+        spec_data["source_deck"] = str((spec.parent / source).resolve())
+    try:
+        mode = derive_production_mode(spec_data, getattr(args, "production_mode", None))
+        validate_production_source(spec_data, mode)
+    except ValueError as exc:
+        raise RefusedError(str(exc)) from exc
+    work_dir.mkdir(parents=True, exist_ok=True)
 
     fresh: dict[str, Any] = {
         "manifest_version": MANIFEST_VERSION,
         "contract_version": CONTRACT.get("contract_version"),
         "work_id": work_dir.name,
         "work_dir": str(work_dir),
+        "mode": mode,
+        "source": bind(Path(spec_data["source_deck"])) if spec_data.get("source_deck") else None,
+        "edit_contract": {key: spec_data.get(key) for key in ("edit_intent", "review_findings", "preserve", "change_summary_required")},
         "state": "(absent)", "inputs": {},
         "workflow": {
             "state_file": str(workflow_state_path),
@@ -464,6 +524,13 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "build": {"build_count": 0, "repair_count": 0, "pending_repair": False},
         "render": {}, "qa": {}, "history": [],
     }
+    scope = spec_data.get("research_scope", "C")
+    external = any(item.get("source_type") not in {"user-file", "experiment", "interview", "survey"} for item in spec_data.get("evidence_ledger", []))
+    if args.research_pack or scope in {"A", "B", "D"} or external:
+        if not args.research_pack or not args.research_validation or not args.evidence_map:
+            raise RefusedError("research-backed plan requires pack, validation and evidence map")
+        receipt = execution_receipt(work_dir, "research", args.research_pack.resolve())
+        fresh["research"] = {"required": True, "scope": scope, "agent": receipt["agent"], "spawn_verified": True, "execution": bind(work_dir / "research-execution.json")}
     if manifest and args.force:
         fresh["build"]["repair_count"] = int((manifest.get("build") or {}).get("repair_count") or 0)
         fresh["history"] = list(manifest.get("history") or [])
@@ -506,7 +573,21 @@ def cmd_plan(args: argparse.Namespace) -> int:
 
     fresh["state"] = "planned"
     record(fresh, "plan", "(absent)", "planned")
-    scaffold_info = _scaffold.scaffold_generator(work_dir, spec)
+    if mode == "edit_ooxml":
+        unpacked = work_dir / "ooxml"
+        if unpacked.exists():
+            raise RefusedError("ooxml workspace already exists; use a new work-id for a new plan")
+        unpack = _runner([sys.executable, str(PPTX_TOOL), "unpack", fresh["source"]["path"], "--output", str(unpacked)])
+        if unpack.returncode != 0 or not unpacked.is_dir():
+            raise RefusedError("source unpack failed")
+        scaffold_info = {"slides": len(spec_data.get("slides") or []), "pages": []}
+    else:
+        scaffold_info = _scaffold.scaffold_generator(work_dir, spec)
+        if mode == "rebuild_from_source":
+            analysis = work_dir / "source-analysis.md"
+            if not analysis.is_file() or not analysis.read_text(encoding="utf-8").strip():
+                raise RefusedError("rebuild_from_source requires source-analysis.md before plan")
+            fresh["inputs"]["source_analysis"] = bind(analysis)
     fresh["scaffold"] = {
         "slides": scaffold_info["slides"],
         "pages": scaffold_info["pages"],
@@ -555,23 +636,35 @@ def cmd_build(args: argparse.Namespace) -> int:
         detail = (check.stderr or check.stdout or "").strip()
         raise RefusedError(f"spec lock check failed; re-plan first: {detail[:400]}")
 
-    entry = args.entry.resolve()
-    if not entry.is_file():
-        raise RefusedError(f"generator entry does not exist: {entry}")
-    try:
-        _scaffold.assert_page_split(entry, spec)
-    except ValueError as exc:
-        raise RefusedError(str(exc)) from exc
-    fingerprint, bindings = generator_fingerprint(entry)
+    editing = manifest.get("mode") == "edit_ooxml"
+    entry = work_dir / "ooxml" if editing else (args.entry or work_dir / "deck.js").resolve()
+    if editing:
+        bindings = [bind(path) for path in sorted(entry.rglob("*")) if path.is_file()]
+        if not bindings:
+            raise RefusedError("OOXML workspace is empty")
+        fingerprint = stable_hash(bindings)
+    else:
+        if not entry.is_file():
+            raise RefusedError(f"generator entry does not exist: {entry}")
+        try:
+            _scaffold.assert_page_split(entry, spec)
+        except ValueError as exc:
+            raise RefusedError(str(exc)) from exc
+        fingerprint, bindings = generator_fingerprint(entry)
     previous = str(build_info.get("generator_fingerprint") or "")
     if state == "producing" and build_info.get("pending_repair") and previous == fingerprint:
         raise RefusedError("repair produced no generator change; refusing identical rebuild")
 
     pptx = work_dir / args.output_name
+    if pptx.resolve().parent != work_dir or (manifest.get("source") and pptx.resolve() == Path(manifest["source"]["path"])):
+        raise RefusedError("output must be a new file directly inside work-dir")
     if pptx.suffix.lower() != ".pptx":
         raise RefusedError("--output-name must end in .pptx")
     node = os.environ.get("NODE") or "node"
-    built = _runner([node, str(BUILDER), "--output", str(pptx), str(entry), *args.generator_args])
+    built = _runner(
+        [sys.executable, str(PPTX_TOOL), "pack", str(entry), "--output", str(pptx)] if editing
+        else [node, str(BUILDER), "--output", str(pptx), str(entry), *args.generator_args]
+    )
     if built.returncode != 0 or not pptx.is_file():
         detail = (built.stderr or built.stdout or "").strip()
         raise RefusedError(f"build failed (exit {built.returncode}): {detail[:600]}")
@@ -660,6 +753,10 @@ def cmd_render(args: argparse.Namespace) -> int:
         return 0
 
     render_dir = work_dir / "render"
+    if args.cols < 1 or not args.prefix or Path(args.prefix).name != args.prefix or any(ch in args.prefix for ch in "/\\"):
+        raise RefusedError("render requires positive cols and a plain filename prefix")
+    if not render_dir.resolve().is_relative_to(work_dir):
+        raise RefusedError("render directory must stay inside work-dir")
     proc = _runner([
         sys.executable, str(PPTX_TOOL), "render", str(pptx),
         "--output-dir", str(render_dir), "--prefix", args.prefix,
@@ -668,10 +765,8 @@ def cmd_render(args: argparse.Namespace) -> int:
         detail = (proc.stderr or proc.stdout or "").strip()
         raise RefusedError(f"render failed (exit {proc.returncode}): {detail[:500]}")
     payload = None
-    try:
+    with contextlib.suppress(json.JSONDecodeError):
         payload = json.loads(proc.stdout)
-    except json.JSONDecodeError:
-        pass
     page_values = payload.get("pages") if isinstance(payload, dict) else None
     pages = [Path(str(path)) for path in page_values] if isinstance(page_values, list) else sorted(render_dir.glob(f"{args.prefix}*.png"))
     if not pages or not all(path.is_file() for path in pages):
@@ -701,12 +796,33 @@ def cmd_qa(args: argparse.Namespace) -> int:
     if not pptx.is_file():
         raise RefusedError("no built PPTX in manifest")
     visual_review = args.visual_review.resolve() if args.visual_review else None
+    vgr = work_dir / "visual-generation-report.json"
+    if not (manifest.get("inputs") or {}).get("visual_generation_report") and vgr.is_file():
+        manifest.setdefault("inputs", {})["visual_generation_report"] = bind(vgr)
     notes = args.notes.resolve() if args.notes else None
     previews = [Path(p).resolve() for p in (args.preview or [])]
+    if not render_is_current(manifest):
+        raise RefusedError("QA requires current, hash-verified render evidence; run render")
+    if notes is None and (work_dir / "speaker-notes.md").is_file():
+        notes = work_dir / "speaker-notes.md"
+    if not previews:
+        # Contact sheet is supplemental evidence, not an extra slide: delivery
+        # requires exactly one preview per slide.
+        previews = [Path(item["path"]) for item in manifest["render"]["pages"]]
+    review = load_json(visual_review) if visual_review else None
+    expected_pages = {str(i): item["sha256"] for i, item in enumerate(manifest["render"]["pages"], 1)}
+    if not review or review.get("pptx_sha256") != sha256_file(pptx) or review.get("contact_sheet_sha256") != manifest["render"]["contact_sheet"]["sha256"] or review.get("page_sha256") != expected_pages:
+        raise RefusedError("visual review must bind the current PPTX, contact sheet and every page SHA256")
+    receipt = execution_receipt(work_dir, "critic", visual_review)
+    for item in [manifest["render"]["contact_sheet"], *manifest["render"]["pages"]]:
+        if receipt.get("reads", {}).get(item["path"]) != item["sha256"]:
+            raise RefusedError("independent critic did not read every current render image")
     fingerprint = qa_input_fingerprint(pptx, visual_review, notes, previews)
+    fingerprint = stable_hash([fingerprint, manifest.get("inputs"), bind(work_dir / "critic-execution.json"), args.allow_missing_preview])
     old_qa = manifest.get("qa") or {}
     old_report = Path(str((old_qa.get("report") or {}).get("path") or ""))
-    if manifest.get("state") == "qa" and old_qa.get("input_fingerprint") == fingerprint and old_report.is_file():
+    cached_bindings = [old_qa.get("report") or {}, *(old_qa.get("stages") or {}).values()]
+    if manifest.get("state") == "qa" and old_qa.get("input_fingerprint") == fingerprint and old_report.is_file() and all(binding_is_current(item) for item in cached_bindings):
         ok = bool(old_qa.get("ok"))
         record(manifest, "qa", "qa", "qa", reused=True, blockers=int(old_qa.get("blockers") or 0))
         save_manifest(work_dir, manifest)
@@ -728,6 +844,8 @@ def cmd_qa(args: argparse.Namespace) -> int:
         if not ok:
             break
     problems = dedupe(problems)
+    if set(reports) != set(QA_ORDER):
+        problems.append({"gate": "pipeline", "severity": "major", "code": "missing_stages", "message": "All QA stages, including delivery, must run and pass"})
     counts = {s: sum(1 for p in problems if p["severity"] == s) for s in ("critical", "major", "minor")}
     blockers = counts["critical"] + counts["major"]
     qa_report = {
@@ -743,6 +861,8 @@ def cmd_qa(args: argparse.Namespace) -> int:
         "report": bind(qa_report_path), "stages": reports,
         "visual_review": bind(visual_review) if visual_review and visual_review.is_file() else None,
         "previews": [bind(path) for path in previews if path.is_file()] or None,
+        "notes": bind(notes) if notes and notes.is_file() else None,
+        "critic_execution": bind(work_dir / "critic-execution.json"),
         "stage_cost_ms": {name: data["duration_ms"] for name, data in reports.items() if "duration_ms" in data},
     }
     manifest["state"] = "qa"
@@ -807,6 +927,13 @@ def cmd_complete(args: argparse.Namespace) -> int:
         raise RefusedError(f"QA still has {qa.get('blockers', '?')} blocker(s)")
     if not delivery.get("checked") or not delivery.get("ok"):
         raise RefusedError("delivery stage did not pass")
+    evidence = [qa.get("report"), qa.get("visual_review"), qa.get("notes"), qa.get("critic_execution"), *(qa.get("previews") or []), *(qa.get("stages") or {}).values()]
+    if not render_is_current(manifest) or any(not item or not binding_is_current(item) for item in evidence):
+        raise RefusedError("QA evidence changed or disappeared after QA; run QA again")
+    if manifest.get("mode") != "create":
+        change_summary = work_dir / "change-summary.md"
+        if not change_summary.is_file() or not change_summary.read_text(encoding="utf-8").strip():
+            raise RefusedError("source-based delivery requires change-summary.md")
     before = str(manifest.get("state"))
     manifest["state"] = "complete"
     record(manifest, "complete", before, "complete")
@@ -845,7 +972,7 @@ def cmd_next(args: argparse.Namespace) -> int:
     """Tell the model what to read and which command to run. CD-1/CD-3/CD-4/CD-9."""
     work_dir = args.work_dir
     manifest = load_manifest(work_dir)
-    python = sys.executable
+    python = f'"{sys.executable}"'
     pipeline = HERE / "ppt_pipeline.py"
     if not manifest:
         payload = {
@@ -884,6 +1011,10 @@ def cmd_next(args: argparse.Namespace) -> int:
                 "fill pages/pNN-*.js with parallel Edit, then build. "
                 "Put v0.8 composition JSON in composition/."
             )
+            if manifest.get("mode") == "edit_ooxml":
+                payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
+                payload["allowed_writes"] = [str(work_dir / "ooxml"), str(work_dir / "change-summary.md")]
+                payload["notes"] = "Edit unpacked OOXML preserving the source and preserve contract, then build (pack)."
         elif state == "producing":
             if render_is_current(manifest):
                 render = manifest.get("render") or {}
@@ -894,9 +1025,11 @@ def cmd_next(args: argparse.Namespace) -> int:
                     f'--visual-review "{work_dir / "visual-review.json"}"'
                 )
                 payload["notes"] = (
-                    "CD-9: Read contact-sheet + blocker page PNGs in ONE parallel round; "
-                    "same PPTX hash must not be re-read"
+                    "Spawn student-presentation-suite:visual-critic in foreground with this work-dir. "
+                    "The independent critic must Read the contact sheet and EVERY page, then Write visual-review.json; "
+                    "wait for critic-execution.json before QA."
                 )
+                payload["agent"] = "student-presentation-suite:visual-critic"
             else:
                 payload["next_command"] = (
                     f'{python} "{pipeline}" render --work-dir "{work_dir}"'
@@ -920,6 +1053,16 @@ def cmd_next(args: argparse.Namespace) -> int:
         else:
             payload["next_command"] = f'{python} "{pipeline}" status --work-dir "{work_dir}"'
 
+    action = "intake"
+    for candidate in ("build", "render", "qa", "repair", "complete"):
+        if f" {candidate} " in payload["next_command"]:
+            action = candidate
+            break
+    payload["contract"] = {
+        "stage": action, "rules": CONTRACT["stage_contracts"][action],
+        "qa_order": list(QA_ORDER), "max_repairs": MAX_REPAIRS,
+        "contract_sha256": sha256_file(CONTRACT_PATH),
+    }
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
@@ -937,6 +1080,7 @@ def cmd_next(args: argparse.Namespace) -> int:
     print(f"next_command: {payload['next_command']}")
     print(f"allowed_writes: {', '.join(payload['allowed_writes'])}")
     print(f"notes: {payload['notes']}")
+    print("stage_contract: " + json.dumps(payload["contract"], ensure_ascii=False))
     return 0
 
 
@@ -945,7 +1089,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     sub = parser.add_subparsers(dest="command", required=True)
     plan = sub.add_parser("plan", help="verify intake, preflight and freeze -> planned")
     plan.add_argument("--work-dir", type=Path, required=True)
-    plan.add_argument("--workflow-state", type=Path, help="confirmed .student-presentation-state.json")
+    plan.add_argument("--production-mode", choices=["create", "edit_ooxml", "rebuild_from_source"])
+    plan.add_argument("--workflow-state", type=Path, help="confirmed work-dir/workflow-state.json")
     plan.add_argument("--slide-spec", type=Path, required=True)
     plan.add_argument("--validation-report", type=Path, required=True)
     plan.add_argument("--art-direction", type=Path, required=True)
@@ -959,7 +1104,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     build = sub.add_parser("build", help="build once; repeated builds require repair + changed generator")
     build.add_argument("--work-dir", type=Path, required=True)
-    build.add_argument("--entry", type=Path, required=True)
+    build.add_argument("--entry", type=Path)
     build.add_argument("--output-name", default="deck.pptx")
     build.add_argument("generator_args", nargs="*")
     build.set_defaults(func=cmd_build)
@@ -1004,6 +1149,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        validate_work_dir(args.work_dir)
         return args.func(args)
     except RefusedError as exc:
         print(f"ppt_pipeline: REFUSED — {exc}", file=sys.stderr)

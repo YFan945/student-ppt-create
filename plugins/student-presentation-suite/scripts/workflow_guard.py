@@ -36,8 +36,11 @@ def project_root(cwd: Path | None = None) -> Path:
     return (cwd or Path.cwd()).resolve()
 
 
-def default_state_file(cwd: Path | None = None) -> Path:
-    return project_root(cwd) / "outputs" / ".student-presentation-state.json"
+def default_state_file(cwd: Path | None = None, work_id: str | None = None) -> Path:
+    work_id = work_id or os.environ.get("SP_WORK_ID")
+    if not work_id or Path(work_id).name != work_id or work_id.startswith(".") or "/" in work_id or "\\" in work_id:
+        raise SystemExit("Provide --work-id (or SP_WORK_ID); project-global workflow state is retired")
+    return project_root(cwd) / "outputs" / ".pptx-work" / work_id / "workflow-state.json"
 
 
 def load_state(path: Path) -> dict[str, Any] | None:
@@ -225,8 +228,12 @@ def validate_completion_manifest(
 
 
 def state_command(args: argparse.Namespace) -> int:
-    state_path = args.state_file or default_state_file()
+    work_id = getattr(args, "work_id", None) or os.environ.get("SP_WORK_ID")
+    state_path = args.state_file or default_state_file(work_id=work_id)
+    work_id = work_id or state_path.parent.name
     current = load_state(state_path)
+    if current and current.get("work_id", work_id) != work_id:
+        raise SystemExit("workflow state belongs to another work_id")
 
     if args.action == "show":
         if current is None:
@@ -250,6 +257,7 @@ def state_command(args: argparse.Namespace) -> int:
             state_path,
             {
                 "workflow_version": "1.0",
+                "work_id": work_id,
                 "state": "intake_pending",
                 "topic": args.topic,
                 "summary_sha256": None,
@@ -262,6 +270,7 @@ def state_command(args: argparse.Namespace) -> int:
             state_path,
             {
                 "workflow_version": "1.0",
+                "work_id": work_id,
                 "state": "intake_pending",
                 "topic": args.topic,
                 "summary_sha256": None,
@@ -298,6 +307,7 @@ def state_command(args: argparse.Namespace) -> int:
             )
         summary_hash = hashlib.sha256(args.summary_file.read_bytes()).hexdigest()
         base = current or {"workflow_version": "1.0", "topic": args.topic}
+        base["work_id"] = work_id
         allowed_from = {None, "intake_pending"}
         if base.get("state") not in allowed_from:
             if not args.force:
@@ -454,6 +464,8 @@ def main() -> None:
     )
     transition.add_argument("--pptx", type=Path, help="转换到 complete 所需的交付 PPTX")
 
+    for command in sub.choices.values():
+        command.add_argument("--work-id", help="Isolated presentation work identifier")
     raise SystemExit(state_command(parser.parse_args()))
 
 

@@ -4,11 +4,11 @@
 
 | 问题 | 含义 | 能否机械断言 | 载体 |
 | --- | --- | --- | --- |
-| **MECHANISM** | 主流程是否真的在独立 context 里起了一个前台子代理（0.11.2 起为显式 spawn `presentation-researcher`） | 便宜、与模型无关 → 可经常跑、可断言 | `scripts/smoke_research_fork.py`（用 `claude -p --output-format json` 的 `subagent_stats`） |
+| **MECHANISM** | 主流程是否真的在独立 context 里起了一个前台子代理（0.12.0 起为显式 spawn `presentation-researcher`） | 便宜、与模型无关 → 可经常跑、可断言 | `scripts/smoke_research_fork.py`（用 `claude -p --output-format json` 的 `subagent_stats`） |
 | **ARTIFACT** | 那个子代理是否真的产出了符合 schema 的 Research Pack | 取决于模型与网络是否放行 | 同上，外加 `validate_research_pack.py` |
 
 机制半边是 item 14 的核心——它把"文档说检索被隔离"变成"运行时确实 spawn 了一个前台子代理"的硬证据。
-**判定标准（0.11.2 起）**：`subagent_stats.spawned >= 1`，且 `started_in_background == 0`。
+**判定标准（0.12.0 起）**：`subagent_stats.spawned >= 1`，且 `started_in_background == 0`。
 `context: fork` 的 fork 事件不再被接受为替代证据：两次 Live 实测都在 `spawned = 0` 的情况下
 没有任何 subagent 事件，而 skill 实际内联跑在主会话里（见 `FINDINGS.md` 第三、六节）。
 产物半边（真实联网检索质量）需要真实模型 + 网络，成本随网络放开，单独报告。

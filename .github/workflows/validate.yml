@@ -3,6 +3,8 @@ name: validate
 on:
   push:
     branches: [main]
+  workflow_call:
+  workflow_dispatch:
   pull_request:
     branches: [main]
 
@@ -12,6 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.12"]
     runs-on: ${{ matrix.os }}
     env:
       PYTHONUTF8: "1"
@@ -19,7 +22,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python }}
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
@@ -33,7 +36,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt -c plugins/student-presentation-suite/requirements-lock.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m pip install ruff
+          python -m pip install ruff==0.16.7
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm --prefix plugins/student-presentation-suite ci
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -62,7 +65,7 @@ jobs:
       - name: Lint Python (ruff)
         shell: pwsh
         run: |
-          ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/tests/
+          ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/skills/ plugins/student-presentation-suite/tests/
       - name: Lint JavaScript (eslint + prettier)
         shell: pwsh
         run: |
@@ -122,7 +125,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install Claude Code
-        run: npm install -g @anthropic-ai/claude-code
+        run: npm install -g @anthropic-ai/claude-code@2.1.272
       - name: Strict Claude validation
         run: |
           claude plugin validate --strict ./plugins/student-presentation-suite
@@ -178,7 +181,7 @@ jobs:
           npm --prefix plugins/student-presentation-suite ci
       - name: Pip audit
         run: |
-          python -m pip install pip-audit
+          python -m pip install pip-audit==2.9.0
           pip-audit -r plugins/student-presentation-suite/requirements-lock.txt
       - name: Npm audit policy gate
         run: python plugins/student-presentation-suite/scripts/npm_audit_gate.py --json
@@ -186,3 +189,14 @@ jobs:
         run: |
           dotnet restore plugins/student-presentation-suite/shared/pptx_runtime/openxml_validator/OpenXmlValidator.csproj --locked-mode
           dotnet list plugins/student-presentation-suite/shared/pptx_runtime/openxml_validator/OpenXmlValidator.csproj package --vulnerable --include-transitive
+
+  release-ready:
+    if: always()
+    needs: [runtime, release-checks, claude-manifest, render-matrix, security-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every validation job to pass
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python -c 'import json,os; jobs=json.loads(os.environ["RESULTS"]); assert all(j["result"] == "success" for j in jobs.values()), jobs'

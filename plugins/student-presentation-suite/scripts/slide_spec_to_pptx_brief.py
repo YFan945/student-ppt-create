@@ -126,7 +126,6 @@ def derive_production_mode(data: dict[str, Any], requested: str | None = None) -
     source = Path(str(source_value)).expanduser() if source_value else None
     suffix = source.suffix.casefold() if source else ""
     editable = suffix in {".pptx", ".potx"}
-    view_only = suffix in {".pdf", ".png", ".jpg", ".jpeg", ".webp"}
     intent = data.get("edit_intent")
 
     if requested:
@@ -134,7 +133,7 @@ def derive_production_mode(data: dict[str, Any], requested: str | None = None) -
             raise ValueError("edit_ooxml requires source_deck ending in .pptx or .potx")
         if requested == "edit_ooxml" and source and source.exists() and not zipfile.is_zipfile(source):
             raise ValueError("edit_ooxml source_deck is not a readable PPTX/POTX package")
-        if requested == "create" and editable:
+        if requested == "create" and source:
             raise ValueError("create cannot silently replace an editable source deck; use edit_ooxml or rebuild_from_source")
         if requested == "rebuild_from_source" and not source:
             raise ValueError("rebuild_from_source requires source_deck")
@@ -148,7 +147,7 @@ def derive_production_mode(data: dict[str, Any], requested: str | None = None) -
         if source and source.exists() and not zipfile.is_zipfile(source):
             return "rebuild_from_source"
         return "edit_ooxml"
-    if view_only or not source:
+    if not source:
         return "create"
     return "rebuild_from_source"
 

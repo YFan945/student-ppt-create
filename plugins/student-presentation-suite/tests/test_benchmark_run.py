@@ -85,13 +85,13 @@ class InvocationTests(unittest.TestCase):
     def test_invocation_declares_intake_already_confirmed(self) -> None:
         """The first pilot stalled at intake asking for a topic; say it is done."""
         deck = DECKS["decks"][0]
-        intake = {"state_file": "C:/proj/outputs/.student-presentation-state.json",
+        intake = {"state_file": "C:/proj/outputs/.pptx-work/x/workflow-state.json",
                   "summary_file": "C:/proj/outputs/.pptx-work/x/production-summary.md"}
         text = br.build_invocation(deck, "光伏与风电", "course-report-zh", None, intake)
         self.assertIn("INTAKE IS ALREADY COMPLETE", text)
         self.assertIn("intake_confirmed", text)
         self.assertIn("do NOT run the intake gate again", text)
-        self.assertIn(".student-presentation-state.json", text)
+        self.assertIn("workflow-state.json", text)
 
     def test_command_is_budget_and_session_pinned(self) -> None:
         command = br.build_command("claude", "hi", 8.0, None, "abc-123")
@@ -171,8 +171,8 @@ class IntakePreparationTests(unittest.TestCase):
     def test_state_file_matches_the_pipeline_default_location(self) -> None:
         project = Path("C:/proj")
         self.assertEqual(
-            project / "outputs" / ".student-presentation-state.json",
-            br.state_file_path(project),
+            project / "outputs" / ".pptx-work" / "x" / "workflow-state.json",
+            br.state_file_path(project, "x"),
         )
 
 

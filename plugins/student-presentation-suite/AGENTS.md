@@ -9,7 +9,7 @@ student-owned academic contexts.
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| Skills (×3) | `skills/` | Auto-activating: planning, PPTX production, review |
+| Skills (×4) | `skills/` | Auto-activating: planning, PPTX production, review |
 | Shared modules | `shared/` | Python validation, runtime, quality |
 | Scripts | `scripts/` | CLI tools: workflow guard, validation, generation, QA |
 | References | `references/` | Canonical contracts: intake, brief, slide-spec, design tokens |
@@ -17,7 +17,7 @@ student-owned academic contexts.
 
 ## Skill Activation Rules
 
-The three skills MUST only activate when BOTH conditions hold:
+The four skills MUST only activate when BOTH conditions hold:
 1. A clearly student-owned academic context (student, university assignment,
    classroom report, thesis/course defense, teacher rubric, or student competition)
 2. An explicit PPT intent
@@ -64,7 +64,7 @@ cd plugins/student-presentation-suite
 PYTHONPATH=. python -m unittest discover -s tests
 
 # Code quality
-ruff check shared/ scripts/ tests/
+ruff check shared/ scripts/ skills/ tests/
 npx eslint scripts/*.js
 npx prettier --check scripts/*.js
 

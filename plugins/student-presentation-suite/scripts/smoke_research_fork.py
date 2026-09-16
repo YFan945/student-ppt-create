@@ -20,7 +20,7 @@ The instrument is `claude -p --output-format json`: its result carries
 "the docs say retrieval is isolated" and "the runtime spawned a foreground
 subagent".
 
-The accepted evidence changed in 0.11.2. Earlier revisions relied on `context: fork`
+The accepted evidence changed in 0.12.0. Earlier revisions relied on `context: fork`
 in the skill frontmatter, and this scaffold also accepted a fork event in the
 stream as proof. Two live runs showed that under `claude -p` no subagent was
 spawned *and* no fork event was emitted, while the skill ran inline in the main

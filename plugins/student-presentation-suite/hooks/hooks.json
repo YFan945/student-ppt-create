@@ -10,6 +10,48 @@
             "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/cost_guard.py\""
           }
         ]
+      },
+      {
+        "matcher": "Skill|WebSearch|WebFetch|Agent|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/runtime_evidence.py\""
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "student-presentation-suite:.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/runtime_evidence.py\""
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "student-presentation-suite:.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/runtime_evidence.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Read|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/runtime_evidence.py\""
+          }
+        ]
       }
     ]
   }

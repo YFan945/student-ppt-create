@@ -6,6 +6,7 @@ import argparse
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,7 @@ import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 PIPELINE = ROOT / "skills" / "sp-deck" / "scripts" / "ppt_pipeline.py"
@@ -110,8 +112,11 @@ class FakeRunner:
 class PipelineTestCase(unittest.TestCase):
     def setUp(self) -> None:
         self._tmp = tempfile.TemporaryDirectory()
-        self.work = Path(self._tmp.name) / "work-01"
-        self.work.mkdir()
+        self.work = Path(self._tmp.name) / "outputs" / ".pptx-work" / "work-01"
+        self.work.mkdir(parents=True)
+        self.env = patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": self._tmp.name})
+        self.env.start()
+        self.addCleanup(self.env.stop)
         self._original_runner = pp._runner
         self.summary = self.work / "production-summary.md"
         self.summary.write_text("approved", encoding="utf-8")
@@ -122,6 +127,7 @@ class PipelineTestCase(unittest.TestCase):
         self.workflow_state.write_text(
             json.dumps({
                 "workflow_version": "1.0",
+                "work_id": self.work.name,
                 "state": "intake_confirmed",
                 "summary_file": str(self.summary),
                 "summary_sha256": pp.sha256_file(self.summary),
@@ -178,6 +184,24 @@ class PipelineTestCase(unittest.TestCase):
 
     def manifest(self) -> dict[str, Any]:
         return json.loads((self.work / pp.MANIFEST_NAME).read_text(encoding="utf-8"))
+
+    def render_evidence(self, files):
+        from PIL import Image
+        manifest = self.manifest()
+        page = self.work / "render" / "slide-1.png"
+        page.parent.mkdir(exist_ok=True)
+        preview = Image.new("RGB", (640, 360), "white")
+        preview.paste("navy", (0, 0, 640, 80))
+        preview.save(page)
+        contact = self.work / "contact-sheet.png"
+        pp.make_contact_sheet([page], contact)
+        manifest["render"] = {"pptx_sha256": pp.sha256_file(files["pptx"]), "pages": [pp.bind(page)], "contact_sheet": pp.bind(contact), "page_count": 1}
+        pp.save_manifest(self.work, manifest)
+        review = {"pptx_sha256": pp.sha256_file(files["pptx"]), "contact_sheet_sha256": pp.sha256_file(contact), "page_sha256": {"1": pp.sha256_file(page)}}
+        files["visual_review"].write_text(json.dumps(review), encoding="utf-8")
+        receipt = {"agent": "student-presentation-suite:visual-critic", "agent_id": "test-child", "spawn_verified": True, "work_id": self.work.name, "artifact": pp.bind(files["visual_review"]), "reads": {str(p): pp.sha256_file(p) for p in [page, contact]}}
+        (self.work / "critic-execution.json").write_text(json.dumps(receipt), encoding="utf-8")
+        (self.work / "speaker-notes.md").write_text("# Slide 1\nSpeaker notes for the test.", encoding="utf-8")
 
     def entry(self) -> Path:
         """Return a buildable generator.
@@ -245,6 +269,7 @@ class StateMachineTests(PipelineTestCase):
         manifest["state"] = "qa"
         manifest["qa"] = {"ok": True, "blockers": 0, "stages": {}}
         pp.save_manifest(self.work, manifest)
+        pp.mirror_workflow_state(manifest, manifest["state"])
         with self.assertRaises(pp.RefusedError):
             pp.cmd_repair(ns("repair", self.work))
 
@@ -326,6 +351,7 @@ class BuildTests(PipelineTestCase):
         manifest["state"] = "qa"
         manifest["qa"] = {"ok": False, "blockers": 1, "stages": {}}
         pp.save_manifest(self.work, manifest)
+        pp.mirror_workflow_state(manifest, manifest["state"])
         self.assertEqual(pp.main(["repair", "--work-dir", str(self.work), "--reason", "fix"]), 0)
         self.assertEqual(pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 2)
         page = next((self.work / "pages").glob("p*.js"))
@@ -339,6 +365,7 @@ class BuildTests(PipelineTestCase):
         manifest["qa"] = {"ok": False, "blockers": 1, "stages": {}}
         manifest["build"]["repair_count"] = pp.MAX_REPAIRS
         pp.save_manifest(self.work, manifest)
+        pp.mirror_workflow_state(manifest, manifest["state"])
         self.assertEqual(pp.main(["repair", "--work-dir", str(self.work), "--reason", "again"]), 2)
 
     def test_build_without_pages_is_refused(self) -> None:
@@ -399,6 +426,7 @@ class QaDagTests(PipelineTestCase):
         self.plan(self.files)
         entry = self.entry()
         pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)])
+        self.render_evidence(self.files)
         return self.manifest()
 
     def test_delivery_consumes_this_runs_reports_in_contract_order(self) -> None:
@@ -457,10 +485,12 @@ class QaDagTests(PipelineTestCase):
         self.producing_manifest()
         manifest = self.manifest()
         del manifest["inputs"]["visual_generation_report"]
+        self.files["vgr"].unlink()
         pp.save_manifest(self.work, manifest)
+        pp.mirror_workflow_state(manifest, manifest["state"])
         self.assertEqual(pp.main([
             "qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])
-        ]), 0)
+        ]), 2)
         self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)
 
 
@@ -471,12 +501,14 @@ class CompleteTests(PipelineTestCase):
 
     def state_qa(self, *, ok: bool, delivery_checked: bool) -> None:
         self.plan(self.files)
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        self.render_evidence(self.files)
+        pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])])
         manifest = self.manifest()
-        manifest["state"] = "qa"
-        manifest["qa"] = {
-            "ok": ok, "blockers": 0 if ok else 2,
-            "stages": {"delivery": {"checked": delivery_checked, "ok": ok}} if delivery_checked else {},
-        }
+        manifest["qa"]["ok"] = ok
+        manifest["qa"]["blockers"] = 0 if ok else 2
+        if not delivery_checked:
+            manifest["qa"]["stages"].pop("delivery", None)
         pp.save_manifest(self.work, manifest)
 
     def test_complete_closes_deck_and_mirrors_workflow(self) -> None:

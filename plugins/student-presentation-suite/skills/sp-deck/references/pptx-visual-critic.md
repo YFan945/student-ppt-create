@@ -9,7 +9,7 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 3. High-score deck 的 Major/Critical 视觉问题必须 repair，不能只记录后 complete。
 4. 视觉问题优先修 actual artifact；不要为了过检查反向修改 frozen Slide Spec。
 5. 必须检查整套节奏：连续弱卡片/列表/三等分属于 AI-template repetition 风险。
-6. **Author/critic separation**：如果当前执行环境能使用独立 review context、subagent 或重新开启一个不带 deck.js 细节的视觉审查上下文，优先这么做。无法分离时，也必须先隐藏/放下实现代码，只依据 full-resolution renders + Art Direction 目标复核，避免“因为自己刚写完所以自动觉得合理”。
+6. **Author/critic separation**：Pipeline 必须前台启动 `student-presentation-suite:visual-critic`。独立 critic 使用 Read 读取当前 contact sheet 和全部页图，并用 Write 写 visual-review.json；hook 生成 critic-execution.json。无法分离时必须 blocked，不能用生成者自评分替代。
 7. v0.8 critic 不只是给分：如果最终页明显弱于选定 wireframe/reference 的视觉命题，应指出是哪一步退化（asset、hierarchy、crop、composition、type scale 或实现保守化）。
 8. **配色一致性**：整套只能使用所选风格的两套 palette（light `palette` + 对应 `dark_palette`）。
    深色封面/章节/收尾页必须来自 `dark_palette`，不能是生成时临时挑的深色；发现任何 palette
@@ -20,6 +20,8 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 ```json
 {
   "pptx_sha256": "<current pptx sha256>",
+  "contact_sheet_sha256": "<manifest.render.contact_sheet.sha256>",
+  "page_sha256": {"1": "<manifest.render.pages[0].sha256>"},
   "art_direction_alignment": {
     "overall": 8,
     "lost_intent": []

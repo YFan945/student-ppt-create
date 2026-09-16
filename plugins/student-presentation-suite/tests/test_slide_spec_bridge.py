@@ -23,7 +23,7 @@ class SlideSpecBridgeTests(unittest.TestCase):
     def test_production_mode_rejects_pdf_as_ooxml_edit_source(self) -> None:
         bridge = load_bridge_module()
         data = {"source_deck": "reference.pdf", "edit_intent": "review-fix"}
-        self.assertEqual("create", bridge.derive_production_mode(data))
+        self.assertEqual("rebuild_from_source", bridge.derive_production_mode(data))
         with self.assertRaises(ValueError):
             bridge.derive_production_mode(data, "edit_ooxml")
 

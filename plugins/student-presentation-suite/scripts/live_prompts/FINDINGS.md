@@ -59,7 +59,7 @@
 > 本目录的 `smoke_research_fork.py` 已具备 `--stream` 确定性探测能力:任何模型/模式下重跑,只要
 > 事件流出现 subagent/fork 事件,即证明 fork 真发生;否则即证明没发生。可作为后续验证的常驻工具。
 
-## 六、0.11.2 的处理:采纳建议 2,改为显式 spawn
+## 六、0.12.0 的处理:采纳建议 2,改为显式 spawn
 
 上述第五节的三选一,最终选了 **2(加固 fork)**,理由是它让隔离在**所有调用模式**下成立,
 而不只是交互会话:
@@ -78,3 +78,19 @@
 **仍需实测确认的一点**:显式 spawn 之后要重跑一次
 `smoke_research_fork.py --scenario smoke --stream`,断言 `spawned >= 1`。
 上面的改动是机制层面的;C 类产物证据(Research Pack 校验链)不受影响。
+
+
+## 七、0.13.0 实测（2026-09-16）
+
+D-mode `sample-paper.md`，Claude Code 2.1.272，预算上限 $1：
+
+- 实际前台 `presentation-researcher` spawned=1、completed=1、background=0。
+- 实际 SubagentStart/PostToolUse/SubagentStop 生成 research-execution.json，绑定 pack SHA256。
+- pack：9 findings / 5 sources；本地重新运行 validator：0 blockers。
+- 消耗 $0.776257。严格 smoke 总体仍失败：存在 Read/PowerShell/Bash 权限拒绝，不能把它说成无障碍 E2E 通过。
+- 原始运行 session：d57095b8-84ca-45d5-8bc5-f9df63e6bd05；child：a7e29b796579e99ce。
+- pack SHA256：021955feebe9ef0654a9154c0e81e05a52e50f97af5e10dd156c78aaa6b7e14d。
+
+结论：显式 spawn 和运行时产物绑定已有真实证据；完整 E2E 权限路径仍需后续修复/验收。
+
+第二次限定工具权限的补测中，pack validation 通过，但 CLI 返回纯文本 envelope，stderr 报 `unrecognized_model: deepseek-flash[1m]`，没有 subagent_stats 和 runtime receipt。该次不能作为隔离成功证据；保留第一次真实前台 spawn + receipt 的结果，不把补测记为通过。

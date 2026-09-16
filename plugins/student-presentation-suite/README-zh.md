@@ -245,3 +245,13 @@ python scripts/smoke_pptx.py
 安装、维护和发布说明见仓库根目录
 [README](../../README-zh.md)、[AGENTS.md](../../AGENTS.md) 和
 [CHANGELOG.md](../../CHANGELOG.md)。
+
+## 0.13 执行完整性
+
+每个任务使用 `outputs/.pptx-work/<work-id>/workflow-state.json`，init/confirm 传 `--work-id`；旧全局状态需重新确认。三种模式统一走 Pipeline：create、edit_ooxml（解包/编辑/打包）、rebuild_from_source（须 source-analysis.md）。保留 source，编辑交付须 change-summary.md。
+
+QA 自动接入 speaker-notes.md 和当前预览；独立 visual-critic 读取全部页图，hook 凭据和图片 hash 在 QA/complete 复核。A/B/D research 需要真实研究员凭据。next 输出紧凑阶段契约。图片 provider command 需用户独立批准 SHA256，项目 JSON 不能自行授权。
+
+CI 扫描 skills，测试 Python 3.11/3.12，固定 Claude Code 2.1.272、Ruff 0.16.7。main 上运行 release workflow，全部检查通过后才创建 annotated tag 和 GitHub Release。PowerPoint 独立验收使用 references/powerpoint-smoke.md，LibreOffice 通过不代表 Office 已验收。
+
+从本仓库运行真实 benchmark 时须传 `--project-dir <仓库外项目>`；baseline 写入运行目录，不写安装插件。

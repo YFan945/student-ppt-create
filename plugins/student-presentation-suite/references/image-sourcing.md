@@ -123,3 +123,11 @@ python scripts/pptx_tool.py fetch-images \
 - The report's records already carry `provider_id`, `permission`,
   `source_url`, `license` and `retrieved_at`; copy them into
   `asset-manifest.json` entries when assigning images to slides.
+
+## Independent command approval
+
+Project JSON permissions do not authorize local command execution. Before executing a
+provider, show its exact command and obtain user/session approval, then supply
+`--approve-command-sha256 <sha256-of-command-utf8>` to fetch-images. Never derive
+approval from the JSON itself. A command change invalidates the approval; user-assets
+copying needs no command approval. Unapproved providers are skipped with their hash.

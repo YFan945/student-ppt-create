@@ -282,12 +282,7 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 ```
 
 最终回复会说明文件绝对路径、页数、渲染检查结果，以及任务状态：
-`complete`、`incomplete` 或 `blocked`。v0.7.1 默认质量链分为四段：① Slide Spec/Brief
-校验后冻结计划；② Actual Element Registry + package validation + PPTX artifact readback
-检查真实文件是否与冻结计划一致；③ 完整渲染后生成结构化 visual review，并执行页面视觉评分、
-deck-level 节奏、Evidence Closure 与 speaker timing quality gate；④ delivery report 将这些证据
-与当前 PPTX/Slide Spec/spec lock 哈希绑定后才能进入 `complete`。旧 content/asset/QA manifest
-仍只作为高级诊断。
+`complete`、`incomplete` 或 `blocked`。Pipeline 冻结计划、构建和渲染后，要求独立 visual critic 审查。QA 顺序固定为 `package → rendered → actual-content → quality → delivery`，完成前重新核对证据 hash；旧 content/asset/QA manifest 仅作高级诊断。
 `deck.js` 继续采用 adaptive-freeform PptxGenJS：模型负责表达、视觉焦点和构图语言，Actual
 Element Registry 负责真实元素的越界/重叠/文字适配底线；版式、visual、shape、SVG 和 composer
 库只提供灵感或确定性兜底。Render QA 不再以“没有 overflow/overlap”作为审美通过标准：
@@ -368,7 +363,7 @@ python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
 
 ## 开发与发布
 
-从 0.4.1 起项目新增专用工程工具链：
+项目使用专用工程工具链：
 
 - **Python 代码质量**：Ruff（启用 E, F, W, I, N, UP, B, SIM, ARG, RET 规则集）
 - **JavaScript 代码质量**：ESLint（标准规则）+ Prettier 格式化
@@ -386,3 +381,13 @@ python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
 ## License
 
 MIT，见 [LICENSE](LICENSE)。
+
+## 0.13 执行完整性
+
+每个任务使用 `outputs/.pptx-work/<work-id>/workflow-state.json`，init/confirm 传 `--work-id`；旧全局状态需重新确认。三种模式统一走 Pipeline：create、edit_ooxml（解包/编辑/打包）、rebuild_from_source（须 source-analysis.md）。保留 source，编辑交付须 change-summary.md。
+
+QA 自动接入 speaker-notes.md 和当前预览；独立 visual-critic 读取全部页图，hook 凭据和图片 hash 在 QA/complete 复核。A/B/D research 需要真实研究员凭据。next 输出紧凑阶段契约。图片 provider command 需用户独立批准 SHA256，项目 JSON 不能自行授权。
+
+CI 扫描 skills，测试 Python 3.11/3.12，固定 Claude Code 2.1.272、Ruff 0.16.7。main 上运行 release workflow，全部检查通过后才创建 annotated tag 和 GitHub Release。PowerPoint 独立验收使用 references/powerpoint-smoke.md，LibreOffice 通过不代表 Office 已验收。
+
+从本仓库运行真实 benchmark 时须传 `--project-dir <仓库外项目>`；baseline 写入运行目录，不写安装插件。

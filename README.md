@@ -300,12 +300,7 @@ Depending on the request, `outputs/` may contain:
 ```
 
 The final response reports each absolute file path, slide count, rendered QA
-result, and the status: `complete`, `incomplete`, or `blocked`. v0.7.1 uses four quality stages:
-(1) validate and freeze the Slide Spec; (2) run the Actual Element Registry, package validation,
-and PPTX artifact readback against that frozen plan; (3) render every page, write a structured
-visual review, and run visual-score, deck-rhythm, evidence-closure, and speaker-timing gates;
-(4) bind those reports to the current PPTX, Slide Spec, and spec-lock hashes in the delivery report.
-Legacy content/asset/QA manifests remain optional advanced diagnostics.
+result, and the status: `complete`, `incomplete`, or `blocked`. The pipeline freezes the plan, builds and renders the deck, then requires an independent visual critic. The QA DAG is `package → rendered → actual-content → quality → delivery`; completion revalidates current evidence hashes. Legacy content/asset/QA manifests remain optional diagnostics.
 `deck.js` remains adaptive-freeform PptxGenJS: the model chooses expression, focal point, and
 composition language, while the Actual Element Registry enforces real-element geometry/text-fit
 baselines. Suite-owned layout, visual, shape, SVG, and composer libraries remain inspiration or
@@ -400,7 +395,7 @@ No. This repository supports Claude Code only.
 
 ## Development And Releases
 
-Starting with 0.4.1 the project also includes a dedicated engineering toolchain:
+The project also includes a dedicated engineering toolchain:
 
 - **Python linting**: Ruff with selected rule sets (E, F, W, I, N, UP, B, SIM, ARG, RET)
 - **JavaScript linting**: ESLint with standard rules + Prettier formatting
@@ -418,3 +413,21 @@ validation and release rules. Claude Code changes are published only from
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## 0.13 production integrity
+
+Production uses per-work authorization in `outputs/.pptx-work/<work-id>/workflow-state.json`.
+Initialize/confirm with `--work-id`; legacy global states require fresh confirmation.
+The pipeline dispatches create, edit_ooxml (unpack/edit/pack), and rebuild_from_source
+(source-analysis.md required). Source-based deliveries require change-summary.md.
+QA auto-binds speaker-notes.md and current previews. An isolated visual-critic must
+read every page; runtime receipts and image hashes are verified before QA/complete.
+A/B/D research requires an isolated researcher receipt. `next --json` provides a
+compact stage contract. Image provider commands require independent user-approved
+command SHA256 flags; project JSON cannot authorize execution.
+CI lints skills and tests Python 3.11/3.12 with Claude Code 2.1.272 and Ruff 0.16.7.
+Run the release workflow on main: every validation job must pass before annotated
+tag and GitHub Release creation. PowerPoint compatibility is tracked separately
+using references/powerpoint-smoke.md; LibreOffice success is not Office certification.
+
+Live benchmarks must pass `--project-dir <project-outside-marketplace>` when launched from this repository; baselines are written to the run directory, never the installed plugin.

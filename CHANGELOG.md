@@ -1,8 +1,18 @@
 # Changelog
 
-本文件记录 `claude-code` 分支的 Claude Code marketplace 与
-`student-presentation-suite` 插件版本。版本按时间倒序排列；`main` 分支的
-Codex 发行记录不在此维护。
+本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
+
+## 0.13.0 — 2026-09-16
+
+### 生产执行链路与发布治理
+
+- QA 自动连接当前 preview 和 speaker notes；渲染、独立 critic 和 complete 逐项复核 SHA256。
+- 三种 production mode 统一进入 Pipeline；OOXML 解包/打包保留 source，重建要求 source analysis，编辑交付附 change summary。
+- 授权按 work-id 隔离，拒绝跨任务状态及 outputs 外路径。旧项目级状态须用新 work-id 重新确认。
+- Research 与独立 visual critic 以实际子代理 hook 凭据绑定产物；next 输出紧凑阶段契约。
+- 图片 provider command 须由独立 CLI SHA256 授权，项目 JSON 不能自行授权。
+- CI 覆盖 skills，固定 Claude Code/Ruff/pip-audit，测试 Python 3.11/3.12；release workflow 必须等待全部验证。
+- 增加 PowerPoint 独立 smoke/checklist，修正文档中的未发布版本和旧发布线表述。
 
 ## 0.12.0 — 2026-09-15
 
