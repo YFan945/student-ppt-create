@@ -2,7 +2,15 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
-## Unreleased
+## 0.13.1 — 2026-09-16
+
+### 修复：plugin.json 重复声明 hooks
+
+- 移除 `.claude-plugin/plugin.json` 里的 `hooks` 字段。Claude Code 会自动加载标准的
+  `hooks/hooks.json`，manifest 再显式引用同一文件会被判为重复并报
+  `Duplicate hooks file detected ... The standard hooks/hooks.json is loaded
+  automatically`，导致插件 hooks 整体加载失败（`runtime_evidence` 的隔离执行凭据、
+  `cost_guard` 等都依赖这些 hooks）。
 
 ### 移除 6-deck live benchmark runner
 
