@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 import unittest
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -56,6 +57,26 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(runtime.handle({**base, "tool_name": "WebSearch"}), 2)
         self.assertEqual(runtime.handle({**base, "tool_name": "WebSearch", "agent_type": runtime.RESEARCHER, "agent_id": "research-child"}), 0)
         self.assertEqual(runtime.handle({**base, "tool_name": "WebSearch", "session_id": "unrelated"}), 0)
+
+    def test_stop_clears_main_session_research_scope(self):
+        base = {"cwd": str(self.project), "session_id": "parent"}
+        self.assertEqual(
+            runtime.handle(
+                {
+                    **base,
+                    "hook_event_name": "PreToolUse",
+                    "tool_name": "Skill",
+                    "tool_input": {"skill": "student-presentation-suite:sp-deck"},
+                }
+            ),
+            0,
+        )
+        self.assertEqual(runtime.handle({**base, "hook_event_name": "PreToolUse", "tool_name": "WebSearch"}), 2)
+        active = self.project / "outputs/.pptx-work/.guard/research-active-parent.json"
+        self.assertTrue(active.is_file())
+        self.assertEqual(runtime.handle({**base, "hook_event_name": "Stop"}), 0)
+        self.assertFalse(active.exists())
+        self.assertEqual(runtime.handle({**base, "hook_event_name": "PreToolUse", "tool_name": "WebSearch"}), 0)
 
     def test_named_evidence_agent_spawn_is_blocked(self):
         """带 name 的 RESEARCHER/CRITIC spawn 会 teammate 化并使收据机制失效，必须当场拒绝。"""
@@ -112,3 +133,16 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.event_call("SubagentStop")
         receipt = json.loads((self.work / "critic-execution.json").read_text())
         self.assertEqual(receipt["reads"], {str(path): runtime.digest(path) for path in paths})
+
+    def test_event_lock_recovers_abandoned_stale_lock(self):
+        guard = self.project / "outputs/.pptx-work/.guard"
+        guard.mkdir(parents=True, exist_ok=True)
+        lock = guard / "lock-parent-child"
+        lock.write_text('{"pid": 999999}')
+        stale = time.time() - runtime.LOCK_STALE_SECONDS - 5
+        os.utime(lock, (stale, stale))
+        with runtime.event_lock(self.event):
+            self.assertTrue(lock.is_file())
+            payload = json.loads(lock.read_text())
+            self.assertEqual(payload["pid"], os.getpid())
+        self.assertFalse(lock.exists())

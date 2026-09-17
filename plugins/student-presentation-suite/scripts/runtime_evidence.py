@@ -18,6 +18,7 @@ from pathlib import Path
 RESEARCHER = "student-presentation-suite:presentation-researcher"
 CRITIC = "student-presentation-suite:visual-critic"
 PIPELINE_SKILLS = {"sp-research", "sp-deck", "sp-outline"}
+LOCK_STALE_SECONDS = 30.0
 NAMED_SPAWN_REFUSAL = (
     "Pipeline evidence agents must not be spawned with a `name`: named Agent "
     "calls become teammates whose agent_type is the name, so SubagentStop "
@@ -35,9 +36,17 @@ NESTED_SPAWN_REFUSAL = (
 WEB_REFUSAL = "External research must run in the isolated presentation-researcher."
 
 
+def _lock_is_stale(path: Path) -> bool:
+    """A hook lock should live for milliseconds; recover files left by dead hooks."""
+    try:
+        return time.time() - path.stat().st_mtime > LOCK_STALE_SECONDS
+    except OSError:
+        return False
+
+
 @contextmanager
 def event_lock(event: dict):
-    """Serialize parallel image Read hooks for the same child (no lost hashes)."""
+    """Serialize parallel child hook events and recover abandoned lock files."""
     project = Path(os.environ.get("CLAUDE_PROJECT_DIR") or event.get("cwd") or Path.cwd()).resolve()
     key = re.sub(r"[^A-Za-z0-9_-]", "_", str(event.get("session_id")) + "-" + str(event.get("agent_id")))
     path = project / "outputs/.pptx-work/.guard" / f"lock-{key}"
@@ -46,8 +55,23 @@ def event_lock(event: dict):
     while True:
         try:
             descriptor = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.write(
+                descriptor,
+                json.dumps(
+                    {
+                        "pid": os.getpid(),
+                        "created_at": time.time(),
+                        "session_id": event.get("session_id"),
+                        "agent_id": event.get("agent_id"),
+                    }
+                ).encode("utf-8"),
+            )
             break
         except FileExistsError:
+            if _lock_is_stale(path):
+                with suppress(OSError):
+                    path.unlink()
+                continue
             if time.monotonic() >= deadline:
                 raise RuntimeError("runtime evidence lock unavailable; retry the isolated agent") from None
             time.sleep(0.02)
@@ -82,6 +106,15 @@ def handle(event: dict) -> int:
     inputs = event.get("tool_input") or {}
     session = re.sub(r"[^A-Za-z0-9_-]", "_", str(event.get("session_id") or "unknown"))
     active = root / ".guard" / f"research-active-{session}.json"
+
+    # The marker is intentionally session-scoped, but it must not outlive the
+    # assistant turn that armed the presentation pipeline. Without this cleanup,
+    # a later unrelated WebSearch in the same Claude session stayed blocked.
+    if kind == "Stop" and not child:
+        with suppress(OSError):
+            active.unlink(missing_ok=True)
+        return 0
+
     if kind == "PreToolUse":
         if tool in {"Write", "Edit"}:
             path = Path(inputs.get("file_path") or "").resolve()
