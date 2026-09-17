@@ -1,5 +1,5 @@
 {
-  "description": "Cost-discipline PreToolUse guard: block plugin-source archaeology, same-hash PNG re-reads, named researcher/critic teammates, nested evidence-agent spawns, and direct builder invocation. Does not block first image Read.",
+  "description": "Cost-discipline and execution-integrity guards for the student presentation pipeline.",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,6 +8,15 @@
           {
             "type": "command",
             "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/cost_guard.py\""
+          }
+        ]
+      },
+      {
+        "matcher": "Read|Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PLUGIN_ROOT}/scripts/builder_guard.py\""
           }
         ]
       },

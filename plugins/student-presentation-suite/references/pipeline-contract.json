@@ -29,7 +29,8 @@
     "build_invalidates_render_evidence": true,
     "render_evidence_must_match_current_pptx": true,
     "plan_compiles_evidence_map": true,
-    "no_scaffold_pages_at_build": true
+    "no_scaffold_pages_at_build": true,
+    "page_generation_requires_isolated_builder": true
   },
   "production_modes": [
     "create",
@@ -46,9 +47,9 @@
       "Classify research A/B/C/D and preserve existing-deck edit intent."
     ],
     "build": [
-      "Follow each page module and composition plan; do not reload the full planning references.",
-      "create/rebuild_from_source: implement every pages/pNN-*.js, remove scaffold markers, build --entry deck.js.",
-      "edit_ooxml: edit ooxml/ only, keep source unchanged, write change-summary.md, build without --entry.",
+      "create/rebuild_from_source: from the MAIN session spawn student-presentation-suite:presentation-builder in foreground WITHOUT a name; pass absolute work-dir and mode=initial. The builder implements pages/pNN-*.js and returns only BUILDER_DONE/BUILDER_BLOCKED.",
+      "The main session must not implement page modules itself and must not receive page source back from the builder; after BUILDER_DONE run the normal exploration gates and pipeline build --entry deck.js.",
+      "edit_ooxml remains pipeline-owned: edit ooxml/ only, keep source unchanged, write change-summary.md, build without --entry.",
       "Write speaker-notes.md. Rebuild requires source-analysis.md."
     ],
     "render": [
@@ -61,7 +62,8 @@
       "QA automatically uses speaker-notes.md plus current contact sheet/pages. Missing required inputs block complete."
     ],
     "repair": [
-      "Fix all blockers together, then build, render, isolated critique and QA.",
+      "After ppt_pipeline.py repair records the blocker set, spawn student-presentation-suite:presentation-builder in foreground WITHOUT a name with mode=repair and a concise blocker summary; the main session must not edit page modules itself.",
+      "Fix all blocker pages together, then build, render, isolated critique and QA.",
       "Never mark major/critical resolved without before/after evidence."
     ],
     "complete": [

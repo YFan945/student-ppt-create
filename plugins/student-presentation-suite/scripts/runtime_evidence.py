@@ -67,7 +67,13 @@ def event_lock(event: dict):
                 ).encode("utf-8"),
             )
             break
-        except FileExistsError:
+        except (FileExistsError, PermissionError):
+            # On Windows an existing file held by another thread/process may be
+            # reported as EACCES instead of EEXIST for O_CREAT|O_EXCL. Treat it
+            # as normal contention only when the lock path actually exists;
+            # genuine directory/access failures must still surface immediately.
+            if not path.exists():
+                raise
             if _lock_is_stale(path):
                 with suppress(OSError):
                     path.unlink()
