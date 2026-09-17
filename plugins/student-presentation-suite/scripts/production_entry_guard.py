@@ -50,6 +50,11 @@ _PIPELINE_ACTION_RE = re.compile(
     r"ppt_pipeline\.py(?:[\"']?)(?:\s+)(?P<action>[A-Za-z0-9_-]+)",
     re.IGNORECASE,
 )
+_RUN_WITH_INVOCATION_RE = re.compile(
+    r"run_with_pptxgenjs\.js[\"']?(?P<args>.*?)(?=(?:&&|\|\||;|\n|\|)|$)",
+    re.IGNORECASE,
+)
+_PROBE_TOKEN_RE = re.compile(r"(?:^|\s)--probe(?=$|\s)", re.IGNORECASE)
 
 
 def _unique_matches(pattern: re.Pattern[str], command: str) -> list[str]:
@@ -72,6 +77,12 @@ def direct_root_scripts(command: str) -> list[str]:
     return _unique_matches(_ROOT_SCRIPT_RE, command)
 
 
+def _all_builder_invocations_are_probe(command: str) -> bool:
+    """Allow direct builder access only when every invocation is a runtime probe."""
+    matches = list(_RUN_WITH_INVOCATION_RE.finditer(command))
+    return bool(matches) and all(_PROBE_TOKEN_RE.search(match.group("args")) for match in matches)
+
+
 def check_bash(command: str) -> str | None:
     normalized = (command or "").replace("\\", "/")
 
@@ -82,7 +93,7 @@ def check_bash(command: str) -> str | None:
             "and run `ppt_pipeline.py plan --work-dir <wd>`; the pipeline owns evidence-map "
             "compilation and Slide Spec freezing."
         )
-    if "run_with_pptxgenjs.js" in root_scripts and "--probe" not in normalized:
+    if "run_with_pptxgenjs.js" in root_scripts and not _all_builder_invocations_are_probe(normalized):
         return (
             "Direct run_with_pptxgenjs.js generation is refused. The pipeline owns build, "
             "normalization and QA binding; run `ppt_pipeline.py next --work-dir <wd> --json` "
