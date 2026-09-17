@@ -81,11 +81,7 @@ class ProductionEntryGuardTests(unittest.TestCase):
         self.assertEqual(2, code)
 
     def test_windows_style_path_is_recognized(self) -> None:
-        command = (
-            r'python "C:\Users\me\.claude\plugins\student-presentation-suite\skills\sp-deck\scripts\'
-            r'pptx_actual_content_check.py" --json'
-        )
-        command = command.replace('\\"', '"').replace('\\\\', '\\')
+        command = r'python "C:\Users\me\.claude\plugins\student-presentation-suite\skills\sp-deck\scripts\pptx_actual_content_check.py" --json'
         code, message = self.run_guard(command)
         self.assertEqual(2, code)
         self.assertIn("pptx_actual_content_check.py", message)
