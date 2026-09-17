@@ -79,6 +79,12 @@ class HookHealthTests(unittest.TestCase):
         self.assertEqual(target, hook_health.receipt_path(self.project, self.work))
         hook_health.verify_plan_receipt(self.work)
 
+    def test_relative_work_dir_is_resolved_against_event_project(self) -> None:
+        command = self.plan_command().replace(str(self.work), "outputs/.pptx-work/work-01")
+        target = hook_health.arm(self.event(command))
+        self.assertEqual(target, hook_health.receipt_path(self.project, self.work))
+        hook_health.verify_plan_receipt(self.work)
+
     def test_bootstrap_refuses_missing_hooks_only_for_real_plugin_plan(self) -> None:
         argv = [
             str(ROOT / "skills/sp-deck/scripts/ppt_pipeline.py"),
