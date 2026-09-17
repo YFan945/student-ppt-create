@@ -21,7 +21,8 @@
     "delivery"
   ],
   "max_repairs": 3,
-  "max_repairs_hard_cap": 12,
+  "max_repairs_hard_cap": 6,
+  "max_pre_qa_rebuilds": 2,
   "intake_confirmation_required": true,
   "repeat_policy": {
     "build_requires_changed_generator_after_repair": true,
@@ -32,7 +33,9 @@
     "plan_compiles_evidence_map": true,
     "no_scaffold_pages_at_build": true,
     "page_generation_requires_isolated_builder": true,
-    "high_leverage_calibration_before_full_generation": true
+    "high_leverage_calibration_before_full_generation": true,
+    "build_runs_deterministic_pre_qa_gates": true,
+    "pre_qa_rebuilds_consume_no_repair_round": true
   },
   "production_modes": [
     "create",
@@ -55,11 +58,13 @@
       "The main session must not implement or read page modules itself and must not receive page source back from the builder; calibration is a temporary preview only and does not mutate production manifest/build state.",
       "After BUILDER_DONE(initial), run the normal exploration gates and pipeline build --entry deck.js. Production build still refuses any remaining scaffold page.",
       "edit_ooxml remains pipeline-owned: edit ooxml/ only, keep source unchanged, write change-summary.md, build without --entry.",
-      "Rebuild requires source-analysis.md."
+      "Rebuild requires source-analysis.md.",
+      "After packing, build runs the deterministic pre-QA gates (rendered + actual-content) locally — they read the PPTX itself and need no critic. On failure, fix the reported pages through the isolated builder and rebuild: that path consumes NO repair round while the state stays producing, bounded by max_pre_qa_rebuilds identical-failure rounds. Render and the critic only ever see a deterministically green deck."
     ],
     "render": [
       "Render the current built PPTX. Changed page/contact hashes invalidate the cache.",
-      "Do not reuse previous-build images. Pipeline archives stale evidence."
+      "Do not reuse previous-build images. Pipeline archives stale evidence.",
+      "Render only after the pre-QA gates are green: `next --json` will not route to render while pre-QA blockers exist (do not bypass it by calling render directly)."
     ],
     "qa": [
       "Spawn student-presentation-suite:visual-critic WITHOUT a name. Pass the absolute work-dir in its prompt. Never nest the critic inside another agent.",
@@ -68,6 +73,7 @@
       "QA reads speaker notes from the delivered PPTX notes pane (speaker-notes.md is the readable copy) plus the current contact sheet/pages. Missing required inputs block complete."
     ],
     "repair": [
+      "Pre-QA deterministic misses are handled under the build stage contract (builder fix + rebuild, no repair round); this budget counts full QA rounds only.",
       "After ppt_pipeline.py repair records the blocker set, spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=repair and a concise blocker summary; the main session must not edit page modules itself.",
       "Hand the builder the pipeline-qa.json path: it already carries every failed content gate (failed_stages / blockers_by_gate), so one round fixes them all. Do not fix one gate per round.",
       "Fix all blocker pages together, then build, render, isolated critique and QA.",

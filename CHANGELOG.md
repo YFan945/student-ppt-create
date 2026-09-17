@@ -2,6 +2,33 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.14.2 — 2026-09-18
+
+来源：owner 对 0.14.1 预算口径的追问——"很多问题是小问题，或者本来在生成时就该做好"。
+复盘确认 0.13.4 的 6 轮 repair 没有一轮是"正常的小问题"（全部由已修的结构性缺陷引起），
+但门序仍有一个昂贵的洞：确定性门（`rendered` / `actual-content` 只读 PPTX、不依赖
+critic）排在最贵的 critic 之后。本批把确定性拦截提前到 build，并收紧提额硬顶。
+
+### 确定性预检（pre-QA）：生成时就该做对的事，不再花 render + critic + 一轮 QA
+
+- `ppt_pipeline.py build` 打包完成后立即本地运行 `rendered` + `actual-content`
+  两道确定性门（只读 PPTX 本身，零 critic 成本）。2026-09-17 live：一个缺失的
+  planned number 直到 QA 阶段才暴露——此前 render 和一整轮隔离 critic 已经为一个
+  注定返工的 deck 付完费。
+- 不绿时：`render` 直接拒绝；`next --json` 指向免 repair 轮修法——spawn builder
+  `mode=repair` 读 `pre-qa-actual-content.json` / `pre-qa-rendered.json` 报告改页后
+  重建（**不消耗 repair 预算**，critic 从不评审注定返工的 deck）。连续失败上限为
+  契约新增的 `max_pre_qa_rebuilds`（默认 2），到顶即转正式 render/critic 流程；
+  重建仍要求 generator 指纹变化，防无改动死循环。预检报告写独立的 `pre-qa-*.json`，
+  与权威 QA 运行（后续重新执行同样检查）明确区分。
+- `status` 与 stage summary 同步展示预检状态；`repair` 契约明确"预检修法不占预算"。
+
+### 预算口径
+
+- `pipeline-contract.json`：`max_repairs_hard_cap` 12 → 6。基础预算 `max_repairs` 3
+  轮不变（0.13.4 的 6 轮全部由已修缺陷引起，不存在需要 4 轮以上的已知场景）；
+  真需要时 `repair --extend N --extend-reason <blocker 差异>` 提额通道仍在。
+
 ## 0.14.1 — 2026-09-18
 
 来源：2026-09-18 对 0.13.4 live 会话 transcript 的成本诊断

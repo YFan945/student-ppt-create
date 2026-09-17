@@ -221,6 +221,12 @@ DeepSeek Flash 视觉按约 1300×1300 缩放，**每张图封顶 1024 token**�
 `next` 只有比对 `manifest.render.pptx_sha256` 与当前 PPTX hash 一致时才把下一步指向 `qa`；
 否则指向 `render`。**旧图不得用于视觉 critique**——那是针对上一版 PPT 的判断。
 
+**critic 只评审确定性门全绿的 deck**：`build` 打包后立即本地跑 `rendered` +
+`actual-content`（只读 PPTX、零 critic 成本）；不绿时 `render` 拒绝、`next` 指向
+免 repair 轮的 builder 改页重建（上限 `max_pre_qa_rebuilds` 次）。绕过 `next` 直接
+render 或 spawn critic，是对注定返工的 deck 花冤枉钱（2026-09-17 live：一个缺失的
+planned number 付完了 render + 一整轮 critic 才在 QA 暴露）。
+
 **可验证**：同一 PNG sha256 的 Read 次数 ≤ 1；含图的回合里 `Read` 次数 > 1
 （并行发出），而不是每张图单独一轮；`visual-review.json` 绑定的渲染图 SHA256 与
 `manifest.render.contact_sheet.sha256` 同源。

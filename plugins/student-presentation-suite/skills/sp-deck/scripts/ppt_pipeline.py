@@ -71,7 +71,12 @@ MAX_REPAIRS = int(CONTRACT.get("max_repairs") or 3)
 # 没有这个机制时，超预算的唯一出路是改已安装插件里的 pipeline-contract.json（2026-09-17
 # live 就是这么做的）——升级即失效、不可审计，也违反"You never write into the installed
 # plugin"。上限本身来自契约，所以仍然是一处定义。
-MAX_REPAIRS_HARD_CAP = max(MAX_REPAIRS, int(CONTRACT.get("max_repairs_hard_cap") or 12))
+MAX_REPAIRS_HARD_CAP = max(MAX_REPAIRS, int(CONTRACT.get("max_repairs_hard_cap") or 6))
+# 确定性预检（pre-QA）轮次上限：`rendered` / `actual_content` 两道门只读 PPTX 本身、
+# 不依赖 critic 产物，所以在 build 打包完成后立即运行。失败意味着"生成时就该做对的事
+# 没做对"——这类问题走 builder 改页 + 重建，不消耗 repair 预算（省掉的是 render 和一整
+# 轮 critic + QA）；连续失败超过这个轮数说明盲修在进行，剩余问题转正式 QA 流程计费。
+MAX_PRE_QA_REBUILDS = max(1, int(CONTRACT.get("max_pre_qa_rebuilds") or 2))
 QA_ORDER = tuple(CONTRACT.get("qa_order") or ("package", "rendered", "actual_content", "quality", "delivery"))
 # QA 门分两类，这个区分决定了循环能不能提前停。
 #
@@ -428,6 +433,87 @@ def build_qa_stages(
     return [candidates[name] for name in QA_ORDER if name in candidates]
 
 
+def pre_qa_stages(manifest: dict[str, Any], work_dir: Path) -> list[Stage]:
+    """The two deterministic gates, with their own pre-QA report paths.
+
+    Reports go to pre-qa-*.json so they can be handed to the builder without
+    being confused with (or silently overwritten by) the authoritative QA run
+    that re-executes the same checks later.
+    """
+    inputs = manifest.get("inputs") or {}
+    pptx = str(((manifest.get("build") or {}).get("pptx") or {}).get("path") or "")
+    spec = str((inputs.get("slide_spec") or {}).get("path") or "")
+    if not pptx:
+        return []
+    stages = [
+        Stage(
+            "rendered",
+            [sys.executable, str(HERE / "pptx_rendered_check.py"), "--pptx", pptx,
+             "--output", str(work_dir / "pre-qa-rendered.json")],
+            work_dir / "pre-qa-rendered.json", "rendered",
+        )
+    ]
+    if spec:
+        stages.append(
+            Stage(
+                "actual-content",
+                [sys.executable, str(HERE / "pptx_actual_content_check.py"), pptx, spec,
+                 "--output", str(work_dir / "pre-qa-actual-content.json")],
+                work_dir / "pre-qa-actual-content.json", "actual_content",
+            )
+        )
+    return stages
+
+
+def run_pre_qa_gates(manifest: dict[str, Any], work_dir: Path) -> dict[str, Any]:
+    """Run the deterministic gates inside build, before any render or critic cost.
+
+    2026-09-17 live: a missing planned number surfaced only at the QA stage —
+    after render AND a full isolated critic pass had been paid for a deck that
+    was already doomed. `rendered` / `actual_content` read the PPTX itself and
+    need no critic output, so build runs them the moment the deck exists. A
+    deterministic miss then costs one Edit + one local rebuild instead of a
+    critic round; the critic only ever reviews a deck that already passes the
+    deterministic gates.
+    """
+    stages = pre_qa_stages(manifest, work_dir)
+    pptx = Path(str(((manifest.get("build") or {}).get("pptx") or {}).get("path") or ""))
+    reports: dict[str, Any] = {}
+    problems: list[dict[str, Any]] = []
+    for stage in stages:
+        ok, stage_problems, binding = collect(stage)
+        reports[stage.artifact] = binding
+        problems.extend(stage_problems)
+    blockers = sum(1 for item in problems if item["severity"] in QA_BLOCKING_SEVERITIES)
+    prior = manifest.get("pre_qa") or {}
+    ok = bool(stages) and blockers == 0 and all(binding.get("ok") for binding in reports.values())
+    return {
+        "ok": ok,
+        "blockers": blockers,
+        "problems": problems,
+        "stages": reports,
+        "pptx_sha256": sha256_file(pptx) if pptx.is_file() else None,
+        # consecutive failing builds; reset to 0 whenever the gates pass
+        "rounds": 0 if ok else int(prior.get("rounds") or 0) + 1,
+        "max_rounds": MAX_PRE_QA_REBUILDS,
+    }
+
+
+def pre_qa_failed_current(manifest: dict[str, Any]) -> bool:
+    """Whether the CURRENT build failed the pre-QA gates (and still may rebuild).
+
+    The pptx binding in `build` is replaced by every build, so a stale pre_qa
+    entry (from an earlier deck) can never unlock a rebuild by itself.
+    """
+    pre_qa = manifest.get("pre_qa") or {}
+    build_sha = str(((manifest.get("build") or {}).get("pptx") or {}).get("sha256") or "")
+    if not build_sha or pre_qa.get("pptx_sha256") != build_sha:
+        return False
+    if pre_qa.get("ok") is not False:
+        return False
+    return int(pre_qa.get("rounds") or 0) < MAX_PRE_QA_REBUILDS
+
+
 def normalise_severity(report: dict[str, Any], issue: dict[str, Any]) -> str:
     severity = str(issue.get("severity") or "").lower()
     if severity in {"critical", "major", "blocker"}:
@@ -721,7 +807,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     validate_manifest_authorization(manifest)
     state = str(manifest.get("state"))
     build_info = manifest.setdefault("build", {})
-    if state == "producing" and not build_info.get("pending_repair"):
+    pre_qa_fix = pre_qa_failed_current(manifest)
+    if state == "producing" and not build_info.get("pending_repair") and not pre_qa_fix:
         raise RefusedError("repeat build refused; run repair after QA before rebuilding")
 
     inputs = manifest.get("inputs") or {}
@@ -754,8 +841,11 @@ def cmd_build(args: argparse.Namespace) -> int:
         enforce_page_copy_fidelity(work_dir, spec)
         fingerprint, bindings = generator_fingerprint(entry)
     previous = str(build_info.get("generator_fingerprint") or "")
-    if state == "producing" and build_info.get("pending_repair") and previous == fingerprint:
-        raise RefusedError("repair produced no generator change; refusing identical rebuild")
+    if state == "producing" and (build_info.get("pending_repair") or pre_qa_fix) and previous == fingerprint:
+        raise RefusedError(
+            "rebuild refused: the generator did not change since the build that failed "
+            "(repair or pre-QA fix must edit the reported pages)"
+        )
 
     pptx = work_dir / args.output_name
     if pptx.resolve().parent != work_dir or (manifest.get("source") and pptx.resolve() == Path(manifest["source"]["path"])):
@@ -782,26 +872,46 @@ def cmd_build(args: argparse.Namespace) -> int:
         build_info["stale_evidence"] = stale_moved
     manifest["render"] = {}
     manifest["qa"] = {}
+    pre_qa = run_pre_qa_gates(manifest, work_dir)
+    manifest["pre_qa"] = pre_qa
     before = str(manifest.get("state"))
     manifest["state"] = "producing"
     record(
         manifest, "build", before, "producing",
         generator_fingerprint=fingerprint, stale_render_moved=len(stale_moved),
+        pre_qa_ok=pre_qa["ok"], pre_qa_blockers=pre_qa["blockers"],
     )
     save_manifest(work_dir, manifest)
-    write_stage_summary(
-        work_dir,
-        "producing",
-        [
-            f"- pptx: `{pptx}` sha256 {build_info['pptx']['sha256'][:12]}",
-            f"- builds: {build_info['build_count']} repairs: {build_info.get('repair_count', 0)}",
-            f"- generator files: {len(build_info.get('generator_files') or [])}",
-            f"- previous render evidence archived: {len(stale_moved)}",
-            "- next: `ppt_pipeline.py render`, then Read contact-sheet + blocker PNGs (CD-9)",
-        ],
-    )
+    summary_lines = [
+        f"- pptx: `{pptx}` sha256 {build_info['pptx']['sha256'][:12]}",
+        f"- builds: {build_info['build_count']} repairs: {build_info.get('repair_count', 0)}",
+        f"- generator files: {len(build_info.get('generator_files') or [])}",
+        f"- previous render evidence archived: {len(stale_moved)}",
+    ]
+    if pre_qa["ok"]:
+        summary_lines.append(
+            "- pre-QA (deterministic gates): green — next: `ppt_pipeline.py render`, "
+            "then Read contact-sheet + blocker PNGs (CD-9)"
+        )
+    else:
+        summary_lines.append(
+            f"- pre-QA (deterministic gates): BLOCKED with {pre_qa['blockers']} blockers "
+            f"(round {pre_qa['rounds']}/{pre_qa['max_rounds']}) — run `next --json`; the fix "
+            "path (builder edits the reported pages, rebuild) consumes no repair round"
+        )
+    write_stage_summary(work_dir, "producing", summary_lines)
     mirror_workflow_state(manifest, "producing")
     print(f"ppt_pipeline: built {pptx.name} (builds {build_info['build_count']}, repairs {build_info.get('repair_count', 0)})")
+    if pre_qa["ok"]:
+        print("ppt_pipeline: deterministic pre-QA green (rendered + actual-content) — render next")
+    else:
+        print(
+            f"ppt_pipeline: deterministic pre-QA FAILED: {pre_qa['blockers']} blockers BEFORE any "
+            f"render/critic cost (round {pre_qa['rounds']}/{pre_qa['max_rounds']}) — run "
+            "`next --json` for the fix path; do NOT render or spawn the critic on this build"
+        )
+        for item in pre_qa["problems"][:5]:
+            print(f"  [{item['severity']}] {item['gate']}/{item['code']} — {str(item['message'])[:160]}")
     return 0
 
 
@@ -876,6 +986,11 @@ def cmd_render(args: argparse.Namespace) -> int:
     require_state(manifest, {"producing", "qa"}, "render")
     assert manifest is not None
     validate_manifest_authorization(manifest)
+    if pre_qa_failed_current(manifest):
+        raise RefusedError(
+            "pre-QA gates failed for this build — fix the reported pages and rebuild before "
+            "rendering (run `next --json`: that path consumes no repair round)"
+        )
     pptx = pptx_path(manifest)
     if not pptx.is_file():
         raise RefusedError("no built PPTX in manifest")
@@ -1203,12 +1318,18 @@ def cmd_status(args: argparse.Namespace) -> int:
     build = manifest.get("build") or {}
     qa = manifest.get("qa") or {}
     render = manifest.get("render") or {}
+    pre_qa = manifest.get("pre_qa") or {}
     budget = repair_budget(manifest)
     granted = f" (base {budget['base']} + granted {budget['granted']})" if budget["granted"] else ""
+    pre_qa_state = (
+        "green" if pre_qa.get("ok") else
+        f"{pre_qa.get('blockers', '-')} blockers (round {pre_qa.get('rounds', '-')}/{pre_qa.get('max_rounds', '-')})"
+        if pre_qa else "-"
+    )
     print(
         f"ppt_pipeline: {manifest.get('state')} — builds {build.get('build_count', 0)}, "
         f"repairs {build.get('repair_count', 0)}/{budget['effective']}{granted}, "
-        f"rendered {render.get('page_count', 0)} | "
+        f"pre-qa {pre_qa_state}, rendered {render.get('page_count', 0)} | "
         f"qa {'ok' if qa.get('ok') else str(qa.get('blockers', '-')) + ' blockers'}"
     )
     return 0
@@ -1457,7 +1578,32 @@ def cmd_next(args: argparse.Namespace) -> int:
                         "scaffold page (calibrated pages are preserved); run build only after BUILDER_DONE."
                     )
         elif state == "producing":
-            if render_is_current(manifest):
+            if pre_qa_failed_current(manifest):
+                # Deterministic misses are fixed BEFORE any render or critic cost:
+                # the builder edits the reported pages and the deck is rebuilt —
+                # no repair round, no critic pass on a doomed deck.
+                pre_qa = manifest.get("pre_qa") or {}
+                payload["agent"] = "student-presentation-suite:presentation-builder"
+                payload["pre_qa"] = {
+                    "ok": False,
+                    "blockers": pre_qa.get("blockers"),
+                    "rounds": pre_qa.get("rounds"),
+                    "max_rounds": pre_qa.get("max_rounds", MAX_PRE_QA_REBUILDS),
+                    "reports": [
+                        str(work_dir / "pre-qa-actual-content.json"),
+                        str(work_dir / "pre-qa-rendered.json"),
+                    ],
+                }
+                payload["notes"] = (
+                    "deterministic pre-QA gates failed BEFORE any render/critic cost "
+                    f"(round {pre_qa.get('rounds')}/{pre_qa.get('max_rounds', MAX_PRE_QA_REBUILDS)}). "
+                    "Spawn student-presentation-suite:presentation-builder WITHOUT a name with "
+                    "mode=repair, the absolute work-dir and the report paths above — it reads "
+                    "them itself. Fix every reported page in one round, then run build again "
+                    "(this path consumes NO repair round while the state stays producing). "
+                    "Do not render and do not spawn the critic on this build."
+                )
+            elif render_is_current(manifest):
                 render = manifest.get("render") or {}
                 contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
                 thumb = Path(str((render.get("contact_sheet_thumb") or {}).get("path") or ""))
@@ -1508,6 +1654,9 @@ def cmd_next(args: argparse.Namespace) -> int:
     if manifest and str(manifest.get("state") or "") == "planned" and manifest.get("mode") != "edit_ooxml":
         # planned create/rebuild keeps the build stage contract (the calibration
         # flow) even when the next step is an agent spawn with no bash command.
+        action = "build"
+    elif manifest and str(manifest.get("state") or "") == "producing" and pre_qa_failed_current(manifest):
+        # the pre-QA fix path is a build-stage rule set: builder edits, rebuild, no repair
         action = "build"
     else:
         for candidate in ("build", "render", "qa", "repair", "complete"):

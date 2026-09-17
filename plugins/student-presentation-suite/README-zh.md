@@ -223,8 +223,10 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 发现 blocker 时用 `skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>`
 走返工边，不要手工 `workflow_guard.py transition` 推进 `producing` / `complete`。
 最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重跑最终门禁”；
-仍有 blocker 则交付 `incomplete`。QA 通过后 `complete` 使用
-`ppt_pipeline.py complete --work-dir <wd>`。CI 继续渲染完整场景矩阵，但不会提交生成产物。
+仍有 blocker 则交付 `incomplete`。确定性缺陷在更早处拦截：`build` 打包后立即本地
+跑 `rendered` + `actual-content` 两道确定性门，不绿则 `render` 拒绝、`next` 指向免
+repair 轮的 builder 改页重建——critic 从不评审注定返工的 deck。QA 通过后 `complete`
+使用 `ppt_pipeline.py complete --work-dir <wd>`。CI 继续渲染完整场景矩阵，但不会提交生成产物。
 
 会话中断（CLI 在管线子代理仍在运行时被关闭）后重开项目，跑同一条
 `ppt_pipeline.py next --work-dir <wd> --json` 即可：包括校准在内的每一步都从盘上

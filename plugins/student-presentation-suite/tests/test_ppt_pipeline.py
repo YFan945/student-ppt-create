@@ -395,6 +395,116 @@ class PlanTests(PipelineTestCase):
         self.assertEqual(rc, 0)
 
 
+class PreQaGateTests(PipelineTestCase):
+    """Deterministic gates run inside build: misses cost an Edit + rebuild,
+    never a critic pass or a repair round (2026-09-17 live paid render + critic
+    + QA before a missing planned number surfaced)."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.files = self.write_inputs()
+        self.plan(self.files)
+        self.entry = self.entry_stub()
+
+    def entry_stub(self) -> Path:
+        entry = self.work / "deck.js"
+        self.implement_scaffolded_pages()
+        return entry
+
+    def failing_runner(self) -> FakeRunner:
+        runner = FakeRunner(self.work)
+        runner.report_failures = {
+            "pre-qa-actual-content.json": [
+                {"severity": "major", "code": "planned_numbers_missing",
+                 "message": "planned number 42 has no text run on slide 1"}
+            ]
+        }
+        return runner
+
+    def build(self, runner: FakeRunner) -> int:
+        pp._runner = runner
+        return pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry)])
+
+    def edit_page(self) -> None:
+        page = next((self.work / "pages").glob("p*.js"))
+        page.write_text(page.read_text(encoding="utf-8") + "\n/* fixed */\n", encoding="utf-8")
+
+    def test_build_records_green_pre_qa(self) -> None:
+        self.assertEqual(self.build(FakeRunner(self.work)), 0)
+        pre_qa = self.manifest()["pre_qa"]
+        self.assertTrue(pre_qa["ok"])
+        self.assertEqual(0, pre_qa["rounds"])
+        self.assertIn("rendered", pre_qa["stages"])
+        self.assertIn("actual_content", pre_qa["stages"])
+        self.assertTrue((self.work / "pre-qa-actual-content.json").is_file())
+
+    def test_pre_qa_failure_blocks_neither_build_nor_budget(self) -> None:
+        rc = self.build(self.failing_runner())
+        self.assertEqual(0, rc, "the deck itself built; pre-QA is routing, not a build failure")
+        manifest = self.manifest()
+        pre_qa = manifest["pre_qa"]
+        self.assertFalse(pre_qa["ok"])
+        self.assertEqual(1, pre_qa["blockers"])
+        self.assertEqual(1, pre_qa["rounds"])
+        self.assertEqual(0, manifest["build"]["repair_count"],
+                         "a deterministic miss must not consume a repair round")
+
+    def test_pre_qa_failure_allows_rebuild_without_repair(self) -> None:
+        self.assertEqual(self.build(self.failing_runner()), 0)
+        self.edit_page()
+        self.assertEqual(self.build(self.failing_runner()), 0)
+        self.assertEqual(0, self.manifest()["build"]["repair_count"])
+        self.assertEqual(2, self.manifest()["build"]["build_count"])
+
+    def test_pre_qa_rebuild_requires_generator_change(self) -> None:
+        self.assertEqual(self.build(self.failing_runner()), 0)
+        self.assertEqual(self.build(self.failing_runner()), 2,
+                         "identical rebuild must not loop the free fix path")
+
+    def test_render_refused_while_pre_qa_blocked(self) -> None:
+        self.assertEqual(self.build(self.failing_runner()), 0)
+        with self.assertRaises(pp.RefusedError):
+            pp.cmd_render(ns("render", self.work, cols=3, prefix="slide"))
+
+    def next_payload(self) -> dict:
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = pp.main(["next", "--work-dir", str(self.work), "--json"])
+        self.assertEqual(rc, 0)
+        return json.loads(buffer.getvalue())
+
+    def test_next_routes_pre_qa_failure_to_builder_not_critic(self) -> None:
+        self.assertEqual(self.build(self.failing_runner()), 0)
+        payload = self.next_payload()
+        self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
+        self.assertFalse(payload["pre_qa"]["ok"])
+        self.assertEqual(1, payload["pre_qa"]["rounds"])
+        self.assertTrue(
+            any(report.endswith("pre-qa-actual-content.json") for report in payload["pre_qa"]["reports"])
+        )
+        self.assertNotIn("visual-critic", str(payload.get("agent")))
+        self.assertIn("NO repair round", payload["notes"])
+        self.assertEqual("build", payload["contract"]["stage"])
+
+    def test_pre_qa_round_cap_reopens_the_formal_path(self) -> None:
+        runner = self.failing_runner()
+        for _ in range(pp.MAX_PRE_QA_REBUILDS):
+            self.assertEqual(self.build(runner), 0)
+            self.edit_page()
+        self.assertEqual(pp.MAX_PRE_QA_REBUILDS, self.manifest()["pre_qa"]["rounds"])
+        payload = self.next_payload()
+        self.assertNotIn("agent", payload, "capped rounds must stop the free-fix routing")
+        self.assertIn("render", payload["next_command"])
+
+    def test_pre_qa_pass_resets_rounds(self) -> None:
+        self.assertEqual(self.build(self.failing_runner()), 0)
+        self.edit_page()
+        self.assertEqual(self.build(FakeRunner(self.work)), 0)
+        pre_qa = self.manifest()["pre_qa"]
+        self.assertTrue(pre_qa["ok"])
+        self.assertEqual(0, pre_qa["rounds"])
+
+
 class BuildTests(PipelineTestCase):
     def setUp(self) -> None:
         super().setUp()

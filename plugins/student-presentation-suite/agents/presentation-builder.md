@@ -36,6 +36,11 @@ For `initial` mode:
 For `repair` mode:
 
 - read the caller-provided blocker summary and current manifest;
+- the blocker report is either `pre-qa-actual-content.json` / `pre-qa-rendered.json`
+  (deterministic pre-QA misses: fixed by editing the reported pages and rebuilding —
+  no repair round, no critic has run yet) or the main session's `pipeline-qa.json`
+  (full QA blockers). Read the report file yourself; never rely on transcribed
+  blockers;
 - edit only the blocker pages plus any directly shared helper/page module that must change to fix them;
 - do not opportunistically redesign unrelated pages;
 - **never make an accepted page worse.** The quality gate compares this round's per-slide

@@ -273,7 +273,11 @@ At most one repair loop may change the
 spec/composer/generator and rebuild the complete candidate; a remaining QA blocker
 is fixed via
 `skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>` instead
-of resetting the whole pipeline.
+of resetting the whole pipeline. Deterministic misses are caught even earlier:
+right after packing, `build` runs the `rendered` + `actual-content` gates locally
+(they read the PPTX itself and need no critic); while they fail, `render` is
+refused and `next` routes to a budget-free builder fix-and-rebuild — the critic
+never reviews a doomed deck.
 
 If a session is interrupted (the CLI is closed while a pipeline agent is still
 running), reopen the project and run the same `ppt_pipeline.py next --work-dir

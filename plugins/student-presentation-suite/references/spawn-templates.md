@@ -68,7 +68,9 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - 不要运行 ppt_pipeline.py build/render/qa、不要跑 run_with_pptxgenjs.js
   （临时验证只能在系统临时目录，不得在 work-dir 产正式 pptx）。
 - 不改 slide-spec-compiled.yaml、art-direction.yaml、build-manifest.json、visual-review.json。
-- 本轮任务细节：<QA/校准报告的绝对路径 + 一句话摘要；请自行读报告原文，不要依赖转述>。
+- 本轮任务细节：<报告路径 + 一句话摘要；报告可能是 pre-qa-actual-content.json /
+  pre-qa-rendered.json（确定性预检，此路径不消耗 repair 轮、critic 尚未运行）或
+  pipeline-qa.json（正式 QA blocker）。请自行读报告原文，不要依赖转述>。
 - 完成后只回契约信封：BUILDER_DONE / BUILDER_BLOCKED（字段以你的 agent 契约为准）。
 ```
 
