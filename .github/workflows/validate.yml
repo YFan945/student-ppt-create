@@ -60,6 +60,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m json.tool plugins/student-presentation-suite/references/evidence-map.schema.json | Out-Null
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m json.tool plugins/student-presentation-suite/references/visual-review.schema.json | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m unittest discover -s plugins/student-presentation-suite/tests
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --probe

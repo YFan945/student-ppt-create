@@ -149,6 +149,18 @@ Source C  35 亿   → 量级不一致 → confidence: low，conflict: true，
 默认由 `scenario` 推导，用户可覆盖。硬约束是：**不要为了某一页的一句话搜索二十个网页。**
 超限由 `validate_research_pack.py` 拦截。
 
+### 补检（gap-fill）与预算申报
+
+- 授权补检前，主会话必须先报告**剩余额度**（`ppt_pipeline.py next` 在 work-dir 有
+  pack 时会给出 `budget: {band, used, cap, approved_headroom, remaining}`），授权消息
+  必须写明剩余次数；研究员耗尽即停。
+- 补检确实需要超出档位上限时，唯一合规路径是在 pack 里写
+  `budget_extension: {extra_queries: N, approved_by: user, reason: ...}`——必须由用户
+  明确批准。**禁止删除已执行的 queries 记录来迎合上限**（2026-09-17 live：deep 档
+  16/15 被迫回退整轮 gap-fill，12 页压成 10 页）。
+- `validate_research_pack.py` 按 `cap + extra_queries` 放行；申报字段不完整（缺
+  reason / approved_by 不是 user / extra_queries < 1）判 `budget_extension_invalid`。
+
 ## 八、上下文防火墙
 
 这是把研究拆成独立角色的主要理由。原始检索会产出大量低价值内容（搜索结果页、网页

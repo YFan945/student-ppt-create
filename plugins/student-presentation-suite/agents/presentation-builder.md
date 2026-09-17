@@ -27,7 +27,10 @@ For `initial` mode:
 - preserve already calibrated page modules exactly unless the caller provides a calibration blocker that must be fixed;
 - implement every remaining scaffolded `pages/pNN-*.js` page module for `create` / `rebuild_from_source`;
 - remove the scaffold marker only after that page is actually implemented;
-- write or update `speaker-notes.md` when the frozen spec requires notes;
+- speaker notes are delivered **in the PPTX notes pane** (`slide.addNotes(text)`, one call per
+  slide, plain text) plus the `speaker-notes.md` copy when the frozen spec requires notes — the
+  quality gate reads the notes pane of the built artifact, not the spec field (2026-09-17:
+  10 ghost `speaker_notes_missing` blockers on a deck whose notes pane was verified intact);
 - preserve `deck.js` as assembly-only unless the scaffold contract explicitly requires a mechanical import fix.
 
 For `repair` mode:

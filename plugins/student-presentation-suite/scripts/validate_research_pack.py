@@ -327,20 +327,59 @@ def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def _extension_headroom(pack: dict[str, Any]) -> int | None:
+    """User-approved query headroom, or None when the extension record is invalid.
+
+    2026-09-17: a live gap-fill round pushed a deep-band pack to 16/15 queries;
+    the only compliant exit was discarding the whole round. A recorded
+    `budget_extension` (extra_queries / approved_by: user / reason) is the
+    honest overage path — deleting executed queries to fit the cap never is.
+    """
+    extension = pack.get("budget_extension")
+    if extension in (None, {}, ""):
+        return 0
+    if not isinstance(extension, dict):
+        return None
+    try:
+        extra = int(extension.get("extra_queries"))
+    except (TypeError, ValueError):
+        return None
+    if extra < 1:
+        return None
+    if str(extension.get("approved_by") or "") != "user":
+        return None
+    if not str(extension.get("reason") or "").strip():
+        return None
+    return extra
+
+
 def budget_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     band = str(pack.get("budget") or "")
     caps = BUDGET_CAPS.get(band)
     if caps is None:
         return out
+    headroom = _extension_headroom(pack)
+    if headroom is None:
+        out.append(
+            issue(
+                "major",
+                "budget_extension_invalid",
+                "budget_extension requires extra_queries >= 1, approved_by == 'user' "
+                "and a non-empty reason",
+                budget=band,
+            )
+        )
+        headroom = 0
     queries = pack.get("queries") or []
     sources = pack.get("sources") or []
-    if len(queries) > caps["queries"]:
+    if len(queries) > caps["queries"] + headroom:
         out.append(
             issue(
                 "major",
                 "budget_exceeded",
-                f"{len(queries)} queries exceed the {band} cap of {caps['queries']}",
+                f"{len(queries)} queries exceed the {band} cap of {caps['queries']}"
+                + (f" (+{headroom} user-approved)" if headroom else ""),
                 budget=band,
             )
         )

@@ -5,7 +5,8 @@ and does that subagent write a schema-shaped Research Pack to the contract path?
 Item 14 of the review is really two questions, conflated into one "Live E2E":
 
   MECHANISM  Does the skill launch `presentation-researcher` in its own context,
-             foreground, without the raw retrieval reaching the main session?
+             and does the main session wait for it to finish, without the raw
+             retrieval reaching the main session?
   ARTIFACT   Does that subagent produce a Research Pack at
              `${CLAUDE_PROJECT_DIR}/outputs/.pptx-work/<work-id>/research-pack.json`
              that is valid JSON with findings + sources?
@@ -17,8 +18,8 @@ verdict. With `--validate`, the pack is also checked by validate_research_pack.p
 
 The instrument is `claude -p --output-format json`: its result carries
 `subagent_stats.spawned` and `started_in_background` — the difference between
-"the docs say retrieval is isolated" and "the runtime spawned a foreground
-subagent".
+"the docs say retrieval is isolated" and "the runtime spawned a subagent the
+main session actually waited for".
 
 Headless `-p` plus `--permission-mode acceptEdits` auto-allows writes in the
 project dir, but not Read of the plugin root, Bash, or PowerShell. Those
@@ -180,7 +181,8 @@ def pack_path(project_dir: Path, work_id: str) -> Path:
 def mechanism_verdict(
     payload: dict[str, Any], fork_event_types: set[str] | None = None
 ) -> tuple[bool, list[str], list[str]]:
-    """Did a real, foreground subagent run? Independent of what it produced.
+    """Did a real subagent run that the main session waited for? Independent of
+    what it produced.
 
     Since the isolation contract moved from `context: fork` to an explicit Agent-tool
     spawn, `subagent_stats.spawned >= 1` is the *only* accepted evidence. A
@@ -208,8 +210,9 @@ def mechanism_verdict(
         )
     if background:
         problems.append(
-            f"{background} subagent(s) ran in the background; sp-research requires a foreground "
-            "spawn so the pipeline cannot proceed on an unfinished Research Pack"
+            f"{background} subagent(s) started in the background; sp-research requires the main "
+            "session to wait for the spawn, otherwise the pipeline can proceed on an unfinished "
+            "Research Pack"
         )
     denials = payload.get("permission_denials") or []
     if denials:

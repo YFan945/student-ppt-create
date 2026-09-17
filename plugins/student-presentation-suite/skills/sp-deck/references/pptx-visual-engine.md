@@ -56,6 +56,15 @@ Art Direction 必须给出明确 type scale。推荐范围：cover 44–60pt、�
 
 原生 chart 是可编辑 evidence visual，但不能使用 PowerPoint/PptxGenJS 默认样式直接交付。通常突出一个 series / number，弱化 gridlines/frame，优先 direct labels，保留 source/caption，并让 takeaway 先于图表细节被读到。
 
+**数值轴显式定标（rendered 门的硬要求）**：每个 chart 的数值轴必须显式设
+`valAxisMinVal: 0` 与 `valAxisMaxVal`（不小于数据最大值的整齐数）。依赖自动缩放会判
+`chart-axis-auto` blocker——自动缩放的柱高不可跨页互比（2026-09-17 live：首轮 QA 才发现，
+烧掉一整轮 repair）。
+
+**line series 的编码边界**：pptxgenjs 忽略 line chart 的 series 级
+`line.width` / `line.dashType`（live 实证），"实心 vs 描边"这类双主角编码不要依赖线型差异
+实现——用颜色 + marker + 每条线旁的 direct label 承担辨识；图例不得承诺图形没有兑现的编码。
+
 ### Components
 
 cards、pill、icon circle、border、shadow 都是组件，不是页面语法。默认先用 alignment、scale、whitespace、image/figure 和 type hierarchy 建立结构。只有内容真的需要分组、状态、并列实体时才使用 card；“有 N 项 → N 个等宽矩形”不是默认映射。

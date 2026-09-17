@@ -9,7 +9,7 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 3. High-score deck 的 Major/Critical 视觉问题必须 repair，不能只记录后 complete。
 4. 视觉问题优先修 actual artifact；不要为了过检查反向修改 frozen Slide Spec。
 5. 必须检查整套节奏：连续弱卡片/列表/三等分属于 AI-template repetition 风险。
-6. **Author/critic separation**：Pipeline 必须前台启动 `student-presentation-suite:visual-critic`。独立 critic 使用 Read 读取当前 contact sheet 和全部页图，并用 Write 写 visual-review.json；hook 生成 critic-execution.json。无法分离时必须 blocked，不能用生成者自评分替代。
+6. **Author/critic separation**：Pipeline 必须由主会话以不传 `name` 的方式独立 spawn `student-presentation-suite:visual-critic`。独立 critic 使用 Read 读取当前 contact sheet 和全部页图，并用 Write 写 visual-review.json；hook 生成 critic-execution.json。无法分离时必须 blocked，不能用生成者自评分替代。
 7. v0.8 critic 不只是给分：如果最终页明显弱于选定 wireframe/reference 的视觉命题，应指出是哪一步退化（asset、hierarchy、crop、composition、type scale 或实现保守化）。
 8. **配色一致性**：整套只能使用所选风格的两套 palette（light `palette` + 对应 `dark_palette`）。
    深色封面/章节/收尾页必须来自 `dark_palette`，不能是生成时临时挑的深色；发现任何 palette
@@ -17,11 +17,29 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 
 ## visual-review.json
 
+形状的**唯一 canonical 来源是 `references/visual-review.schema.json`**（本示例与它逐字段一致）。
+2026-09-17 live 教训：critic 首轮按一份过时示例的记忆交了 `issues` 顶层结构，QA 门只回了派生
+错误（“must contain a slides array”），主会话此后每次 spawn 手贴完整 schema 四次。
+不要再凭记忆写形状；不确定时读 schema 文件。
+
+注意 schema 的 `required` 只含 QA 门真正消费的最小集（`pptx_sha256`、`slides`；每页
+`slide`/`visual_structure`/`scores`/`issues`）——本示例演示的是**推荐完整形状**，多写不罚、
+少写必需字段会被 QA 判 `visual_review_schema_invalid`，报错会直接点名缺哪个字段。
+`verdict`/`severity_counts`/`overall_summary` 这类汇总字段门不读，但值得写：它们是人读尸检
+的入口，也是 repair 轮次判断的摘要。未知字段只报 `visual_review_schema_extra`（minor，不阻塞）。
+
 ```json
 {
+  "review_version": "2.0",
+  "work_id": "<work-id>",
   "pptx_sha256": "<current pptx sha256>",
   "contact_sheet_sha256": "<manifest.render.contact_sheet.sha256>",
   "page_sha256": {"1": "<manifest.render.pages[0].sha256>"},
+  "page_count": 1,
+  "verdict": "pass_with_issues",
+  "blocker_count": 0,
+  "severity_counts": {"critical": 0, "major": 0, "minor": 1},
+  "overall_score": 7.8,
   "art_direction_alignment": {
     "overall": 8,
     "lost_intent": []
@@ -42,12 +60,16 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
       "art_direction_alignment": 8,
       "reference_intent_preserved": true,
       "ai_template_feel": "none",
-      "issues": []
+      "issues": [
+        {"code": "cover-caption-tight", "severity": "minor", "message": "封面副标题与页脚间距略紧"}
+      ]
     }
   ],
   "deck": {
     "issues": []
-  }
+  },
+  "overall_summary": "<整体判断：这套版面可交付还是仍需返工，及理由>",
+  "deck_rhythm": {"macro": "<全 deck 节奏判断>", "micro": "<页间衔接判断>"}
 }
 ```
 

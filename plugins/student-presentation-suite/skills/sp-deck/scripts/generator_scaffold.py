@@ -81,12 +81,16 @@ PAGE_STUB = """\
 'use strict';
 /* {marker} */
 /** Slide {n} — {title} */
+/* ON-SCREEN REQUIRED (actual-content gate reads PPTX text runs): this page's
+   title, claim and every planned number must appear as visible text. Chart
+   data labels are NOT text runs — numbers that only live in a chart will
+   fail planned_numbers_missing; keep a text element for each planned number. */
 module.exports = function (ctx) {{
   const {{ slide, n, H, registry }} = ctx;
   const COPY = {{
     title: {title_js},
     claim: {claim_js},
-    slideCopy: {copy_js},
+    slideCopy: {copy_js},{sources_line}
   }};
   /* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */
   slide.addText(COPY.title, {{
@@ -157,6 +161,62 @@ def js_string(value: str) -> str:
     return json.dumps(str(value or ""), ensure_ascii=False)
 
 
+def _pack_sources(work_dir: Path) -> list[dict[str, Any]]:
+    """Byte-exact source entries from the work-dir Research Pack.
+
+    2026-09-17 live: the closing page's source titles were hand-typed into a
+    repair prompt and drifted at character level (fullwidth quotes), so the
+    final-reference gate rejected 6 refs. The scaffold injects the titles
+    straight from the pack so no model ever retypes them.
+    """
+    pack_path = work_dir / "research-pack.json"
+    if not pack_path.is_file():
+        return []
+    try:
+        pack = json.loads(pack_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    raw = pack.get("sources") if isinstance(pack, dict) else None
+    out: list[dict[str, Any]] = []
+    for entry in raw or []:
+        if not isinstance(entry, dict):
+            continue
+        title = str(entry.get("title") or "").strip()
+        if not title:
+            continue
+        out.append(
+            {
+                "id": str(entry.get("id") or ""),
+                "title": title,
+                "publisher": str(entry.get("publisher") or ""),
+                "year": entry.get("year"),
+            }
+        )
+    return out
+
+
+def is_closing_slide(slide: dict[str, Any], slides: list[dict[str, Any]]) -> bool:
+    kind = str(slide.get("kind") or "").strip().lower()
+    role = str(slide.get("role") or "").strip().lower()
+    if kind in {"closing", "references"} or role in {"closing", "references"}:
+        return True
+    return bool(slides) and slide is slides[-1]
+
+
+def _source_rail_js(work_dir: Path) -> str:
+    sources = _pack_sources(work_dir)
+    if not sources:
+        return ""
+    rendered = json.dumps(sources, ensure_ascii=False, indent=4)
+    rendered = rendered.replace("\n", "\n    ")
+    return (
+        "\n    /* Source rail: byte-exact titles from research-pack.json —"
+        "\n       the final-reference gate matches these; render them verbatim"
+        "\n       on this page and never retype them. */"
+        f"\n    sources: {rendered},"
+    )
+
+
 def write_if_scaffoldable(path: Path, contents: str) -> bool:
     if path.is_file():
         existing = path.read_text(encoding="utf-8")
@@ -182,6 +242,7 @@ def scaffold_generator(work_dir: Path, spec_path: Path) -> dict[str, Any]:
     for slide in slides:
         name = page_filename(slide)
         names.append(name)
+        sources_line = _source_rail_js(work_dir) if is_closing_slide(slide, slides) else ""
         stub = PAGE_STUB.format(
             marker=SCAFFOLD_MARKER,
             n=int(slide["id"]),
@@ -189,6 +250,7 @@ def scaffold_generator(work_dir: Path, spec_path: Path) -> dict[str, Any]:
             title_js=js_string(str(slide.get("title") or f"Slide {slide['id']}")),
             claim_js=js_string(str(slide.get("claim") or "")),
             copy_js=js_string(str(slide.get("slide_copy") or "")),
+            sources_line=sources_line,
         )
         target = pages_dir / name
         if write_if_scaffoldable(target, stub):

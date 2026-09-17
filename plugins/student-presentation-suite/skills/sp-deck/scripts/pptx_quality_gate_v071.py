@@ -104,6 +104,92 @@ def has_resolution_evidence(finding: dict[str, Any], pptx_digest: str) -> bool:
     return bool(before) and after == pptx_digest
 
 
+VISUAL_REVIEW_SCHEMA_PATH = HERE.parents[2] / "references" / "visual-review.schema.json"
+# Structural violations make the report unconsumable and name the missing
+# fields. Everything else (stray extra properties) is advisory: an unknown
+# field never justified a rework round.
+SCHEMA_BLOCKING_VALIDATORS = frozenset(
+    {
+        "required",
+        "type",
+        "enum",
+        "const",
+        "pattern",
+        "minLength",
+        "minItems",
+        "minProperties",
+        "minimum",
+        "maximum",
+        "uniqueItems",
+        "anyOf",
+        "oneOf",
+    }
+)
+MAX_SCHEMA_VIOLATIONS = 6
+
+
+def visual_review_schema_issues(report: dict[str, Any]) -> list[dict[str, Any]]:
+    """Check the critic report against its canonical schema before anything else.
+
+    2026-09-17 live: the critic submitted a top-level `issues` structure copied
+    from an out-of-date example. The gate answered with derived errors
+    ("must contain a slides array") instead of naming the missing fields, so the
+    main session pasted the whole schema into four more spawns. Validating here
+    turns that into one actionable sentence pointing at the canonical file.
+    """
+    if not VISUAL_REVIEW_SCHEMA_PATH.is_file():
+        return []
+    try:
+        import jsonschema  # type: ignore
+    except ImportError:  # pragma: no cover - jsonschema is a declared dependency
+        return []
+    try:
+        schema = json.loads(VISUAL_REVIEW_SCHEMA_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    errors = sorted(
+        jsonschema.Draft202012Validator(schema).iter_errors(report),
+        key=lambda error: (list(error.absolute_path), error.message),
+    )
+    if not errors:
+        return []
+
+    blocking: list[str] = []
+    advisory: list[str] = []
+    for error in errors:
+        location = "/".join(str(part) for part in error.absolute_path) or "(root)"
+        text = f"{location}: {error.message}"
+        (blocking if error.validator in SCHEMA_BLOCKING_VALIDATORS else advisory).append(text)
+
+    out: list[dict[str, Any]] = []
+    if blocking:
+        shown = "; ".join(blocking[:MAX_SCHEMA_VIOLATIONS])
+        extra = (
+            f" (+{len(blocking) - MAX_SCHEMA_VIOLATIONS} more)"
+            if len(blocking) > MAX_SCHEMA_VIOLATIONS
+            else ""
+        )
+        out.append(
+            issue(
+                "critical",
+                "visual_review_schema_invalid",
+                "Visual review does not match references/visual-review.schema.json — "
+                f"{shown}{extra}.",
+            )
+        )
+    if advisory:
+        out.append(
+            issue(
+                "minor",
+                "visual_review_schema_extra",
+                "Visual review carries fields outside references/visual-review.schema.json "
+                f"(ignored, not blocking): {'; '.join(advisory[:MAX_SCHEMA_VIOLATIONS])}.",
+            )
+        )
+    return out
+
+
 def validate_visual_report(
     report_path: Path,
     pptx: Path,
@@ -112,7 +198,7 @@ def validate_visual_report(
     high_score: bool,
 ) -> dict[str, Any]:
     report = load_json(report_path)
-    issues: list[dict[str, Any]] = []
+    issues: list[dict[str, Any]] = visual_review_schema_issues(report)
     pptx_digest = sha256_file(pptx)
     if report.get("pptx_sha256") != pptx_digest:
         issues.append(issue("critical", "visual_report_stale", "Visual review is not bound to the current PPTX."))
@@ -343,11 +429,19 @@ def estimate_note_seconds(text: str) -> float:
     return (cjk / 240.0) * 60.0 + (words / 130.0) * 60.0
 
 
-def check_timing(spec: dict[str, Any]) -> dict[str, Any]:
+def check_timing(spec: dict[str, Any], notes_by_slide: dict[int, str] | None = None) -> dict[str, Any]:
+    """Judge speaker notes in the delivered PPTX, not in the frozen plan.
+
+    2026-09-17: `speaker_notes_missing` fired 10x on a healthy deck — the frozen
+    spec's `speaker_notes` field was empty from `plan` onward (nobody was ever
+    instructed to fill it) while the PPTX notes pane was verified intact. The
+    artifact is the contract, so notes text comes from extract_pptx_notes().
+    """
     issues: list[dict[str, Any]] = []
     slides = [item for item in spec.get("slides") or [] if isinstance(item, dict)]
     meta = spec.get("meta") or {}
     include_notes = meta.get("include_speaker_notes") is True
+    artifact_notes = notes_by_slide or {}
     estimated_total = 0.0
     planned_total = 0.0
     slide_reports: list[dict[str, Any]] = []
@@ -356,12 +450,12 @@ def check_timing(spec: dict[str, Any]) -> dict[str, Any]:
         slide_no = int(slide.get("id") or 0)
         planned = float(slide.get("timing_sec") or 0)
         planned_total += planned
-        notes = str(slide.get("speaker_notes") or "").strip()
+        notes = str(artifact_notes.get(slide_no) or "").strip()
         estimated = estimate_note_seconds(notes) if notes else 0.0
         estimated_total += estimated
         ratio = estimated / planned if planned > 0 else math.inf if estimated > 0 else 0.0
         if include_notes and not notes:
-            issues.append(issue("major", "speaker_notes_missing", f"Slide {slide_no} requires speaker notes but none are present.", slide=slide_no))
+            issues.append(issue("major", "speaker_notes_missing", f"Slide {slide_no} requires speaker notes in the PPTX notes pane but none are present.", slide=slide_no))
         elif planned > 0 and ratio > 1.35:
             issues.append(issue("major", "slide_timing_overrun", f"Slide {slide_no} notes are estimated at {estimated:.0f}s versus {planned:.0f}s planned.", slide=slide_no, estimated_sec=round(estimated, 1), planned_sec=planned))
         elif planned > 0 and ratio > 1.15:
@@ -419,7 +513,7 @@ def run(args: argparse.Namespace) -> int:
 
     visual = validate_visual_report(args.visual_report, args.pptx, len(actual_text), high_score=high_score)
     evidence = check_evidence(spec, actual_text)
-    timing = check_timing(spec)
+    timing = check_timing(spec, actual_check.extract_pptx_notes(args.pptx))
     lock_issues = [] if spec_lock["ok"] else [issue("critical", "slide_spec_lock_invalid", message) for message in spec_lock["errors"]]
     all_issues = lock_issues + visual["issues"] + evidence["issues"] + timing["issues"]
     blockers = [item for item in all_issues if item["severity"] in BLOCKING_SEVERITIES]

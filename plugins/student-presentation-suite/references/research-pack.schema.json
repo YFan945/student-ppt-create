@@ -19,6 +19,17 @@
       "description": "实际执行过的检索词，用于复现与审计。只记录执行了的，不记录计划中的。",
       "items": {"type": "string", "minLength": 1}
     },
+    "budget_extension": {
+      "type": "object",
+      "description": "用户批准的检索预算例外：把 queries 上限放宽 extra_queries 次。来源：live 会话中 gap-fill 第 2 轮把 deep 档做到 16/15，唯一出路是回退整轮；本字段让超支有合规申报路径，审计零删除。",
+      "required": ["extra_queries", "approved_by", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "extra_queries": {"type": "integer", "minimum": 1},
+        "approved_by": {"const": "user"},
+        "reason": {"type": "string", "minLength": 1, "description": "用户批准补检的原因，进入审计"}
+      }
+    },
     "findings": {
       "type": "array",
       "description": "被证据支持的论述，是 sp-outline 的直接输入。",

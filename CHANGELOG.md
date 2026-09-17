@@ -2,6 +2,100 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.14.0 — 2026-09-18
+
+来源：2026-09-17 0.13.4 全程 live 会话复盘的**契约级**修复（批次二）。0.13.5 修的是
+"指令 / 说明 / 运行时行为三者互不匹配"的机械面；本批修根因——**契约没有前置，门只能追补**。
+QA 门要求的每一项（讲稿备注、上屏文本、末页来源、数值轴定标）此前只存在于门里，没有任何
+上游出处，于是 6 轮 repair 里有 4 轮在补门的需求。本批把每条要求放回它的 canonical 层：
+schema 定义形状、scaffold 注入字节级内容、spawn 模板承载契约、设计期拦下运行时画不出的承诺。
+
+### 研究：检索预算申报例外（解"超支即回退整轮"）
+
+- `research-pack.schema.json`：新增可选 `budget_extension`（`extra_queries` ≥ 1、
+  `approved_by: user`、非空 `reason`）。live 会话中 gap-fill 第 2 轮把 deep 档做到 16/15，
+  唯一出路是回退整轮、12 页压成 10 页；现在超支有合规申报路径，审计零删除。
+- `validate_research_pack.py`：上限按 `cap + extra_queries` 放行；申报字段不完整
+  （缺 reason / `approved_by` 不是 user / `extra_queries` < 1）判 `budget_extension_invalid`。
+- `ppt_pipeline.py` `next`：work-dir 已有 pack 时返回
+  `budget: {band, used, cap, approved_headroom, remaining}`，并在 notes 里声明"gap-fill 授权
+  必须写明剩余额度"。live 会话授权说"大约再 6 次"而实际余 7 次可用，研究员跑了 8 次。
+- `presentation-researcher.md` / `research-workflow.md`：补检授权必须携带剩余额度，耗尽即停；
+  禁止删除已执行的 queries 记录来迎合上限。
+
+### QA 门：讲稿判定对象迁到交付产物（解"10 项幽灵 blocker → incomplete"）
+
+- `pptx_actual_content_check.py`：新增 `extract_pptx_notes()`，从 `ppt/notesSlides/*.xml`
+  按页抽取备注文本。
+- `pptx_quality_gate_v071.py`：`check_timing()` 改为对**交付 PPTX 的备注区**判
+  `speaker_notes_missing` 与时长估算。此前它读冻结 spec 的 `slides[].speaker_notes`——该字段
+  从 `plan` 起一直为空且无人被要求填写，而备注区实际完好，10 项 blocker 纯属幽灵，并直接
+  导致终局 `incomplete`。门读产物，不读计划。
+- `presentation-builder.md` / `pptx-qa.md` / 插件 README 中英对：讲稿交付物明确为
+  **PPTX 备注区**（`slide.addNotes`，每页一次、纯文本）+ `speaker-notes.md` 可读副本。
+
+### 视觉复核：报告形状单一化 + 消费端校验（解"每轮手贴 1.5KB schema"）
+
+- 新增 `references/visual-review.schema.json`：`visual-review.json` 的 canonical 形状，
+  分数与结构词汇与 `SCORE_FIELDS` / `REPETITIVE_STRUCTURES` 对齐。
+  **`required` 只含 QA 门真正消费的最小集**（`pptx_sha256`、`slides`；每页
+  `slide`/`visual_structure`/`scores`/`issues`）——把门不读的字段设成必填，只会让 critic 每轮
+  补写无人读取的内容，漏一个就返工，那正是本批要消灭的失败模式。其余属性是推荐完整形状，
+  一旦出现即受类型约束。
+- `pptx_quality_gate_v071.py`：`validate_visual_report()` 先按 schema 校验。结构性违规
+  （required / type / enum / pattern…）判 critical `visual_review_schema_invalid` 并**直接点名
+  缺哪个字段**；未知字段只报 minor `visual_review_schema_extra`，永不阻塞——live 会话里
+  critic 按过时示例交了顶层 `issues` 结构，门只回派生错误（"must contain a slides array"），
+  主会话于是手贴 schema 四次。
+- `agents/visual-critic.md` / `pptx-visual-critic.md`：形状唯一来源改为指向上面的 schema 文件；
+  参考示例补齐为完整形状（旧示例缺 9 个字段，正是漂移源头）。
+- issue `code` 允许短横线与下划线两种形式（门自身用下划线，critic 用短横线描述问题）——
+  形式没有语义价值，强制其一只会制造摩擦。
+
+### Scaffold：门需求前置进生成契约（解"4/6 轮 repair 在追补"）
+
+- `generator_scaffold.py`：每页 stub 头部写入 `ON-SCREEN REQUIRED` 注释——title、claim 与每个
+  planned number 必须以可见文本出现（actual-content 门读 PPTX 文本 run，chart 数据标签不算）。
+  此前这条只活在门里，repair 轮才发现。
+- `generator_scaffold.py`：末页 `COPY.sources` 由**代码**从 `research-pack.json` 逐字节注入
+  （title/publisher/year）。live 会话中来源标题被手打进 repair prompt 并在字符级失真
+  （全角引号），final-reference 门拒了 6 条——现在没有模型经手这些字节。
+- `slide-spec.md`：`claim` 定义补充"必须逐字上屏，只存在于本文件即视为未交付"。
+- `pptx-visual-engine.md`：数值轴必须显式 `valAxisMinVal: 0` / `valAxisMaxVal`（否则
+  `chart-axis-auto`）；line series 不得依赖 `line.width` / `dashType` 区分系列。
+
+### Spawn 模板：跨层传递改走文件路径（解"17 次 spawn 每次手写契约"）
+
+- 新增 `references/spawn-templates.md`：researcher / builder / critic 三套固定模板，分
+  "固定约束段（逐字复制）"与"数据槽（只填路径、页码、报告路径）"。
+- `skills/sp-deck/SKILL.md`：spawn prompt 一律从模板实例化，禁止自由撰写；**字节级内容
+  （claim / 来源标题 / 数字）传文件路径让子代理自己读原文**——门做逐字节判定，模型转抄即
+  失真源（S07 标题手打失真 ×6、researcher 信封漂移、critic schema 手贴 4 次）。
+
+### 设计期：样式承诺前先读 token；设计承诺的运行时能力 lint
+
+- `SKILL.md` step 4 + `presentation-intake.md` Round 3：呈现具体样式选项或做任何颜色/视觉承诺
+  **之前必须先读 `design-tokens.json`**，选项只能引用其中实际存在的 token 名，6 角色位之外的
+  配色语义禁止承诺。live 会话先承诺"光伏配暖色琥珀"，读到调色板契约后被迫中途换风格并重绑
+  确认哈希。
+- `art_direction_check.py`：新增 `line-series-stroke-encoding-unsupported`——chart grammar /
+  motif / component language 里出现 line-series 描边/虚线承诺时，设计期即拒（pptxgenjs 忽略
+  series 级 line.width/dashType，live 实测"实心 vs 描边"双主角编码画不出来，图例承诺了图形
+  没兑现的编码）；形状描边不受影响。
+
+### 清理与登记
+
+- `pipeline-contract.json`：qa 契约登记 `visual-review.schema.json` 与"备注区判定"。
+- `pptx-visual-critic.md`、`smoke_research_fork.py`：残留的 "前台 spawn" 措辞改为"主会话等待
+  其返回"（0.13.5 已删除 `run_in_background` 强制，措辞不该继续暗示该机制存在）。
+
+### 测试
+
+- 新增：visual-review schema 顶层结构漂移点名缺失字段、未知字段只报 minor 不阻塞、`required`
+  边界与门消费集一致；预算申报例外放行与拒收；scaffold 上屏契约注释、末页来源区逐字节
+  注入；art-direction line-series 描边拦截与形状描边放行。
+- 全量 586 用例通过。
+
 ## 0.13.5 — 2026-09-17
 
 来源：2026-09-17 0.13.4 全程 live 会话复盘（碳中和光伏 vs 风电 10 页 deck：17 个子代理、

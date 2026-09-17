@@ -171,7 +171,8 @@ confirmed deliverable set.
 Deliverables are written under `${CLAUDE_PROJECT_DIR}/outputs`, or the current
 project's `outputs/` directory when the environment variable is unavailable:
 
-- `<topic>-presentation.pptx`
+- `<topic>-presentation.pptx` (speaker notes live in the PPTX notes pane; the
+  quality gate reads the delivered artifact, not the frozen spec field)
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` or contact sheet
 - `<topic>-presentation-package-report.json` from suite validation and reused

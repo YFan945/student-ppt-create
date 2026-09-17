@@ -111,6 +111,12 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
 Basic）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内容中不强调引用风格。
 
 **Round 3 — 视觉与素材**:
+
+进入本轮**之前必须先读 `../../references/design-tokens.json`**：样式选项只能引用其中
+实际存在的 token 名，且在用户确认样式前**禁止任何 6 角色位之外的配色承诺**（如"光伏配
+暖色琥珀当第二主角"）——2026-09-17 live：先承诺后读 token，被迫中途换风格并重绑确认哈希。
+后续页面涉及颜色语义的描述（双主角辨识、强调色用途）都必须能落到 token 角色位上。
+
 - `Visual style` → **两步选择**:
   - **Step A — 风格类别**：根据 topic 将最匹配的类别放在第一个选项并标注
     `（推荐）`，一次提供以下四个选项：

@@ -144,6 +144,34 @@ class ResearchPackContractTests(unittest.TestCase):
         pack["queries"] = [f"q{i}" for i in range(4)]
         self.assertIn("budget_exceeded", self.codes(pack, "major"))
 
+    def test_user_approved_budget_extension_relaxes_the_query_cap(self) -> None:
+        """2026-09-17 live: deep 16/15 forced a full gap-fill revert; the recorded
+        extension is the honest overage path instead of deleting audit queries."""
+        pack = base_pack()
+        pack["budget"] = "simple"
+        pack["queries"] = [f"q{i}" for i in range(5)]
+        pack["budget_extension"] = {
+            "extra_queries": 2,
+            "approved_by": "user",
+            "reason": "用户批准为土地与选址维度补检 2 次",
+        }
+        self.assertNotIn("budget_exceeded", self.codes(pack, "major"))
+
+    def test_budget_extension_requires_user_approval_and_reason(self) -> None:
+        pack = base_pack()
+        pack["budget"] = "simple"
+        pack["queries"] = [f"q{i}" for i in range(4)]
+        for bad in (
+            {"extra_queries": 2, "approved_by": "model", "reason": "self-approved"},
+            {"extra_queries": 2, "approved_by": "user", "reason": "  "},
+            {"extra_queries": 0, "approved_by": "user", "reason": "no headroom"},
+        ):
+            with self.subTest(extension=bad):
+                pack["budget_extension"] = bad
+                self.assertIn("budget_extension_invalid", self.codes(pack, "major"))
+        pack["budget_extension"] = None
+        self.assertIn("budget_exceeded", self.codes(pack, "major"))
+
     def test_a_source_without_url_or_locator_is_not_traceable(self) -> None:
         pack = base_pack()
         del pack["sources"][0]["url"]

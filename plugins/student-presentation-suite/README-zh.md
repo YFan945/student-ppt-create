@@ -142,7 +142,8 @@ Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 
 交付物写入 `${CLAUDE_PROJECT_DIR}/outputs`；环境变量不可用时，回退到当前
 项目的 `outputs/`：
 
-- `<topic>-presentation.pptx`
+- `<topic>-presentation.pptx`（讲稿写入 PPTX 备注区；质量门按交付产物判定，
+  不读冻结 spec 的 `speaker_notes` 字段）
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` 或 contact sheet
 - `<topic>-presentation-package-report.json`（suite validation 产物，可复用）

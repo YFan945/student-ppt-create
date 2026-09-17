@@ -137,6 +137,25 @@ class GenerationCoreV08Tests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("high_leverage_count_invalid", {item["code"] for item in result["issues"]})
 
+    def test_art_direction_blocks_line_series_stroke_encoding(self) -> None:
+        """2026-09-17 live: "实心 vs 描边"线系列编码在 pptxgenjs 画不出来，图例承诺了
+        图形没兑现的编码；设计期就拦下，而不是校准渲染后才发现。"""
+        data = self.good_art_direction()
+        data["chart_grammar"]["series_encoding"] = "光伏曲线实心、风电曲线描边区分"
+        result = self.art.validate_art_direction(data, high_score=True)
+        self.assertFalse(result["ok"])
+        self.assertIn(
+            "line-series-stroke-encoding-unsupported",
+            {item["code"] for item in result["issues"]},
+        )
+
+    def test_art_direction_allows_outlined_shapes(self) -> None:
+        """形状描边是合法的视觉语言，只有 line series 的描边承诺才拦。"""
+        data = self.good_art_direction()
+        data["component_language"]["shape_encoding"] = "风电用描边方块、光伏用实心方块"
+        result = self.art.validate_art_direction(data, high_score=True)
+        self.assertTrue(result["ok"], result["issues"])
+
     def test_unparsable_art_direction_reports_a_reason_not_a_traceback(self) -> None:
         """解析失败必须给可读原因：旧实现抛 traceback，agent 看不出是自己的文件写坏了。"""
         with tempfile.TemporaryDirectory() as tmp:

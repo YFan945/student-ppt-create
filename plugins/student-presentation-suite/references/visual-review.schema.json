@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://student-presentation-suite.local/visual-review.schema.json",
+  "title": "Visual Review",
+  "description": "visual-critic 唯一交付物 visual-review.json 的 canonical 形状。来源：2026-09-17 live 会话中 critic 首轮按旧示例交了 issues 顶层结构、QA 门要 slides 数组，主会话此后每次 spawn 手贴 1.5KB schema——本文件消灭该漂移。分数与结构词汇必须与 pptx_quality_gate_v071.py 的 SCORE_FIELDS / REPETITIVE_STRUCTURES 对齐；语义规则见 skills/sp-deck/references/pptx-visual-critic.md。required 只含 QA 门真正消费的最小集（否则 critic 每轮要补写无人读取的字段，漏一个就返工——那正是本批要消灭的失败模式）；其余属性是推荐的完整形状，缺失不影响门通过，一旦出现即受类型约束。",
+  "type": "object",
+  "required": [
+    "pptx_sha256",
+    "slides"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "_comment": {
+      "type": "string",
+      "description": "仅供 examples/golden-sample 这类 fixture 写作者注释；critic 报告不应包含。"
+    },
+    "review_version": {"const": "2.0"},
+    "work_id": {"type": "string", "minLength": 1},
+    "pptx_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$",
+      "description": "当前 deck PPTX 的 sha256；QA 门会拒绝绑定旧哈希的报告"
+    },
+    "contact_sheet_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "page_sha256": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "description": "一基页码（字符串键）→ 当前渲染页 PNG sha256"
+    },
+    "page_count": {"type": "integer", "minimum": 1},
+    "verdict": {"enum": ["pass", "pass_with_issues", "needs_repair"]},
+    "blocker_count": {"type": "integer", "minimum": 0},
+    "severity_counts": {
+      "type": "object",
+      "required": ["critical", "major", "minor"],
+      "additionalProperties": false,
+      "properties": {
+        "critical": {"type": "integer", "minimum": 0},
+        "major": {"type": "integer", "minimum": 0},
+        "minor": {"type": "integer", "minimum": 0}
+      }
+    },
+    "overall_score": {"type": "number", "minimum": 0, "maximum": 10},
+    "art_direction_alignment": {
+      "type": "object",
+      "required": ["overall", "lost_intent"],
+      "additionalProperties": false,
+      "properties": {
+        "overall": {"type": "integer", "minimum": 0, "maximum": 10},
+        "lost_intent": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "slides": {
+      "type": "array",
+      "minItems": 1,
+      "description": "必须恰好覆盖 1..page_count 每一页；缺页在 QA 判 critical",
+      "items": {
+        "type": "object",
+        "required": [
+          "slide",
+          "visual_structure",
+          "scores",
+          "issues"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "slide": {"type": "integer", "minimum": 1},
+          "visual_structure": {
+            "type": "string",
+            "minLength": 1,
+            "description": "稳定词汇：cover / statement / typography / split / editorial / image-led / chart / diagram / flow / timeline / comparison / matrix / table / dashboard / quote / reference / equal-cards / card-grid / three-column / numbered-list / plain-list / other；equal-cards 等弱结构连续两页即 Major"
+          },
+          "reference_ids": {"type": "array", "items": {"type": "string"}},
+          "selected_candidate_id": {"type": "string"},
+          "scores": {
+            "type": "object",
+            "required": ["hierarchy", "focal_point", "composition", "visual_interest", "whitespace"],
+            "additionalProperties": false,
+            "properties": {
+              "hierarchy": {"type": "number", "minimum": 1, "maximum": 10},
+              "focal_point": {"type": "number", "minimum": 1, "maximum": 10},
+              "composition": {"type": "number", "minimum": 1, "maximum": 10},
+              "visual_interest": {"type": "number", "minimum": 1, "maximum": 10},
+              "whitespace": {"type": "number", "minimum": 1, "maximum": 10}
+            }
+          },
+          "art_direction_alignment": {"type": "integer", "minimum": 1, "maximum": 10},
+          "reference_intent_preserved": {"type": "boolean"},
+          "ai_template_feel": {
+            "enum": ["none", "minor", "major"],
+            "description": "major 直接判 Major blocker；不要用 mild/strong 等门不认识的取值"
+          },
+          "issues": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+        }
+      }
+    },
+    "deck": {
+      "type": "object",
+      "required": ["issues"],
+      "additionalProperties": false,
+      "properties": {
+        "issues": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+      }
+    },
+    "overall_summary": {"type": "string", "minLength": 1},
+    "deck_rhythm": {
+      "type": "object",
+      "required": ["macro", "micro"],
+      "additionalProperties": false,
+      "properties": {
+        "macro": {"type": "string"},
+        "micro": {"type": "string"}
+      }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "required": ["code", "severity", "message"],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]*$",
+          "minLength": 2,
+          "description": "小写英文标识符，短横线（title-claim-redundancy）或下划线（cluttered_rail）皆可——门自身的 code 用下划线风格，critic 用短横线描述问题；形式没有语义价值，强制其一只会制造摩擦。"
+        },
+        "severity": {"enum": ["critical", "major", "minor"]},
+        "message": {"type": "string", "minLength": 1},
+        "resolved": {
+          "type": "boolean",
+          "description": "声称已解决必须携带绑定当前 PPTX sha256 的证据，否则 QA 判 resolved_without_evidence"
+        }
+      }
+    }
+  }
+}

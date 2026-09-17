@@ -36,6 +36,10 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
    - C: no external fact needed -> no search budget.
    - D: user restricted sources -> **no web retrieval**; `queries=[]`, every source is `user-file`.
 2. Choose budget from scenario: simple 3/5, standard 8/12, deep 15/25 queries/sources. Never exceed it.
+   Gap-fill rounds: the authorization message must state the exact remaining query quota; stop
+   once it is exhausted. Exceeding the band cap is only legal with a user-approved
+   `budget_extension` (`extra_queries`, `approved_by: user`, `reason`) recorded in the pack —
+   never delete executed queries to fit the cap.
 3. Search per claim, not per topic. Record every executed query and every source `url`/`locator` plus `independence_group`.
 4. Grade sources S/A/B/C/D. Tier D is opinion only. Do not self-promote a source above the type ceiling enforced by the validator.
 5. Cross-check numbers across independent groups. High-confidence numbers require >=2 groups. Conflicts become `confidence: low`, `conflict: true`, explanatory `notes`, and a `conflicts` record.

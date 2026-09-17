@@ -1096,6 +1096,54 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def _research_budget(work_dir: Path) -> dict[str, Any] | None:
+    """Remaining query quota for an existing pack (gap-fill authorization aid).
+
+    2026-09-17: a gap-fill authorization said "about 6 more" without checking the
+    remaining deep-band headroom (7); the researcher ran 8 and the pack hit
+    16/15, forcing a full round revert. `next` now reports the exact numbers.
+    """
+    pack_path = work_dir / "research-pack.json"
+    if not pack_path.is_file():
+        return None
+    try:
+        pack = json.loads(pack_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(pack, dict):
+        return None
+    band = str(pack.get("budget") or "")
+    used = len(pack.get("queries") or [])
+    sys.path.insert(0, str(ROOT / "scripts"))
+    try:
+        from validate_research_pack import BUDGET_CAPS  # noqa: PLC0415
+    except ImportError:
+        return {"band": band, "used": used, "cap": None, "approved_headroom": 0, "remaining": None}
+    caps = BUDGET_CAPS.get(band)
+    if caps is None:
+        return {"band": band, "used": used, "cap": None, "approved_headroom": 0, "remaining": None}
+    extension = pack.get("budget_extension")
+    headroom = 0
+    if isinstance(extension, dict):
+        try:
+            extra = int(extension.get("extra_queries"))
+        except (TypeError, ValueError):
+            extra = 0
+        if (
+            extra >= 1
+            and str(extension.get("approved_by") or "") == "user"
+            and str(extension.get("reason") or "").strip()
+        ):
+            headroom = extra
+    return {
+        "band": band,
+        "used": used,
+        "cap": caps["queries"],
+        "approved_headroom": headroom,
+        "remaining": caps["queries"] + headroom - used,
+    }
+
+
 def cmd_next(args: argparse.Namespace) -> int:
     """Tell the model what to read and which command to run. CD-1/CD-3/CD-4/CD-9."""
     work_dir = args.work_dir
@@ -1103,6 +1151,7 @@ def cmd_next(args: argparse.Namespace) -> int:
     python = f'"{sys.executable}"'
     pipeline = HERE / "ppt_pipeline.py"
     if not manifest:
+        budget = _research_budget(work_dir)
         payload = {
             "state": "(absent)",
             "read": [],
@@ -1121,6 +1170,12 @@ def cmd_next(args: argparse.Namespace) -> int:
                 "MAIN session without `name`."
             ),
         }
+        if budget is not None:
+            payload["budget"] = budget
+            payload["notes"] += (
+                " Gap-fill authorization must state the exact remaining query quota; exceeding"
+                " the band cap requires a user-approved budget_extension recorded in the pack."
+            )
     else:
         state = str(manifest.get("state") or "(absent)")
         summary = work_dir / f"stage-{state}-summary.md"

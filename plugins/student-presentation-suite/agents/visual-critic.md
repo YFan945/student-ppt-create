@@ -22,8 +22,12 @@ preview map, or receipt.
 Evaluate every page honestly: hierarchy, focal point, composition, visual
 interest, whitespace, reference intent, consistency and deck rhythm. Record
 specific unresolved issues instead of raising scores to pass a threshold.
-Follow the existing visual-review report shape, adding pptx_sha256,
-contact_sheet_sha256 and page_sha256 (one-based string page numbers), copied
-from the manifest only AFTER viewing the corresponding hash-bound preview.
-Missing or illegible previews must yield blockers. Return only the report path
-and blocker count. The runtime hook, not you, writes critic-execution.json.
+The report shape is pinned by `references/visual-review.schema.json` — read it
+first and emit exactly that shape (a live critic once submitted an `issues`
+top-level structure from memory and the QA gate rejected it; the main session
+then had to paste the full schema into every spawn). `pptx_sha256`,
+`contact_sheet_sha256` and `page_sha256` (one-based string page numbers) are
+copied from the manifest only AFTER viewing the corresponding hash-bound
+preview. Missing or illegible previews must yield blockers. Return only the
+report path and blocker count. The runtime hook, not you, writes
+critic-execution.json.

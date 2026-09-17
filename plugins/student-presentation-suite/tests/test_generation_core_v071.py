@@ -5,12 +5,14 @@ import importlib.util
 import json
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SPEC_GUARD = ROOT / "skills" / "sp-deck" / "scripts" / "slide_spec_guard.py"
 QUALITY = ROOT / "skills" / "sp-deck" / "scripts" / "pptx_quality_gate_v071.py"
 DELIVERY = ROOT / "skills" / "sp-deck" / "scripts" / "pptx_delivery_check_v071.py"
+ACTUAL = ROOT / "skills" / "sp-deck" / "scripts" / "pptx_actual_content_check.py"
 
 
 def load_module(name: str, path: Path):
@@ -28,6 +30,7 @@ class GenerationCoreV071Tests(unittest.TestCase):
         cls.guard = load_module("slide_spec_guard_v071_test", SPEC_GUARD)
         cls.quality = load_module("pptx_quality_gate_v071_test", QUALITY)
         cls.delivery = load_module("pptx_delivery_check_v071_test", DELIVERY)
+        cls.actual = load_module("pptx_actual_content_check_test", ACTUAL)
 
     def make_frozen_spec(self, root: Path, text: str = "slides: []\n"):
         spec = root / "slide-spec.yaml"
@@ -219,13 +222,54 @@ class GenerationCoreV071Tests(unittest.TestCase):
                 {
                     "id": 1,
                     "timing_sec": 60,
-                    "speaker_notes": "这是测试讲稿。" * 60,
                 }
             ],
         }
-        result = self.quality.check_timing(spec)
+        result = self.quality.check_timing(spec, {1: "这是测试讲稿。" * 60})
         self.assertFalse(result["ok"])
         self.assertIn("deck_timing_overrun", {item["code"] for item in result["issues"]})
+
+    def test_speaker_notes_are_judged_from_the_artifact_not_the_spec(self) -> None:
+        """2026-09-17 live: spec speaker_notes stayed empty from plan onward while the
+        PPTX notes pane was verified intact — 10 ghost blockers burned two repairs."""
+        spec = {
+            "meta": {"duration_min": 1, "include_speaker_notes": True},
+            "slides": [
+                {"id": 1, "timing_sec": 60, "speaker_notes": ""},  # plan field empty
+            ],
+        }
+        healthy = self.quality.check_timing(spec, {1: "这一页讲三十秒左右。" * 4})
+        self.assertTrue(healthy["ok"], healthy["issues"])
+        ghost = self.quality.check_timing(spec, {})
+        self.assertFalse(ghost["ok"])
+        self.assertIn(
+            "speaker_notes_missing", {item["code"] for item in ghost["issues"]}
+        )
+
+    def test_extract_pptx_notes_reads_slide_to_notes_relationships(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "deck.pptx"
+            slide = (
+                '<?xml version="1.0"?><p:sld xmlns:p="p" xmlns:a="http://schemas.'
+                'openxmlformats.org/drawingml/2006/main"><a:t>slide body</a:t></p:sld>'
+            )
+            rels = (
+                '<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.'
+                'org/package/2006/relationships"><Relationship Id="rId2" Type="http://'
+                'schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide"'
+                ' Target="../notesSlides/notesSlide1.xml"/></Relationships>'
+            )
+            notes = (
+                '<?xml version="1.0"?><p:notes xmlns:p="p" xmlns:a="http://schemas.'
+                'openxmlformats.org/drawingml/2006/main"><a:t>备注区讲稿</a:t>'
+                "<a:t>第二段</a:t></p:notes>"
+            )
+            with zipfile.ZipFile(pptx, "w") as zf:
+                zf.writestr("ppt/slides/slide1.xml", slide)
+                zf.writestr("ppt/slides/_rels/slide1.xml.rels", rels)
+                zf.writestr("ppt/notesSlides/notesSlide1.xml", notes)
+            extracted = self.actual.extract_pptx_notes(pptx)
+            self.assertEqual(extracted, {1: "备注区讲稿\n第二段"})
 
     def test_delivery_quality_report_rejects_stale_pptx(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

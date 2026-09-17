@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import posixpath
 import re
 import sys
 import zipfile
@@ -61,6 +62,41 @@ def extract_pptx_text(pptx: Path) -> list[str]:
             pieces = [node.text or "" for node in root.iter(f"{{{A_NS}}}t")]
             slides.append((int(match.group(1)), "\n".join(pieces)))
     return [text for _, text in sorted(slides)]
+
+
+NOTESLIDE_REL_RE = re.compile(r'Type="[^"]*?/notesSlide"[^>]*?Target="([^"]+)"')
+
+
+def extract_pptx_notes(pptx: Path) -> dict[int, str]:
+    """Per-slide speaker-notes text keyed by one-based slide number.
+
+    The delivery contract is notes in the PPTX notes pane, so the timing gate
+    must judge the artifact (2026-09-17: `speaker_notes_missing` fired 10x on a
+    healthy deck because the frozen spec's `speaker_notes` field was never
+    populated, while the PPTX notes pane was verified intact).
+    """
+    notes: dict[int, str] = {}
+    with zipfile.ZipFile(pptx) as zf:
+        names = set(zf.namelist())
+        for name in names:
+            match = re.fullmatch(r"ppt/slides/slide(\d+)\.xml", name)
+            if not match:
+                continue
+            slide_no = int(match.group(1))
+            rels_name = f"ppt/slides/_rels/slide{slide_no}.xml.rels"
+            if rels_name not in names:
+                continue
+            targets = NOTESLIDE_REL_RE.findall(zf.read(rels_name).decode("utf-8"))
+            pieces: list[str] = []
+            for target in targets:
+                notes_path = posixpath.normpath(posixpath.join("ppt/slides", target))
+                if notes_path not in names:
+                    continue
+                root = ET.fromstring(zf.read(notes_path))
+                pieces = [node.text or "" for node in root.iter(f"{{{A_NS}}}t")]
+                break  # one notesSlide per slide
+            notes[slide_no] = "\n".join(pieces).strip()
+    return notes
 
 
 def compact_fragments(value: Any) -> list[str]:

@@ -63,8 +63,8 @@
     "qa": [
       "Spawn student-presentation-suite:visual-critic WITHOUT a name. Pass the absolute work-dir in its prompt. Never nest the critic inside another agent.",
       "The runtime hook materializes hash-bound critic-preview/*.jpg images. Critic Reads the overview and every page preview, not the full-size render PNGs; the hook maps those reads back to the current original contact/page SHA256 values.",
-      "Critic Writes visual-review.json with PPTX/contact/original-page hashes; hook writes critic-execution.json. Existing QA still requires complete original render coverage through the verified preview mapping.",
-      "QA automatically uses speaker-notes.md plus current contact sheet/pages. Missing required inputs block complete."
+      "Critic Writes visual-review.json with PPTX/contact/original-page hashes; hook writes critic-execution.json. The report shape is pinned by references/visual-review.schema.json: QA validates the report against it first and names the missing fields instead of answering with derived errors. Existing QA still requires complete original render coverage through the verified preview mapping.",
+      "QA reads speaker notes from the delivered PPTX notes pane (speaker-notes.md is the readable copy) plus the current contact sheet/pages. Missing required inputs block complete."
     ],
     "repair": [
       "After ppt_pipeline.py repair records the blocker set, spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=repair and a concise blocker summary; the main session must not edit page modules itself.",

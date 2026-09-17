@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -28,6 +29,12 @@ REQUIRED_SECTIONS = (
     "asset_plan",
     "high_leverage_slides",
 )
+
+# pptxgenjs 忽略 line chart 的 series 级 line.width/dashType（2026-09-17 live 实证：
+# "实心 vs 描边"双主角编码画不出来，图例承诺了图形没兑现的编码）。设计期就拦下。
+LINE_SERIES_RE = re.compile(r"line\b|折线|曲线", re.I)
+STROKE_ENCODING_RE = re.compile(r"描边|虚线|dash\s*type|dotted|stroke|line\.width", re.I)
+CAPABILITY_SECTIONS = ("chart_grammar", "motif", "component_language")
 
 
 def load_structured(path: Path) -> dict[str, Any]:
@@ -79,12 +86,54 @@ def high_leverage_numbers(data: dict[str, Any]) -> list[int]:
     return numbers
 
 
+def _collect_strings(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        out: list[str] = []
+        for item in value.values():
+            out.extend(_collect_strings(item))
+        return out
+    if isinstance(value, list):
+        out = []
+        for item in value:
+            out.extend(_collect_strings(item))
+        return out
+    return []
+
+
+def capability_issues(data: dict[str, Any]) -> list[dict[str, str]]:
+    """Refuse design contracts the runtime cannot render (2026-09-17).
+
+    A live calibration round promised "solid vs outlined" line-series encoding;
+    pptxgenjs ignores series-level line.width/dashType, so the legend promised
+    an encoding the chart never drew. Only line-series text triggers this:
+    outlined SHAPES are legitimate and stay untouched.
+    """
+    issues: list[dict[str, str]] = []
+    for section in CAPABILITY_SECTIONS:
+        for text in _collect_strings(data.get(section)):
+            if LINE_SERIES_RE.search(text) and STROKE_ENCODING_RE.search(text):
+                issues.append(
+                    issue(
+                        "major",
+                        "line-series-stroke-encoding-unsupported",
+                        f"{section}: line-chart series cannot carry stroke/dash encoding in pptxgenjs "
+                        "(series-level line.width/dashType is ignored); encode series with "
+                        "color + markers + direct labels instead",
+                    )
+                )
+                break
+    return issues
+
+
 def validate_art_direction(data: dict[str, Any], *, high_score: bool = True) -> dict[str, Any]:
     issues: list[dict[str, str]] = []
     for field in REQUIRED_SECTIONS:
         value = data.get(field)
         if value in (None, "", [], {}):
             issues.append(issue("major", "missing_section", f"Art Direction is missing {field}."))
+    issues.extend(capability_issues(data))
 
     concept = str(data.get("concept") or "").strip()
     if concept and len(concept) < 16:

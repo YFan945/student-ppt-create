@@ -101,6 +101,12 @@ Canonical ownership:
   classification, source tiers, cross-validation, budget bands, and the Research Pack contract.
 - `references/cost-discipline.md`: how the work is carried out — batched tool calls,
   in-place edits, write-once artifacts, per-stage summaries, delegated search, single-run gating.
+- `references/visual-review.schema.json`: canonical shape of the critic's `visual-review.json`;
+  QA validates against it before consuming. `required` is deliberately the minimal set the gate
+  reads (`pptx_sha256`, `slides`) — fields nobody consumes must not become blocking requirements.
+- `references/spawn-templates.md`: the fixed spawn prompts for the isolated agents
+  (researcher / builder / critic). Fixed constraint blocks are copied verbatim and data slots carry
+  paths only; byte-exact content (claims, source titles, numbers) is never transcribed into a prompt.
 - `shared/pptx_runtime/cjk_fonts.py` + `pptx_tool.py cjk-fonts`: post-process generated decks
 - `shared/pptx_runtime/fetch_images.py` + `pptx_tool.py fetch-images`: execute the
   image-sources.json contract (permission gates enforced, provenance recorded).

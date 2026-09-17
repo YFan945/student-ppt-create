@@ -78,7 +78,10 @@ Optional top-level fields for existing deck improvement:
 Optional v2 slide fields:
 
 - `role`: story function such as `problem`, `method`, `result`, `limitation`, or `conclusion`
-- `claim`: the one message the audience should remember
+- `claim`: the one message the audience should remember. It must reach the page as
+  visible text, verbatim — the actual-content gate matches PPTX text runs byte-exact,
+  so a claim that lives only in this file is undelivered (chart data labels are not
+  text runs).
 - `supporting_points`: concise reasons, examples, or evidence
 - `slide_copy`: final compact PPT wording
 - `speaker_notes`: speakable explanation rather than an essay
