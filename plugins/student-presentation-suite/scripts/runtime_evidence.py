@@ -44,6 +44,17 @@ def _lock_is_stale(path: Path) -> bool:
         return False
 
 
+def _wait_for_lock(path: Path, deadline: float) -> None:
+    """Back off after a legitimate lock collision, recovering abandoned locks."""
+    if _lock_is_stale(path):
+        with suppress(OSError):
+            path.unlink()
+        return
+    if time.monotonic() >= deadline:
+        raise RuntimeError("runtime evidence lock unavailable; retry the isolated agent") from None
+    time.sleep(0.02)
+
+
 @contextmanager
 def event_lock(event: dict):
     """Serialize parallel child hook events and recover abandoned lock files."""
@@ -67,20 +78,22 @@ def event_lock(event: dict):
                 ).encode("utf-8"),
             )
             break
-        except (FileExistsError, PermissionError):
-            # On Windows an existing file held by another thread/process may be
-            # reported as EACCES instead of EEXIST for O_CREAT|O_EXCL. Treat it
-            # as normal contention only when the lock path actually exists;
-            # genuine directory/access failures must still surface immediately.
+        except FileExistsError:
+            # The owner may release/unlink between os.open() raising EEXIST and
+            # this thread inspecting the path. EEXIST is therefore *always*
+            # ordinary contention; never re-raise merely because the file has
+            # already disappeared. Retry after a short backoff.
+            _wait_for_lock(path, deadline)
+            continue
+        except PermissionError:
+            # Windows can report EACCES instead of EEXIST while another process
+            # owns an O_EXCL lock. Only reinterpret it as contention if the lock
+            # path still exists; a missing path means this is a genuine access
+            # failure and should remain visible.
             if not path.exists():
                 raise
-            if _lock_is_stale(path):
-                with suppress(OSError):
-                    path.unlink()
-                continue
-            if time.monotonic() >= deadline:
-                raise RuntimeError("runtime evidence lock unavailable; retry the isolated agent") from None
-            time.sleep(0.02)
+            _wait_for_lock(path, deadline)
+            continue
     try:
         yield
     finally:

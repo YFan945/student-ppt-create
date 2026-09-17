@@ -28,6 +28,7 @@ RESEARCH_SCRIPTS = ROOT / "scripts"
 PYTHON_SCRIPTS: dict[str, Path] = {
     "run_gates.py": SKILL_SCRIPTS / "run_gates.py",
     "ppt_pipeline.py": SKILL_SCRIPTS / "ppt_pipeline.py",
+    "calibration_preview.py": SKILL_SCRIPTS / "calibration_preview.py",
     "delivery_check.py": SKILL_SCRIPTS / "delivery_check.py",
     "quality_gate.py": SKILL_SCRIPTS / "quality_gate.py",
     "slide_spec_guard.py": SKILL_SCRIPTS / "slide_spec_guard.py",

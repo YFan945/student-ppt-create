@@ -30,7 +30,8 @@
     "render_evidence_must_match_current_pptx": true,
     "plan_compiles_evidence_map": true,
     "no_scaffold_pages_at_build": true,
-    "page_generation_requires_isolated_builder": true
+    "page_generation_requires_isolated_builder": true,
+    "high_leverage_calibration_before_full_generation": true
   },
   "production_modes": [
     "create",
@@ -47,10 +48,13 @@
       "Classify research A/B/C/D and preserve existing-deck edit intent."
     ],
     "build": [
-      "create/rebuild_from_source: from the MAIN session spawn student-presentation-suite:presentation-builder in foreground WITHOUT a name; pass absolute work-dir and mode=initial. The builder implements pages/pNN-*.js and returns only BUILDER_DONE/BUILDER_BLOCKED.",
-      "The main session must not implement page modules itself and must not receive page source back from the builder; after BUILDER_DONE run the normal exploration gates and pipeline build --entry deck.js.",
+      "create/rebuild_from_source: first select 2-3 high-leverage slides from Art Direction and spawn student-presentation-suite:presentation-builder in foreground WITHOUT a name with mode=calibration plus those slide ids.",
+      "After BUILDER_DONE(calibration), the MAIN session runs calibration_preview.py --work-dir <wd> --slides <ids> --json; read the resulting 2-3 preview PNGs in one parallel round. If a material visual blocker exists, respawn the builder in calibration mode for only those pages and rerun the preview helper.",
+      "Once the calibration pages establish an acceptable visual system, spawn student-presentation-suite:presentation-builder in foreground WITHOUT a name with mode=initial. It preserves calibrated pages and implements every remaining scaffold page plus speaker notes.",
+      "The main session must not implement or read page modules itself and must not receive page source back from the builder; calibration is a temporary preview only and does not mutate production manifest/build state.",
+      "After BUILDER_DONE(initial), run the normal exploration gates and pipeline build --entry deck.js. Production build still refuses any remaining scaffold page.",
       "edit_ooxml remains pipeline-owned: edit ooxml/ only, keep source unchanged, write change-summary.md, build without --entry.",
-      "Write speaker-notes.md. Rebuild requires source-analysis.md."
+      "Rebuild requires source-analysis.md."
     ],
     "render": [
       "Render the current built PPTX. Changed page/contact hashes invalidate the cache.",
