@@ -32,7 +32,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" next --wor
 
 `next --json` 的 `contract` 是按阶段选择的紧凑执行契约，含当前 policy hash、QA 顺序和 repair budget；不再预读整套 references。仅在具体内容/设计问题无法由当前契约解决时，按需读对应 reference。intake 规则仍以 `../../references/presentation-intake.md` 为准，机器规则以 `../../references/pipeline-contract.json` 为准。
 
-Helper API 用 `node scripts/pptx-helpers.js --describe`；逐页实现时由 `presentation-builder` 自己调用该描述接口，不把 helper 源码拉回主会话。
+Helper API 用 `node scripts/pptx-helpers.js --describe`；逐页实现时由 `presentation-builder` 自己调用该描述接口，不把 helper 源码拉回主会话。正式与 calibration 的 raster render 都由插件内 `pptx_tool.py` 通过受控 pipeline/helper 调用，不依赖项目 PATH 中的同名脚本。
 
 ## State gate
 
