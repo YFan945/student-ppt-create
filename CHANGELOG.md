@@ -97,6 +97,9 @@
 - `assertTextFits` 在盒高扣边距后 ≤ 0 时不再打印"填充率 Infinity"，改为说明
   真正原因（可用区域 ≤ 0，请扩盒子或减边距）。
 - 新增 `tests/test_pptx_helper_addtextbox.py`（6 个用例）。
+- `color()` 缺 palette 角色时改为抛错后，`scenario_render_matrix` 的夹具补齐六角色
+  （原先缺 `surface` / accent，CI render 在 `addArchitecture` 处直接炸掉）。
+- Windows 上 evidence lock `unlink` 的 `PermissionError` 用 `contextlib.suppress`，过 ruff SIM105。
 
 ### 修复：REFUSED 不带下一步、Art Direction 解析错误是裸 traceback
 

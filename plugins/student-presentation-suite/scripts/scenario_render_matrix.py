@@ -198,7 +198,8 @@ const pptxgen = require('pptxgenjs');
 const H = require('pptx-helpers');
 const V = require('pptx-visuals');
 const TOKENS = {{
-  palette: {{ canvas: 'F8FAFC', primary_text: '111827', secondary_text: '4B5563' }},
+  palette: {{ canvas: 'F8FAFC', surface: 'FFFFFF', primary_text: '111827',
+              secondary_text: '4B5563', primary_accent: '2563EB', secondary_accent: '64748B' }},
   typography: {{ title_min_pt: 24, body_cjk_min_pt: 22, body_latin_min_pt: 20,
                  title_font: 'Cambria', body_font: 'Calibri' }},
   geometry: {{ safe_margin_pct: 6, title_zone_pct: 16, footer_zone_pct: 5,

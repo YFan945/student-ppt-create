@@ -12,7 +12,7 @@ import os
 import re
 import sys
 import time
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from pathlib import Path
 
 RESEARCHER = "student-presentation-suite:presentation-researcher"
@@ -55,11 +55,9 @@ def event_lock(event: dict):
         yield
     finally:
         os.close(descriptor)
-        try:
-            path.unlink(missing_ok=True)
-        except PermissionError:
+        with suppress(PermissionError):
             # Windows can keep the exclusive handle visible for a beat after close.
-            pass
+            path.unlink(missing_ok=True)
 
 
 def digest(path: Path) -> str:
