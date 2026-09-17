@@ -196,23 +196,6 @@ def cheap_overview_hint(path: Path) -> str:
 
 
 def check_bash(command: str) -> str | None:
-    if "run_with_pptxgenjs.js" in command and "--probe" not in command:
-        return (
-            "cost_guard: do not invoke run_with_pptxgenjs.js from the agent "
-            "(2026-09-16 bypassed a dead QA DAG and skipped independent review). "
-            f"Use `{pipeline_hint('build')}` — only the pipeline may call the builder."
-        )
-    if "research_pack_to_evidence.py" in command:
-        return (
-            "cost_guard: do not compile the evidence map by hand "
-            "(2026-09-16 spent ~10 turns on --pack / --compiled-slide-spec). "
-            f"Put research-pack.json in the work-dir and run `{pipeline_hint('plan')}`."
-        )
-    if "slide_spec_guard.py" in command:
-        return (
-            "cost_guard: do not freeze the Slide Spec by hand. "
-            f"`{pipeline_hint('plan')}` runs freeze after it compiles the evidence map."
-        )
     if PLUGIN_PATH.search(command) and PLUGIN_INSPECT.search(command) and not PIPELINE_RUN.search(command):
         return (
             "cost_guard: do not ls/grep/cat plugin source or the plugin cache. "

@@ -89,17 +89,21 @@ class CostGuardTests(unittest.TestCase):
         self.assertEqual(0, self.run_guard(named))
         self.assertEqual(0, self.run_guard(nested))
 
+    def test_production_bypass_integrity_is_out_of_scope(self) -> None:
+        """production_entry_guard.py, not cost_guard.py, owns production script entrypoints."""
+        commands = [
+            "python plugins/student-presentation-suite/scripts/research_pack_to_evidence.py pack.json --output map.json",
+            "node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --output out.pptx deck.js",
+            "python plugins/student-presentation-suite/skills/sp-deck/scripts/slide_spec_guard.py --json",
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
+
     def test_listing_plugin_cache_is_blocked(self) -> None:
         rc = self.run_guard(self.event(
             "Bash",
             command='ls "C:/Users/28603/.claude/plugins/cache/claude-personal/student-presentation-suite/0.13.1/references/"',
-        ))
-        self.assertEqual(rc, 2)
-
-    def test_manual_evidence_compiler_is_blocked(self) -> None:
-        rc = self.run_guard(self.event(
-            "Bash",
-            command="python plugins/student-presentation-suite/scripts/research_pack_to_evidence.py pack.json --output map.json",
         ))
         self.assertEqual(rc, 2)
 
@@ -109,16 +113,6 @@ class CostGuardTests(unittest.TestCase):
             command="python plugins/student-presentation-suite/scripts/validate_research_pack.py --help",
         ))
         self.assertEqual(rc, 2)
-        blocked = self.run_guard(self.event(
-            "Bash",
-            command="node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --output out.pptx deck.js",
-        ))
-        self.assertEqual(blocked, 2)
-        probe = self.run_guard(self.event(
-            "Bash",
-            command="node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --probe",
-        ))
-        self.assertEqual(probe, 0)
 
     def test_refusals_point_to_a_resolvable_pipeline_path(self) -> None:
         """裸脚本名会诱导 agent 用错路径；提示必须带可执行的绝对路径。"""

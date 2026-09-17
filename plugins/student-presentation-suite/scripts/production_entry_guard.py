@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Allow-list direct Bash entrypoints into the sp-deck production runtime.
+"""Guard direct Bash entrypoints into presentation production internals.
 
 Historically cost_guard learned one forbidden internal script at a time. That
-approach is brittle: every new internal validator/helper creates another way for
-an agent to bypass the state machine until a new regex is added.
+approach is brittle: every new production helper creates another way for an
+agent to bypass the state machine until a new regex is added.
 
-This hook flips the rule for ``skills/sp-deck/scripts``: direct Agent Bash may
-invoke only the small public surface declared here. Every other script in that
-directory is pipeline-internal and must be reached through ``ppt_pipeline.py``
-or ``run_gates.sh``. Normal project Bash and scripts belonging to other skills
-are intentionally out of scope.
+This hook owns execution-entry integrity. For ``skills/sp-deck/scripts`` it uses
+a small public allow-list and denies every other direct script. It also owns the
+few plugin-root production wrappers that must never be used to bypass the
+pipeline: evidence-map compilation and direct PPTX generation. Normal project
+Bash, other skills, and unrelated plugin-root utilities remain out of scope.
 """
 from __future__ import annotations
 
@@ -29,29 +29,77 @@ PUBLIC_DECK_ENTRYPOINTS = frozenset(
 PUBLIC_PIPELINE_ACTIONS = frozenset(
     {"plan", "build", "render", "qa", "repair", "complete", "status", "next"}
 )
+ROOT_PRODUCTION_INTERNALS = frozenset(
+    {
+        "research_pack_to_evidence.py",
+        "run_with_pptxgenjs.js",
+    }
+)
 _DECK_SCRIPT_RE = re.compile(
     r"(?:^|[\\/])skills[\\/]sp-deck[\\/]scripts[\\/]"
     r"(?P<name>[A-Za-z0-9_.-]+\.(?:py|sh))(?=$|[\s\"';&|])",
+    re.IGNORECASE,
+)
+_ROOT_SCRIPT_RE = re.compile(
+    r"(?:\$\{CLAUDE_PLUGIN_ROOT\}|student-presentation-suite(?:[\\/][^\\/\s\"']+)?)"
+    r"[\\/]scripts[\\/]"
+    r"(?P<name>[A-Za-z0-9_.-]+\.(?:py|js|sh))(?=$|[\s\"';&|])",
     re.IGNORECASE,
 )
 _PIPELINE_ACTION_RE = re.compile(
     r"ppt_pipeline\.py(?:[\"']?)(?:\s+)(?P<action>[A-Za-z0-9_-]+)",
     re.IGNORECASE,
 )
+_RUN_WITH_INVOCATION_RE = re.compile(
+    r"run_with_pptxgenjs\.js[\"']?(?P<args>.*?)(?=(?:&&|\|\||;|\n|\|)|$)",
+    re.IGNORECASE,
+)
+_PROBE_TOKEN_RE = re.compile(r"(?:^|\s)--probe(?=$|\s)", re.IGNORECASE)
 
 
-def direct_deck_scripts(command: str) -> list[str]:
-    """Return unique sp-deck script basenames referenced by a shell command."""
+def _unique_matches(pattern: re.Pattern[str], command: str) -> list[str]:
     normalized = (command or "").replace("\\", "/")
     found: list[str] = []
-    for match in _DECK_SCRIPT_RE.finditer(normalized):
+    for match in pattern.finditer(normalized):
         name = match.group("name")
         if name not in found:
             found.append(name)
     return found
 
 
+def direct_deck_scripts(command: str) -> list[str]:
+    """Return unique sp-deck script basenames referenced by a shell command."""
+    return _unique_matches(_DECK_SCRIPT_RE, command)
+
+
+def direct_root_scripts(command: str) -> list[str]:
+    """Return plugin-root scripts referenced through an actual plugin path."""
+    return _unique_matches(_ROOT_SCRIPT_RE, command)
+
+
+def _all_builder_invocations_are_probe(command: str) -> bool:
+    """Allow direct builder access only when every invocation is a runtime probe."""
+    matches = list(_RUN_WITH_INVOCATION_RE.finditer(command))
+    return bool(matches) and all(_PROBE_TOKEN_RE.search(match.group("args")) for match in matches)
+
+
 def check_bash(command: str) -> str | None:
+    normalized = (command or "").replace("\\", "/")
+
+    root_scripts = [name for name in direct_root_scripts(command) if name in ROOT_PRODUCTION_INTERNALS]
+    if "research_pack_to_evidence.py" in root_scripts:
+        return (
+            "Direct evidence-map compilation is refused. Put research-pack.json in the work-dir "
+            "and run `ppt_pipeline.py plan --work-dir <wd>`; the pipeline owns evidence-map "
+            "compilation and Slide Spec freezing."
+        )
+    if "run_with_pptxgenjs.js" in root_scripts and not _all_builder_invocations_are_probe(normalized):
+        return (
+            "Direct run_with_pptxgenjs.js generation is refused. The pipeline owns build, "
+            "normalization and QA binding; run `ppt_pipeline.py next --work-dir <wd> --json` "
+            "and invoke the stable command it returns. `--probe` remains allowed for runtime checks."
+        )
+
     scripts = direct_deck_scripts(command)
     if not scripts:
         return None
@@ -65,7 +113,7 @@ def check_bash(command: str) -> str | None:
             "must be reached through ppt_pipeline.py or run_gates.sh."
         )
     if "ppt_pipeline.py" in scripts:
-        match = _PIPELINE_ACTION_RE.search((command or "").replace("\\", "/"))
+        match = _PIPELINE_ACTION_RE.search(normalized)
         if not match or match.group("action") not in PUBLIC_PIPELINE_ACTIONS:
             return (
                 "ppt_pipeline.py direct Bash is limited to the stable actions: "
