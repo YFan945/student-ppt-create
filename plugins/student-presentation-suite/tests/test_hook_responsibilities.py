@@ -24,6 +24,7 @@ class HookResponsibilityTests(unittest.TestCase):
     def test_runtime_evidence_owns_agent_spawn_integrity(self) -> None:
         matchers = self.pretool_matchers_for("runtime_evidence.py")
         self.assertTrue(any("Agent" in matcher.split("|") for matcher in matchers))
+        self.assertTrue(any("SendMessage" in matcher.split("|") for matcher in matchers))
         self.assertTrue(any("Write" in matcher.split("|") for matcher in matchers))
         self.assertTrue(any("WebSearch" in matcher.split("|") for matcher in matchers))
 
