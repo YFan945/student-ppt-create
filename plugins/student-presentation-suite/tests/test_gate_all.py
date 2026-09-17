@@ -154,7 +154,10 @@ class GateAllTests(unittest.TestCase):
             text=True,
             encoding="utf-8",
             errors="replace",
-            timeout=180,
+            # gate-all 的 fail-closed 路径仍要跑完整门禁 DAG（含 LibreOffice 渲染）。
+            # 2026-09-17 CI（windows-latest / 3.12）实测 180s 不够：坏 deck 路径超时，
+            # 同一代码本地 98s 全绿。放宽到 420s 只影响挂钟上限，不改变判定。
+            timeout=420,
         )
 
     def test_gate_all_passes_a_clean_deck_and_writes_all_reports(self) -> None:
