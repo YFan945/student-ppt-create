@@ -85,7 +85,7 @@ class ProductionEntryGuardTests(unittest.TestCase):
             r'python "C:\Users\me\.claude\plugins\student-presentation-suite\skills\sp-deck\scripts\'
             r'pptx_actual_content_check.py" --json'
         )
-        command = command.replace(r'\"', '"').replace(r'\\', '\\')
+        command = command.replace('\\"', '"').replace('\\\\', '\\')
         code, message = self.run_guard(command)
         self.assertEqual(2, code)
         self.assertIn("pptx_actual_content_check.py", message)
