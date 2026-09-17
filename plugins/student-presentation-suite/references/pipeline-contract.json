@@ -48,9 +48,9 @@
       "Classify research A/B/C/D and preserve existing-deck edit intent."
     ],
     "build": [
-      "create/rebuild_from_source: first select 2-3 high-leverage slides from Art Direction and spawn student-presentation-suite:presentation-builder in foreground WITHOUT a name with mode=calibration plus those slide ids.",
+      "create/rebuild_from_source: first select 2-3 high-leverage slides from Art Direction and spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=calibration plus those slide ids.",
       "After BUILDER_DONE(calibration), the MAIN session runs calibration_preview.py --work-dir <wd> --slides <ids> --json; read the resulting 2-3 preview PNGs in one parallel round. If a material visual blocker exists, respawn the builder in calibration mode for only those pages and rerun the preview helper.",
-      "Once the calibration pages establish an acceptable visual system, spawn student-presentation-suite:presentation-builder in foreground WITHOUT a name with mode=initial. It preserves calibrated pages and implements every remaining scaffold page plus speaker notes.",
+      "Once the calibration pages establish an acceptable visual system, spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=initial. It preserves calibrated pages and implements every remaining scaffold page plus speaker notes.",
       "The main session must not implement or read page modules itself and must not receive page source back from the builder; calibration is a temporary preview only and does not mutate production manifest/build state.",
       "After BUILDER_DONE(initial), run the normal exploration gates and pipeline build --entry deck.js. Production build still refuses any remaining scaffold page.",
       "edit_ooxml remains pipeline-owned: edit ooxml/ only, keep source unchanged, write change-summary.md, build without --entry.",
@@ -61,13 +61,13 @@
       "Do not reuse previous-build images. Pipeline archives stale evidence."
     ],
     "qa": [
-      "Spawn student-presentation-suite:visual-critic in foreground WITHOUT a name. Pass the absolute work-dir in its prompt. Never nest the critic inside another agent.",
+      "Spawn student-presentation-suite:visual-critic WITHOUT a name. Pass the absolute work-dir in its prompt. Never nest the critic inside another agent.",
       "The runtime hook materializes hash-bound critic-preview/*.jpg images. Critic Reads the overview and every page preview, not the full-size render PNGs; the hook maps those reads back to the current original contact/page SHA256 values.",
       "Critic Writes visual-review.json with PPTX/contact/original-page hashes; hook writes critic-execution.json. Existing QA still requires complete original render coverage through the verified preview mapping.",
       "QA automatically uses speaker-notes.md plus current contact sheet/pages. Missing required inputs block complete."
     ],
     "repair": [
-      "After ppt_pipeline.py repair records the blocker set, spawn student-presentation-suite:presentation-builder in foreground WITHOUT a name with mode=repair and a concise blocker summary; the main session must not edit page modules itself.",
+      "After ppt_pipeline.py repair records the blocker set, spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=repair and a concise blocker summary; the main session must not edit page modules itself.",
       "Fix all blocker pages together, then build, render, isolated critique and QA.",
       "Never mark major/critical resolved without before/after evidence."
     ],

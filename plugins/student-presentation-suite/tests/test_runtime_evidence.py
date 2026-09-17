@@ -91,6 +91,41 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(receipt["artifact"]["sha256"], runtime.digest(review))
         self.assertEqual(receipt["agent_id"], "child")
 
+    def test_bash_script_writes_are_receipted_via_snapshot(self):
+        """2026-09-17: json.dump edits bypassed Write-tool receipts and plan refused a healthy pack."""
+        work = self.project / "outputs/.pptx-work/research-job"
+        work.mkdir(parents=True)
+        event = {**self.event, "agent_type": runtime.RESEARCHER}
+
+        def call(event_kind, **extra):
+            return runtime.handle({**event, "hook_event_name": event_kind, **extra})
+
+        pack = work / "research-pack.json"
+        pack.write_text('{"round": 1}')
+        call("SubagentStart")
+        # every round-2 edit arrives through Bash python json.dump, never the Write tool
+        pack.write_text('{"round": 2}')
+        call("PostToolUse", tool_name="Bash", tool_input={"command": "python -c 'json.dump(...)'"})
+        call("SubagentStop")
+        receipt = json.loads((work / "research-execution.json").read_text())
+        self.assertTrue(receipt["spawn_verified"])
+        self.assertEqual(receipt["artifact"]["sha256"], runtime.digest(pack))
+
+    def test_pre_existing_artifact_is_not_credited_without_a_change(self):
+        work = self.project / "outputs/.pptx-work/research-job"
+        work.mkdir(parents=True)
+        event = {**self.event, "agent_type": runtime.RESEARCHER}
+
+        def call(event_kind, **extra):
+            return runtime.handle({**event, "hook_event_name": event_kind, **extra})
+
+        pack = work / "research-pack.json"
+        pack.write_text('{"round": 1}')
+        call("SubagentStart")
+        call("PostToolUse", tool_name="Bash", tool_input={"command": "ls"})
+        call("SubagentStop")
+        self.assertFalse((work / "research-execution.json").exists())
+
     def test_critic_cannot_write_generator_or_other_work_area(self):
         self.assertEqual(
             self.event_call("PreToolUse", tool_name="Write", tool_input={"file_path": str(self.work / "deck.js")}),
@@ -224,14 +259,6 @@ class RuntimeEvidenceTests(unittest.TestCase):
                         **base,
                         "tool_name": "Agent",
                         "tool_input": {**valid_input, "name": f"named-{agent_type}"},
-                    }
-                )
-                self.assertEqual(2, rc)
-                rc = runtime.handle(
-                    {
-                        **base,
-                        "tool_name": "Agent",
-                        "tool_input": {**valid_input, "run_in_background": True},
                     }
                 )
                 self.assertEqual(2, rc)

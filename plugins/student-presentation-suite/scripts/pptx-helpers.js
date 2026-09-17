@@ -965,6 +965,12 @@ module.exports = {
  * get wrong. `node scripts/pptx-helpers.js --describe` prints the same
  * information from the live exports, so it can never drift from the code.
  * `references/pptxgenjs-helper-api.md` carries the prose layer.
+ *
+ * `chartTypes` / `shapeTypes` / `notesApi` / `chartAxisRule` / `lineSeriesLimit`
+ * exist so the isolated builder never needs `node -e require('pptxgenjs')`
+ * probing (which fails from project cwd — no node_modules there) and never
+ * has to rediscover runtime limits by trial (2026-09-17 live session:
+ * series-level line.width/dashType turned out to be ignored on line charts).
  */
 function describeApi() {
   const entries = [];
@@ -979,6 +985,9 @@ function describeApi() {
       entries.push({ name, kind: 'constant', value });
     }
   }
+  const pptx = new _pptxgen();
+  const chartTypes = pptx.ChartType ? Object.keys(pptx.ChartType) : [];
+  const shapeTypes = _shapeType ? Object.keys(_shapeType) : [];
   return {
     canvas: { slideWIn: SLIDE_W_IN, slideHIn: SLIDE_H_IN },
     safeTitleFonts: SAFE_TITLE_FONTS,
@@ -986,6 +995,16 @@ function describeApi() {
     safeCjkTitleFonts: SAFE_CJK_TITLE_FONTS,
     safeCjkBodyFonts: SAFE_CJK_BODY_FONTS,
     balanceRoles: BALANCE_ROLES,
+    chartTypes,
+    shapeTypes,
+    notesApi: {
+      method: 'slide.addNotes(text)',
+      rule: 'one call per slide, plain text only; the deck delivers notes in the PPTX notes pane',
+    },
+    chartAxisRule:
+      'set explicit valAxisMinVal: 0 and valAxisMaxVal >= data max on every chart; the rendered check rejects auto-scaled value axes',
+    lineSeriesLimit:
+      'pptxgenjs ignores series-level line.width/dashType on line charts (verified 2026-09-17); encode series with color + markers + direct labels, never legend-only stroke styles',
     entries,
   };
 }

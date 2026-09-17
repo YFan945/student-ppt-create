@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from pathlib import Path
 from typing import Any
 
 PUBLIC_DECK_ENTRYPOINTS = frozenset(
@@ -26,6 +27,7 @@ PUBLIC_DECK_ENTRYPOINTS = frozenset(
         "run_gates.sh",
     }
 )
+BUILDER = "student-presentation-suite:presentation-builder"
 PUBLIC_PIPELINE_ACTIONS = frozenset(
     {"plan", "build", "render", "qa", "repair", "complete", "status", "next"}
 )
@@ -83,7 +85,25 @@ def _all_builder_invocations_are_probe(command: str) -> bool:
     return bool(matches) and all(_PROBE_TOKEN_RE.search(match.group("args")) for match in matches)
 
 
-def check_bash(command: str) -> str | None:
+def _builder_allowlist() -> str:
+    """Absolute-path discovery surface the isolated builder may actually run.
+
+    Main-session refusals point at `ppt_pipeline.py next`, which the builder is
+    forbidden to run; a live builder hit that dead end 14 times in one
+    calibration round (2026-09-17) and fell back to hand-written evidence.
+    """
+    here = Path(__file__).resolve().parents[1]
+    parts = []
+    helper = here / "scripts" / "pptx-helpers.js"
+    select = here / "skills" / "sp-deck" / "scripts" / "visual_reference_select.py"
+    if helper.is_file():
+        parts.append(f'node "{helper}" --describe')
+    if select.is_file():
+        parts.append(f'python "{select}" --role <role> --grammar <grammar> --visual-strategy <strategy> --output composition/<id>.json')
+    return "; ".join(parts) or "pptx-helpers.js --describe and visual_reference_select.py"
+
+
+def check_bash(command: str, builder: bool = False) -> str | None:
     normalized = (command or "").replace("\\", "/")
 
     root_scripts = [name for name in direct_root_scripts(command) if name in ROOT_PRODUCTION_INTERNALS]
@@ -106,6 +126,13 @@ def check_bash(command: str) -> str | None:
     blocked = [name for name in scripts if name not in PUBLIC_DECK_ENTRYPOINTS]
     if blocked:
         names = ", ".join(blocked)
+        if builder:
+            return (
+                "Direct execution of internal sp-deck production scripts is refused for the "
+                f"isolated builder: {names}. Allowed discovery/composition surface: "
+                f"{_builder_allowlist()}. Everything else is run by the MAIN session "
+                "after you return."
+            )
         return (
             "Direct execution of internal sp-deck production scripts is refused: "
             f"{names}. Use ppt_pipeline.py next --work-dir <wd> --json and invoke only "
@@ -129,7 +156,8 @@ def handle(event: dict[str, Any]) -> int:
     if event.get("tool_name") != "Bash":
         return 0
     command = str((event.get("tool_input") or {}).get("command") or "")
-    refusal = check_bash(command)
+    builder = str(event.get("agent_type") or "") == BUILDER
+    refusal = check_bash(command, builder=builder)
     if refusal:
         print(f"production_entry_guard: {refusal}", file=sys.stderr)
         return 2

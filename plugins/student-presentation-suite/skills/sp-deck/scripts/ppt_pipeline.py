@@ -1118,7 +1118,7 @@ def cmd_next(args: argparse.Namespace) -> int:
                 "intake first; do not grep plugin source — this command is the discovery API. "
                 "If research-pack.json exists in the work-dir, plan compiles evidence-map.json "
                 "itself (do not pass --evidence-map). Spawn presentation-researcher from the "
-                "MAIN session, foreground, without `name`."
+                "MAIN session without `name`."
             ),
         }
     else:
@@ -1135,23 +1135,47 @@ def cmd_next(args: argparse.Namespace) -> int:
             "allowed_writes": ["pages/pNN-*.js"],
             "notes": "different pages must be Edit'ed in the same turn (CD-1, CD-2)",
         }
-        entry = work_dir / "deck.js"
         if state == "planned":
-            payload["next_command"] = (
-                f'{python} "{pipeline}" build --work-dir "{work_dir}" --entry "{entry}"'
-            )
-            payload["notes"] = (
-                "fill pages/pNN-*.js with parallel Edit in ONE turn, keeping the COPY "
-                "string literals from the scaffold (page_copy_fidelity). Then "
-                f"`{python} \"{pipeline}\" build`. Do not call run_with_pptxgenjs.js. "
-                "High-leverage slides: visual_reference_select.py --role <role> "
-                "--grammar <grammar> --visual-strategy <strategy> --output composition/<id>.json --json. "
-                "Put v0.8 composition JSON in composition/."
-            )
             if manifest.get("mode") == "edit_ooxml":
                 payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
                 payload["allowed_writes"] = [str(work_dir / "ooxml"), str(work_dir / "change-summary.md")]
                 payload["notes"] = "Edit unpacked OOXML preserving the source and preserve contract, then build (pack)."
+            else:
+                # Resume-safe calibration dispatch (2026-09-17): a live session was
+                # cut mid calibration-fix round and `next` answered a raw `build`,
+                # teaching the MAIN session to edit page modules directly — the one
+                # flow builder_guard forbids. Dispatch on what calibration evidence
+                # exists so an interrupted session resumes at the right step.
+                calibration_manifest = work_dir / "calibration" / "calibration-manifest.json"
+                calibration_rendered = bool(list((work_dir / "calibration" / "render").glob("calibration-*.png")))
+                if not calibration_manifest.is_file():
+                    payload["agent"] = "student-presentation-suite:presentation-builder"
+                    payload["notes"] = (
+                        "pick 2-3 high-leverage slides (cover + dense/data page + representative visual page) and "
+                        "spawn student-presentation-suite:presentation-builder mode=calibration with the absolute "
+                        "work-dir and those slide ids (no `name`). It implements only those pages; the rest stay "
+                        "scaffolded so an early full build stays impossible. The MAIN session never edits "
+                        "pages/pNN-*.js itself. After BUILDER_DONE run calibration_preview.py."
+                    )
+                elif not calibration_rendered:
+                    slides = load_json(calibration_manifest).get("slides") or []
+                    slide_args = " ".join(str(slide) for slide in slides)
+                    payload["next_command"] = (
+                        f'{python} "{HERE / "calibration_preview.py"}" --work-dir "{work_dir}" '
+                        f"--slides {slide_args} --json"
+                    )
+                    payload["notes"] = (
+                        "calibration pages exist but no preview render: run calibration_preview.py, then Read the "
+                        "preview PNGs in ONE parallel round and judge them against Art Direction."
+                    )
+                else:
+                    payload["agent"] = "student-presentation-suite:presentation-builder"
+                    payload["notes"] = (
+                        "calibration preview is on disk. If Major/Critical issues remain: respawn the builder "
+                        "mode=calibration for only those pages, then rerun calibration_preview.py. If the visual "
+                        "system is accepted: spawn the same builder mode=initial to implement every remaining "
+                        "scaffold page (calibrated pages are preserved); run build only after BUILDER_DONE."
+                    )
         elif state == "producing":
             if render_is_current(manifest):
                 render = manifest.get("render") or {}
@@ -1164,7 +1188,7 @@ def cmd_next(args: argparse.Namespace) -> int:
                     f'--visual-review "{work_dir / "visual-review.json"}"'
                 )
                 payload["notes"] = (
-                    "Spawn student-presentation-suite:visual-critic in foreground WITHOUT a `name` "
+                    "Spawn student-presentation-suite:visual-critic WITHOUT a `name` "
                     "parameter — a named Agent call becomes a teammate whose agent_type is the name, "
                     "so SubagentStop never issues critic-execution.json and QA blocks forever. "
                     "Overview: read the cheap contact-sheet-thumb.jpg, not the full-size contact sheet; "
@@ -1201,10 +1225,15 @@ def cmd_next(args: argparse.Namespace) -> int:
             payload["next_command"] = f'{python} "{pipeline}" status --work-dir "{work_dir}"'
 
     action = "intake"
-    for candidate in ("build", "render", "qa", "repair", "complete"):
-        if f" {candidate} " in payload["next_command"]:
-            action = candidate
-            break
+    if manifest and str(manifest.get("state") or "") == "planned" and manifest.get("mode") != "edit_ooxml":
+        # planned create/rebuild keeps the build stage contract (the calibration
+        # flow) even when the next step is an agent spawn with no bash command.
+        action = "build"
+    else:
+        for candidate in ("build", "render", "qa", "repair", "complete"):
+            if f" {candidate} " in payload["next_command"]:
+                action = candidate
+                break
     payload["contract"] = {
         "stage": action, "rules": CONTRACT["stage_contracts"][action],
         "qa_order": list(QA_ORDER), "max_repairs": MAX_REPAIRS,

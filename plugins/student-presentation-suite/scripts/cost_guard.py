@@ -148,6 +148,29 @@ def helpers_hint() -> str:
     return "node pptx-helpers.js --describe"
 
 
+BUILDER = "student-presentation-suite:presentation-builder"
+
+
+def builder_hint() -> str:
+    """Runnable discovery surface for the isolated builder (2026-09-17).
+
+    Main-session hints point at `ppt_pipeline.py next`, which the builder is
+    forbidden to run; that dead end pushed a live builder into hand-writing
+    composition evidence instead of calling the real helpers.
+    """
+    select = plugin_root() / "skills" / "sp-deck" / "scripts" / "visual_reference_select.py"
+    parts = [f"`{helpers_hint()}`"]
+    if select.is_file():
+        parts.append(
+            f'`"{sys.executable}" "{select}" --role <role> --grammar <grammar> '
+            "--visual-strategy <strategy> --output <work-dir>/composition/<id>.json --json`"
+        )
+    return (
+        "Allowed for the isolated builder: " + " or ".join(parts) + ". "
+        "Everything else is run by the MAIN session after you return."
+    )
+
+
 # 只读巡检命令的同会话重复上限：2026-09-16 实测 `ls critic-execution.json` 连跑
 # 5 次、`ls -la` ×4 —— 状态查询一律走 `next`（一次给全 read/forbidden/next_command）。
 # 只限制 ls/cat/find 等纯只读巡检；build/gates/qa 等动作命令不限制（修复后重跑是合法路径）。
@@ -160,7 +183,7 @@ BIG_IMAGE_BYTES = 150 * 1024
 MAIN_SESSION_BIG_IMAGE_BUDGET = 6
 
 
-def check_inspection_repeat(command: str, cwd: str, session: str) -> str | None:
+def check_inspection_repeat(command: str, cwd: str, session: str, builder: bool = False) -> str | None:
     if not INSPECT_RE.match(command):
         return None
     key = "inspect:" + hashlib.sha256(
@@ -172,6 +195,11 @@ def check_inspection_repeat(command: str, cwd: str, session: str) -> str | None:
     counts[key] = count
     save_seen(cwd, session, seen)
     if count >= REPEAT_INSPECT_LIMIT:
+        if builder:
+            return (
+                f"cost_guard: the same inspection command already ran {count - 1} times this "
+                f"session; repeating it yields no new information. {builder_hint()}"
+            )
         return (
             f"cost_guard: the same inspection command already ran {count - 1} times this "
             "session; repeating it yields no new information. Run the pipeline `next` "
@@ -195,13 +223,23 @@ def cheap_overview_hint(path: Path) -> str:
     return "(run `ppt_pipeline.py render` to produce it)"
 
 
-def check_bash(command: str) -> str | None:
+def check_bash(command: str, builder: bool = False) -> str | None:
     if PLUGIN_PATH.search(command) and PLUGIN_INSPECT.search(command) and not PIPELINE_RUN.search(command):
+        if builder:
+            return (
+                "cost_guard: the isolated builder must not ls/grep/cat plugin source or the plugin cache. "
+                f"{builder_hint()}"
+            )
         return (
             "cost_guard: do not ls/grep/cat plugin source or the plugin cache. "
             f"Run `{pipeline_hint()}` or `{helpers_hint()}`."
         )
     if GREP_SED.search(command) and PLUGIN_PATH.search(command):
+        if builder:
+            return (
+                "cost_guard: the isolated builder must not grep/sed/cat plugin source. "
+                f"{builder_hint()}"
+            )
         return (
             "cost_guard: do not grep/sed/cat plugin source. "
             f"Run `{pipeline_hint()}` or `{helpers_hint()}`."
@@ -209,6 +247,11 @@ def check_bash(command: str) -> str | None:
     if "--help" in command and any(hint in command for hint in PLUGIN_HINTS):
         if "ppt_pipeline.py next" in command:
             return None
+        if builder:
+            return (
+                "cost_guard: the isolated builder must not --help plugin scripts. "
+                f"{builder_hint()}"
+            )
         return (
             "cost_guard: do not --help plugin scripts to discover the next step. "
             f"Run `{pipeline_hint()}`."
@@ -286,10 +329,11 @@ def main(argv: list[str] | None = None) -> int:
     session = session_key({**event, "cwd": cwd})
     if name == "Bash":
         command = str(tool_input.get("command") or "")
-        msg = check_bash(command)
+        builder = str(event.get("agent_type") or "") == BUILDER
+        msg = check_bash(command, builder=builder)
         if msg:
             return refuse(msg)
-        msg = check_inspection_repeat(command, cwd, session)
+        msg = check_inspection_repeat(command, cwd, session, builder=builder)
         return refuse(msg) if msg else 0
     if name in {"Read", "Grep"}:
         path = str(tool_input.get("file_path") or tool_input.get("path") or "")

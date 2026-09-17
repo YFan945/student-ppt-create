@@ -2,6 +2,76 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.13.5 — 2026-09-17
+
+来源：2026-09-17 0.13.4 全程 live 会话复盘（碳中和光伏 vs 风电 10 页 deck：17 个子代理、
+7 次 build、6/6 repair 耗尽，最终 `incomplete` 交付）。该会话暴露出一类系统性缺陷：
+**指令（SKILL/spawn prompt）、说明（references/agent 定义）、agent 实际被 hook 允许的行为
+三者互不匹配**。本批为机械修复（批次一），契约级修复（预算申报、QA 门对齐、scaffold
+前置、spawn 模板）留待 0.14.0。
+
+### 运行时：回执捕获脚本写盘（解"plan 拒健康 pack"）
+
+- `runtime_evidence.py`：回执物（`research-pack.json` / `visual-review.json`）改为**哈希快照
+  归因**——SubagentStart 基线 + 每次 child 工具调用后重扫 diff，`python json.dump` 等 Bash
+  写盘与 Write 工具同权计入 `writes`。live 会话中研究员 22 次写盘只有 2 次走 Write，
+  回执为空导致 `plan` 拒绝并消耗主会话 6+ 轮排查。
+- `hooks.json`：runtime_evidence 的 PostToolUse matcher 扩为
+  `Read|Write|Edit|Bash|PowerShell`。
+
+### Guard：拒绝文案按子代理身份分支（解"14 次拦截死胡同"）
+
+- `cost_guard.py` / `production_entry_guard.py`：`agent_type` 为
+  `presentation-builder` 时，拒绝文案给出 builder 真实可跑的白名单
+  （`pptx-helpers.js --describe` 与 `visual_reference_select.py` 绝对路径），不再把
+  `ppt_pipeline.py next`——builder 被禁止的命令——当出路。live 会话中 builder 因此
+  被迫手写 composition 证据、跳过正式校验。
+- `pptx-helpers.js --describe`：新增 `chartTypes`（10 项）、`shapeTypes`（179 项）、
+  `notesApi`（`slide.addNotes`）、`chartAxisRule`（显式轴下限规则）、`lineSeriesLimit`
+  （pptxgenjs 忽略 line series 的 series 级 width/dashType，live 实证）——builder 不再
+  需要 `node -e require('pptxgenjs')` 探测（项目 cwd 解析不到模块，live 实测失败）。
+
+### 报错可执行化：freeze 附重生命令
+
+- `slide_spec_guard.py`：spec / research 校验报告的"does not exist / not passing /
+  stale"三类拒绝各附**精确重生成命令**，并注明必须校验 plan 编译版
+  `slide-spec-compiled.yaml`。live 会话在此 3 次试错。
+
+### 死代码与幽灵措辞清理
+
+- `runtime_evidence.py`：移除 `run_in_background` 拒绝分支——Claude Code 2.1.x 的 Agent
+  工具默认异步且不带该参数（live 会话三次 spawn 均无此字段），"foreground 强制"从未
+  生效；SubagentStop 回据对异步代理同样成立。
+- SKILL（sp-deck / sp-research）、`pipeline-contract.json`、`ppt_pipeline.py` notes、
+  `builder_guard.py`、插件 README 中英对的全部 "foreground / 前台" 措辞改为异步现实：
+  不传 `name` 直接 spawn，收到紧凑信封前不推进下一阶段。
+
+### 中断恢复：`next` 按校准证据分派（解"修复轮被截断即白做"）
+
+- `ppt_pipeline.py` `next` 的 `planned` 分支重写：依据 `calibration/calibration-manifest.json`
+  与 render 的存在性分派——未校准 → spawn builder(calibration)；已实现未渲染 → 给出
+  `calibration_preview.py` 命令（slides 参数从 manifest 读取）；已渲染 → 指向审查/修复/
+  initial 分支。此前它无视校准状态直接回 `build`，并教主会话"parallel Edit 直接改
+  pages/pNN-*.js"——恰是 `builder_guard` 禁止的唯一流程（live 会话在校准修复轮被截断，
+  重开后按此指引有把带 blocker 页面直接全量 build 的风险）。
+- `planned` create/rebuild 的 stage contract 固定为 `build`（校准流程契约），不再依赖
+  next_command 子串嗅探。
+- sp-deck SKILL：回合结束仍有未返回 pipeline 子代理时固定尾句提示（关闭会话丢该轮）；
+  插件 README 中英对补"会话中断恢复"条目。
+
+### Intake 批量合规
+
+- sp-deck SKILL：intake 询问必须按 `presentation-intake.md` 的 Round 结构批量发出
+  （每轮一次 `AskUserQuestion`、最多 4 问），禁止拆成单问多次调用——live 会话 3 次单问
+  违反已有 Round 契约。
+
+### 测试
+
+- 新增：Bash 写盘回执（快照归因 + 既有产物不误记）、builder 身份拒绝文案不指向
+  pipeline 死胡同、`next` 三种校准状态分派（未校准 / 未渲染 / 已渲染恢复）。
+- 更新：`run_in_background` 拒绝断言随死代码移除；`next` planned 断言从"指向 build"改为
+  "分派校准 builder"。全量 572 用例通过。
+
 ## 0.13.4 — 2026-09-17
 
 ### Live E2E：headless 研究权限路径

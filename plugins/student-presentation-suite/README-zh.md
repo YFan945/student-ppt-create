@@ -37,11 +37,11 @@ sp-research → sp-outline → sp-deck → sp-review
 
 它同时是**上下文防火墙**——而且是**机制**，不是提示词约定：主流程通过 Agent 工具
 **显式 spawn `agents/presentation-researcher.md`**（`subagent_type:
-student-presentation-suite:presentation-researcher`，前台等待），检索因此**不在主对话
+student-presentation-suite:presentation-researcher`，不传 `name`），检索因此**不在主对话
 上下文里运行**。子代理看不到主对话历史，主流程也拿不到它的搜索过程与原始网页
 （约 10 万 token → 约 8 千）。spawn 的 prompt 里必须写全 work-id、brief 路径、scope 与
-materials 路径——子代理既读不到 frontmatter 的参数绑定，也看不到本次对话。前台是有意的：
-研究必须先完成，`sp-outline` 才能开始排页。
+materials 路径——子代理既读不到 frontmatter 的参数绑定，也看不到本次对话。顺序是有意的：
+研究必须先完成，`sp-outline` 才能开始排页——收到 `RESEARCH_DONE` 信封前不推进下一阶段。
 
 早先的版本依赖本 skill frontmatter 里的 `context: fork`。该机制在 **`claude -p`（print）
 模式下不被 honor**：两次 Live 实测都是 `subagent_stats.spawned = 0`、事件流里没有任何
@@ -224,6 +224,11 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重跑最终门禁”；
 仍有 blocker 则交付 `incomplete`。QA 通过后 `complete` 使用
 `ppt_pipeline.py complete --work-dir <wd>`。CI 继续渲染完整场景矩阵，但不会提交生成产物。
+
+会话中断（CLI 在管线子代理仍在运行时被关闭）后重开项目，跑同一条
+`ppt_pipeline.py next --work-dir <wd> --json` 即可：包括校准在内的每一步都从盘上
+证据（`calibration/` 的 manifest 与 render）推导，管线会指向正确的下一步，
+而不是从头重跑，也不会带着未修复的校准 blocker 直接全量 build。
 
 ## Runtime
 

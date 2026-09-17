@@ -153,6 +153,34 @@ class ProductionEntryGuardTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertIn("delivery_check.py", message)
 
+    def test_builder_child_gets_allowlist_instead_of_pipeline_dead_end(self) -> None:
+        """The builder may not run ppt_pipeline.py; its refusals must not point there."""
+        command = 'python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/slide_spec_guard.py" freeze --slide-spec s.yaml'
+        stream = io.StringIO(
+            json.dumps(
+                {
+                    "hook_event_name": "PreToolUse",
+                    "tool_name": "Bash",
+                    "tool_input": {"command": command},
+                    "agent_type": "student-presentation-suite:presentation-builder",
+                    "agent_id": "child-1",
+                }
+            )
+        )
+        errors = io.StringIO()
+        original = sys.stdin
+        sys.stdin = stream
+        try:
+            with redirect_stderr(errors):
+                code = guard.main()
+        finally:
+            sys.stdin = original
+        message = errors.getvalue()
+        self.assertEqual(2, code)
+        self.assertIn("isolated builder", message)
+        self.assertIn("pptx-helpers.js", message)
+        self.assertNotIn("ppt_pipeline.py next", message)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -30,6 +30,32 @@ RESEARCH_ARGS = (
 RESEARCH_KEYS = {name.lstrip("-").replace("-", "_") for name, _ in RESEARCH_ARGS}
 
 
+def _spec_report_regen_hint() -> str:
+    """Exact regeneration command for the plan-compiled spec (2026-09-17).
+
+    A live session burned three freeze attempts because the refusal named the
+    problem but not the fix: the report must come from the plan-compiled spec
+    (slide-spec-compiled.yaml), not the source slide-spec.yaml and not the
+    research-pack validation report.
+    """
+    validator = Path(__file__).resolve().parents[3] / "scripts" / "validate_slide_spec.py"
+    return (
+        " Regenerate it with: "
+        f'"{sys.executable}" "{validator}" "<work-dir>/slide-spec-compiled.yaml" '
+        "--output <report.json> (the report must be produced from the plan-compiled "
+        "spec, not the source slide-spec.yaml)."
+    )
+
+
+def _research_report_regen_hint() -> str:
+    validator = Path(__file__).resolve().parents[3] / "scripts" / "validate_research_pack.py"
+    return (
+        " Regenerate it with: "
+        f'"{sys.executable}" "{validator}" <research-pack.json> '
+        "--output <report.json>."
+    )
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -58,13 +84,18 @@ def validated_spec(spec: Path, report: Path) -> tuple[str, str]:
     if not spec.is_file():
         raise SystemExit(f"Slide Spec does not exist: {spec}")
     if not report.is_file():
-        raise SystemExit(f"Slide Spec validation report does not exist: {report}")
+        raise SystemExit(
+            f"Slide Spec validation report does not exist: {report}.{_spec_report_regen_hint()}"
+        )
     data = load_json(report)
     spec_hash = sha256_file(spec)
     if data.get("valid") is not True:
-        raise SystemExit("Slide Spec validation report is not passing.")
+        raise SystemExit(f"Slide Spec validation report is not passing.{_spec_report_regen_hint()}")
     if data.get("slide_spec_sha256") != spec_hash:
-        raise SystemExit("Slide Spec validation report is stale or belongs to another spec.")
+        raise SystemExit(
+            "Slide Spec validation report is stale or belongs to another spec."
+            f"{_spec_report_regen_hint()}"
+        )
     return spec_hash, sha256_file(report)
 
 
@@ -98,9 +129,12 @@ def validate_research_chain(paths: dict[str, Path], spec_hash: str) -> dict[str,
 
     validation = load_json(validation_path)
     if validation.get("ok") is not True:
-        raise SystemExit("Research Pack validation report is not passing.")
+        raise SystemExit(f"Research Pack validation report is not passing.{_research_report_regen_hint()}")
     if validation.get("research_pack_sha256") != pack_hash:
-        raise SystemExit("Research Pack validation report is stale or belongs to another pack.")
+        raise SystemExit(
+            "Research Pack validation report is stale or belongs to another pack."
+            f"{_research_report_regen_hint()}"
+        )
 
     evidence_map = load_json(evidence_map_path)
     if evidence_map.get("schema_version") != "1.0":

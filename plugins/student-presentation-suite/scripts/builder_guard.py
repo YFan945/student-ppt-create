@@ -51,7 +51,7 @@ def handle(event: dict) -> int:
     print(
         "builder_guard: pages/*.js belongs to the isolated presentation-builder. "
         "From the MAIN session spawn student-presentation-suite:presentation-builder "
-        "foreground, without `name`, and pass the absolute work-dir plus initial/repair mode. "
+        "without `name`, and pass the absolute work-dir plus initial/repair mode. "
         "Do not Read, Edit, or Write page modules in the parent context.",
         file=sys.stderr,
     )

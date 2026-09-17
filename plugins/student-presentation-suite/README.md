@@ -44,13 +44,14 @@ layer downstream.
 It doubles as a context firewall — and that is a **mechanism**, not a prompt
 convention: the main flow **spawns `agents/presentation-researcher.md` explicitly**
 through the Agent tool (`subagent_type:
-student-presentation-suite:presentation-researcher`, foreground), so retrieval never
+student-presentation-suite:presentation-researcher`, no `name`), so retrieval never
 runs in the main conversation context. The subagent cannot see the conversation
 history and the main flow never receives its search trail or raw pages (~100k
 tokens in, ~8k out). Passing the work-id, brief path, scope and materials path in
 the spawn prompt is required — the subagent reads neither the frontmatter
-arguments nor the conversation. Foreground is deliberate: research must finish
-before `sp-outline` starts planning.
+arguments nor the conversation. Sequencing is deliberate: research must finish
+before `sp-outline` starts planning, so do not advance until the `RESEARCH_DONE`
+envelope arrives.
 
 An earlier revision relied on `context: fork` in this skill's frontmatter. That
 mechanism is **not honored under `claude -p` (print mode)**: two live runs measured
@@ -272,6 +273,13 @@ spec/composer/generator and rebuild the complete candidate; a remaining QA block
 is fixed via
 `skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>` instead
 of resetting the whole pipeline.
+
+If a session is interrupted (the CLI is closed while a pipeline agent is still
+running), reopen the project and run the same `ppt_pipeline.py next --work-dir
+<wd> --json` dispatch: every step, including calibration (`calibration/`
+manifest and render evidence), is derived from on-disk state, so the pipeline
+points at the correct next step instead of re-running from scratch or
+full-building with unresolved calibration blockers.
 
 Results use `complete`, `incomplete`, or `blocked`. `complete` requires
 `skills/sp-deck/scripts/ppt_pipeline.py complete --work-dir <wd>`.

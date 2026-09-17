@@ -126,6 +126,17 @@ class CostGuardTests(unittest.TestCase):
             self.assertIsNotNone(match, message)
             self.assertTrue(Path(str(match.group(1))).is_file(), match.group(1))
 
+    def test_builder_child_refusal_points_at_builder_surface(self) -> None:
+        """子 builder 被 ppt_pipeline 拒之门外；它的拒绝文案不能把 pipeline 当出路（死胡同）。"""
+        message = cost_guard.check_bash(
+            'ls "C:/Users/me/.claude/plugins/cache/claude-personal/student-presentation-suite/0.13.4/scripts/"',
+            builder=True,
+        )
+        self.assertIsNotNone(message)
+        self.assertIn("isolated builder", message)
+        self.assertIn("pptx-helpers.js", message)
+        self.assertNotIn("ppt_pipeline.py next", message)
+
     def test_repeated_inspection_command_is_blocked_on_the_third_run(self) -> None:
         """`ls critic-execution.json` 连跑 5 次的实测浪费：第 3 次起拒绝并指向 next。"""
         event = self.event("Bash", command="ls -la outputs/.pptx-work/demo/critic-execution.json")

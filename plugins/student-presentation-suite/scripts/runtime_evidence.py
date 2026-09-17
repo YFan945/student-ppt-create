@@ -3,6 +3,10 @@
 
 This is an execution-integrity gate inside a trusted local Claude session, not a
 sandbox against a user/process able to rewrite the hook and its evidence files.
+
+Receipt artifacts (research-pack.json / visual-review.json) are credited through
+hash snapshots taken at SubagentStart and refreshed after every child tool call,
+so script writes (e.g. ``python json.dump``) count the same as Write-tool writes.
 """
 from __future__ import annotations
 
@@ -29,19 +33,19 @@ EVIDENCE_NAME_RE = re.compile(r"research|critic", re.I)
 NAMED_TEAMMATE_REFUSAL = (
     "Do not create or message named researcher/critic teammates. Evidence work must use "
     "the isolated presentation-researcher or visual-critic subagent directly from the MAIN "
-    "session, foreground, without `name`."
+    "session, without `name`."
 )
 NAMED_SPAWN_REFUSAL = (
     "Pipeline evidence agents must not be spawned with a `name`: named Agent "
     "calls become teammates whose agent_type is the name, so SubagentStop "
     "never issues execution receipts. Retry THIS SAME call from the MAIN "
-    "session with subagent_type only — foreground, no `name`. Do NOT spawn a "
+    "session with subagent_type only — no `name`. Do NOT spawn a "
     "second nested agent to 'fix' the refusal (2026-09-16: outer teammate "
     "burned 0.86M tokens and ran 0 searches)."
 )
 NESTED_SPAWN_REFUSAL = (
     "Do not nest presentation-researcher or visual-critic inside another "
-    "agent. Only the main session may spawn them, once, foreground, without "
+    "agent. Only the main session may spawn them, once, without "
     "`name`. If you are a teammate whose WebSearch was blocked, stop — the "
     "main session must respawn the plugin agent correctly."
 )
@@ -112,6 +116,44 @@ def event_lock(event: dict):
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+RECEIPT_ARTIFACTS = ("research-pack.json", "visual-review.json")
+
+
+def artifact_snapshot(root: Path) -> dict[str, str]:
+    """Hash receipt artifacts across work dirs (a few small JSON files)."""
+    snap: dict[str, str] = {}
+    if not root.is_dir():
+        return snap
+    for name in RECEIPT_ARTIFACTS:
+        for path in root.glob(f"*/{name}"):
+            try:
+                snap[str(path)] = digest(path)
+            except OSError:
+                continue
+    return snap
+
+
+def record_artifact_changes(data: dict, root: Path) -> None:
+    """Credit receipt-artifact writes made by any mechanism, not just Write.
+
+    2026-09-17: the researcher created research-pack.json with Write but made
+    every later edit via `python json.dump`; the Write-tool-only receipt stayed
+    empty and `plan` refused a healthy pack. Snapshot diffs make the receipt
+    command-agnostic: any change between this agent's tool calls counts as a
+    write, while artifacts that already exist at SubagentStart are baselined
+    and never re-credited to the agent.
+    """
+    current = artifact_snapshot(root)
+    previous = data.get("snap")
+    if previous is None:
+        data["snap"] = current
+        return
+    for path_str, sha in current.items():
+        if previous.get(path_str) != sha:
+            data.setdefault("writes", {})[path_str] = sha
+    data["snap"] = current
 
 
 def read_json(path: Path) -> dict:
@@ -203,9 +245,6 @@ def handle(event: dict) -> int:
             if child:
                 print(NESTED_SPAWN_REFUSAL, file=sys.stderr)
                 return 2
-            if inputs.get("run_in_background"):
-                print("Pipeline evidence agents must run in the foreground.", file=sys.stderr)
-                return 2
             if inputs.get("subagent_type") == RESEARCHER:
                 active.parent.mkdir(parents=True, exist_ok=True)
                 active.write_text(json.dumps({"session_id": event.get("session_id")}), encoding="utf-8")
@@ -242,6 +281,7 @@ def handle(event: dict) -> int:
             "session_id": event.get("session_id"),
             "reads": {},
             "writes": {},
+            "snap": artifact_snapshot(root),
         }
     elif not data or data.get("agent") != agent:
         return 0
@@ -255,6 +295,9 @@ def handle(event: dict) -> int:
                 if source is not None:
                     source_path, source_sha = source
                     data["reads"][source_path] = source_sha
+        record_artifact_changes(data, root)
+    elif kind == "PostToolUse" and tool in {"Bash", "PowerShell"}:
+        record_artifact_changes(data, root)
     elif kind == "SubagentStop":
         artifact_name = "research-pack.json" if agent == RESEARCHER else "visual-review.json"
         for name, sha in data["writes"].items():

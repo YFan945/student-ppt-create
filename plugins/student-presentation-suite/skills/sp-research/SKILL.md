@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.13.4
+version: 0.13.5
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
@@ -19,7 +19,7 @@ arguments: [work_id, brief_path, scope, materials_path]
 `validate_research_pack.py`。所以本 skill 的隔离契约是：
 
 1. 主流程调用 Agent 工具，`subagent_type` 取 `student-presentation-suite:presentation-researcher`；
-2. **前台等待**（`run_in_background` 保持 false）：研究完成才能进入排页；
+2. **等待研究完成再进入排页**：研究员异步运行时，收到 `RESEARCH_DONE` 信封前不推进下一阶段；
 2b. **不要传 `name`**：带 `name` 的 Agent 调用会转成 teammate，`agent_type` 变成名字本身，
    于是它自己再 WebSearch 会被 `runtime_evidence` 拦（"must run in the isolated
    presentation-researcher"），历史上正是这一步诱使它**再嵌套 spawn 一层研究员**

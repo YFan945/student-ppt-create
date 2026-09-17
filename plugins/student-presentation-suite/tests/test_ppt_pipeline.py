@@ -469,15 +469,50 @@ class BuildTests(PipelineTestCase):
             pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.work / "deck.js")]), 0
         )
 
-    def test_next_after_plan_points_at_build(self) -> None:
-        self.plan(self.files)
+    def next_payload(self) -> dict:
         buffer = io.StringIO()
         with redirect_stdout(buffer):
             rc = pp.main(["next", "--work-dir", str(self.work), "--json"])
         self.assertEqual(rc, 0)
-        payload = json.loads(buffer.getvalue())
+        return json.loads(buffer.getvalue())
+
+    def test_next_after_plan_dispatches_to_calibration_builder(self) -> None:
+        """Fresh planned create-mode work must spawn the builder, not edit pages directly."""
+        self.plan(self.files)
+        payload = self.next_payload()
         self.assertEqual("planned", payload["state"])
-        self.assertIn("build", payload["next_command"])
+        self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
+        self.assertNotIn("build", payload["next_command"])
+        self.assertIn("mode=calibration", payload["notes"])
+        # planned create/rebuild keeps the build stage contract (calibration flow)
+        self.assertEqual("build", payload["contract"]["stage"])
+
+    def test_next_with_calibration_manifest_but_no_render_points_at_preview(self) -> None:
+        self.plan(self.files)
+        calibration = self.work / "calibration"
+        calibration.mkdir()
+        (calibration / "calibration-manifest.json").write_text(
+            json.dumps({"version": "1.0", "slides": [1, 6, 7]}), encoding="utf-8"
+        )
+        payload = self.next_payload()
+        self.assertIn("calibration_preview.py", payload["next_command"])
+        self.assertIn("--slides 1 6 7", payload["next_command"])
+
+    def test_next_with_calibration_render_points_at_review_not_build(self) -> None:
+        """Interrupted calibration-fix rounds resume via review, never a raw full build."""
+        self.plan(self.files)
+        calibration = self.work / "calibration"
+        render = calibration / "render"
+        render.mkdir(parents=True)
+        (calibration / "calibration-manifest.json").write_text(
+            json.dumps({"version": "1.0", "slides": [1, 6, 7]}), encoding="utf-8"
+        )
+        (render / "calibration-1.png").write_bytes(b"png")
+        payload = self.next_payload()
+        self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
+        self.assertNotIn("build", payload["next_command"])
+        self.assertIn("calibration preview is on disk", payload["notes"])
+        self.assertEqual("build", payload["contract"]["stage"])
 
     def test_build_rechecks_the_freeze(self) -> None:
         self.prepared()
