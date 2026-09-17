@@ -33,30 +33,34 @@ def _project_root(event: dict[str, Any] | None = None) -> Path:
     ).resolve()
 
 
-def _expand_path(value: str) -> Path:
+def _expand_path(value: str, *, base: Path | None = None) -> Path:
     expanded = os.path.expanduser(os.path.expandvars(value))
+    # Also support the common Windows %NAME% form if a Bash command contains it.
     expanded = re.sub(
         r"%([A-Za-z_][A-Za-z0-9_]*)%",
         lambda match: os.environ.get(match.group(1), match.group(0)),
         expanded,
     )
-    return Path(expanded).resolve()
+    path = Path(expanded)
+    if not path.is_absolute():
+        path = (base or Path.cwd()) / path
+    return path.resolve()
 
 
-def extract_work_dir(command: str) -> Path | None:
+def extract_work_dir(command: str, *, base: Path | None = None) -> Path | None:
     match = _WORK_DIR_RE.search(command or "")
     if not match:
         return None
     raw = next((group for group in match.groups() if group is not None), "")
-    return _expand_path(raw) if raw else None
+    return _expand_path(raw, base=base) if raw else None
 
 
-def work_dir_from_argv(argv: list[str]) -> Path | None:
+def work_dir_from_argv(argv: list[str], *, base: Path | None = None) -> Path | None:
     for index, token in enumerate(argv):
         if token == "--work-dir" and index + 1 < len(argv):
-            return _expand_path(argv[index + 1])
+            return _expand_path(argv[index + 1], base=base)
         if token.startswith("--work-dir="):
-            return _expand_path(token.split("=", 1)[1])
+            return _expand_path(token.split("=", 1)[1], base=base)
     return None
 
 
@@ -76,10 +80,12 @@ def arm(event: dict[str, Any]) -> Path | None:
     command = str((event.get("tool_input") or {}).get("command") or "")
     if not _is_pipeline_plan(command):
         return None
-    work_dir = extract_work_dir(command)
-    if work_dir is None:
-        return None
     project = _project_root(event)
+    work_dir = extract_work_dir(command, base=project)
+    if work_dir is None:
+        # The command will fail argument parsing anyway; do not create an
+        # unbound receipt that a later command could reuse.
+        return None
     target = receipt_path(project, work_dir)
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -146,7 +152,8 @@ def enforce_pipeline_plan_bootstrap(argv: list[str] | None = None) -> None:
         return
     if Path(argv[0]).name.lower() != "ppt_pipeline.py" or len(argv) < 2 or argv[1] != "plan":
         return
-    work_dir = work_dir_from_argv(argv)
+    project = _project_root()
+    work_dir = work_dir_from_argv(argv, base=project)
     if work_dir is None:
         return
     try:
@@ -166,6 +173,8 @@ def main() -> int:
     try:
         arm(event)
     except OSError as exc:
+        # Do not make the hook itself the source of an opaque Bash refusal. The
+        # pipeline's verifier will emit the user-facing fail-fast explanation.
         print(f"hook_health: could not write health receipt: {exc}", file=sys.stderr)
     return 0
 
