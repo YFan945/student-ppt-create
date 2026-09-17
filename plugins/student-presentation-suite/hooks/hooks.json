@@ -39,7 +39,7 @@
         ]
       },
       {
-        "matcher": "Skill|WebSearch|WebFetch|Agent|Write|Edit",
+        "matcher": "Skill|WebSearch|WebFetch|Agent|SendMessage|Write|Edit",
         "hooks": [
           {
             "type": "command",
