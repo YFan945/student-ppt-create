@@ -108,9 +108,12 @@ AF_UNIX 时，render 才按需编译并加载内置 shim。
 
 插件通过 `workflow_guard.py`（init/confirm/transition）记录状态。
 `intake_pending` 下不得跑环境检查、生成、渲染或交付。`ppt_pipeline.py` 拒绝非法
-生产步骤。窄的 PreToolUse hook（`scripts/cost_guard.py`）拦截插件源码考古、
-未变 PNG 重读、凭据代理的命名/嵌套 spawn、重复只读巡检，以及用
-`run_with_pptxgenjs.js` 绕过管线；它不替代 Production Summary 确认。
+生产步骤。窄的 PreToolUse hooks 分工明确：`scripts/cost_guard.py` 只负责插件源码考古、
+未变图片重读、重复巡检和主会话图片/上下文成本；`scripts/runtime_evidence.py` 负责
+研究员/critic 的隔离 spawn 与执行凭据；`scripts/production_entry_guard.py` 负责稳定生产
+CLI 表面并拒绝直接调用内部 build/evidence 旁路；`scripts/builder_guard.py` 把逐页
+ authoring 源码限制在隔离的 presentation-builder 中。上述运行时约束不替代
+Production Summary 确认。
 
 ## 结构化交接
 
@@ -211,9 +214,10 @@ sh skills/sp-deck/scripts/run_gates.sh --art-direction <a.yaml> --slide-spec <s.
 工作方式约束（并行调用、定点编辑、写盘即弃、阶段小结、检索走 `sp-research` 显式 spawn、
 CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）见
 `references/cost-discipline.md`。`session_cost.py` 会在 2 秒内合并用量相同的 assistant
-记录，避免 JSONL 三份重复把成本放大。`cost_guard.py` 作为 PreToolUse hook 拦截插件源码
-考古、未变 PNG 的重读、名字含 `researcher`/`critic` 的 teammate、嵌套的凭据代理 spawn，
-以及直接调用 `run_with_pptxgenjs.js` 绕过管线；但不拦截第一次读图。
+记录，避免 JSONL 三份重复把成本放大。runtime hook 职责按机制拆分：
+`scripts/cost_guard.py` 只处理上下文/巡检成本；`scripts/runtime_evidence.py` 负责 Agent
+隔离与执行凭据；`scripts/production_entry_guard.py` 负责直接生产入口完整性；
+`scripts/builder_guard.py` 负责逐页源码隔离。这样避免重复策略，同时不拦截第一次合法读图。
 
 发现 blocker 时用 `skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>`
 走返工边，不要手工 `workflow_guard.py transition` 推进 `producing` / `complete`。

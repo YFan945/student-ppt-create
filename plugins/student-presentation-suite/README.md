@@ -129,11 +129,15 @@ state is `intake_pending`.
 
 The suite records this gate with `workflow_guard.py` (init/confirm/transition).
 While `intake_pending`, no environment, generation, rendering, or delivery
-command may run. `ppt_pipeline.py` refuses illegal production steps. A narrow
-PreToolUse hook (`scripts/cost_guard.py`) blocks plugin-source archaeology,
-same-hash PNG re-reads, named or nested evidence-agent spawns, repeated
-read-only inspection, and bypassing the pipeline with `run_with_pptxgenjs.js`;
-it does not replace the Production Summary confirmation.
+command may run. `ppt_pipeline.py` refuses illegal production steps. Narrow
+PreToolUse hooks have separate responsibilities: `scripts/cost_guard.py` limits
+plugin-source archaeology, same-hash image re-reads, repeated inspections, and
+main-session image/context cost; `scripts/runtime_evidence.py` owns isolated
+researcher/critic spawning and execution receipts; `scripts/production_entry_guard.py`
+owns the stable production CLI surface and refuses direct internal build/evidence
+bypasses; and `scripts/builder_guard.py` keeps per-page authoring source inside the
+isolated presentation-builder. These runtime controls do not replace Production
+Summary confirmation.
 
 ## Structured Handoff
 
@@ -256,11 +260,12 @@ instead of a generic researcher teammate,
 DeepSeek vision reads in one parallel round (CD-9), and staying inside a 200k-shaped
 window (CD-8) — are canonical in `references/cost-discipline.md`.
 `scripts/session_cost.py` collapses usage-identical assistant rows within 2 seconds so
-JSONL triple-counts do not inflate the report. `scripts/cost_guard.py` is the PreToolUse
-hook that blocks plugin-source archaeology, same-hash PNG re-reads, named
-researcher/critic teammates (including `researcher-*`), nested evidence-agent
-spawns, and direct `run_with_pptxgenjs.js` generation — without forbidding
-the first image Read.
+JSONL triple-counts do not inflate the report. Runtime hook ownership is deliberately
+split: `scripts/cost_guard.py` handles context/inspection cost only;
+`scripts/runtime_evidence.py` owns Agent isolation and execution receipts;
+`scripts/production_entry_guard.py` owns direct production-entry integrity; and
+`scripts/builder_guard.py` owns page-source isolation. This avoids duplicate policy
+while still allowing the first legitimate image Read.
 
 At most one repair loop may change the
 spec/composer/generator and rebuild the complete candidate; a remaining QA blocker
