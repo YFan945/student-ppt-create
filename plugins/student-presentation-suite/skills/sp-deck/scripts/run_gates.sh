@@ -17,8 +17,16 @@ if [ "$HERE" = "$0" ]; then
 fi
 
 PY=${PYTHON:-python3}
-if ! command -v "$PY" >/dev/null 2>&1; then
+# `command -v` is not enough on Windows: the Microsoft Store python3.exe alias
+# stub is on PATH and passes command -v, but exits 49 without running anything
+# (observed in the 2026-09-16 live run: three silent exit-49 failures). Probe
+# by actually executing an import, then fall back to `python`.
+if ! "$PY" -c "import sys" >/dev/null 2>&1; then
   PY=python
+  if ! "$PY" -c "import sys" >/dev/null 2>&1; then
+    echo "run_gates.sh: no working Python interpreter (tried python3, python); set PYTHON=/path/to/python" >&2
+    exit 127
+  fi
 fi
 
 exec "$PY" "$HERE/run_gates.py" "$@"

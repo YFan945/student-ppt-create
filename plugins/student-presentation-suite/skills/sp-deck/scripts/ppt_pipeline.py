@@ -45,6 +45,7 @@ import generator_scaffold as _scaffold  # noqa: E402
 ROOT = HERE.parents[2]
 PPTX_TOOL = ROOT / "scripts" / "pptx_tool.py"
 BUILDER = ROOT / "scripts" / "run_with_pptxgenjs.js"
+EVIDENCE_COMPILER = ROOT / "scripts" / "research_pack_to_evidence.py"
 CONTRACT_PATH = ROOT / "references" / "pipeline-contract.json"
 MANIFEST_NAME = "build-manifest.json"
 
@@ -160,6 +161,9 @@ def archive_stale_render(work_dir: Path, manifest: dict[str, Any]) -> list[str]:
     contact = (render.get("contact_sheet") or {}).get("path")
     if contact:
         candidates.append(Path(str(contact)))
+    thumb = (render.get("contact_sheet_thumb") or {}).get("path")
+    if thumb:
+        candidates.append(Path(str(thumb)))
     candidates.extend(Path(str(item.get("path"))) for item in render.get("pages") or [])
     existing = [path for path in candidates if path.is_file()]
     if any(not path.resolve().is_relative_to(work_dir.resolve()) for path in existing):
@@ -470,6 +474,41 @@ Runner = Callable[[list[str]], subprocess.CompletedProcess[str]]
 _runner: Runner = run_command
 
 
+def compile_research_for_plan(
+    work_dir: Path, spec: Path, args: argparse.Namespace,
+) -> tuple[Path, Path, Path, Path]:
+    """Compile F/D/Q → evidence-map.json. Agents must not guess this CLI.
+
+    2026-09-16 live run spent ~10 turns probing --evidence-map flags. Plan always
+    compiles from pack + validation sitting in the work-dir (or explicit flags).
+    """
+    pack = (args.research_pack or work_dir / "research-pack.json").resolve()
+    validation = (args.research_validation or work_dir / "research-pack-validation.json").resolve()
+    missing = [label for label, path in (("research-pack.json", pack), ("research-pack-validation.json", validation)) if not path.is_file()]
+    if missing:
+        raise RefusedError(
+            "research-backed plan needs "
+            + " and ".join(missing)
+            + f" in {work_dir} (or pass --research-pack / --research-validation). "
+            "plan compiles evidence-map.json itself — do not invent --evidence-map."
+        )
+    evidence_map = work_dir / "evidence-map.json"
+    compiled_spec = work_dir / f"slide-spec-compiled{spec.suffix}"
+    compiled = _runner([
+        sys.executable, str(EVIDENCE_COMPILER), str(pack),
+        "--validation-report", str(validation),
+        "--slide-spec", str(spec),
+        "--compiled-slide-spec", str(compiled_spec),
+        "--output", str(evidence_map),
+    ])
+    if compiled.returncode != 0 or not evidence_map.is_file():
+        detail = (compiled.stderr or compiled.stdout or "").strip()
+        raise RefusedError(f"evidence compile failed (exit {compiled.returncode}): {detail[:400]}")
+    if compiled_spec.is_file():
+        spec = compiled_spec
+    return spec, pack, validation, evidence_map.resolve()
+
+
 def cmd_plan(args: argparse.Namespace) -> int:
     work_dir = args.work_dir.resolve()
     manifest = load_manifest(work_dir)
@@ -526,14 +565,32 @@ def cmd_plan(args: argparse.Namespace) -> int:
     }
     scope = spec_data.get("research_scope", "C")
     external = any(item.get("source_type") not in {"user-file", "experiment", "interview", "survey"} for item in spec_data.get("evidence_ledger", []))
-    if args.research_pack or scope in {"A", "B", "D"} or external:
-        if not args.research_pack or not args.research_validation or not args.evidence_map:
-            raise RefusedError("research-backed plan requires pack, validation and evidence map")
-        receipt = execution_receipt(work_dir, "research", args.research_pack.resolve())
+    pack_on_disk = args.research_pack or work_dir / "research-pack.json"
+    if args.research_pack or scope in {"A", "B", "D"} or external or Path(pack_on_disk).is_file():
+        spec, pack, validation, evidence_map = compile_research_for_plan(work_dir, spec, args)
+        args.research_pack, args.research_validation, args.evidence_map = pack, validation, evidence_map
+        spec_data = yaml.safe_load(spec.read_text(encoding="utf-8"))
+        if not isinstance(spec_data, dict):
+            raise RefusedError("compiled Slide Spec must be an object")
+        receipt = execution_receipt(work_dir, "research", pack)
         fresh["research"] = {"required": True, "scope": scope, "agent": receipt["agent"], "spawn_verified": True, "execution": bind(work_dir / "research-execution.json")}
     if manifest and args.force:
         fresh["build"]["repair_count"] = int((manifest.get("build") or {}).get("repair_count") or 0)
         fresh["history"] = list(manifest.get("history") or [])
+
+    ad_report = work_dir / "art-direction-check.json"
+    ad_check = _runner([
+        sys.executable, str(HERE / "art_direction_check.py"), str(art),
+        "--output", str(ad_report), "--json",
+    ])
+    if ad_report.is_file():
+        fresh["inputs"]["art_direction_check"] = bind(ad_report)
+    if ad_check.returncode != 0:
+        detail = (ad_check.stderr or ad_check.stdout or "").strip()
+        raise RefusedError(
+            f"Art Direction blocked plan (exit {ad_check.returncode}): {detail[:400]} "
+            f"— fix art-direction.yaml against the checker before plan; report: {ad_report}"
+        )
 
     preflight_report = work_dir / "copy-fit-preflight.json"
     pre = _runner([
@@ -727,7 +784,10 @@ def cmd_build(args: argparse.Namespace) -> int:
     return 0
 
 
-def make_contact_sheet(pages: list[Path], output: Path, cols: int = 3) -> None:
+def make_contact_sheet(
+    pages: list[Path], output: Path, cols: int = 3,
+    thumb_output: Path | None = None, thumb_width: int = 1024,
+) -> None:
     try:
         from PIL import Image, ImageOps
     except ImportError as exc:
@@ -751,6 +811,40 @@ def make_contact_sheet(pages: list[Path], output: Path, cols: int = 3) -> None:
         sheet.paste(framed, (x, y))
     output.parent.mkdir(parents=True, exist_ok=True)
     sheet.save(output)
+    if thumb_output is not None:
+        # 主会话用的廉价概览：2026-09-16 实测全尺寸 contact-sheet.png 有 844KB，
+        # 12 页逐页 PNG 更是每张 200-500KB。缩略图 ~100KB，token 当量差一个量级。
+        ratio = min(1.0, thumb_width / sheet.width)
+        small = sheet.resize((max(1, int(sheet.width * ratio)), max(1, int(sheet.height * ratio))))
+        small.save(thumb_output, "JPEG", quality=72)
+    for image in opened:
+        image.close()
+
+
+def make_contact_thumb(pages: list[Path], output: Path, thumb_width: int = 1024) -> None:
+    """Regenerate only the cheap overview thumb (render cache-hit path)."""
+    try:
+        from PIL import Image
+    except ImportError as exc:
+        raise RefusedError("Pillow is required for contact-sheet generation") from exc
+    if not pages:
+        return
+    opened = [Image.open(path).convert("RGB") for path in pages]
+    width = min(480, max(image.width for image in opened))
+    thumbs = []
+    for image in opened:
+        ratio = width / image.width
+        thumbs.append(image.resize((width, max(1, int(image.height * ratio)))))
+    cols = 3
+    cell_h = max(image.height for image in thumbs)
+    rows = math.ceil(len(thumbs) / cols)
+    sheet = Image.new("RGB", (width * cols, cell_h * rows), "white")
+    for index, image in enumerate(thumbs):
+        sheet.paste(image, ((index % cols) * width, (index // cols) * cell_h))
+    ratio = min(1.0, thumb_width / sheet.width)
+    small = sheet.resize((max(1, int(sheet.width * ratio)), max(1, int(sheet.height * ratio))))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    small.save(output, "JPEG", quality=72)
     for image in opened:
         image.close()
 
@@ -768,6 +862,13 @@ def cmd_render(args: argparse.Namespace) -> int:
     if render_is_current(manifest):
         render = manifest.get("render") or {}
         old_contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
+        old_thumb = Path(str((render.get("contact_sheet_thumb") or {}).get("path") or ""))
+        if old_thumb and not old_thumb.is_file():
+            # 旧 manifest 没有缩略图字段或文件丢失：从已绑定的页图补生成。
+            page_paths = [Path(str(item.get("path"))) for item in render.get("pages") or []]
+            existing = [path for path in page_paths if path.is_file()]
+            if existing:
+                make_contact_thumb(existing, old_thumb or work_dir / "contact-sheet-thumb.jpg")
         record(
             manifest, "render", str(manifest.get("state")), str(manifest.get("state")),
             page_count=int(render.get("page_count") or 0), reused=True,
@@ -796,17 +897,20 @@ def cmd_render(args: argparse.Namespace) -> int:
     if not pages or not all(path.is_file() for path in pages):
         raise RefusedError("render reported success but page images are missing")
     contact = work_dir / "contact-sheet.png"
-    make_contact_sheet(pages, contact, args.cols)
+    thumb = work_dir / "contact-sheet-thumb.jpg"
+    make_contact_sheet(pages, contact, args.cols, thumb_output=thumb)
     manifest["render"] = {
         "pptx_sha256": pptx_sha,
         "pages": [bind(path) for path in pages],
         "contact_sheet": bind(contact),
+        "contact_sheet_thumb": bind(thumb),
         "page_count": len(pages),
         "rendered_at": now(),
     }
     record(manifest, "render", str(manifest.get("state")), str(manifest.get("state")), page_count=len(pages))
     save_manifest(work_dir, manifest)
     print(f"ppt_pipeline: rendered {len(pages)} pages — contact sheet: {contact}")
+    print(f"ppt_pipeline: cheap overview thumb: {thumb}")
     return 0
 
 
@@ -1010,7 +1114,12 @@ def cmd_next(args: argparse.Namespace) -> int:
                 "--art-direction <art-direction.yaml>"
             ),
             "allowed_writes": ["production-summary.md", "art-direction.yaml", "slide-spec.yaml"],
-            "notes": "intake first; do not grep plugin source — this command is the discovery API",
+            "notes": (
+                "intake first; do not grep plugin source — this command is the discovery API. "
+                "If research-pack.json exists in the work-dir, plan compiles evidence-map.json "
+                "itself (do not pass --evidence-map). Spawn presentation-researcher from the "
+                "MAIN session, foreground, without `name`."
+            ),
         }
     else:
         state = str(manifest.get("state") or "(absent)")
@@ -1032,7 +1141,11 @@ def cmd_next(args: argparse.Namespace) -> int:
                 f'{python} "{pipeline}" build --work-dir "{work_dir}" --entry "{entry}"'
             )
             payload["notes"] = (
-                "fill pages/pNN-*.js with parallel Edit, then build. "
+                "fill pages/pNN-*.js with parallel Edit in ONE turn, keeping the COPY "
+                "string literals from the scaffold (page_copy_fidelity). Then "
+                f"`{python} \"{pipeline}\" build`. Do not call run_with_pptxgenjs.js. "
+                "High-leverage slides: visual_reference_select.py --role <role> "
+                "--grammar <grammar> --visual-strategy <strategy> --output composition/<id>.json --json. "
                 "Put v0.8 composition JSON in composition/."
             )
             if manifest.get("mode") == "edit_ooxml":
@@ -1043,17 +1156,27 @@ def cmd_next(args: argparse.Namespace) -> int:
             if render_is_current(manifest):
                 render = manifest.get("render") or {}
                 contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
-                payload["read_images"] = [str(contact), str(work_dir / "render")]
+                thumb = Path(str((render.get("contact_sheet_thumb") or {}).get("path") or ""))
+                overview = thumb if (thumb and thumb.is_file()) else contact
+                payload["read_images"] = [str(overview), str(work_dir / "render")]
                 payload["next_command"] = (
                     f'{python} "{pipeline}" qa --work-dir "{work_dir}" '
                     f'--visual-review "{work_dir / "visual-review.json"}"'
                 )
                 payload["notes"] = (
-                    "Spawn student-presentation-suite:visual-critic in foreground with this work-dir. "
-                    "The independent critic must Read the contact sheet and EVERY page, then Write visual-review.json; "
-                    "wait for critic-execution.json before QA."
+                    "Spawn student-presentation-suite:visual-critic in foreground WITHOUT a `name` "
+                    "parameter — a named Agent call becomes a teammate whose agent_type is the name, "
+                    "so SubagentStop never issues critic-execution.json and QA blocks forever. "
+                    "Overview: read the cheap contact-sheet-thumb.jpg, not the full-size contact sheet; "
+                    "the isolated critic Reads EVERY full-size page (its context never reaches this session). "
+                    "Wait for critic-execution.json before QA."
                 )
                 payload["agent"] = "student-presentation-suite:visual-critic"
+                payload["session_segment"] = (
+                    "boundary-recommended: build+render is done and this work-dir carries all state. "
+                    "Running review+QA in a NEW session (just /sp-deck then `next --json`) avoids "
+                    "re-reading this session's history on every request — the single largest cost lever."
+                )
             else:
                 payload["next_command"] = (
                     f'{python} "{pipeline}" render --work-dir "{work_dir}"'
@@ -1119,9 +1242,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     plan.add_argument("--validation-report", type=Path, required=True)
     plan.add_argument("--art-direction", type=Path, required=True)
     plan.add_argument("--visual-generation-report", type=Path)
-    plan.add_argument("--research-pack", type=Path)
+    plan.add_argument("--research-pack", "--pack", type=Path, dest="research_pack")
     plan.add_argument("--research-validation", type=Path)
     plan.add_argument("--evidence-map", type=Path)
+    plan.add_argument(
+        "--research-execution",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
     plan.add_argument("--reason", default="initial approved production plan")
     plan.add_argument("--force", action="store_true")
     plan.set_defaults(func=cmd_plan)
@@ -1176,7 +1304,14 @@ def main(argv: list[str] | None = None) -> int:
         validate_work_dir(args.work_dir)
         return args.func(args)
     except RefusedError as exc:
+        # 只说"为什么拒绝"会让 agent 去猜下一步（2026-09-16 实测：evidence-map
+        # 环节靠试不同参数摸了约 10 轮）。这里固定把 next 命令也一并给出。
         print(f"ppt_pipeline: REFUSED — {exc}", file=sys.stderr)
+        print(
+            "ppt_pipeline: next step — "
+            f'"{sys.executable}" "{HERE / "ppt_pipeline.py"}" next --work-dir "{args.work_dir}"',
+            file=sys.stderr,
+        )
         return 2
 
 

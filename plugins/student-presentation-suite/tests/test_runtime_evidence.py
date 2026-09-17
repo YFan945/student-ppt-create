@@ -57,6 +57,43 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(runtime.handle({**base, "tool_name": "WebSearch", "agent_type": runtime.RESEARCHER, "agent_id": "research-child"}), 0)
         self.assertEqual(runtime.handle({**base, "tool_name": "WebSearch", "session_id": "unrelated"}), 0)
 
+    def test_named_evidence_agent_spawn_is_blocked(self):
+        """带 name 的 RESEARCHER/CRITIC spawn 会 teammate 化并使收据机制失效，必须当场拒绝。"""
+        base = {"cwd": str(self.project), "session_id": "parent", "hook_event_name": "PreToolUse"}
+        for agent_type in (runtime.RESEARCHER, runtime.CRITIC):
+            with self.subTest(agent=agent_type):
+                rc = runtime.handle(
+                    {**base, "tool_name": "Agent", "tool_input": {"subagent_type": agent_type, "name": f"named-{agent_type}"}}
+                )
+                self.assertEqual(2, rc)
+                rc = runtime.handle(
+                    {**base, "tool_name": "Agent", "tool_input": {"subagent_type": agent_type, "run_in_background": True}}
+                )
+                self.assertEqual(2, rc)
+                rc = runtime.handle({**base, "tool_name": "Agent", "tool_input": {"subagent_type": agent_type}})
+                self.assertEqual(0, rc)
+
+    def test_nested_evidence_agent_spawn_is_blocked(self):
+        base = {
+            "cwd": str(self.project),
+            "session_id": "parent",
+            "hook_event_name": "PreToolUse",
+            "agent_id": "outer-teammate",
+            "tool_name": "Agent",
+            "tool_input": {"subagent_type": runtime.RESEARCHER},
+        }
+        self.assertEqual(2, runtime.handle(base))
+
+    def test_sp_deck_skill_arms_websearch_block_for_the_main_session(self):
+        base = {"cwd": str(self.project), "session_id": "deck", "hook_event_name": "PreToolUse"}
+        self.assertEqual(runtime.handle({**base, "tool_name": "WebSearch"}), 0)
+        runtime.handle({**base, "tool_name": "Skill", "tool_input": {"skill": "student-presentation-suite:sp-deck"}})
+        self.assertEqual(runtime.handle({**base, "tool_name": "WebSearch"}), 2)
+        self.assertEqual(
+            runtime.handle({**base, "tool_name": "WebSearch", "agent_type": runtime.RESEARCHER, "agent_id": "research-child"}),
+            0,
+        )
+
     def test_parallel_image_events_do_not_lose_read_hashes(self):
         self.event_call("SubagentStart")
         paths = [self.work / f"page-{index}.png" for index in range(8)]

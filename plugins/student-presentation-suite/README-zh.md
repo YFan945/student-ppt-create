@@ -201,7 +201,8 @@ sh skills/sp-deck/scripts/run_gates.sh --art-direction <a.yaml> --slide-spec <s.
 CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）见
 `references/cost-discipline.md`。`session_cost.py` 会在 2 秒内合并用量相同的 assistant
 记录，避免 JSONL 三份重复把成本放大。`cost_guard.py` 作为 PreToolUse hook 拦截插件源码
-考古和未变 PNG 的重读，但不拦截第一次读图。
+考古、未变 PNG 的重读、名字含 `researcher`/`critic` 的 teammate、嵌套的凭据代理 spawn，
+以及直接调用 `run_with_pptxgenjs.js` 绕过管线；但不拦截第一次读图。
 
 `complete` 使用 `workflow_guard.py transition --to complete --pptx <pptx> --delivery-report <report>`。
 发现 blocker 时最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重跑最终门禁”；

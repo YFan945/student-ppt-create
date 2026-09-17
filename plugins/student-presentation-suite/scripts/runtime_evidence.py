@@ -17,6 +17,22 @@ from pathlib import Path
 
 RESEARCHER = "student-presentation-suite:presentation-researcher"
 CRITIC = "student-presentation-suite:visual-critic"
+PIPELINE_SKILLS = {"sp-research", "sp-deck", "sp-outline"}
+NAMED_SPAWN_REFUSAL = (
+    "Pipeline evidence agents must not be spawned with a `name`: named Agent "
+    "calls become teammates whose agent_type is the name, so SubagentStop "
+    "never issues execution receipts. Retry THIS SAME call from the MAIN "
+    "session with subagent_type only — foreground, no `name`. Do NOT spawn a "
+    "second nested agent to 'fix' the refusal (2026-09-16: outer teammate "
+    "burned 0.86M tokens and ran 0 searches)."
+)
+NESTED_SPAWN_REFUSAL = (
+    "Do not nest presentation-researcher or visual-critic inside another "
+    "agent. Only the main session may spawn them, once, foreground, without "
+    "`name`. If you are a teammate whose WebSearch was blocked, stop — the "
+    "main session must respawn the plugin agent correctly."
+)
+WEB_REFUSAL = "External research must run in the isolated presentation-researcher."
 
 
 @contextmanager
@@ -39,7 +55,11 @@ def event_lock(event: dict):
         yield
     finally:
         os.close(descriptor)
-        path.unlink(missing_ok=True)
+        try:
+            path.unlink(missing_ok=True)
+        except PermissionError:
+            # Windows can keep the exclusive handle visible for a beat after close.
+            pass
 
 
 def digest(path: Path) -> str:
@@ -70,20 +90,33 @@ def handle(event: dict) -> int:
             if path.is_relative_to(root) and (path.name in {"research-execution.json", "critic-execution.json"} or path.is_relative_to(root / ".guard")):
                 print("Runtime receipts and event ledgers are hook-owned; models cannot write them.", file=sys.stderr)
                 return 2
-        if (tool == "Skill" and str(inputs.get("skill") or "").split(":")[-1] == "sp-research") or (tool == "Agent" and inputs.get("subagent_type") == RESEARCHER):
+        skill = str(inputs.get("skill") or "").split(":")[-1]
+        if tool == "Skill" and skill in PIPELINE_SKILLS:
             active.parent.mkdir(parents=True, exist_ok=True)
             active.write_text(json.dumps({"session_id": event.get("session_id")}), encoding="utf-8")
-        if active.is_file() and tool in {"WebSearch", "WebFetch"} and (agent != RESEARCHER or not child):
-            print("External research must run in the isolated presentation-researcher.", file=sys.stderr)
-            return 2
+        if tool == "Agent" and inputs.get("subagent_type") in {RESEARCHER, CRITIC}:
+            if inputs.get("name"):
+                print(NAMED_SPAWN_REFUSAL, file=sys.stderr)
+                return 2
+            if child:
+                print(NESTED_SPAWN_REFUSAL, file=sys.stderr)
+                return 2
+            if inputs.get("run_in_background"):
+                print("Pipeline evidence agents must run in the foreground.", file=sys.stderr)
+                return 2
+            if inputs.get("subagent_type") == RESEARCHER:
+                active.parent.mkdir(parents=True, exist_ok=True)
+                active.write_text(json.dumps({"session_id": event.get("session_id")}), encoding="utf-8")
+        if tool in {"WebSearch", "WebFetch"}:
+            isolated = agent == RESEARCHER and bool(child)
+            if not isolated and (active.is_file() or child):
+                print(WEB_REFUSAL, file=sys.stderr)
+                return 2
         if agent == CRITIC and tool in {"Write", "Edit"}:
             path = Path(inputs.get("file_path") or "").resolve()
             if path.parent.parent != root or path.name != "visual-review.json":
                 print("visual-critic may only write its work-dir/visual-review.json", file=sys.stderr)
                 return 2
-        if tool == "Agent" and inputs.get("subagent_type") in {RESEARCHER, CRITIC} and inputs.get("run_in_background"):
-            print("Pipeline evidence agents must run in the foreground.", file=sys.stderr)
-            return 2
         return 0
     if agent not in {RESEARCHER, CRITIC} or not child:
         return 0

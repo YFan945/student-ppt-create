@@ -246,7 +246,9 @@ DeepSeek vision reads in one parallel round (CD-9), and staying inside a 200k-sh
 window (CD-8) — are canonical in `references/cost-discipline.md`.
 `scripts/session_cost.py` collapses usage-identical assistant rows within 2 seconds so
 JSONL triple-counts do not inflate the report. `scripts/cost_guard.py` is the PreToolUse
-hook that blocks plugin-source archaeology and same-hash PNG re-reads without forbidding
+hook that blocks plugin-source archaeology, same-hash PNG re-reads, named
+researcher/critic teammates (including `researcher-*`), nested evidence-agent
+spawns, and direct `run_with_pptxgenjs.js` generation — without forbidding
 the first image Read.
 
 At most one repair loop may change the

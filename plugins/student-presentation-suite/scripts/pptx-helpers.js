@@ -32,8 +32,38 @@ const _shapeType = new _pptxgen().ShapeType;
  * @returns {string}
  */
 function color(tokens, role) {
-  const hex = (tokens.palette && tokens.palette[role]) || '000000';
-  return String(hex).replace(/^#/, '').slice(0, 6).toUpperCase();
+  if (!tokens || typeof tokens !== 'object') {
+    throw new RangeError('color(): tokens object is required');
+  }
+  const hex = tokens.palette && tokens.palette[role];
+  if (!hex) {
+    throw new RangeError(
+      `color(): palette role "${role}" is missing. Call paletteMode(tokens, 'light'|'dark') ` +
+        'before drawing, and do not pass an empty tokens object (silent black caused 1.19:1 contrast).',
+    );
+  }
+  return assertHexColor(hex, `palette.${role}`);
+}
+
+// pptxgenjs 只接受 3/6 位 hex；token 角色名（如 'primary_text'）不是颜色。
+const HEX_COLOR = /^#?([0-9A-Fa-f]{6}|[0-9A-Fa-f]{3})$/;
+
+/**
+ * 校验调用方直接传入的颜色值。
+ *
+ * 真实执行（2026-09-16）中把调色板角色名当颜色传：helper 静默接受，pptxgenjs
+ * 拿到非法值后回落成默认黑字，深色页因此对比度 1.19:1 才在独立评审时被发现。
+ * 这里 fail-fast，并指明正确的解析方式。
+ */
+function assertHexColor(value, label) {
+  const raw = String(value === undefined || value === null ? '' : value);
+  if (!HEX_COLOR.test(raw)) {
+    throw new RangeError(
+      `${label || 'color'}: "${raw}" is not a hex color (e.g. "990011"). ` +
+        'Palette roles are resolved with color(tokens, role), e.g. color(tokens, "primary_text").',
+    );
+  }
+  return raw.replace(/^#/, '').toUpperCase();
 }
 
 /**
@@ -313,9 +343,14 @@ function estimateTextFit(text, boxW, boxH, fontSize, isCJK) {
 function assertTextFits(text, boxW, boxH, fontSize, isCJK, label) {
   const fit = estimateTextFit(String(text || ''), boxW, boxH, fontSize, isCJK);
   if (fit.overflow) {
+    // 除零产生的 Infinity 填充率不可判读（盒高扣边距后 ≤ 0 时必然发生），
+    // 改成说清真正的原因，让生成端知道该扩盒子还是减边距。
+    const detail = Number.isFinite(fit.fillRatio)
+      ? `${fit.lines} 行，填充率 ${fit.fillRatio}`
+      : '盒子高度扣除边距后可用区域 ≤ 0，无法估算填充率';
     // eslint-disable-next-line no-console
     console.warn(
-      `${label || '文本框'}存在溢出风险：${fit.lines} 行，填充率 ${fit.fillRatio}。` +
+      `${label || '文本框'}存在溢出风险：${detail}。` +
         '请在 QA 逐页检查中确认，必要时拆分幻灯片、精简内容或扩大文本框。',
     );
   }
@@ -518,7 +553,9 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
     h: textBox.h,
     fontSize: fit.fontSize,
     fontFace: pptxOptions.fontFace || (policy.role === 'title' ? fonts.title : fonts.body),
-    color: pptxOptions.color || color(tokens, options.colorRole || 'primary_text'),
+    color: pptxOptions.color
+      ? assertHexColor(pptxOptions.color, options.label || `${policy.role} 文本`)
+      : color(tokens, options.colorRole || 'primary_text'),
     align: pptxOptions.align || policy.align,
     valign: pptxOptions.valign || (shortReadingText ? 'mid' : policy.valign),
     margin: pptxOptions.margin === undefined ? (policy.margin ?? 8) : pptxOptions.margin,
@@ -671,7 +708,20 @@ function addTextBox(slide, text, box, tokens, lang, opts) {
   const fonts = fontFamily(tokens);
   const isCJK = lang === 'chinese' || lang === 'bilingual';
   const requestedSize = (opts && opts.fontSize) || sizes.body;
-  const fontSize = Math.max(requestedSize, sizes.body);
+  let fontSize = requestedSize;
+  if (requestedSize < sizes.body) {
+    // 旧实现静默把请求字号抬到正文下限，表现为"传了等于没传"：数据标签、注解等
+    // 小字被按 22pt 渲染，溢出压叠，直到独立评审才发现（2026-09-16 首轮 2.8/10）。
+    // 下限仍然保留（官方规范），但必须出声，并指出角色字号表这条正规通道。
+    // eslint-disable-next-line no-console
+    console.warn(
+      `${(opts && opts.label) || '文本框'}：请求字号 ${requestedSize}pt 低于正文下限 ` +
+        `${sizes.body}pt，已按 ${sizes.body}pt 渲染。` +
+        "小字内容请改用 addTextBox(..., { role: 'caption' | 'source' | 'label' })，" +
+        '由角色字号表给出合法的小字号。',
+    );
+    fontSize = sizes.body;
+  }
   const margin = opts && opts.margin !== undefined ? opts.margin : 16;
   const margins = Array.isArray(margin) ? margin : [margin, margin, margin, margin];
   const usableW = box.w - ((margins[1] || 0) + (margins[3] || 0)) / 72;
@@ -692,7 +742,9 @@ function addTextBox(slide, text, box, tokens, lang, opts) {
     h: box.h,
     fontSize,
     fontFace: (opts && opts.fontFace) || fonts.body,
-    color: (opts && opts.color) || color(tokens, 'primary_text'),
+    color: opts && opts.color
+      ? assertHexColor(opts.color, (opts && opts.label) || '文本框')
+      : color(tokens, 'primary_text'),
     align: (opts && opts.align) || 'left',
     valign: (opts && opts.valign) || 'top',
     margin,
@@ -841,16 +893,17 @@ function applyTokens(pptx, tokens, lang, opts) {
   const slideW = (opts && opts.slideW) || SLIDE_W_IN;
   const slideH = (opts && opts.slideH) || SLIDE_H_IN;
 
-  // 设置幻灯片尺寸（默认 16:9）
   pptx.defineLayout({ name: 'STUDENT_WIDE', width: slideW, height: slideH });
   pptx.layout = 'STUDENT_WIDE';
 
-  // 默认文字样式
-  pptx.theme = {
+  const theme = {
     fontFace: fonts.body,
     fontSize: sizes.body,
-    color: color(tokens, 'primary_text'),
   };
+  if (tokens && tokens.palette && tokens.palette.primary_text) {
+    theme.color = color(tokens, 'primary_text');
+  }
+  pptx.theme = theme;
 }
 
 // ── 导出 ──────────────────────────────────────────────────
@@ -865,6 +918,7 @@ module.exports = {
 
   // Token 辅助
   color,
+  assertHexColor,
   paletteMode,
   fontSizeScale,
   fontFamily,

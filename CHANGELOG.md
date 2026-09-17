@@ -2,6 +2,109 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.13.2 — 2026-09-17
+
+来源：2026-09-16 0.13.1 真实执行会话复盘（碳中和光伏 vs 风电 12 页 deck），
+主会话 46 个错误 tool_result、管线最终死锁在 `producing`。
+成本归因（去重口径）：49.4M token / 287 请求，主会话占 94%；token ≈ (每请求新增上下文/2) × 请求数²，
+**请求数是平方项**。死锁段 + 绕过段合计 46%。
+
+### 逻辑修复：嵌套子代理、模糊命名、plan 自编译 evidence、禁止旁路出 PPTX
+
+同一场 12 页 live 里，token 的平方项来自请求数，而请求数被两段逻辑错误放大：
+研究阶段带 `name` 的 teammate 被拦后**再嵌套一层**（外层 0 次检索），以及 QA 死锁后
+**绕过 pipeline 直接跑 builder**。本轮把剩余洞补成机械拒绝。
+
+- `runtime_evidence`：`/sp-deck` `/sp-outline` `/sp-research` 进入后主会话 WebSearch
+  即被拦；**子代理内禁止再 spawn** 研究员/critic；带 `name` 的拒绝文案改为
+  「从主会话去掉 name 重发，不要再包一层」。
+- `cost_guard`：名字**包含** `researcher`/`critic` 即拒（不再只匹配恰好叫
+  `researcher`）；子代理内 spawn 凭据类型即拒；Bash 直接调用生成器脚本出 PPTX
+  （环境探测除外）即拒，指向 `ppt_pipeline.py build`。
+- `ppt_pipeline.py plan` **自己编译** evidence map（work-dir 里有 pack + validation 即可），
+  不再要求模型传入 evidence map 路径。
+- `plan` 接受 `--pack` 作为 `--research-pack` 的别名，并忽略多余的
+  `--research-execution`（收据由 hook 落盘，模型传这个旗标只会 argparse 报错再空转一轮）。
+- `plan` 在 copy-fit 之前跑 `art_direction_check`：缺 section 的 AD 不再拖到 exploration gates。
+- 页 scaffold 写入 `COPY.title/claim/slideCopy` 字面量，降低 34 条 `planned_copy_missing` 的改写。
+- `cost_guard` 拒绝 `ls` 插件缓存、手跑 `research_pack_to_evidence.py` / `slide_spec_guard.py`、
+  以及对 `validate_research_pack.py` 等脚本的 `--help`。
+
+
+
+
+
+### 成本杠杆：render 产出廉价缩略图，主会话大图设预算
+
+- `render` 现在同时产出 `contact-sheet-thumb.jpg`（宽 1024、JPEG q72，实测约为全尺寸
+  contact sheet 的 1/10），写入 manifest（`contact_sheet_thumb`，随 SHA 绑定与 stale 归档），
+  cache-hit 时若缩略图缺失会从已绑定页图补生成。
+- `next --json` 的 `read_images` 概览项优先指向缩略图；notes 写明全尺寸页图只在修具体
+  blocker 页时读。
+- `cost_guard` 新增**主会话大图预算**：>150KB 的图一session最多读 6 张，超出即拒绝并指向
+  缩略图 / 隔离 critic（带 `agent_id` 的子代理不受限；缩略图尺寸不受限）。实测 19 张图
+  占主会话工具回灌的 92%（3.27MB），此项把概览成本压掉约一个量级。
+
+### 成本杠杆：只读巡检命令限流
+
+- `ls`/`cat`/`head`/`tail`/`find`/`stat`/`dir`/`tree`/`du` 开头的命令，同一条（规范化后）
+  在一个会话内第 3 次起被 `cost_guard` 拒绝并指向 `next`。实测浪费样本：
+  `ls critic-execution.json` 连跑 5 次、`ls -la` ×4。
+- build / gates / qa 等**动作命令不受限**（修复后重跑是合法路径）。
+
+### 会话分段建议（文档 + next 提示）
+
+- `next --json` 在 build+render 完成后给出 `session_segment: boundary-recommended`：
+  此时是新会话的天然切点（work-dir 携带全部状态，新 `/sp-deck` → `next --json` 即可续跑）。
+- `sp-deck/SKILL.md` Dispatch 写明分段原理（token ≈ (每请求新增/2) × 请求数²）与切点。
+  这是流程约定：插件无法强制开新会话，但会让 `next` 主动提示。
+
+### 修复：带 `name` 的凭据代理 spawn 会静默废掉执行收据（QA 死锁根因）
+
+- `Agent` 调用同时传 `subagent_type` 和 `name` 时，Claude Code 会把它转成
+  **in-process teammate**，其 `agent_type` 变成名字本身。而
+  `runtime_evidence.py` 的收据机制按 `agent_type` 精确匹配
+  `student-presentation-suite:visual-critic` / `:presentation-researcher`，
+  于是 `SubagentStop` 全程不再触发，`critic-execution.json` 永不生成 →
+  QA 门禁拒绝 → `repair` 又要求状态已是 `qa` → 死锁。
+- **`runtime_evidence.py` PreToolUse 新增硬拒绝**：这类 spawn 必须不带
+  `name`、且在前台运行（与既有 `run_in_background` 检查对称）。
+  `cmd_next` 的 producing 提示同步写明"不要传 `name`"。
+- `cost_guard` 同步拒绝名字含 `researcher` / `critic` 的通用 teammate（不再只匹配恰好叫 `researcher`）。
+- 新增 `tests/test_runtime_evidence.py::test_named_evidence_agent_spawn_is_blocked`。
+
+### 修复：run_gates.sh 在 Windows 上 exit 49 且零输出
+
+- `command -v python3` 会命中 Microsoft Store 的 `python3.exe` 别名桩：命令存在但
+  执行直接退出 49，原有 `command -v` 失败才降级 `python` 的写法永不触发。
+- 改为实际执行 `"$PY" -c "import sys"` 探测，失败降级 `python`，两者都不可用时报
+  清晰的 "no working Python interpreter" 并 exit 127。
+
+### 修复：cost_guard 的指路信息缺绝对路径
+
+- 拦截消息原先建议裸脚本名 `ppt_pipeline.py next --work-dir <wd>`，而它既不在 PATH
+  上、也不在 hooks 目录旁边（实际位于 `skills/sp-deck/scripts/`）。子代理照做报
+  "No such file or directory"，白白多一轮。现在提示里直接给出可执行的绝对路径
+  （含 `sys.executable`）与 `pptx-helpers.js --describe` 的绝对路径。
+
+### 修复：pptx-helpers.js 三处静默失败（首轮评审 2.8/10 的直接成因）
+
+- `addTextBox` 无 `role` 时把请求字号静默钳到正文下限（CJK 22pt），数据标签/注解
+  按 22pt 渲染导致溢出压叠——表现为"传了等于没传"。现在保留下限但**必须打印警告**
+  并指明小字的正规通道（`role: 'caption' | 'source' | 'label'`）。
+- `color`（`addFittedText` / `addTextBox`）现在校验调用方传入值：传调色板角色名
+  （`primary_text` 等）直接抛 `RangeError`，而不是静默渲染成不可读文字。
+- `assertTextFits` 在盒高扣边距后 ≤ 0 时不再打印"填充率 Infinity"，改为说明
+  真正原因（可用区域 ≤ 0，请扩盒子或减边距）。
+- 新增 `tests/test_pptx_helper_addtextbox.py`（6 个用例）。
+
+### 修复：REFUSED 不带下一步、Art Direction 解析错误是裸 traceback
+
+- `ppt_pipeline.py` 的 `REFUSED` 输出现在附带可直接执行的
+  `next --work-dir <wd>` 命令（实测中 evidence-map 环节靠猜参数摸了约 10 轮）。
+- `art_direction_check.py` 的 `load_structured` 捕获 YAML/JSON 解析错误与文件缺失，
+  输出可读原因而非 traceback。
+
 ## 0.13.1 — 2026-09-16
 
 ### 修复：plugin.json 重复声明 hooks

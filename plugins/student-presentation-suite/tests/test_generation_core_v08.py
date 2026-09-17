@@ -137,6 +137,19 @@ class GenerationCoreV08Tests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("high_leverage_count_invalid", {item["code"] for item in result["issues"]})
 
+    def test_unparsable_art_direction_reports_a_reason_not_a_traceback(self) -> None:
+        """解析失败必须给可读原因：旧实现抛 traceback，agent 看不出是自己的文件写坏了。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            broken = Path(tmp) / "art-direction.yaml"
+            broken.write_text("concept: [unclosed\n  - x\n", encoding="utf-8")
+            with self.assertRaises(SystemExit) as caught:
+                self.art.load_structured(broken)
+            self.assertIn("not valid YAML", str(caught.exception))
+            missing = Path(tmp) / "nope.yaml"
+            with self.assertRaises(SystemExit) as caught:
+                self.art.load_structured(missing)
+            self.assertIn("does not exist", str(caught.exception))
+
     def good_candidate_set(self, slide_id=5):
         return {
             "version": "0.8",

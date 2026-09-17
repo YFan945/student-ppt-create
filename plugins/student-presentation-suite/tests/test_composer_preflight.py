@@ -21,7 +21,12 @@ const path = require('path');
 const composer = require(process.argv[2] + '/scripts/pptx-composer.js');
 const cases = JSON.parse(process.argv[3]);
 const ctx = {
-  tokens: {},
+  tokens: {
+    palette: {
+      canvas: 'FFFFFF', surface: 'F8FAFC', primary_text: '111111',
+      secondary_text: '555555', primary_accent: '0055AA', secondary_accent: '88AACC',
+    },
+  },
   lang: 'chinese',
   safeArea: { x: 0.5, y: 1.2, w: 9, h: 4 },
   slideW: 10,

@@ -59,6 +59,7 @@ class PipelineContractTests(unittest.TestCase):
         self.assertIs(policy["build_invalidates_render_evidence"], True)
         self.assertIs(policy["render_evidence_must_match_current_pptx"], True)
         self.assertIs(policy["no_scaffold_pages_at_build"], True)
+        self.assertIs(policy["plan_compiles_evidence_map"], True)
 
     def test_skill_delegates_execution_semantics_to_contract(self) -> None:
         self.assertIn("pipeline-contract.json", self.skill)

@@ -68,6 +68,13 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/pptx-helpers.js --describe"
    `out_of_canvas`。
 3. **长文本交给 `addFittedText`，不要手算行数。** 手写 `estLines` 容易漏算全角标点与
    项目符号缩进——第二轮就因为估算偏乐观，P9 重排了两次。
+4. **小字必须走 `role`。** `addTextBox` 无 `role` 时字号下限是正文（CJK 22pt）：请求
+   更小的值会被抬高并**打印警告**，不会静默生效。数据标签、注解、来源一律走
+   `addTextBox(..., { role: 'caption' | 'source' | 'label' })`（角色字号表 11/12/16pt），
+   或直接用 `addFittedText` + `role`。看到"请求字号 Xpt 低于正文下限"就是走错了通道。
+5. **`color` 只接受 hex。** 传调色板角色名（`primary_text` 之类）会直接抛
+   `RangeError`；正确写法是 `color(tokens, 'primary_text')`。旧行为是静默接受并渲染成
+   不可读的文字，深色页要到独立评审才暴露。
 
 ## 什么时候才需要读源码
 

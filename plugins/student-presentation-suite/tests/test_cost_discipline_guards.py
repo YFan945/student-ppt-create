@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import re
 import sys
 import tempfile
 import unittest
@@ -77,6 +78,98 @@ class CostGuardTests(unittest.TestCase):
     def test_researcher_teammate_is_blocked(self) -> None:
         rc = self.run_guard(self.event("Agent", name="researcher", prompt="find papers"))
         self.assertEqual(rc, 2)
+
+    def test_named_suffixed_researcher_teammate_is_blocked(self) -> None:
+        rc = self.run_guard(self.event("Agent", name="researcher-carbon-pv-wind", prompt="find papers"))
+        self.assertEqual(rc, 2)
+
+    def test_nested_evidence_agent_from_child_is_blocked(self) -> None:
+        rc = self.run_guard({
+            **self.event(
+                "Agent",
+                subagent_type="student-presentation-suite:presentation-researcher",
+                prompt="research",
+            ),
+            "agent_id": "outer-teammate",
+        })
+        self.assertEqual(rc, 2)
+
+    def test_listing_plugin_cache_is_blocked(self) -> None:
+        rc = self.run_guard(self.event(
+            "Bash",
+            command='ls "C:/Users/28603/.claude/plugins/cache/claude-personal/student-presentation-suite/0.13.1/references/"',
+        ))
+        self.assertEqual(rc, 2)
+
+    def test_manual_evidence_compiler_is_blocked(self) -> None:
+        rc = self.run_guard(self.event(
+            "Bash",
+            command="python plugins/student-presentation-suite/scripts/research_pack_to_evidence.py pack.json --output map.json",
+        ))
+        self.assertEqual(rc, 2)
+
+    def test_validate_research_pack_help_is_blocked(self) -> None:
+        rc = self.run_guard(self.event(
+            "Bash",
+            command="python plugins/student-presentation-suite/scripts/validate_research_pack.py --help",
+        ))
+        self.assertEqual(rc, 2)
+        blocked = self.run_guard(self.event(
+            "Bash",
+            command="node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --output out.pptx deck.js",
+        ))
+        self.assertEqual(blocked, 2)
+        probe = self.run_guard(self.event(
+            "Bash",
+            command="node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --probe",
+        ))
+        self.assertEqual(probe, 0)
+
+    def test_refusals_point_to_a_resolvable_pipeline_path(self) -> None:
+        """裸脚本名会诱导 agent 用错路径；提示必须带可执行的绝对路径。"""
+        messages = [
+            cost_guard.check_bash("grep -n plan /x/student-presentation-suite/scripts/ppt_pipeline.py"),
+            cost_guard.check_bash("python ppt_pipeline.py --help --work-dir x"),
+        ]
+        for message in messages:
+            self.assertIsNotNone(message)
+            match = re.search(r'"([^"]+ppt_pipeline\.py)"', message or "")
+            self.assertIsNotNone(match, message)
+            self.assertTrue(Path(str(match.group(1))).is_file(), match.group(1))
+
+    def test_repeated_inspection_command_is_blocked_on_the_third_run(self) -> None:
+        """`ls critic-execution.json` 连跑 5 次的实测浪费：第 3 次起拒绝并指向 next。"""
+        event = self.event("Bash", command="ls -la outputs/.pptx-work/demo/critic-execution.json")
+        self.assertEqual(0, self.run_guard(event))
+        self.assertEqual(0, self.run_guard(event))
+        self.assertEqual(2, self.run_guard(event))
+        # 变体（不同命令）不受影响
+        other = self.event("Bash", command="cat outputs/.pptx-work/demo/visual-review.json")
+        self.assertEqual(0, self.run_guard(other))
+        # 动作命令（build/gates）不受巡检限流影响
+        action = self.event("Bash", command="python ppt_pipeline.py build --work-dir wd")
+        self.assertEqual(0, self.run_guard(action))
+
+    def test_main_session_big_image_budget_is_enforced(self) -> None:
+        """主会话读 >150KB 的图超过 6 张即拒绝；缩略图与子代理不受限。"""
+        big = 200 * 1024
+        results = []
+        for index in range(7):
+            page = Path(self.cwd) / f"slide-{index}.png"
+            page.write_bytes(b"\x00" * big)
+            results.append(self.run_guard(self.event("Read", file_path=str(page))))
+        self.assertEqual([0] * 6, results[:6])
+        self.assertEqual(2, results[6])
+        # 子代理（带 agent_id）不受预算限制
+        with_agent = {**self.event("Read", file_path=str(Path(self.cwd) / "slide-7.png")), "agent_id": "child"}
+        self.assertEqual(0, self.run_guard(with_agent))
+
+    def test_small_images_are_not_budget_limited(self) -> None:
+        small = 64 * 1024
+        for index in range(9):
+            page = Path(self.cwd) / f"thumb-{index}.png"
+            page.write_bytes(b"\x00" * small)
+            self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(page))))
 
     def test_second_full_reference_read_is_blocked(self) -> None:
         ref = Path(self.cwd) / "references" / "cost-discipline.md"

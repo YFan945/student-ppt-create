@@ -1,5 +1,5 @@
 {
-  "description": "Cost-discipline PreToolUse guard: block plugin-source archaeology, same-hash PNG re-reads, and generic researcher teammates. Does not block first image Read.",
+  "description": "Cost-discipline PreToolUse guard: block plugin-source archaeology, same-hash PNG re-reads, named researcher/critic teammates, nested evidence-agent spawns, and direct builder invocation. Does not block first image Read.",
   "hooks": {
     "PreToolUse": [
       {

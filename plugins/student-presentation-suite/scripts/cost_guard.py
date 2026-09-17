@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """PreToolUse guard for student-presentation-suite cost discipline.
 
-Blocks plugin-source archaeology, teammate-style research, and re-reading the
-same PNG (same sha256). Does *not* block first-time image reads — DeepSeek
-Flash caps each image at 1024 tokens.
+Blocks plugin-source archaeology, teammate-style research, re-reading the
+same PNG (same sha256), repeated read-only inspection commands (ls/cat/find
+run a 3rd time in one session), and main-session reads of full-size render
+images beyond a small budget (per-page review belongs to the isolated
+visual-critic; the cheap overview is contact-sheet-thumb.jpg). Does *not*
+block first-time image reads — DeepSeek Flash caps each image at 1024 tokens.
 
 Seen state lives at `outputs/.pptx-work/.guard/seen-<session>.json`: scoped to
 the hook session, so one task's read never silences the next task's first read.
@@ -26,10 +29,23 @@ PLUGIN_HINTS = (
     "pptx-helpers.js",
     "ppt_pipeline.py",
     "run_gates",
+    "validate_research_pack",
+    "research_pack_to_evidence",
+    "slide_spec_guard",
+    "visual_reference_select",
+    "art_direction_check",
 )
-GREP_SED = re.compile(r"\b(grep|rg|sed|awk|head|cat|type|Get-Content)\b", re.I)
+GREP_SED = re.compile(r"\b(grep|rg|sed|awk|head|tail|cat|type|Get-Content)\b", re.I)
+PLUGIN_INSPECT = re.compile(
+    r"\b(ls|dir|tree|find|stat|du|Get-ChildItem|grep|rg|sed|awk|head|tail|cat|type|Get-Content)\b",
+    re.I,
+)
 PLUGIN_PATH = re.compile(
     r"student-presentation-suite|CLAUDE_PLUGIN_ROOT|skills/sp-deck/scripts",
+    re.I,
+)
+PIPELINE_RUN = re.compile(
+    r"ppt_pipeline\.py\s+(next|plan|build|render|qa|repair|complete|status)\b",
     re.I,
 )
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -101,23 +117,117 @@ def refuse(message: str) -> int:
     return 2
 
 
+def plugin_root() -> Path:
+    """Installed plugin root: this hook always lives at <root>/scripts/."""
+    return Path(__file__).resolve().parents[1]
+
+
+def pipeline_hint(command: str = "next") -> str:
+    """Runnable pipeline command with a resolved script path.
+
+    Earlier versions suggested a bare `ppt_pipeline.py`, which is not on PATH and
+    does not sit next to this hook (it lives under skills/sp-deck/scripts). Agents
+    followed it and burned a round on "No such file or directory" (2026-09-16).
+    """
+    pipeline = plugin_root() / "skills" / "sp-deck" / "scripts" / "ppt_pipeline.py"
+    if pipeline.is_file():
+        return f'"{sys.executable}" "{pipeline}" {command} --work-dir <wd>'
+    return f"ppt_pipeline.py {command} --work-dir <wd>"
+
+
+def helpers_hint() -> str:
+    helper = plugin_root() / "scripts" / "pptx-helpers.js"
+    if helper.is_file():
+        return f'node "{helper}" --describe'
+    return "node pptx-helpers.js --describe"
+
+
+# 只读巡检命令的同会话重复上限：2026-09-16 实测 `ls critic-execution.json` 连跑
+# 5 次、`ls -la` ×4 —— 状态查询一律走 `next`（一次给全 read/forbidden/next_command）。
+# 只限制 ls/cat/find 等纯只读巡检；build/gates/qa 等动作命令不限制（修复后重跑是合法路径）。
+INSPECT_RE = re.compile(r"^\s*(sudo\s+)?(ls|cat|head|tail|find|stat|dir|tree|du)\b", re.I)
+REPEAT_INSPECT_LIMIT = 3
+# 主会话大图预算：2026-09-16 实测 19 张图进主上下文共 3.27MB（回灌的 92%），
+# 而 per-page 复核本就属于隔离的 visual-critic。只限制主会话（无 agent_id）；
+# 大图 = >150KB；超出预算后指向 contact-sheet-thumb.jpg（render 会产出）。
+BIG_IMAGE_BYTES = 150 * 1024
+MAIN_SESSION_BIG_IMAGE_BUDGET = 6
+
+
+def check_inspection_repeat(command: str, cwd: str, session: str) -> str | None:
+    if not INSPECT_RE.match(command):
+        return None
+    key = "inspect:" + hashlib.sha256(
+        re.sub(r"\s+", " ", command).strip().encode("utf-8")
+    ).hexdigest()[:16]
+    seen = load_seen(cwd, session)
+    counts = seen.setdefault("inspections", {})
+    count = int(counts.get(key, 0)) + 1
+    counts[key] = count
+    save_seen(cwd, session, seen)
+    if count >= REPEAT_INSPECT_LIMIT:
+        return (
+            f"cost_guard: the same inspection command already ran {count - 1} times this "
+            "session; repeating it yields no new information. Run the pipeline `next` "
+            "command instead — it returns state, what to read and the next command in one call."
+        )
+    return None
+
+
+def cheap_overview_hint(path: Path) -> str:
+    try:
+        for parent in path.parents:
+            if parent.name == ".pptx-work":
+                rel = path.relative_to(parent)
+                if len(rel.parts) >= 2:
+                    thumb = parent / rel.parts[0] / "contact-sheet-thumb.jpg"
+                    if thumb.is_file():
+                        return str(thumb)
+                break
+    except OSError:
+        pass
+    return "(run `ppt_pipeline.py render` to produce it)"
+
+
 def check_bash(command: str) -> str | None:
+    if "run_with_pptxgenjs.js" in command and "--probe" not in command:
+        return (
+            "cost_guard: do not invoke run_with_pptxgenjs.js from the agent "
+            "(2026-09-16 bypassed a dead QA DAG and skipped independent review). "
+            f"Use `{pipeline_hint('build')}` — only the pipeline may call the builder."
+        )
+    if "research_pack_to_evidence.py" in command:
+        return (
+            "cost_guard: do not compile the evidence map by hand "
+            "(2026-09-16 spent ~10 turns on --pack / --compiled-slide-spec). "
+            f"Put research-pack.json in the work-dir and run `{pipeline_hint('plan')}`."
+        )
+    if "slide_spec_guard.py" in command:
+        return (
+            "cost_guard: do not freeze the Slide Spec by hand. "
+            f"`{pipeline_hint('plan')}` runs freeze after it compiles the evidence map."
+        )
+    if PLUGIN_PATH.search(command) and PLUGIN_INSPECT.search(command) and not PIPELINE_RUN.search(command):
+        return (
+            "cost_guard: do not ls/grep/cat plugin source or the plugin cache. "
+            f"Run `{pipeline_hint()}` or `{helpers_hint()}`."
+        )
     if GREP_SED.search(command) and PLUGIN_PATH.search(command):
         return (
             "cost_guard: do not grep/sed/cat plugin source. "
-            "Run `ppt_pipeline.py next --work-dir <wd>` or `node pptx-helpers.js --describe`."
+            f"Run `{pipeline_hint()}` or `{helpers_hint()}`."
         )
     if "--help" in command and any(hint in command for hint in PLUGIN_HINTS):
         if "ppt_pipeline.py next" in command:
             return None
         return (
             "cost_guard: do not --help plugin scripts to discover the next step. "
-            "Run `ppt_pipeline.py next --work-dir <wd>`."
+            f"Run `{pipeline_hint()}`."
         )
     return None
 
 
-def check_read(path_str: str, cwd: str, session: str) -> str | None:
+def check_read(path_str: str, cwd: str, session: str, is_main: bool = False) -> str | None:
     raw = Path(path_str)
     path = raw if raw.is_absolute() else Path(cwd) / raw
     suffix = path.suffix.lower()
@@ -133,13 +243,30 @@ def check_read(path_str: str, cwd: str, session: str) -> str | None:
                 "Only re-read after a new render changes the hash."
             )
         seen.setdefault("images", {})[resolved] = digest
+        if is_main:
+            try:
+                size = path.stat().st_size
+            except OSError:
+                size = 0
+            if size > BIG_IMAGE_BYTES:
+                used = int((seen.get("big_images") or {}).get("used", 0)) + 1
+                seen["big_images"] = {"used": used}
+                if used > MAIN_SESSION_BIG_IMAGE_BUDGET:
+                    save_seen(cwd, session, seen)
+                    return (
+                        f"cost_guard: main-session full-size image budget exhausted "
+                        f"({MAIN_SESSION_BIG_IMAGE_BUDGET} images >150KB this session). "
+                        "Per-page review belongs to the isolated visual-critic — spawn "
+                        "student-presentation-suite:visual-critic WITHOUT a `name`. "
+                        f"Cheap overview: {cheap_overview_hint(path)}"
+                    )
         save_seen(cwd, session, seen)
         return None
     text = str(path).replace("\\", "/")
     if suffix in {".py", ".js"} and PLUGIN_PATH.search(text):
         return (
             "cost_guard: do not Read plugin source. "
-            "Run `ppt_pipeline.py next --work-dir <wd>` or `node pptx-helpers.js --describe`."
+            f"Run `{pipeline_hint()}` or `{helpers_hint()}`."
         )
     if "/references/" in text and text.endswith(".md"):
         seen = load_seen(cwd, session)
@@ -156,15 +283,31 @@ def check_read(path_str: str, cwd: str, session: str) -> str | None:
     return None
 
 
+EVIDENCE_NAME_RE = re.compile(r"research|critic", re.I)
+EVIDENCE_TYPE_RE = re.compile(
+    r"presentation-researcher|visual-critic",
+    re.I,
+)
+
+
 def check_agent(payload: dict) -> str | None:
     tool_input = payload.get("tool_input") or {}
-    name = str(tool_input.get("name") or "").strip().lower()
-    dest = str(tool_input.get("to") or tool_input.get("recipient") or "").strip().lower()
-    if name == "researcher" or dest == "researcher":
+    name = str(tool_input.get("name") or "").strip()
+    dest = str(tool_input.get("to") or tool_input.get("recipient") or "").strip()
+    sub = str(tool_input.get("subagent_type") or "")
+    evidence_type = bool(EVIDENCE_TYPE_RE.search(sub))
+    if payload.get("agent_id") and evidence_type:
         return (
-            "cost_guard: do not spawn a generic researcher teammate. "
-            "Use Skill `sp-research`, which spawns "
-            "`student-presentation-suite:presentation-researcher` itself."
+            "cost_guard: do not nest presentation-researcher or visual-critic. "
+            "Only the main session may spawn them, once, foreground, without `name`."
+        )
+    if EVIDENCE_NAME_RE.search(f"{name} {dest}"):
+        return (
+            "cost_guard: do not spawn a named researcher/critic teammate "
+            "(exact name `researcher` OR `researcher-carbon-pv-wind` are the same bug). "
+            "From the MAIN session spawn `student-presentation-suite:presentation-researcher` "
+            "or `:visual-critic` ONCE, foreground, with no `name`. If a spawn was just "
+            "rejected, retry that call without `name` — do not wrap another Agent."
         )
     return None
 
@@ -182,7 +325,11 @@ def main(argv: list[str] | None = None) -> int:
     cwd = str(event.get("cwd") or os.getcwd())
     session = session_key({**event, "cwd": cwd})
     if name == "Bash":
-        msg = check_bash(str(tool_input.get("command") or ""))
+        command = str(tool_input.get("command") or "")
+        msg = check_bash(command)
+        if msg:
+            return refuse(msg)
+        msg = check_inspection_repeat(command, cwd, session)
         return refuse(msg) if msg else 0
     if name in {"Read", "Grep"}:
         path = str(tool_input.get("file_path") or tool_input.get("path") or "")
@@ -190,9 +337,10 @@ def main(argv: list[str] | None = None) -> int:
             str(tool_input.get("path") or "") + str(tool_input.get("pattern") or "")
         ):
             return refuse(
-                "cost_guard: do not Grep plugin source. Run `ppt_pipeline.py next`."
+                "cost_guard: do not Grep plugin source. "
+                f"Run `{pipeline_hint()}`."
             )
-        msg = check_read(path, cwd, session) if path else None
+        msg = check_read(path, cwd, session, is_main=not event.get("agent_id")) if path else None
         return refuse(msg) if msg else 0
     if name in {"Agent", "SendMessage"}:
         msg = check_agent({"tool_input": tool_input, **event})

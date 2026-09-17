@@ -192,7 +192,11 @@ claude
 插件通过 `workflow_guard.py` 状态机命令（init/confirm/transition）记录状态，
 并在项目输出目录保存已确认摘要的哈希和工作流状态。`ppt_pipeline.py` 会拒绝非法
 生产步骤。另有一条窄的 PreToolUse hook（`cost_guard.py`）拦截插件源码考古、
-未变 PNG 的重读和名叫 `researcher` 的 teammate——它不替代 intake 确认门禁，
+未变 PNG 的重读、名字含 `researcher`/`critic` 的 teammate（不限于恰好叫
+`researcher`）、凭据代理的带 `name` 或嵌套 spawn、同一条只读巡检命令
+（`ls`/`cat`/`find`）的第 3 次重复、直接调用 `run_with_pptxgenjs.js` 出 PPTX，
+以及主会话超预算读取全尺寸渲染图（逐页复核属于隔离的 `visual-critic`；`render`
+同时产出廉价的 `contact-sheet-thumb.jpg` 供概览）——它不替代 intake 确认门禁，
 也不禁止第一次读图。状态未推进到 `intake_confirmed` 前仍不运行生产脚本。
 
 生成结果默认写入当前项目的 `outputs/` 目录，不会写进插件安装目录。修改已有

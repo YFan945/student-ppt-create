@@ -28,6 +28,7 @@
     "render_reuses_identical_pptx": true,
     "build_invalidates_render_evidence": true,
     "render_evidence_must_match_current_pptx": true,
+    "plan_compiles_evidence_map": true,
     "no_scaffold_pages_at_build": true
   },
   "production_modes": [
@@ -55,7 +56,7 @@
       "Do not reuse previous-build images. Pipeline archives stale evidence."
     ],
     "qa": [
-      "Spawn student-presentation-suite:visual-critic in foreground. Pass absolute work-dir.",
+      "Spawn student-presentation-suite:visual-critic in foreground WITHOUT a name. Pass absolute work-dir. Never nest the critic inside another agent.",
       "Critic Reads every image, Writes visual-review.json with PPTX/contact/page hashes; hook writes critic-execution.json.",
       "QA automatically uses speaker-notes.md plus current contact sheet/pages. Missing required inputs block complete."
     ],

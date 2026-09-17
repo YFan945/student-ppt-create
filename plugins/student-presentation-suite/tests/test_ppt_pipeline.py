@@ -78,6 +78,14 @@ class FakeRunner:
         def flag_value(flag: str) -> str:
             return argv[argv.index(flag) + 1] if flag in argv else ""
 
+        if "art_direction_check.py" in joined:
+            out = flag_value("--output")
+            if out:
+                Path(out).write_text(
+                    json.dumps({"ok": True, "blocker_count": 0, "issues": []}),
+                    encoding="utf-8",
+                )
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         if "copy_fit_preflight.py" in joined:
             out = flag_value("--output")
             if out:
@@ -93,6 +101,18 @@ class FakeRunner:
             )
         if "run_with_pptxgenjs.js" in joined:
             Path(flag_value("--output")).write_bytes(b"PK\x03\x04 fake pptx")
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        if "research_pack_to_evidence.py" in joined:
+            out = flag_value("--output")
+            if out:
+                Path(out).write_text("{}", encoding="utf-8")
+            compiled = flag_value("--compiled-slide-spec")
+            if compiled:
+                source = flag_value("--slide-spec")
+                Path(compiled).write_text(
+                    Path(source).read_text(encoding="utf-8") if source else "{}",
+                    encoding="utf-8",
+                )
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         out = flag_value("--output")
         if out:
@@ -291,6 +311,55 @@ class PlanTests(PipelineTestCase):
         self.assertTrue((self.work / "deck.js").is_file())
         self.assertTrue((self.work / "stage-planned-summary.md").is_file())
         self.assertTrue((self.work / "composition").is_dir())
+        stub = (self.work / "pages" / "p01-cover.js").read_text(encoding="utf-8")
+        self.assertIn("const COPY", stub)
+
+    def test_plan_accepts_pack_alias_and_ignores_research_execution_flag(self) -> None:
+        args = pp.parse_args([
+            "plan", "--work-dir", str(self.work),
+            "--slide-spec", "spec.yaml",
+            "--validation-report", "report.json",
+            "--art-direction", "ad.yaml",
+            "--pack", "research-pack.json",
+            "--research-execution", "research-execution.json",
+        ])
+        self.assertEqual(args.research_pack, Path("research-pack.json"))
+
+    def test_research_plan_compiles_evidence_map_without_agent_flags(self) -> None:
+        files = self.write_inputs()
+        spec = json.loads(files["spec"].read_text(encoding="utf-8"))
+        spec["research_scope"] = "A"
+        files["spec"].write_text(json.dumps(spec), encoding="utf-8")
+        pack = self.work / "research-pack.json"
+        pack.write_text("{}", encoding="utf-8")
+        (self.work / "research-pack-validation.json").write_text("{}", encoding="utf-8")
+        (self.work / "research-execution.json").write_text(
+            json.dumps({
+                "agent": "student-presentation-suite:presentation-researcher",
+                "agent_id": "child",
+                "spawn_verified": True,
+                "work_id": self.work.name,
+                "artifact": pp.bind(pack),
+            }),
+            encoding="utf-8",
+        )
+        runner = self.plan(files)
+        self.assertTrue(any("research_pack_to_evidence.py" in " ".join(call) for call in runner.calls))
+        self.assertTrue((self.work / "evidence-map.json").is_file())
+        self.assertIn("evidence_map", self.manifest()["inputs"])
+
+    def test_research_plan_without_pack_is_refused(self) -> None:
+        files = self.write_inputs()
+        spec = json.loads(files["spec"].read_text(encoding="utf-8"))
+        spec["research_scope"] = "A"
+        files["spec"].write_text(json.dumps(spec), encoding="utf-8")
+        with self.assertRaises(pp.RefusedError) as raised:
+            pp.cmd_plan(ns(
+                "plan", self.work, workflow_state=self.workflow_state,
+                slide_spec=files["spec"], validation_report=files["spec_report"],
+                art_direction=files["art"],
+            ))
+        self.assertIn("evidence-map", str(raised.exception).lower())
 
     def test_replan_without_force_is_refused(self) -> None:
         files = self.write_inputs()

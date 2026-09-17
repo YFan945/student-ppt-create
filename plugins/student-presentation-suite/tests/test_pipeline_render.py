@@ -100,7 +100,20 @@ class PipelineRenderTests(unittest.TestCase):
         self.assertEqual(len(render["pages"]), 2)
         self.assertTrue(Path(render["contact_sheet"]["path"]).is_file())
         self.assertTrue(render["contact_sheet"]["sha256"])
+        # 廉价概览缩略图：主会话看它，全尺寸页图留给隔离 critic
+        self.assertTrue(Path(render["contact_sheet_thumb"]["path"]).is_file())
+        self.assertTrue(render["contact_sheet_thumb"]["sha256"])
         self.assertEqual(runner.calls, 1)
+
+    def test_render_cache_hit_regenerates_a_missing_thumb(self) -> None:
+        runner = RenderRunner(self.work)
+        pp._runner = runner
+        self.assertEqual(pp.cmd_render(self.args()), 0)
+        thumb = Path((pp.load_manifest(self.work) or {})["render"]["contact_sheet_thumb"]["path"])
+        thumb.unlink()
+        self.assertEqual(pp.cmd_render(self.args()), 0)  # cache hit, no subprocess
+        self.assertEqual(runner.calls, 1)
+        self.assertTrue(thumb.is_file())
 
     def test_identical_pptx_reuses_render_without_subprocess(self) -> None:
         runner = RenderRunner(self.work)
@@ -200,6 +213,9 @@ class NextRoutingTests(unittest.TestCase):
         payload = self.next_payload()
         self.assertIn(" qa", payload["next_command"])
         self.assertEqual(2, len(payload["read_images"]))
+        # 概览优先指向廉价缩略图，而不是全尺寸 contact sheet
+        self.assertTrue(payload["read_images"][0].endswith("contact-sheet-thumb.jpg"))
+        self.assertIn("session_segment", payload)
 
     def test_stale_contact_sheet_is_not_treated_as_render_evidence(self) -> None:
         """Reproduces the repair loop: rebuild clears the manifest, PNG stays."""
@@ -226,7 +242,7 @@ class NextRoutingTests(unittest.TestCase):
         assert manifest is not None
 
         moved = pp.archive_stale_render(self.work, manifest)
-        self.assertEqual(3, len(moved))  # 2 page PNGs + the contact sheet
+        self.assertEqual(4, len(moved))  # 2 page PNGs + contact sheet + thumb
         self.assertFalse(contact.is_file())
         for path in moved:
             self.assertTrue(Path(path).is_file())

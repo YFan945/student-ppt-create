@@ -59,13 +59,18 @@ PAGE_STUB = """\
 /** Slide {n} — {title} */
 module.exports = function (ctx) {{
   const {{ slide, n, H, registry }} = ctx;
-  /* TODO: page implementation */
-  slide.addText({title_js}, {{
+  const COPY = {{
+    title: {title_js},
+    claim: {claim_js},
+    slideCopy: {copy_js},
+  }};
+  /* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */
+  slide.addText(COPY.title, {{
     x: 0.6, y: 0.4, w: 8.8, h: 1.0,
     fontSize: 32,
     lineSpacing: Number((32 * H.LINE_SPACING_FACTOR).toFixed(2)),
   }});
-  registry.text(n, {title_js}, {{ x: 0.6, y: 0.4, w: 8.8, h: 1.0, fontSize: 32 }});
+  registry.text(n, COPY.title, {{ x: 0.6, y: 0.4, w: 8.8, h: 1.0, fontSize: 32 }});
 }};
 """
 
@@ -158,6 +163,8 @@ def scaffold_generator(work_dir: Path, spec_path: Path) -> dict[str, Any]:
             n=int(slide["id"]),
             title=str(slide.get("title") or f"Slide {slide['id']}"),
             title_js=js_string(str(slide.get("title") or f"Slide {slide['id']}")),
+            claim_js=js_string(str(slide.get("claim") or "")),
+            copy_js=js_string(str(slide.get("slide_copy") or "")),
         )
         target = pages_dir / name
         if write_if_scaffoldable(target, stub):

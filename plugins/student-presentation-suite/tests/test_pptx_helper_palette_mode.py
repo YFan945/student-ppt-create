@@ -58,6 +58,23 @@ if (tuned.blur !== 20 || tuned.opacity !== 0.3) process.exit(6);
         )
         self.assertEqual(0, result.returncode, result.stderr)
 
+    def test_missing_palette_role_is_a_hard_error(self) -> None:
+        helper = ROOT / "scripts" / "pptx-helpers.js"
+        script = f"""
+const H = require({json.dumps(str(helper))});
+try {{ H.color({{}}, 'primary_text'); }}
+catch (error) {{ if (error instanceof RangeError && /missing/.test(error.message)) process.exit(0); }}
+process.exit(2);
+"""
+        result = subprocess.run(
+            ["node", "-e", script],
+            cwd=ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+
     def test_dark_mode_rejects_missing_dark_palette(self) -> None:
         helper = ROOT / "scripts" / "pptx-helpers.js"
         script = f"""

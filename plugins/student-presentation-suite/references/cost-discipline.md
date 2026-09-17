@@ -127,10 +127,17 @@ outputs/.pptx-work/<work-id>/
 
 **任何外部检索——图片检索、话题资料检索、事实与数据核查、案例与竞品搜索——一律
 交给 `sp-research`，由它显式 spawn `student-presentation-suite:presentation-researcher`
-执行。主流程不直接发起检索，也不 spawn 名叫 `researcher` 的通用 teammate。**
+执行。主流程不直接发起检索，也不 spawn 名字里带 `researcher` / `critic` 的通用
+teammate（`researcher-carbon-pv-wind` 与名叫 `researcher` 是同一个洞：Claude Code 会
+把带 `name` 的 Agent 转成 teammate，`agent_type` 变成名字本身）。**
 
 隔离靠显式 spawn，不靠 `context: fork`——后者在 `claude -p` 下不被 honor，skill 会被内联进
 主会话，检索上下文于是计入主 context（详见 `live_prompts/FINDINGS.md` 的两次实测）。
+
+`/sp-deck` `/sp-outline` `/sp-research` 一旦进入会话，主会话与非研究员子代理的
+WebSearch/WebFetch 会被 `runtime_evidence` 拒绝。被拒后**禁止再嵌套 spawn 一层研究员**；
+正确动作是回到主会话、不带 `name` 重发一次。`plan` 会自行编译 `evidence-map.json`，
+不要让模型去猜 `research_pack_to_evidence.py` 的参数。
 
 子代理契约：
 
@@ -150,7 +157,7 @@ outputs/.pptx-work/<work-id>/
 理由：检索原文体积大、留存久；委派之后，主流程在历史里只保留一小段结构化结论，
 而完整原文仍然可查。
 
-**可验证**：主流程不出现直接的外部检索调用，也不出现名叫 `researcher` 的 teammate；
+**可验证**：主流程不出现直接的外部检索调用，也不出现名字含 `researcher`/`critic` 的 teammate；
 Evidence Ledger 的每一条都能对应到 `research/*.json` 中的一条记录；回传正文通过
 `assert_research_envelope.py`。
 

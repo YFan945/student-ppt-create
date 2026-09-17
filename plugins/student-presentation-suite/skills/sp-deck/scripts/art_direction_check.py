@@ -31,15 +31,27 @@ REQUIRED_SECTIONS = (
 
 
 def load_structured(path: Path) -> dict[str, Any]:
-    text = path.read_text(encoding="utf-8")
-    if path.suffix.lower() == ".json":
-        value = json.loads(text)
-    else:
-        try:
-            import yaml  # type: ignore
-        except ImportError as exc:  # pragma: no cover
-            raise SystemExit("PyYAML is required for YAML Art Direction files.") from exc
-        value = yaml.safe_load(text)
+    if not path.is_file():
+        raise SystemExit(f"Art Direction file does not exist: {path}")
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise SystemExit(f"Art Direction file cannot be read: {path} ({exc})") from exc
+    try:
+        if path.suffix.lower() == ".json":
+            value = json.loads(text)
+        else:
+            try:
+                import yaml  # type: ignore
+            except ImportError as exc:  # pragma: no cover
+                raise SystemExit("PyYAML is required for YAML Art Direction files.") from exc
+            value = yaml.safe_load(text)
+    except json.JSONDecodeError as exc:
+        # 旧实现把解析错误直接抛成 traceback，agent 只能看到栈尾，看不出是自己的
+        # YAML/JSON 写坏了（2026-09-16 实测：一整轮耗在猜这份文件哪里不对）。
+        raise SystemExit(f"Art Direction is not valid JSON: {exc}") from exc
+    except Exception as exc:  # yaml.YAMLError 等解析期异常
+        raise SystemExit(f"Art Direction is not valid YAML: {exc}") from exc
     if not isinstance(value, dict):
         raise SystemExit("Art Direction root must be an object.")
     return value
