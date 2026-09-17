@@ -52,6 +52,7 @@ class ProductionEntryGuardTests(unittest.TestCase):
             "page_copy_fidelity_check.py",
             "pptx_delivery_check.py",
             "generator_scaffold.py",
+            "slide_spec_guard.py",
         ):
             command = f'python "${{CLAUDE_PLUGIN_ROOT}}/skills/sp-deck/scripts/{name}" --json'
             with self.subTest(name=name):
@@ -79,6 +80,43 @@ class ProductionEntryGuardTests(unittest.TestCase):
             'python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" --help'
         )
         self.assertEqual(2, code)
+
+    def test_root_evidence_compiler_is_denied(self) -> None:
+        commands = [
+            'python "${CLAUDE_PLUGIN_ROOT}/scripts/research_pack_to_evidence.py" pack.json --output map.json',
+            'python plugins/student-presentation-suite/scripts/research_pack_to_evidence.py pack.json --output map.json',
+            'python "C:\\Users\\me\\.claude\\plugins\\student-presentation-suite\\0.14.0\\scripts\\research_pack_to_evidence.py" pack.json',
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                code, message = self.run_guard(command)
+                self.assertEqual(2, code)
+                self.assertIn("evidence-map compilation", message)
+
+    def test_direct_pptx_builder_is_denied_but_probe_is_allowed(self) -> None:
+        blocked = [
+            'node "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" --output out.pptx deck.js',
+            'node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --output out.pptx deck.js',
+        ]
+        for command in blocked:
+            with self.subTest(command=command):
+                code, message = self.run_guard(command)
+                self.assertEqual(2, code)
+                self.assertIn("Direct run_with_pptxgenjs.js generation", message)
+        self.assertEqual(
+            (0, ""),
+            self.run_guard('node "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" --probe'),
+        )
+
+    def test_unrelated_root_utilities_are_out_of_scope(self) -> None:
+        commands = [
+            'python "${CLAUDE_PLUGIN_ROOT}/scripts/session_cost.py" --json session.jsonl',
+            'python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_research_pack.py" pack.json',
+            'node "${CLAUDE_PLUGIN_ROOT}/scripts/pptx-helpers.js" --describe',
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertEqual((0, ""), self.run_guard(command))
 
     def test_windows_style_path_is_recognized(self) -> None:
         command = r'python "C:\Users\me\.claude\plugins\student-presentation-suite\skills\sp-deck\scripts\pptx_actual_content_check.py" --json'
