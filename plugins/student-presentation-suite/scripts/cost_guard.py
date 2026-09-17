@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 """PreToolUse guard for student-presentation-suite cost discipline.
 
-Blocks plugin-source archaeology, teammate-style research, re-reading the
-same PNG (same sha256), repeated read-only inspection commands (ls/cat/find
-run a 3rd time in one session), and main-session reads of full-size render
-images beyond a small budget (per-page review belongs to the isolated
-visual-critic; the cheap overview is contact-sheet-thumb.jpg). Does *not*
-block first-time image reads — DeepSeek Flash caps each image at 1024 tokens.
+Blocks plugin-source archaeology, re-reading the same PNG (same sha256),
+repeated read-only inspection commands (ls/cat/find run a 3rd time in one
+session), and main-session reads of full-size render images beyond a small
+budget (per-page review belongs to the isolated visual-critic; the cheap
+overview is contact-sheet-thumb.jpg). Does *not* block first-time image reads —
+DeepSeek Flash caps each image at 1024 tokens.
+
+Agent execution integrity (named/background/nested evidence-agent spawn rules,
+receipts, and isolated research/critic ownership) belongs to
+``runtime_evidence.py``. Direct production-script entrypoints are controlled by
+``production_entry_guard.py``. This module intentionally stays focused on
+context and inspection cost.
 
 Seen state lives at `outputs/.pptx-work/.guard/seen-<session>.json`: scoped to
 the hook session, so one task's read never silences the next task's first read.
@@ -283,35 +289,6 @@ def check_read(path_str: str, cwd: str, session: str, is_main: bool = False) -> 
     return None
 
 
-EVIDENCE_NAME_RE = re.compile(r"research|critic", re.I)
-EVIDENCE_TYPE_RE = re.compile(
-    r"presentation-researcher|visual-critic",
-    re.I,
-)
-
-
-def check_agent(payload: dict) -> str | None:
-    tool_input = payload.get("tool_input") or {}
-    name = str(tool_input.get("name") or "").strip()
-    dest = str(tool_input.get("to") or tool_input.get("recipient") or "").strip()
-    sub = str(tool_input.get("subagent_type") or "")
-    evidence_type = bool(EVIDENCE_TYPE_RE.search(sub))
-    if payload.get("agent_id") and evidence_type:
-        return (
-            "cost_guard: do not nest presentation-researcher or visual-critic. "
-            "Only the main session may spawn them, once, foreground, without `name`."
-        )
-    if EVIDENCE_NAME_RE.search(f"{name} {dest}"):
-        return (
-            "cost_guard: do not spawn a named researcher/critic teammate "
-            "(exact name `researcher` OR `researcher-carbon-pv-wind` are the same bug). "
-            "From the MAIN session spawn `student-presentation-suite:presentation-researcher` "
-            "or `:visual-critic` ONCE, foreground, with no `name`. If a spawn was just "
-            "rejected, retry that call without `name` — do not wrap another Agent."
-        )
-    return None
-
-
 def main(argv: list[str] | None = None) -> int:
     del argv  # stdin event; CLI flags unused
     try:
@@ -341,9 +318,6 @@ def main(argv: list[str] | None = None) -> int:
                 f"Run `{pipeline_hint()}`."
             )
         msg = check_read(path, cwd, session, is_main=not event.get("agent_id")) if path else None
-        return refuse(msg) if msg else 0
-    if name in {"Agent", "SendMessage"}:
-        msg = check_agent({"tool_input": tool_input, **event})
         return refuse(msg) if msg else 0
     return 0
 

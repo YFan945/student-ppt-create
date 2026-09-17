@@ -75,24 +75,19 @@ class CostGuardTests(unittest.TestCase):
         )
         self.assertEqual(rc, 2)
 
-    def test_researcher_teammate_is_blocked(self) -> None:
-        rc = self.run_guard(self.event("Agent", name="researcher", prompt="find papers"))
-        self.assertEqual(rc, 2)
-
-    def test_named_suffixed_researcher_teammate_is_blocked(self) -> None:
-        rc = self.run_guard(self.event("Agent", name="researcher-carbon-pv-wind", prompt="find papers"))
-        self.assertEqual(rc, 2)
-
-    def test_nested_evidence_agent_from_child_is_blocked(self) -> None:
-        rc = self.run_guard({
+    def test_agent_execution_integrity_is_out_of_scope(self) -> None:
+        """runtime_evidence.py, not cost_guard.py, owns spawn integrity."""
+        named = self.event("Agent", name="researcher-carbon-pv-wind", prompt="find papers")
+        nested = {
             **self.event(
                 "Agent",
                 subagent_type="student-presentation-suite:presentation-researcher",
                 prompt="research",
             ),
             "agent_id": "outer-teammate",
-        })
-        self.assertEqual(rc, 2)
+        }
+        self.assertEqual(0, self.run_guard(named))
+        self.assertEqual(0, self.run_guard(nested))
 
     def test_listing_plugin_cache_is_blocked(self) -> None:
         rc = self.run_guard(self.event(
