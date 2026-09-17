@@ -134,6 +134,25 @@ class RuntimeEvidenceTests(unittest.TestCase):
         receipt = json.loads((self.work / "critic-execution.json").read_text())
         self.assertEqual(receipt["reads"], {str(path): runtime.digest(path) for path in paths})
 
+    def test_fileexists_collision_can_disappear_before_retry(self):
+        """EEXIST remains normal contention even if the owner unlinks immediately."""
+        original_open = os.open
+        calls = 0
+
+        def racing_open(path, flags, *args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                # Reproduce: os.open observed another owner's lock, but by the
+                # time our exception handler runs the owner has already unlinked.
+                raise FileExistsError(17, "simulated disappearing lock", str(path))
+            return original_open(path, flags, *args, **kwargs)
+
+        with patch.object(runtime.os, "open", side_effect=racing_open), patch.object(runtime.time, "sleep", return_value=None):
+            with runtime.event_lock(self.event):
+                pass
+        self.assertGreaterEqual(calls, 2)
+
     def test_event_lock_recovers_abandoned_stale_lock(self):
         guard = self.project / "outputs/.pptx-work/.guard"
         guard.mkdir(parents=True, exist_ok=True)
