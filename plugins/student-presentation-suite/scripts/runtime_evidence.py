@@ -25,6 +25,12 @@ RESEARCHER = "student-presentation-suite:presentation-researcher"
 CRITIC = "student-presentation-suite:visual-critic"
 PIPELINE_SKILLS = {"sp-research", "sp-deck", "sp-outline"}
 LOCK_STALE_SECONDS = 30.0
+EVIDENCE_NAME_RE = re.compile(r"research|critic", re.I)
+NAMED_TEAMMATE_REFUSAL = (
+    "Do not create or message named researcher/critic teammates. Evidence work must use "
+    "the isolated presentation-researcher or visual-critic subagent directly from the MAIN "
+    "session, foreground, without `name`."
+)
 NAMED_SPAWN_REFUSAL = (
     "Pipeline evidence agents must not be spawned with a `name`: named Agent "
     "calls become teammates whose agent_type is the name, so SubagentStop "
@@ -184,6 +190,12 @@ def handle(event: dict) -> int:
         if tool == "Skill" and skill in PIPELINE_SKILLS:
             active.parent.mkdir(parents=True, exist_ok=True)
             active.write_text(json.dumps({"session_id": event.get("session_id")}), encoding="utf-8")
+        if tool in {"Agent", "SendMessage"}:
+            name = str(inputs.get("name") or "").strip()
+            dest = str(inputs.get("to") or inputs.get("recipient") or "").strip()
+            if EVIDENCE_NAME_RE.search(f"{name} {dest}"):
+                print(NAMED_TEAMMATE_REFUSAL, file=sys.stderr)
+                return 2
         if tool == "Agent" and inputs.get("subagent_type") in {RESEARCHER, CRITIC}:
             if inputs.get("name"):
                 print(NAMED_SPAWN_REFUSAL, file=sys.stderr)
