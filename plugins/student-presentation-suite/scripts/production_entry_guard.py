@@ -16,7 +16,6 @@ from __future__ import annotations
 import json
 import re
 import sys
-from pathlib import Path
 from typing import Any
 
 PUBLIC_DECK_ENTRYPOINTS = frozenset(
