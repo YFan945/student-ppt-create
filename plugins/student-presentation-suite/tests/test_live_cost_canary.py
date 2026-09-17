@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import sys
 import unittest
 from pathlib import Path
 
 from test_helpers import load_module
 
 ROOT = Path(__file__).resolve().parents[1]
-canary = load_module(ROOT / "scripts/live_cost_canary.py")
+SCRIPTS = ROOT / "scripts"
+if str(SCRIPTS) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS))
+canary = load_module(SCRIPTS / "live_cost_canary.py")
 
 
 class LiveCostCanaryTests(unittest.TestCase):
