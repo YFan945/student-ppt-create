@@ -10,7 +10,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 from PIL import Image
-
 from test_helpers import load_module
 
 ROOT = Path(__file__).resolve().parents[1]
