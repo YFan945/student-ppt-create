@@ -12,7 +12,7 @@
         ]
       },
       {
-        "matcher": "Bash|Read|Grep|Agent|SendMessage",
+        "matcher": "Bash|Read|Grep",
         "hooks": [
           {
             "type": "command",
