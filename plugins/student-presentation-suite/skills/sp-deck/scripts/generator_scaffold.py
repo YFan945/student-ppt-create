@@ -9,9 +9,33 @@ authored page files (no scaffold marker) are left untouched on replan.
 from __future__ import annotations
 
 import json
+import os
 import re
+import sys
 from pathlib import Path
 from typing import Any
+
+
+def _enforce_pipeline_hook_health() -> None:
+    """Run before ppt_pipeline plan does any production work.
+
+    ppt_pipeline imports this module before command dispatch. Keeping the small
+    bootstrap here lets the verifier fail before intake/research/preflight while
+    avoiding a second copy of hook-health logic in the large pipeline module.
+    """
+    plugin_root = Path(
+        os.environ.get("CLAUDE_PLUGIN_ROOT")
+        or Path(__file__).resolve().parent.parents[2]
+    ).resolve()
+    scripts = plugin_root / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    from hook_health import enforce_pipeline_plan_bootstrap
+
+    enforce_pipeline_plan_bootstrap()
+
+
+_enforce_pipeline_hook_health()
 
 SCAFFOLD_MARKER = "student-presentation-suite-scaffold"
 PAGE_NAME_RE = re.compile(r"^p(\d{2})-.+\.js$")
