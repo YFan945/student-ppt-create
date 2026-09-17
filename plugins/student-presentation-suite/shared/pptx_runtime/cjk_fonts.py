@@ -115,20 +115,21 @@ def _write_package(entries: list[tuple[zipfile.ZipInfo, bytes]], target: Path) -
         tmp.unlink(missing_ok=True)
 
 
-def apply_cjk_fonts(pptx: Path, mapping: dict[str, str], output: Path | None = None) -> int:
+def apply_cjk_fonts(pptx: Path, mapping: dict[str, str], output: Path) -> int:
     """Add ``<a:ea>`` typefaces for every mapped latin font. Returns element count.
 
-    Rewrites the package atomically: content is staged in a sibling temp file
-    and moved into place, so a failure never truncates the input deck.
-    When ``output`` is None and nothing changes, the input file is left untouched.
+    Always writes a distinct output package. Refuses to overwrite the input deck.
     """
     if not mapping:
         raise ValueError("cjk font mapping is empty")
-    target = Path(output) if output is not None else Path(pptx)
+    source = Path(pptx)
+    target = Path(output)
+    if source.resolve() == target.resolve():
+        raise ValueError("refusing to overwrite the source package; choose a different output")
     total = 0
     entries: list[tuple[zipfile.ZipInfo, bytes]] = []
     uncompressed = 0
-    with zipfile.ZipFile(pptx, "r") as src:
+    with zipfile.ZipFile(source, "r") as src:
         for item in src.infolist():
             data = src.read(item.filename)
             uncompressed += len(data)
@@ -140,8 +141,5 @@ def apply_cjk_fonts(pptx: Path, mapping: dict[str, str], output: Path | None = N
                 data, changed = _add_ea_typefaces(data, mapping)
                 total += changed
             entries.append((item, data))
-    # 没有任何改动就不要重写用户原件（旧实现无条件重写整个包）。
-    if not total and output is None:
-        return 0
     _write_package(entries, target)
     return total

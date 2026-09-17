@@ -15,7 +15,7 @@
   "providers": [
     {"id": "user-photos", "kind": "user-assets", "enabled": true, "assets_dir": "assets", "permission": "user-provided"},
     {"id": "concept-imagegen", "kind": "image-generation", "enabled": true, "capability": "skill:imagegen", "permission": "generated"},
-    {"id": "web-image-search", "kind": "web-search", "enabled": false, "capability": "websearch", "requires": ["curl"], "permission": "licensed"}
+    {"id": "web-image-search", "kind": "web-search", "enabled": false, "capability": "websearch", "command": "curl -sL {url} -o {output}", "url_template": "https://example.invalid/search?q={query}", "requires": ["curl"], "permission": "licensed"}
   ]
 }
 ```
@@ -35,7 +35,7 @@
 > 权限字段**缺省即拒绝**（fail-closed）。早期文档写成 `!= false`，导致字段缺失时
 > 环境检查报 ready、执行侧却跳过，两侧口径不一致；现统一为"必须显式 `true`"。
 
-`capability` 是会话自述的调用方式（如 `skill:imagegen`、`websearch`、`command:<binary>`）；插件不校验其内部实现，只校验声明是否完整、权限是否放行。
+`capability` 是会话自述的调用方式（如 `skill:imagegen`、`websearch`、`command:<binary>`）；插件不校验其内部实现，只校验声明是否完整、权限是否放行。`url_template` 供 `fetch_images` 把 `{query}` 填进 `{url}`；`assets_dir` 必须解析到项目根目录之内，越界拒绝。执行前 `fetch_images` 与环境检查都按 `image-sources.schema.json` 校验契约。
 
 ## 3. Permission gate（硬规则）
 

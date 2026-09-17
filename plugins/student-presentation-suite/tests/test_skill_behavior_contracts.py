@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import unittest
 from copy import deepcopy
 from pathlib import Path
@@ -42,6 +43,9 @@ class SkillBehaviorContractTests(unittest.TestCase):
         entry = marketplace["plugins"][0]
         self.assertEqual("claude-personal", marketplace["name"])
         self.assertEqual(manifest["name"], entry["name"])
+        self.assertIsNone(re.search(r"claude-code\s+branch", str(marketplace.get("description") or ""), re.I))
+        self.assertIn("research", str(entry.get("description") or "").lower())
+        self.assertIn("research", [str(item).lower() for item in entry.get("keywords") or []])
         self.assertEqual(
             [], manifest["dependencies"],
             "manifest 依赖列表应为空（pptx skill 已内嵌）",
@@ -123,11 +127,31 @@ class SkillBehaviorContractTests(unittest.TestCase):
     def test_cross_skill_handoff_is_deterministic(self) -> None:
         shared = self.read("references/shared-standards.md")
         self.assertIn("Outline-only work never creates", shared)
+        self.assertIn("Use `sp-research`", shared)
+        self.assertIn("Research Pack", shared)
         self.assertIn('“看看问题” means review only', shared)
         self.assertIn('“直接改好” means review diagnosis followed by PPTX editing', shared)
         review = self.read("skills/sp-review/SKILL.md")
         self.assertIn("先诊断，再交接给 `sp-deck`", review)
         self.assertIn("不得覆盖原始 deck", review)
+        agents = self.read("AGENTS.md")
+        self.assertIn("**`sp-research`**", agents)
+        cost = self.read("references/cost-discipline.md")
+        self.assertIn("`sp-research`", cost.split("适用范围", 1)[1].split("\n", 1)[0])
+
+    def test_skill_local_reference_paths_exist(self) -> None:
+        outline = self.read("skills/sp-outline/SKILL.md")
+        for name in (
+            "slide-structures.md",
+            "transition-phrases.md",
+            "group-handoff.md",
+            "qa-prediction.md",
+        ):
+            self.assertIn(f"references/{name}", outline)
+            self.assertTrue((ROOT / "skills/sp-outline/references" / name).is_file(), name)
+        research = self.read("skills/sp-research/SKILL.md")
+        self.assertIn("../../references/image-sourcing.md", research)
+        self.assertTrue((ROOT / "references/image-sourcing.md").is_file())
 
     def test_pptx_intake_is_a_hard_gate(self) -> None:
         intake = self.read("references/presentation-intake.md")

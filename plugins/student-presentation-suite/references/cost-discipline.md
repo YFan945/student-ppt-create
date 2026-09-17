@@ -3,7 +3,7 @@
 本文件是 suite 范围内**工作方式**的 canonical 来源。`shared-standards.md` 规定
 "做成什么样"，本文件规定"怎么做到"。
 
-适用范围：`sp-outline`、`sp-deck`、`sp-review` 的全部阶段。
+适用范围：`sp-research`、`sp-outline`、`sp-deck`、`sp-review` 的全部阶段。
 
 ## 为什么需要这份约束
 

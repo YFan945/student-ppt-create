@@ -37,18 +37,10 @@ PYTHONPATH=. python -m unittest discover -s tests
 所有权与审计记录见
 `plugins/student-presentation-suite/references/pptx-runtime-provenance.md`。
 
-开发验收命令：
-
-```bash
-cd plugins/student-presentation-suite
-PYTHONPATH=. python -m unittest discover -s tests
-ruff check shared/ scripts/ tests/
-python scripts/smoke_pptx.py
-python scripts/scenario_render_matrix.py --require-render   # 9 场景全链路渲染
-python scripts/check_claude_pptx_env.py --json --strict
-python scripts/check_plugin_release.py --json
-claude plugin validate --strict ./plugins/student-presentation-suite
-```
+开发验收命令见根目录 `AGENTS.md`（完整验证套件）与插件
+`plugins/student-presentation-suite/AGENTS.md`（插件内快捷命令）。
+改说明文档时按 `AGENTS.md` 的 Documentation Ownership 同步，不要把同一段
+复制进四份 README。
 
 ## 工作流
 

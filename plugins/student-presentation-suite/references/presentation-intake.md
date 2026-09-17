@@ -225,18 +225,21 @@ implements the already approved summary.
 - `incomplete`: a usable artifact exists but a required deliverable or QA gate failed.
 - `blocked`: production cannot proceed because a required input, artifact, or runtime dependency is unavailable.
 
-The rework edge is `qa → producing` (with `--reason <blocker summary>`), used to
-rebuild after a QA blocker is found without restarting the whole pipeline. The
-recovery edge is `incomplete → qa` (with `--reason <summary>`), used to re-enter
-QA after a missing gate or runtime dependency is resolved; `blocked` recovers via
-`unblock`, which returns to `intake_pending` and requires re-confirmation. Never
-claim production has started before `intake_confirmed`. `incomplete` and `blocked`
+The rework edge is `qa → producing`, invoked as
+`skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>` after a QA
+blocker, without restarting the whole pipeline. The recovery edge is
+`incomplete → qa`, used to re-enter QA after a missing gate or runtime
+dependency is resolved; `blocked` recovers via `workflow_guard.py unblock`,
+which returns to `intake_pending` and requires re-confirmation. Never claim
+production has started before `intake_confirmed`. `incomplete` and `blocked`
 may be entered from any later state when their conditions are met.
 
-For PPTX work, persist this state under the active project with
-`scripts/workflow_guard.py`. The workflow gate is tracked through the state
-commands as a process convention; the summary file hash is retained as the
-auditable confirmation boundary.
+For PPTX work, `scripts/workflow_guard.py` persists intake only (`init` /
+`confirm`). The summary file hash is the auditable confirmation boundary.
+After `ppt_pipeline.py plan`, `build-manifest.json` is the production
+authority; the pipeline mirrors `workflow-state.json` automatically. Do not
+call `workflow_guard.py transition` to advance `producing` or `complete`.
+Dispatch with `ppt_pipeline.py next`; deliver with `ppt_pipeline.py complete`.
 
 ## Work isolation
 

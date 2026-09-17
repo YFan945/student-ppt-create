@@ -2,6 +2,12 @@
 
 [中文](README-zh.md) | English
 
+**This file (marketplace README):** how to install, verify, update, and
+uninstall the plugin from GitHub, plus short usage examples and troubleshooting.
+It does **not** own skill contracts, visual rules, or CLI flags — those live in
+[`plugins/student-presentation-suite/README.md`](plugins/student-presentation-suite/README.md).
+When editing docs, follow [AGENTS.md](AGENTS.md) → Documentation Ownership.
+
 > This repository is the Claude Code-only marketplace for
 > `student-presentation-suite`. **Download and install it from the `main`
 > branch of this repository** — see Download And Install below. Installation,
@@ -10,17 +16,8 @@
 
 `student-presentation-suite` supports student-owned university presentations,
 including coursework reports, thesis defenses, and group presentations. In
-Claude Code it can plan an outline and speaker notes, create an editable PPTX,
-review an existing deck, or produce a separate improved version.
-
-Its visual runtime includes 12 lightweight style references in three categories — each with a
-light palette plus the matching dark scheme for cover, section and closing pages — an `Other`
-custom entry, a 32-recipe visual composition reference library, 36 shared composition
-references, an original SVG/non-rectangular shape toolbox, a safety/fallback composer,
-and content/file/visual QA evidence bound to the final PPTX hash. Image search and
-generation are declared explicitly through `image-sources.json` and reported as
-`image_search_ready` / `image_generation_ready`, so planning never promises a
-capability the session does not have.
+Claude Code it can research evidence, plan an outline and speaker notes, create
+an editable PPTX, review an existing deck, or produce a separate improved copy.
 
 A reproducible
 [golden sample](plugins/student-presentation-suite/examples/golden-sample/README.md)
@@ -40,33 +37,15 @@ documented in
 
 | Request | Skill | Result |
 | --- | --- | --- |
-| Outline, slide content, notes, or group allocation | `student-presentation` | Markdown planning documents; no PPTX |
-| Create, rebuild, or edit an editable PPT/PPTX | `student-presentation-ppt` | PPTX, speaker notes, and preview |
-| Review, score, or diagnose an existing deck | `student-presentation-review` | Read-only review by default |
+| Gather and grade evidence | `sp-research` | Research Pack only; no PPTX |
+| Outline, notes, or group allocation | `sp-outline` | Markdown planning documents; no PPTX |
+| Create, rebuild, or edit an editable PPT/PPTX | `sp-deck` | PPTX, speaker notes, and preview |
+| Review, score, or diagnose an existing deck | `sp-review` | Read-only review by default |
 
-PPTX creation and editing use the suite-owned `pptx_tool.py` facade and
-`shared/pptx_runtime/` implementation. No external `document-skills` plugin,
-cache path, or copied upstream runtime is required or distributed.
-The runtime selectively deep-clones mutable slide dependencies, runs Open XML SDK markup/schema
-validation plus suite-owned OPC semantics, and produces hidden-slide-aware paginated contact sheets.
-Orphan cleanup is transactional, slide inspection exposes versioned per-page metadata, and Linux
-rendering can build a suite-owned AF_UNIX compatibility shim only when sandbox detection requires it.
-
-## Structured Workflow And Controls
-
-Version 0.4 adds a confirmed Presentation Brief before Slide Spec/PPTX work:
-
-- automatic classification for coursework, defense, competition, club showcase, and research;
-- audience type and explanation depth;
-- problem-solution, research, timeline, comparison, case-study, and product structures;
-- beginner/expert interaction and basic/high-score quality modes;
-- per-slide text limits, visual/text ratio, notes, key lines, citation style, exports, and versioning;
-- layered generation: directory → slide claims → PPT copy → speaker version → Slide Spec;
-- Evidence Ledger, deterministic quality report, locked slides, revision manifests, training cards, and rehearsal support.
-
-Local exports can include PPTX, PDF, previews, Markdown notes, HTML teleprompter,
-quality report, references, and revision manifest. Web editing and cloud
-synchronization require an external service and are not claimed by this plugin.
+Pipeline, intake, visual system, and quality gates:
+[plugin README](plugins/student-presentation-suite/README.md).
+PPTX creation uses suite-owned `pptx_tool.py` and `shared/pptx_runtime/` (no
+external `document-skills`). Web editing and cloud sync are not claimed.
 
 ## Requirements
 
@@ -198,19 +177,9 @@ Before creating or editing a PPTX, Claude prepares a complete
 slide count, rubric, sources, visual style, and deliverables. Production starts
 only after you confirm it.
 
-The suite records this boundary through `workflow_guard.py` state commands
-(init/confirm/transition); the approved summary hash and workflow state are
-stored in the project output directory. `ppt_pipeline.py` refuses illegal
-production steps. A narrow PreToolUse hook (`cost_guard.py`) blocks plugin-source
-archaeology, same-hash PNG re-reads, any teammate whose name contains
-`researcher`/`critic` (not just the exact name `researcher`), nested spawns of
-the receipt-bearing agents, named spawns of `presentation-researcher` /
-`visual-critic`, a 3rd repeat of the same read-only inspection command
-(`ls`/`cat`/`find`), direct `run_with_pptxgenjs.js` generation, and
-main-session reads of full-size render images beyond a small budget (per-page
-review belongs to the isolated `visual-critic`; `render` also writes a cheap
-`contact-sheet-thumb.jpg` for overview) — it does not replace the intake
-confirmation gate, and it does not forbid the first image Read.
+Production is gated by a confirmed Production Summary (`workflow_guard.py` /
+`ppt_pipeline.py`). Cost and spawn guards are documented in the
+[plugin README](plugins/student-presentation-suite/README.md).
 
 Deliverables are written to the active project's `outputs/` directory, never
 to the plugin installation. Existing source decks are never overwritten.
@@ -306,30 +275,8 @@ Depending on the request, `outputs/` may contain:
 ```
 
 The final response reports each absolute file path, slide count, rendered QA
-result, and the status: `complete`, `incomplete`, or `blocked`. The pipeline freezes the plan, builds and renders the deck, then requires an independent visual critic. The QA DAG is `package → rendered → actual-content → quality → delivery`; completion revalidates current evidence hashes. Legacy content/asset/QA manifests remain optional diagnostics.
-`deck.js` remains adaptive-freeform PptxGenJS: the model chooses expression, focal point, and
-composition language, while the Actual Element Registry enforces real-element geometry/text-fit
-baselines. Suite-owned layout, visual, shape, SVG, and composer libraries remain inspiration or
-deterministic fallback. Render QA no longer treats “no overflow/overlap” as sufficient design
-quality: high-score decks also evaluate hierarchy, focal point, composition, visual interest,
-whitespace, AI-template feel, and repeated structures across the deck.
-Eleven editable visual families (`pptx-visuals.js`) provide hero,
-visual-dominant, process-path, timeline, comparison, dashboard, architecture,
-matrix, quote, summary, and reference structures without post-generation patch
-loops. The 12 formal styles resolve only to character, six color roles, four background references,
-and one optional SVG reference; `Other` uses the same confirmed structure. They share 36
-page-layout inspirations ranked by content feasibility, title-zone capacity, density, and silhouette history—never by visual style. Slide Spec `layout`
-is an adaptable hint unless `layout_lock: true`; missing assets follow explicit feasible fallbacks. Recipes are adaptive defaults rather
-than per-slide templates: narrative fit, readability, and source safety take
-priority. A unified smoke tool builds six-page galleries for all 12 styles, a
-separate reference/fallback gallery for all 36 layouts, and a 12-page SVG atlas.
-Brief-to-Slide Spec handoff treats missing mirrored confirmed fields as errors,
-and support outputs may only narrow the confirmed deliverable set. When
-MarkItDown is unavailable, suite-owned OOXML extraction still checks complete
-slide, speaker-note, and chart text.
-The release workflow also renders a temporary scenario matrix on Linux for
-coursework, English-classroom, defense, competition, club-showcase, research,
-software projects, data surveys, and school-template editing.
+result, and status: `complete`, `incomplete`, or `blocked`. Visual system, QA
+DAG, and CI render matrix: [plugin README](plugins/student-presentation-suite/README.md).
 
 ## Update And Uninstall
 
@@ -337,9 +284,12 @@ Update the repository and plugin:
 
 ```powershell
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
-git pull --ff-only origin claude-code
+git switch main
+git pull --ff-only origin main
 claude plugin update -s user student-presentation-suite@claude-personal
 ```
+
+GitHub-marketplace installs: `claude plugin marketplace update claude-personal`.
 
 Uninstall:
 
@@ -353,8 +303,8 @@ claude plugin marketplace remove claude-personal
 ### The Plugin Does Not Trigger
 
 Make the student academic context and presentation intent explicit. You can
-also name `student-presentation`, `student-presentation-ppt`, or
-`student-presentation-review` directly in the request.
+also name `sp-research`, `sp-outline`, `sp-deck`, or `sp-review`
+directly in the request.
 
 ### The Environment Check Fails
 
@@ -366,16 +316,22 @@ python .\scripts\check_installed_version.py --json
 ```
 
 Install the missing Python or Node.js dependency reported by
-the check. LibreOffice and Poppler are recommended but not required — missing
-them skips rendered QA and PDF export but does not block PPTX generation.
+the check. LibreOffice and Poppler are required for rendered QA and `complete`
+delivery; candidate PPTX generation can run without them.
 
 ### Workflow State Is Stuck
 
-If QA found a blocker, do **not** reset: return to production via the rework edge
+If QA found a blocker, do **not** reset: repair through the pipeline rework edge
 to rebuild the generator and re-enter QA:
 
 ```powershell
-python .\plugins\student-presentation-suite\scripts\workflow_guard.py transition --to producing --reason "<blocker summary>"
+python .\plugins\student-presentation-suite\skills\sp-deck\scripts\ppt_pipeline.py repair --work-dir <wd>
+```
+
+After QA passes, complete with:
+
+```powershell
+python .\plugins\student-presentation-suite\skills\sp-deck\scripts\ppt_pipeline.py complete --work-dir <wd>
 ```
 
 `reset` / `unblock` are last resorts only — they drop the confirmed summary and
@@ -401,37 +357,10 @@ No. This repository supports Claude Code only.
 
 ## Development And Releases
 
-The project also includes a dedicated engineering toolchain:
-
-- **Python linting**: Ruff with selected rule sets (E, F, W, I, N, UP, B, SIM, ARG, RET)
-- **JavaScript linting**: ESLint with standard rules + Prettier formatting
-- **Cross-editor**: `.editorconfig` for consistent indentation and line endings
-- **Security scanning**: `pip-audit` and `npm audit` in CI pipeline
-- **Dependency management**: Dependabot configured for pip, npm, and GitHub Actions
-- **Integration tests**: End-to-end smoke tests for the spec → bridge pipeline
-- **Test utility extraction**: Shared [`test_helpers.load_module()`](plugins/student-presentation-suite/tests/test_helpers.py) eliminates 7 duplicate module loaders
-- **Community standards**: Issue/PR templates, `CONTRIBUTING.md`, `SECURITY.md`
-
-See [AGENTS.md](AGENTS.md) and [CHANGELOG.md](CHANGELOG.md) for source
-validation and release rules. Claude Code changes are published only from
-`claude-code`, never from `main`.
+Validation commands, version bumps, and GitHub Release steps:
+[AGENTS.md](AGENTS.md). Contributor setup: [CONTRIBUTING.md](CONTRIBUTING.md).
+Publish only from this repository's **`main`** branch.
 
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-## 0.13 production integrity
-
-Production uses per-work authorization in `outputs/.pptx-work/<work-id>/workflow-state.json`.
-Initialize/confirm with `--work-id`; legacy global states require fresh confirmation.
-The pipeline dispatches create, edit_ooxml (unpack/edit/pack), and rebuild_from_source
-(source-analysis.md required). Source-based deliveries require change-summary.md.
-QA auto-binds speaker-notes.md and current previews. An isolated visual-critic must
-read every page; runtime receipts and image hashes are verified before QA/complete.
-A/B/D research requires an isolated researcher receipt. `next --json` provides a
-compact stage contract. Image provider commands require independent user-approved
-command SHA256 flags; project JSON cannot authorize execution.
-CI lints skills and tests Python 3.11/3.12 with Claude Code 2.1.272 and Ruff 0.16.7.
-Run the release workflow on main: every validation job must pass before annotated
-tag and GitHub Release creation. PowerPoint compatibility is tracked separately
-using references/powerpoint-smoke.md; LibreOffice success is not Office certification.

@@ -52,6 +52,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m json.tool plugins/student-presentation-suite/references/presentation-brief.schema.json | Out-Null
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m json.tool plugins/student-presentation-suite/references/image-sources.schema.json | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m json.tool plugins/student-presentation-suite/references/asset-manifest.schema.json | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m json.tool plugins/student-presentation-suite/references/research-pack.schema.json | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m json.tool plugins/student-presentation-suite/references/evidence-map.schema.json | Out-Null
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m unittest discover -s plugins/student-presentation-suite/tests
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --probe

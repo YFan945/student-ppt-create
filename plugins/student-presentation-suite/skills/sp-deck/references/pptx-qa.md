@@ -213,8 +213,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/delivery_check.py" --core v
 交付报告通过后：
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/workflow_guard.py" transition --to complete \
-  --pptx <pptx> --delivery-report <delivery-report.json>
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete --work-dir <wd>
 ```
 
 v0.7.1 delivery report 继续使用 `gate_profile: simplified-v1` 保持 workflow_guard 兼容，同时写入：

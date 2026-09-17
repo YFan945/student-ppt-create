@@ -6,6 +6,7 @@
  */
 
 const pptxgen = require('pptxgenjs');
+const fs = require('fs');
 const H = require('pptx-helpers');
 const S = require('pptx-shapes');
 const SVG = require('pptx-svg-library');
@@ -104,9 +105,14 @@ function palette(tokens) {
   };
 }
 
-function containImage(path, box) {
-  const size = imageSize(path);
+function probeImageSize(path) {
+  const size = imageSize(fs.readFileSync(path));
   if (!size.width || !size.height) throw new RangeError(`Cannot determine image size: ${path}`);
+  return size;
+}
+
+function containImage(path, box) {
+  const size = probeImageSize(path);
   const scale = Math.min(box.w / size.width, box.h / size.height);
   const w = size.width * scale;
   const h = size.height * scale;
@@ -120,8 +126,7 @@ function containImage(path, box) {
 
 /** cover 裁切：填满 box 并居中裁掉溢出（区别于 contain 的留白）。 */
 function coverImage(path, box) {
-  const size = imageSize(path);
-  if (!size.width || !size.height) throw new RangeError(`Cannot determine image size: ${path}`);
+  probeImageSize(path);
   return {
     x: box.x,
     y: box.y,

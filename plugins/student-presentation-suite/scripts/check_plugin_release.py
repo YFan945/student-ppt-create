@@ -25,6 +25,9 @@ REQUIRED_FILES = [
     "references/presentation-intake.md",
     "references/presentation-brief.md",
     "references/presentation-brief.schema.json",
+    "references/slide-spec.schema.json",
+    "references/image-sources.schema.json",
+    "references/asset-manifest.schema.json",
     "references/content-workflow.md",
     "references/evidence-and-citations.md",
     "references/cost-discipline.md",
@@ -371,6 +374,10 @@ def check_current_documentation(errors: list[str]) -> None:
     introduction = changelog.split("\n## ", 1)[0]
     if "claude-code" in introduction or "Codex 发行" in introduction:
         errors.append("Changelog introduction must describe this repository's main release line")
+    marketplace = json.loads((REPOSITORY_ROOT / ".claude-plugin/marketplace.json").read_text(encoding="utf-8"))
+    description = str(marketplace.get("description") or "")
+    if re.search(r"claude-code\s+branch", description, re.I):
+        errors.append("marketplace.json description still refers to the retired claude-code branch")
 
 
 if __name__ == "__main__":

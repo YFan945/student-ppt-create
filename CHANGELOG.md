@@ -2,6 +2,39 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.13.3 — 2026-09-17
+
+### 文档：README 职责拆分，去掉拷贝段与 `claude-code` 漂移
+
+- 根 README（中英）只保留 marketplace 安装/验证/更新/排错；技能表改为现行
+  `sp-research` / `sp-outline` / `sp-deck` / `sp-review`；更新命令改回 `main`。
+- 插件 README（中英）声明自身职责，修正“PreToolUse 已移除”与 `cost_guard` 矛盾；
+  删掉四份文件各抄一遍的「0.13 执行完整性」。
+- `AGENTS.md` 增加 Documentation Ownership 矩阵；插件 `AGENTS.md` 只写插件内文档职责。
+- `CLAUDE.md` 改为指向两份 AGENTS 的短指针，不再复制结构/分支/14 种风格。
+
+### 契约：四技能路由与生产状态跟 pipeline 对齐
+
+- 插件 `AGENTS.md` 与 `shared-standards.md` 把 `sp-research` 写进激活/路由/handoff；
+  `cost-discipline.md` 适用范围含研究技能。
+- 生产返工/交付改为 `ppt_pipeline.py repair|complete`；intake 写明 guard 只做
+  intake，`build-manifest.json` 才是生产权威。根 README 排错命令同步。
+- SKILL 相对路径指向真实文件；marketplace / plugin 描述不再写 `claude-code` 分支，
+  并补上 research 关键词。
+- 契约测试锁住：文档不得再教 `transition --to producing|complete`。
+
+### 运行时：image-sources 契约接入、源 deck 只读、npm 漏洞
+
+- `fetch_images` 与环境检查按 `image-sources.schema.json` 校验；schema 增加
+  `url_template`；`assets_dir` 必须落在项目根内。
+- `cjk-fonts` 必须 `--output` 且不得写回输入文件。`lxml` 写入
+  `requirements-claude-pptx.txt`。
+- `image-size` 直依赖升到 2.0.2（buffer API）。pptxgenjs 仍嵌套 1.2.1，
+  npm audit allowlist 续期到 2026-12-01 并写明原因。不跟 Dependabot #20 的
+  eslint 8→10。
+- 发布门禁与 CI `json.tool` 补上 slide-spec / image-sources / asset-manifest /
+  research-pack / evidence-map schema。
+
 ## 0.13.2 — 2026-09-17
 
 来源：2026-09-16 0.13.1 真实执行会话复盘（碳中和光伏 vs 风电 12 页 deck），

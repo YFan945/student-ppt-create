@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -326,7 +327,10 @@ def command_clean(args: argparse.Namespace) -> int:
 
 
 def command_cjk_fonts(args: argparse.Namespace) -> int:
+    if args.output is None:
+        raise SystemExit("--output is required to protect the source package")
     try:
+        _ensure_separate_output(args.input, args.output)
         mapping = parse_font_map(list(args.map))
         total = apply_cjk_fonts(args.input, mapping, args.output)
     except (ValueError, zipfile.BadZipFile) as exc:
@@ -334,7 +338,7 @@ def command_cjk_fonts(args: argparse.Namespace) -> int:
         return 1
     print(
         json.dumps(
-            {"ok": True, "pptx": str(args.input), "mapping": mapping, "ea_written": total},
+            {"ok": True, "pptx": str(args.output), "mapping": mapping, "ea_written": total},
             ensure_ascii=False,
             indent=2,
         )
@@ -342,11 +346,17 @@ def command_cjk_fonts(args: argparse.Namespace) -> int:
     return 0
 
 
-
-
 def command_fetch_images(args: argparse.Namespace) -> int:
     try:
-        report = fetch_images(args.sources, args.query, args.out_dir, args.timeout, set(args.approve_command_sha256 or []))
+        project = Path(os.environ.get("CLAUDE_PROJECT_DIR") or Path.cwd())
+        report = fetch_images(
+            args.sources,
+            args.query,
+            args.out_dir,
+            args.timeout,
+            set(args.approve_command_sha256 or []),
+            project_root=project,
+        )
     except (ValueError, OSError, json.JSONDecodeError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False))
         return 1
@@ -963,14 +973,19 @@ def build_parser() -> argparse.ArgumentParser:
         "cjk-fonts",
         help="add <a:ea> East Asian typefaces for mapped latin fonts (CJK typography)",
     )
-    cjk.add_argument("input", type=Path, help="generated PPTX to rewrite in place")
+    cjk.add_argument("input", type=Path, help="generated PPTX to copy with CJK typefaces")
     cjk.add_argument(
         "--map",
         action="append",
         required=True,
         help="Latin=CJK pair, e.g. Cambria=SimHei; repeat for title/body fonts",
     )
-    cjk.add_argument("--output", type=Path, default=None, help="write to a new file instead of in place")
+    cjk.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="write to a new file; refuses to overwrite the input package",
+    )
     cjk.set_defaults(handler=command_cjk_fonts)
     fetch = sub.add_parser(
         "fetch-images",

@@ -1,10 +1,10 @@
 {
   "name": "student-presentation-suite",
-  "description": "University presentation planning, PPTX generation, and review suite with shared standards, image strategy, and anti-AI wording checks.",
+  "description": "University presentation research, planning, PPTX generation, and review suite with shared standards, image strategy, and anti-AI wording checks.",
   "author": {
     "name": "YFan945"
   },
-  "version": "0.13.2",
+  "version": "0.13.3",
   "homepage": "https://github.com/YFan945/student-ppt-create/tree/main",
   "repository": "https://github.com/YFan945/student-ppt-create/tree/main/plugins/student-presentation-suite",
   "license": "MIT",
@@ -12,6 +12,7 @@
     "presentation",
     "pptx",
     "student",
+    "research",
     "review",
     "speaker-notes",
     "coursework",

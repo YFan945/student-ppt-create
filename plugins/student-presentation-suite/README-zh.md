@@ -2,9 +2,18 @@
 
 中文 | [English](README.md)
 
+**本文件（插件 README）：** 安装后的行为——管线、四个 skill、intake、交接、产出、
+视觉系统、门禁和 runtime CLI。安装/更新/卸载见仓库根
+[README-zh.md](../../README-zh.md)。细则在 `references/` 与 `SKILL.md`。
+同步规则：仓库 [AGENTS.md](../../AGENTS.md) 的 Documentation Ownership；
+插件内说明见 [AGENTS.md](AGENTS.md)。
+
 `student-presentation-suite` 是面向大学生课程汇报、答辩和小组展示的 Claude
 Code 插件。它将外部知识检索、内容规划、可编辑 PPTX 生成和已有 deck 审查拆成独立
 skill，并共享统一的需求表、Slide Spec 与质量标准。
+
+发布源是 `YFan945/student-ppt-create` 的 **`main`**。安装见
+[根 README](../../README-zh.md)。
 
 安装 ID：`student-presentation-suite@claude-personal`。
 
@@ -97,9 +106,11 @@ AF_UNIX 时，render 才按需编译并加载内置 shim。
 
 处于 `intake_pending` 时，不得运行环境检查、生成、渲染或交付命令。
 
-插件通过 `workflow_guard.py` 状态机命令（init/confirm/transition）记录状态。
-PreToolUse hook 已移除，命令不再自动拦截；状态由 SKILL 文本自律维护——状态未
-推进到 `intake_confirmed` 前不运行生产脚本。
+插件通过 `workflow_guard.py`（init/confirm/transition）记录状态。
+`intake_pending` 下不得跑环境检查、生成、渲染或交付。`ppt_pipeline.py` 拒绝非法
+生产步骤。窄的 PreToolUse hook（`scripts/cost_guard.py`）拦截插件源码考古、
+未变 PNG 重读、凭据代理的命名/嵌套 spawn、重复只读巡检，以及用
+`run_with_pptxgenjs.js` 绕过管线；它不替代 Production Summary 确认。
 
 ## 结构化交接
 
@@ -197,16 +208,18 @@ sh skills/sp-deck/scripts/run_gates.sh --art-direction <a.yaml> --slide-spec <s.
 通过时只回显 1 行，完整明细写入 `gates-report.json`；单个 gate 脚本仍可单独调用用于调试。
 生产段用 `skills/sp-deck/scripts/ppt_pipeline.py next --work-dir <wd> --json` 发现下一步
 （`plan` 会 scaffold `deck.js` + `pages/pNN-*.js`，整文件生成器会被 `build` 拒绝）。
-工作方式约束（并行调用、定点编辑、写盘即弃、阶段小结、检索走 `sp-research` fork、
+工作方式约束（并行调用、定点编辑、写盘即弃、阶段小结、检索走 `sp-research` 显式 spawn、
 CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）见
 `references/cost-discipline.md`。`session_cost.py` 会在 2 秒内合并用量相同的 assistant
 记录，避免 JSONL 三份重复把成本放大。`cost_guard.py` 作为 PreToolUse hook 拦截插件源码
 考古、未变 PNG 的重读、名字含 `researcher`/`critic` 的 teammate、嵌套的凭据代理 spawn，
 以及直接调用 `run_with_pptxgenjs.js` 绕过管线；但不拦截第一次读图。
 
-`complete` 使用 `workflow_guard.py transition --to complete --pptx <pptx> --delivery-report <report>`。
-发现 blocker 时最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重跑最终门禁”；
-仍有 blocker 则交付 `incomplete`。CI 继续渲染完整场景矩阵，但不会提交生成产物。
+发现 blocker 时用 `skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>`
+走返工边，不要手工 `workflow_guard.py transition` 推进 `producing` / `complete`。
+最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重跑最终门禁”；
+仍有 blocker 则交付 `incomplete`。QA 通过后 `complete` 使用
+`ppt_pipeline.py complete --work-dir <wd>`。CI 继续渲染完整场景矩阵，但不会提交生成产物。
 
 ## Runtime
 
@@ -232,7 +245,7 @@ python scripts/build_support_outputs.py path\to\spec.yaml --output-dir <project>
 python scripts/create_revision_manifest.py old.yaml new.yaml --strict
 python scripts/manage_versions.py snapshot --output-root <project>\outputs --revision-id r1 --file <deck>
 python scripts/slide_spec_to_pptx_brief.py path\to\spec.yaml --output-dir <project>\outputs
-python scripts/bump_version.py 0.5.0 --dry-run  # 统一版本升级
+python scripts/bump_version.py <version> --dry-run  # 统一版本升级
 python scripts/session_cost.py --last 1  # 会话成本复盘（/sp-cost-report 命令等价）
 node scripts/run_with_pptxgenjs.js --probe
 python scripts/smoke_pptx.py
@@ -243,14 +256,12 @@ python scripts/smoke_pptx.py
 这是 Claude Code 专用包，不包含 `.codex-plugin`、`agents/openai.yaml`、
 `artifact-tool` 或 Codex runtime 声明。
 
-安装、维护和发布说明见仓库根目录
-[README](../../README-zh.md)、[AGENTS.md](../../AGENTS.md) 和
-[CHANGELOG.md](../../CHANGELOG.md)。
+安装与更新见仓库根目录 [README-zh.md](../../README-zh.md)；验证与发布见
+[AGENTS.md](../../AGENTS.md)；版本历史见 [CHANGELOG.md](../../CHANGELOG.md)。
 
-## 0.13 执行完整性
-
-每个任务使用 `outputs/.pptx-work/<work-id>/workflow-state.json`，init/confirm 传 `--work-id`；旧全局状态需重新确认。三种模式统一走 Pipeline：create、edit_ooxml（解包/编辑/打包）、rebuild_from_source（须 source-analysis.md）。保留 source，编辑交付须 change-summary.md。
-
-QA 自动接入 speaker-notes.md 和当前预览；独立 visual-critic 读取全部页图，hook 凭据和图片 hash 在 QA/complete 复核。A/B/D research 需要真实研究员凭据。next 输出紧凑阶段契约。图片 provider command 需用户独立批准 SHA256，项目 JSON 不能自行授权。
-
-CI 扫描 skills，测试 Python 3.11/3.12，固定 Claude Code 2.1.272、Ruff 0.16.7。main 上运行 release workflow，全部检查通过后才创建 annotated tag 和 GitHub Release。PowerPoint 独立验收使用 references/powerpoint-smoke.md，LibreOffice 通过不代表 Office 已验收。
+每个任务使用 `outputs/.pptx-work/<work-id>/workflow-state.json`（init/confirm 传
+`--work-id`）。三种模式：create、edit_ooxml、rebuild_from_source（须
+source-analysis.md）。编辑保留源文件并须 change-summary.md。QA/complete 前校验
+隔离 visual-critic / 研究员凭据（适用阶段）。图片 provider command 需用户批准的
+SHA256，项目 JSON 不能自行授权。PowerPoint 验收见
+`references/powerpoint-smoke.md`；LibreOffice 通过不代表 Office 已验收。

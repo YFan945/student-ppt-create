@@ -22,9 +22,9 @@ implementation line and is not supported here.
 - `plugins/student-presentation-suite/`: complete installable Claude Code plugin.
 - `scripts/install_claude_plugin.ps1`: install, migrate, update, and dependency setup.
 - `scripts/check_marketplace_release.py`: repository-level release validation.
-- `README.md` / `README-zh.md`: marketplace installation and contributor documentation.
+- `README.md` / `README-zh.md`: marketplace only (install, verify, update, uninstall, troubleshooting). Plugin behavior lives in the plugin READMEs.
 - `CHANGELOG.md`: newest-first version release history.
-- `CLAUDE.md`: project-specific conventions for Claude Code sessions.
+- `CLAUDE.md`: short pointer for Claude Code sessions; must not duplicate this file.
 - `CONTRIBUTING.md`, `SECURITY.md`: community and security guidelines.
 - `plugins/student-presentation-suite/references/pptx-runtime-provenance.md`: runtime ownership and upstream audit provenance.
 
@@ -47,6 +47,29 @@ Inside the plugin package:
 - `shared/`: reusable Python implementation.
 - `tests/`: behavioral, schema, runtime, and delivery contracts.
 - `examples/`: routing and interaction examples.
+
+## Documentation Ownership
+
+Keep **one owner per fact**. Copy-paste across READMEs is how `claude-code` vs
+`main` drift happened. When you change a row's topic, update every file in
+**Update together**; do not invent a fifth copy.
+
+| Topic | Canonical file | Update together | Do not put it in |
+| --- | --- | --- | --- |
+| Install, marketplace add, migrate, verify, update, uninstall | root `README.md` | root `README-zh.md` | plugin README (link the root file) |
+| Four skills, intake, handoff, visual system, gates, plugin CLI | `plugins/student-presentation-suite/README.md` | plugin `README-zh.md` | root README beyond a one-line pointer |
+| Routing / quality / Slide Spec / research / cost rules | the matching `plugins/.../references/*.md` | `SKILL.md` only if trigger or workflow steps change | README prose restating the whole policy |
+| Skill trigger, state transition, output contract | `skills/*/SKILL.md` | examples if routing examples change | `CLAUDE.md` |
+| Publish source, validation commands, release, version bump | **this file** (`AGENTS.md`) | `CONTRIBUTING.md` if contributor steps change; `CHANGELOG.md` for user-visible releases | READMEs except “see AGENTS.md” |
+| Plugin-local test commands and skill activation | `plugins/student-presentation-suite/AGENTS.md` | — | root `AGENTS.md` command blocks (keep one validation suite here) |
+| Session bootstrap for Claude Code | `CLAUDE.md` | only if the pointer table changes | anywhere else |
+
+Always:
+
+- English and Chinese README pairs stay in sync. Never update only one language.
+- `CHANGELOG.md`: add `## Unreleased` (or the version section) for release-worthy doc or behavior changes.
+- Nested READMEs (`examples/golden-sample/`, `examples/visual-template-gallery/`, `scripts/live_prompts/`) describe **that directory only**.
+- Historical notes (`CHANGELOG` past versions, `scripts/live_prompts/FINDINGS.md`) are not current install instructions.
 
 ## Architecture And Ownership
 
@@ -127,8 +150,10 @@ Do not restore the removed external `document-skills` dependency or copied runti
 
 ## Editing Rules
 
-- Update both English and Chinese README files when behavior, installation,
-  architecture, requirements, or release procedures change.
+- Follow **Documentation Ownership** above. Marketplace vs plugin README is a
+  split of audience, not two copies of the same essay.
+- Update both English and Chinese README files in the pair you actually touch
+  (root pair and/or plugin pair) when that pair's topics change.
 - Update `CHANGELOG.md` for every release-worthy change.
 - Use `python plugins/student-presentation-suite/scripts/bump_version.py <version>` to
   synchronize all version fields (marketplace.json, plugin.json, package.json,

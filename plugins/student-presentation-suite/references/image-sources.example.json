@@ -27,6 +27,8 @@
       "kind": "web-search",
       "enabled": false,
       "capability": "websearch",
+      "command": "curl -sL {url} -o {output}",
+      "url_template": "https://example.invalid/search?q={query}",
       "requires": ["curl"],
       "permission": "licensed",
       "notes": "Real people, places, products, current events. Requires explicit user permission before use."

@@ -37,6 +37,10 @@
             "items": {"type": "string"},
             "description": "Executable names that must resolve on PATH for this provider to be usable."
           },
+          "url_template": {
+            "type": "string",
+            "description": "URL pattern for web-search commands. `{query}` is replaced with a percent-encoded query."
+          },
           "assets_dir": {
             "type": "string",
             "description": "Project-relative directory holding user-provided assets."

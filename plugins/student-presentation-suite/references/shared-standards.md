@@ -1,6 +1,6 @@
 # Shared Student Presentation Standards
 
-Use these standards across planning, PPTX production, and review.
+Use these standards across research, planning, PPTX production, and review.
 
 ## Canonical Ownership
 
@@ -18,9 +18,10 @@ stage summaries, delegated search, and single-run gating.
 
 ## Intent Routing
 
-Before routing to any skill in this suite, require both a clear student-owned academic context and an explicit PPT intent. Strong context includes an identified student, university assignment, classroom report, thesis/course defense, teacher rubric, or student competition. Do not treat a single ambiguous word such as "course", "class", "competition", or "defense" as sufficient without supporting academic cues. PPT intent must be one of: requesting a PPT/slide outline, requesting PPT/PPTX creation or improvement, or requesting review of an existing PPT artifact. Do not use this suite for generic presentation work, standalone scripts/Q&A, attached decks without a review request, or non-student presentations.
+Before routing to any skill in this suite, require both a clear student-owned academic context and an explicit PPT-related intent. Strong context includes an identified student, university assignment, classroom report, thesis/course defense, teacher rubric, or student competition. Do not treat a single ambiguous word such as "course", "class", "competition", or "defense" as sufficient without supporting academic cues. PPT-related intent must be one of: requesting a PPT/slide outline; requesting PPT/PPTX creation or improvement; requesting review of an existing PPT artifact; or requesting external facts, current data, statistics, citations, or a Research Pack that will support such a deck (including user-material-only scope D). Do not use this suite for generic presentation work, standalone scripts/Q&A, attached decks without a review request, or non-student presentations.
 
 Choose the skill by the user's requested outcome, not only by the input type:
+- Use `sp-research` when an eligible student-context request needs external facts, current data, statistics, citations, or a Research Pack, including scope-D compilation of the user's own materials. It never designs slides or creates PPTX.
 - Use `sp-outline` when an eligible student-context request explicitly asks for a PPT/slide outline or Slide Spec outline handoff.
 - Use `sp-deck` when the user asks for PPT, PPTX, PowerPoint, slides, editable deck, rendered preview, or a ready presentation file.
 - Use `sp-review` when the user provides an existing artifact and asks for review, scoring, risk checks, before/after comparison, or improvement advice.
@@ -29,15 +30,17 @@ Ambiguous requests:
 - "做一个 PPT", "生成 slides", "make a slide deck", "make PowerPoint", or "make PPTX" means PPTX production unless the user explicitly says outline only.
 - "prepare a presentation" or "help me present" without explicit student context and PPT wording is outside this suite.
 - "PPT 大纲" or "slide outline" in an explicit student context means planning, not file generation, unless the user also asks for `.pptx`.
+- "帮我查证/找来源/补引用/这些数据从哪来" in an explicit student PPT context means `sp-research`, even when the user has not yet asked for an outline or a `.pptx`.
 - "帮我看看/审一下/打分/有什么问题" with an existing artifact means review.
 - "帮我优化这个 PPT" with an existing artifact means first review and identify fixes; only edit or regenerate the deck if the user explicitly asks for file changes.
 - A broad topic with no explicit student context and PPT output target is outside this suite.
 - If a request mixes planning and PPTX generation, produce or confirm a slide plan/Slide Spec first, then build the PPTX from that plan.
 
-When the target remains genuinely ambiguous, ask one routing question: outline, editable PPTX, or review. Do not ask when the requested artifact or action already makes the route clear.
+When the target remains genuinely ambiguous, ask one routing question: research/evidence, outline, editable PPTX, or review. Do not ask when the requested artifact or action already makes the route clear.
 
 ## Cross-Skill Handoff
 
+- Research Pack + passing validation is the only evidence handoff into outline or deck. Outline writes draft Slide Spec `evidence_refs` with Research Pack `F`/`D`/`Q` ids; `sp-deck` compiles those into E ids. C-only work skips research and must not invent an empty pack.
 - Outline-only work never creates or claims to create a PPTX.
 - A file-generation request goes directly to `sp-deck`; planning happens inside that workflow.
 - “看看问题” means review only.

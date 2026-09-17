@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 _PLACEHOLDER = re.compile(r"\{(query|url|output)\}")
+_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "references" / "image-sources.schema.json"
 
 
 def _slug(text: str) -> str:
@@ -37,11 +38,48 @@ def _slug(text: str) -> str:
     return slug[:60] or "query"
 
 
-def _check_gates(sources: dict[str, Any], approved_commands: set[str] | None = None) -> tuple[list[dict], list[str]]:
+def resolve_assets_dir(raw: str, project_root: Path) -> Path | None:
+    """Return ``raw`` resolved under ``project_root``, or None if it escapes."""
+    root = Path(project_root).resolve()
+    path = Path(raw)
+    resolved = path.resolve() if path.is_absolute() else (root / path).resolve()
+    try:
+        resolved.relative_to(root)
+    except ValueError:
+        return None
+    return resolved
+
+
+def load_image_sources_contract(path: Path) -> dict[str, Any]:
+    """Load and schema-validate an image-sources.json contract."""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    schema = json.loads(_SCHEMA_PATH.read_text(encoding="utf-8"))
+    import jsonschema
+
+    jsonschema.Draft202012Validator.check_schema(schema)
+    errors = sorted(
+        jsonschema.Draft202012Validator(schema).iter_errors(data),
+        key=lambda err: list(err.path),
+    )
+    if errors:
+        details = "; ".join(
+            f"{'/'.join(str(part) for part in err.path) or '<root>'}: {err.message}"
+            for err in errors
+        )
+        raise ValueError(f"image-sources.json failed schema validation: {details}")
+    return data
+
+
+def _check_gates(
+    sources: dict[str, Any],
+    approved_commands: set[str] | None = None,
+    project_root: Path | None = None,
+) -> tuple[list[dict], list[str]]:
     """Return (runnable providers, skip reasons) after permission + env gates."""
     permission = sources.get("permission") or {}
     runnable: list[dict[str, Any]] = []
     reasons: list[str] = []
+    root = Path(project_root).resolve() if project_root is not None else Path.cwd().resolve()
     for provider in sources.get("providers", []):
         pid = provider.get("id", "?")
         if not provider.get("enabled"):
@@ -63,12 +101,22 @@ def _check_gates(sources: dict[str, Any], approved_commands: set[str] | None = N
         if missing:
             reasons.append(f"{pid}: required commands missing: {', '.join(missing)}")
             continue
-        runnable.append(provider)
+        entry = dict(provider)
+        if kind == "user-assets":
+            resolved = resolve_assets_dir(str(provider.get("assets_dir") or "assets"), root)
+            if resolved is None:
+                reasons.append(f"{pid}: assets_dir escapes project root")
+                continue
+            if not resolved.is_dir():
+                reasons.append(f"{pid}: assets_dir missing")
+                continue
+            entry["_resolved_assets_dir"] = str(resolved)
+        runnable.append(entry)
     return runnable, reasons
 
 
 def _collect_user_assets(provider: dict[str, Any], query: str, out_dir: Path) -> dict[str, Any] | None:
-    assets_dir = Path(provider.get("assets_dir", "assets"))
+    assets_dir = Path(provider.get("_resolved_assets_dir") or provider.get("assets_dir", "assets"))
     if not assets_dir.is_dir():
         return None
     tokens = [t for t in re.split(r"[\s,，、]+", query) if t]
@@ -143,11 +191,13 @@ def fetch_images(
     out_dir: Path,
     timeout_sec: int = 120,
     approved_commands: set[str] | None = None,
+    project_root: Path | None = None,
 ) -> dict[str, Any]:
     """Run the contract for every query. Returns a report dict."""
-    sources = json.loads(Path(sources_path).read_text(encoding="utf-8"))
+    sources = load_image_sources_contract(Path(sources_path))
     out_dir.mkdir(parents=True, exist_ok=True)
-    runnable, gate_reasons = _check_gates(sources, approved_commands)
+    root = Path(project_root).resolve() if project_root is not None else Path.cwd().resolve()
+    runnable, gate_reasons = _check_gates(sources, approved_commands, project_root=root)
     now = datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
     records: list[dict[str, Any]] = []
 

@@ -164,9 +164,11 @@ def main() -> int:
 
     # CJK typography: pptxgenjs only writes <a:latin>; add <a:ea> for Chinese glyphs.
     fonts = tokens["typography"]
-    run(py(SCRIPTS / "pptx_tool.py", "cjk-fonts", pptx,
+    cjk_out = pptx.with_name(f"{pptx.stem}.cjk.pptx")
+    run(py(SCRIPTS / "pptx_tool.py", "cjk-fonts", pptx, "--output", cjk_out,
            "--map", f"{fonts['title_font']}={fonts['cjk_title_font']}",
            "--map", f"{fonts['body_font']}={fonts['cjk_body_font']}"), "cjk-fonts")
+    os.replace(cjk_out, pptx)
 
     run(py(SCRIPTS / "pptx_tool.py", "validate", pptx, "--output", out_dir / "package-report.json", "--json"), "validate")
     note("package validation")

@@ -68,6 +68,26 @@ class PipelineContractTests(unittest.TestCase):
         self.assertIn("ppt_pipeline.py render", self.skill)
         self.assertIn("contact-sheet.png", self.skill)
 
+    def test_docs_do_not_teach_manual_production_transitions(self) -> None:
+        """Agents follow README/intake; those must not revive workflow_guard production hops."""
+        repo = ROOT.parents[1]
+        paths = (
+            ROOT / "README.md",
+            ROOT / "README-zh.md",
+            ROOT / "AGENTS.md",
+            ROOT / "references" / "presentation-intake.md",
+            ROOT / "references" / "shared-standards.md",
+            ROOT / "skills" / "sp-deck" / "references" / "pptx-qa.md",
+            ROOT / "scripts" / "slide_spec_to_pptx_brief.py",
+            repo / "README.md",
+            repo / "README-zh.md",
+        )
+        forbidden = ("transition --to producing", "transition --to complete")
+        for path in paths:
+            text = path.read_text(encoding="utf-8")
+            for token in forbidden:
+                self.assertNotIn(token, text, path)
+
     def test_repair_budget_is_bounded(self) -> None:
         value = int(self.contract["max_repairs"])
         self.assertGreaterEqual(value, 1)

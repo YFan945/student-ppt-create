@@ -173,6 +173,26 @@ class PptxToolTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertIn("--output is required", result.stderr + result.stdout)
 
+    def test_cjk_fonts_requires_separate_output(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.pptx"
+            write_minimal_package(source)
+            missing = self.run_tool("cjk-fonts", str(source), "--map", "Cambria=SimHei")
+            self.assertNotEqual(0, missing.returncode)
+            self.assertIn("--output", missing.stderr + missing.stdout)
+            same = self.run_tool(
+                "cjk-fonts", str(source), "--output", str(source), "--map", "Cambria=SimHei"
+            )
+            self.assertNotEqual(0, same.returncode)
+            self.assertIn("overwrite", same.stderr + same.stdout)
+            output = Path(tmp) / "cjk.pptx"
+            ok = self.run_tool(
+                "cjk-fonts", str(source), "--output", str(output), "--map", "Cambria=SimHei"
+            )
+            self.assertEqual(0, ok.returncode, ok.stderr + ok.stdout)
+            self.assertTrue(output.is_file())
+            self.assertTrue(source.is_file())
+
     def test_unpack_rejects_zip_slip_and_removes_partial_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

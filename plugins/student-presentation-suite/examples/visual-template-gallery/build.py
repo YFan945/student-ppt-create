@@ -95,10 +95,12 @@ def main() -> int:
     # gallery uses a single generic East Asian font for all latin typefaces.
     latin_fonts = sorted({f for s in styles for f in (s["tokens"]["typography"]["title_font"],
                                                       s["tokens"]["typography"]["body_font"])})
-    cjk_cmd = [sys.executable, str(SCRIPTS / "pptx_tool.py"), "cjk-fonts", str(pptx)]
+    cjk_out = pptx.with_name(f"{pptx.stem}.cjk.pptx")
+    cjk_cmd = [sys.executable, str(SCRIPTS / "pptx_tool.py"), "cjk-fonts", str(pptx), "--output", str(cjk_out)]
     for latin in latin_fonts:
         cjk_cmd += ["--map", f"{latin}=Microsoft YaHei"]
     subprocess.run(cjk_cmd, check=True, cwd=ROOT)
+    os.replace(cjk_out, pptx)
     print(f"[ok] cjk-fonts ({len(latin_fonts)} latin faces -> Microsoft YaHei)")
 
     subprocess.run(py(SCRIPTS / "pptx_tool.py", "validate", pptx, "--json"), check=True, cwd=ROOT)

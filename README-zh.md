@@ -2,19 +2,18 @@
 
 中文 | [English](README.md)
 
+**本文件（marketplace README）：** 从 GitHub 安装、验证、更新、卸载，以及短示例和排错。
+不承担 skill 契约、视觉规则或插件 CLI——那些在
+[`plugins/student-presentation-suite/README-zh.md`](plugins/student-presentation-suite/README-zh.md)。
+改文档时按 [AGENTS.md](AGENTS.md) 的 Documentation Ownership 同步。
+
 > 本仓库是专门适配 **Claude Code** 的插件 marketplace：**直接从本仓库的 `main`
 > 分支下载安装**（命令见下面“下载与安装”）。安装、依赖和运行方式均以
 > Claude Code 为准，不要在 **OpenAI Codex** 中安装本插件。
 
 `student-presentation-suite` 用于大学课程汇报、论文答辩、小组展示等学生学术
-场景。它可以在 Claude Code 中生成 PPT 大纲和讲稿、创建可编辑 PPTX、审查
-已有 PPT，并根据审查结果生成独立改进版。
-
-视觉运行时包含三类共 12 套轻量风格参考（每套含浅色 palette 与配套的深色方案，用于封面/章节/收尾）、
-“其他”自定义入口、32 条视觉构图参考 recipe、36 套共享构图参考、原创 SVG/非矩形形状工具箱、
-安全/兜底 composer，以及与最终 PPTX hash 绑定的 content/file/visual QA 证据链。
-搜图/生图能力通过 `image-sources.json` 显式声明，并以 `image_search_ready` /
-`image_generation_ready` 报告，规划阶段不会承诺会话并不具备的能力。
+场景。它可以在 Claude Code 中检索证据、生成 PPT 大纲和讲稿、创建可编辑 PPTX、
+审查已有 PPT，并根据审查结果生成独立改进版。
 
 仓库内含一个可复现的
 [黄金样例](plugins/student-presentation-suite/examples/golden-sample/README.md)，
@@ -33,32 +32,15 @@ student-presentation-suite@claude-personal
 
 | 需求 | 使用的 Skill | 结果 |
 | --- | --- | --- |
-| 写 PPT 大纲、逐页内容、讲稿或小组分工 | `student-presentation` | Markdown 规划文档，不创建 PPTX |
-| 创建、重做或修改可编辑 PPT/PPTX | `student-presentation-ppt` | PPTX、讲稿和预览图 |
-| 审查、评分或诊断已有 PPT | `student-presentation-review` | 默认只读的审查报告 |
+| 检索并分级证据 | `sp-research` | 仅 Research Pack，不创建 PPTX |
+| 写 PPT 大纲、讲稿或小组分工 | `sp-outline` | Markdown 规划文档，不创建 PPTX |
+| 创建、重做或修改可编辑 PPT/PPTX | `sp-deck` | PPTX、讲稿和预览图 |
+| 审查、评分或诊断已有 PPT | `sp-review` | 默认只读的审查报告 |
 
-PPTX 创建和编辑统一使用本套件维护的 `pptx_tool.py` 门面和
-`shared/pptx_runtime/` 实现。运行时不依赖 `document-skills` 插件或其缓存路径，
-发布包也不再分发直接引入的上游 runtime 文件。
-运行时会选择性深复制页面的可变依赖，并执行 Open XML SDK markup/schema validation
-与本套件 OPC 语义检查，同时生成支持隐藏页和分页的 contact sheet。
-孤立部件清理具备事务回滚，inspect 提供版本化逐页 metadata；Linux sandbox 确实阻断
-AF_UNIX 时才会按需编译本套件自有 shim，其他平台和正常 Linux 不加载。
-
-## 结构化工作流与控制
-
-0.4 版本在 Slide Spec/PPTX 工作前增加统一的 Presentation Brief：
-
-- 自动识别课程汇报、答辩、竞赛、社团展示和研究展示；
-- 建模受众类型与表达深度；
-- 支持问题解决、研究、时间线、对比、案例和产品六种结构；
-- 支持新手/熟手交互模式与基础版/高分版质量模式；
-- 可控制每页字数、图文比例、讲稿、金句、引用、导出格式和版本管理；
-- 按目录→逐页主张→PPT 文案→演讲版→Slide Spec 分层生成；
-- 提供 Evidence Ledger、确定性质量报告、页面锁定、revision manifest、训练卡和演练支持。
-
-本地可导出 PPTX、PDF、预览图、Markdown 讲稿、HTML 提词版、质量报告、
-引用清单和版本清单。网页编辑与云同步需要外部服务，本插件不虚假声明这些能力。
+管线、intake、视觉系统和质量门禁见
+[插件 README](plugins/student-presentation-suite/README-zh.md)。
+PPTX 使用本套件 `pptx_tool.py` 与 `shared/pptx_runtime/`（不依赖 `document-skills`）。
+网页编辑与云同步不在本插件声明范围内。
 
 ## 环境要求
 
@@ -189,15 +171,9 @@ claude
 课程、受众、语言、时长、页数、评分要求、资料来源、视觉风格和交付物。你确认
 后才会开始生成。这样可避免在关键信息不完整时直接产出错误文件。
 
-插件通过 `workflow_guard.py` 状态机命令（init/confirm/transition）记录状态，
-并在项目输出目录保存已确认摘要的哈希和工作流状态。`ppt_pipeline.py` 会拒绝非法
-生产步骤。另有一条窄的 PreToolUse hook（`cost_guard.py`）拦截插件源码考古、
-未变 PNG 的重读、名字含 `researcher`/`critic` 的 teammate（不限于恰好叫
-`researcher`）、凭据代理的带 `name` 或嵌套 spawn、同一条只读巡检命令
-（`ls`/`cat`/`find`）的第 3 次重复、直接调用 `run_with_pptxgenjs.js` 出 PPTX，
-以及主会话超预算读取全尺寸渲染图（逐页复核属于隔离的 `visual-critic`；`render`
-同时产出廉价的 `contact-sheet-thumb.jpg` 供概览）——它不替代 intake 确认门禁，
-也不禁止第一次读图。状态未推进到 `intake_confirmed` 前仍不运行生产脚本。
+生产由确认后的 Production Summary 门禁（`workflow_guard.py` /
+`ppt_pipeline.py`）。成本与 spawn 守卫见
+[插件 README](plugins/student-presentation-suite/README-zh.md)。
 
 生成结果默认写入当前项目的 `outputs/` 目录，不会写进插件安装目录。修改已有
 PPT 时也不会覆盖原文件。
@@ -286,22 +262,8 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 ```
 
 最终回复会说明文件绝对路径、页数、渲染检查结果，以及任务状态：
-`complete`、`incomplete` 或 `blocked`。Pipeline 冻结计划、构建和渲染后，要求独立 visual critic 审查。QA 顺序固定为 `package → rendered → actual-content → quality → delivery`，完成前重新核对证据 hash；旧 content/asset/QA manifest 仅作高级诊断。
-`deck.js` 继续采用 adaptive-freeform PptxGenJS：模型负责表达、视觉焦点和构图语言，Actual
-Element Registry 负责真实元素的越界/重叠/文字适配底线；版式、visual、shape、SVG 和 composer
-库只提供灵感或确定性兜底。Render QA 不再以“没有 overflow/overlap”作为审美通过标准：
-High-score 页面还要检查 hierarchy、focal point、composition、visual interest、whitespace、
-AI-template feel 和整套页面结构重复。QA 和 delivery 复用未变化的 package/readback 证据。
-11 类可编辑视觉组件（`pptx-visuals.js`）直接提供 hero、visual-dominant、
-process-path、时间线、对比、指标、架构、矩阵、引文、总结和参考资料结构，避免生成后逐页修补。
-12 种正式视觉风格只解析为气质、六角色 palette、四类背景和一个可选 SVG；“其他”使用
-同样的确认结构。36 套构图灵感只按内容可行性、标题区容量、密度及连续轮廓排序，不受视觉风格影响；Slide Spec 的
-`layout` 默认可调整，仅 `layout_lock: true` 精确锁定。缺素材时沿明确 fallback 选择可落地构图。页面配方是可调整的默认方向，
-不是逐页模板；叙事适配、可读性和来源安全优先。
-统一 smoke 工具会生成 12×6 轻量风格参考 gallery、独立 36 版式参考/兜底 gallery 和 12 页 SVG atlas。
-Brief→Slide Spec 交接会把已确认镜像字段缺失视为错误，support outputs 只能缩小已确认的
-deliverables。MarkItDown 不可用时，suite-owned OOXML fallback 仍会检查完整的幻灯片、讲稿备注和图表文本。
-发布工作流还会在 Linux 上临时渲染课程汇报、英语课堂、答辩、竞赛、社团展示、研究展示、软件项目、数据调查和学校模板编辑场景矩阵。
+`complete`、`incomplete` 或 `blocked`。视觉系统、QA 顺序和 CI 渲染矩阵见
+[插件 README](plugins/student-presentation-suite/README-zh.md)。
 
 ## 更新与卸载
 
@@ -309,9 +271,12 @@ deliverables。MarkItDown 不可用时，suite-owned OOXML fallback 仍会检查
 
 ```powershell
 Set-Location "$env:USERPROFILE\.agents\claude-plugins"
-git pull --ff-only origin claude-code
+git switch main
+git pull --ff-only origin main
 claude plugin update -s user student-presentation-suite@claude-personal
 ```
+
+GitHub 市场安装用：`claude plugin marketplace update claude-personal`。
 
 卸载插件：
 
@@ -325,8 +290,7 @@ claude plugin marketplace remove claude-personal
 ### 插件没有触发
 
 确认请求同时包含“学生/课程/答辩”等学术场景和明确的 PPT 意图。也可以在请求
-中直接写明希望使用 `student-presentation`、`student-presentation-ppt` 或
-`student-presentation-review`。
+中直接写明希望使用 `sp-research`、`sp-outline`、`sp-deck` 或 `sp-review`。
 
 ### 环境检查失败
 
@@ -337,18 +301,25 @@ python .\plugins\student-presentation-suite\scripts\check_claude_pptx_env.py --j
 python .\scripts\check_installed_version.py --json
 ```
 
-根据输出安装缺失的 Python 或 Node.js 依赖。LibreOffice 和
-Poppler 缺失时仅影响渲染检查和 PDF 导出，不阻断 PPTX 生成。
+根据输出安装缺失的 Python 或 Node.js 依赖。LibreOffice 和 Poppler 是渲染 QA 与
+`complete` 交付所必需的；缺失时仍可生成候选 PPTX。
 
 ### 工作流状态卡住
 
-如果插件提示需要确认 Production Summary 但你想重新开始：
+如果 QA 发现 blocker，**不要 reset**：用管线返工边重建生成器再进 QA：
 
 ```powershell
-python .\plugins\student-presentation-suite\scripts\workflow_guard.py reset
+python .\plugins\student-presentation-suite\skills\sp-deck\scripts\ppt_pipeline.py repair --work-dir <wd>
 ```
 
-如果状态为 `blocked`（环境依赖缺失导致阻断），解决依赖后恢复：
+QA 通过后交付：
+
+```powershell
+python .\plugins\student-presentation-suite\skills\sp-deck\scripts\ppt_pipeline.py complete --work-dir <wd>
+```
+
+`reset` / `unblock` 只作最后手段——会丢掉已确认摘要并迫使全流程重来。因缺失依赖进入
+`blocked` 并已修好依赖时：
 
 ```powershell
 python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
@@ -367,29 +338,9 @@ python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
 
 ## 开发与发布
 
-项目使用专用工程工具链：
-
-- **Python 代码质量**：Ruff（启用 E, F, W, I, N, UP, B, SIM, ARG, RET 规则集）
-- **JavaScript 代码质量**：ESLint（标准规则）+ Prettier 格式化
-- **跨编辑器**：`.editorconfig` 确保缩进和行尾一致性
-- **安全扫描**：CI 流水线包含 `pip-audit` 和 `npm audit`
-- **依赖管理**：Dependabot 已配置 pip、npm 和 GitHub Actions 自动更新
-- **集成测试**：spec → bridge 流水线的端到端冒烟测试
-- **测试工具提取**：共享 [`test_helpers.load_module()`](plugins/student-presentation-suite/tests/test_helpers.py) 消除 7 处重复模块加载器
-- **社区标准**：Issue/PR 模板、`CONTRIBUTING.md`、`SECURITY.md`
-
-本分支的源码、验证和发布约束见 [AGENTS.md](AGENTS.md) 和
-[CHANGELOG.md](CHANGELOG.md)。Claude Code 版本只发布到 `claude-code`，
-不得发布到 `main`。
+验证命令、升版本和 GitHub Release 步骤见 [AGENTS.md](AGENTS.md)。
+贡献者环境见 [CONTRIBUTING.md](CONTRIBUTING.md)。只从本仓库的 **`main`** 分支发布。
 
 ## License
 
 MIT，见 [LICENSE](LICENSE)。
-
-## 0.13 执行完整性
-
-每个任务使用 `outputs/.pptx-work/<work-id>/workflow-state.json`，init/confirm 传 `--work-id`；旧全局状态需重新确认。三种模式统一走 Pipeline：create、edit_ooxml（解包/编辑/打包）、rebuild_from_source（须 source-analysis.md）。保留 source，编辑交付须 change-summary.md。
-
-QA 自动接入 speaker-notes.md 和当前预览；独立 visual-critic 读取全部页图，hook 凭据和图片 hash 在 QA/complete 复核。A/B/D research 需要真实研究员凭据。next 输出紧凑阶段契约。图片 provider command 需用户独立批准 SHA256，项目 JSON 不能自行授权。
-
-CI 扫描 skills，测试 Python 3.11/3.12，固定 Claude Code 2.1.272、Ruff 0.16.7。main 上运行 release workflow，全部检查通过后才创建 annotated tag 和 GitHub Release。PowerPoint 独立验收使用 references/powerpoint-smoke.md，LibreOffice 通过不代表 Office 已验收。

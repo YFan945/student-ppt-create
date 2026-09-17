@@ -15,18 +15,19 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 GHSA_RE = re.compile(r"GHSA-[0-9a-z-]+", re.IGNORECASE)
 
-# image-size has no installable patched release as of 2026-09-08. These
-# exceptions are deliberately narrow and expire so CI cannot hide future risk.
-ALLOWLIST = {
+# Direct suite usage is image-size 2.0.2 (buffer API). pptxgenjs@4.0.1 still
+# depends on image-size ^1.2.1 and uses the removed path-based sync API, so an
+# override would break generation. These nested 1.x GHSAs stay time-bounded.
+ALLOWLIST: dict[str, dict[str, Any]] = {
     "ghsa-w3rx-r6r6-pgpr": {
         "package": "image-size",
-        "review_due": dt.date(2026, 10, 1),
-        "reason": "No patched npm release is currently installable; reached through PPTX image metadata handling.",
+        "review_due": dt.date(2026, 12, 1),
+        "reason": "Nested via pptxgenjs 4.0.1 (image-size ^1.2.1); 2.x drops path sync API.",
     },
     "ghsa-5p2g-fcmc-qvqq": {
         "package": "image-size",
-        "review_due": dt.date(2026, 10, 1),
-        "reason": "No patched npm release is currently installable; reached through PPTX image metadata handling.",
+        "review_due": dt.date(2026, 12, 1),
+        "reason": "Nested via pptxgenjs 4.0.1 (image-size ^1.2.1); 2.x drops path sync API.",
     },
 }
 

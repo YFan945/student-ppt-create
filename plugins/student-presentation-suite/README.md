@@ -2,13 +2,20 @@
 
 [中文](README-zh.md) | English
 
+**This file (plugin README):** what the installed plugin does — pipeline, four
+skills, intake, handoff, outputs, visual system, quality gates, and runtime CLI.
+Install, update, and uninstall belong in the repository-root
+[README](../../README.md). Policy details belong in `references/` and `SKILL.md`.
+Doc sync: repository [AGENTS.md](../../AGENTS.md) → Documentation Ownership;
+plugin-local notes in [AGENTS.md](AGENTS.md).
+
 `student-presentation-suite` is a Claude Code plugin for student-owned
 university presentations. It separates evidence gathering, content planning,
 editable PPTX production, and existing-deck review while sharing one intake,
 Slide Spec, and quality contract.
 
-This plugin is installed as part of the `claude-plugins` repository. See the
-[root README](../../README.md) for installation instructions.
+This package is published from `YFan945/student-ppt-create` on **`main`**. See
+the [root README](../../README.md) for installation.
 
 Install ID: `student-presentation-suite@claude-personal`.
 
@@ -120,10 +127,13 @@ Production follows:
 No environment, generation, rendering, or delivery command may run while the
 state is `intake_pending`.
 
-The suite records this gate with `workflow_guard.py` state commands
-(init/confirm/transition); production runs follow the workflow convention
-maintained by SKILL text self-discipline — the PreToolUse hook is removed, so
-commands are no longer intercepted automatically.
+The suite records this gate with `workflow_guard.py` (init/confirm/transition).
+While `intake_pending`, no environment, generation, rendering, or delivery
+command may run. `ppt_pipeline.py` refuses illegal production steps. A narrow
+PreToolUse hook (`scripts/cost_guard.py`) blocks plugin-source archaeology,
+same-hash PNG re-reads, named or nested evidence-agent spawns, repeated
+read-only inspection, and bypassing the pipeline with `run_with_pptxgenjs.js`;
+it does not replace the Production Summary confirmation.
 
 ## Structured Handoff
 
@@ -241,7 +251,8 @@ for debugging a single check. Production after intake is dispatched by
 `skills/sp-deck/scripts/ppt_pipeline.py next --work-dir <wd> --json` (plan scaffolds
 `deck.js` + `pages/pNN-*.js`; build refuses a monolithic generator). The working habits
 that keep a run cheap — batching tool calls, in-place edits, write-once artifacts,
-per-stage summaries, `sp-research` forks instead of a generic researcher teammate,
+per-stage summaries, `sp-research` explicit spawn of `presentation-researcher`
+instead of a generic researcher teammate,
 DeepSeek vision reads in one parallel round (CD-9), and staying inside a 200k-shaped
 window (CD-8) — are canonical in `references/cost-discipline.md`.
 `scripts/session_cost.py` collapses usage-identical assistant rows within 2 seconds so
@@ -253,12 +264,12 @@ the first image Read.
 
 At most one repair loop may change the
 spec/composer/generator and rebuild the complete candidate; a remaining QA blocker
-is fixed via the rework edge
-`workflow_guard.py transition --to producing --reason <blocker summary>` instead
+is fixed via
+`skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>` instead
 of resetting the whole pipeline.
 
 Results use `complete`, `incomplete`, or `blocked`. `complete` requires
-`workflow_guard.py transition --to complete --pptx <pptx> --delivery-report <report>`.
+`skills/sp-deck/scripts/ppt_pipeline.py complete --work-dir <wd>`.
 The PptxGenJS wrapper
 normalizes the generated package and atomically publishes it; layout/overflow quality
 is caught by QA visual inspection and package validation.
@@ -293,7 +304,7 @@ python scripts/build_support_outputs.py path\to\spec.yaml --output-dir <project>
 python scripts/create_revision_manifest.py old.yaml new.yaml --strict
 python scripts/manage_versions.py snapshot --output-root <project>\outputs --revision-id r1 --file <deck>
 python scripts/slide_spec_to_pptx_brief.py path\to\spec.yaml --output-dir <project>\outputs
-python scripts/bump_version.py 0.5.0 --dry-run  # 统一版本升级
+python scripts/bump_version.py <version> --dry-run  # 统一版本升级
 python scripts/session_cost.py --last 1  # session cost review (same as /sp-cost-report)
 node scripts/run_with_pptxgenjs.js --probe
 python scripts/smoke_pptx.py
@@ -335,21 +346,15 @@ This is a suite-owned implementation; no ECMA/ISO XSD files from the
 `document-skills` upstream are copied or distributed. See
 `references/pptx-runtime-provenance.md` for the full audit record.
 
-See the repository [README](../../README.md), [AGENTS.md](../../AGENTS.md), and
-[CHANGELOG.md](../../CHANGELOG.md) for installation, maintenance, and releases.
+See the repository [README](../../README.md) for install/update,
+[AGENTS.md](../../AGENTS.md) for validation and release, and
+[CHANGELOG.md](../../CHANGELOG.md) for version history.
 
-## 0.13 production integrity
-
-Production uses per-work authorization in `outputs/.pptx-work/<work-id>/workflow-state.json`.
-Initialize/confirm with `--work-id`; legacy global states require fresh confirmation.
-The pipeline dispatches create, edit_ooxml (unpack/edit/pack), and rebuild_from_source
-(source-analysis.md required). Source-based deliveries require change-summary.md.
-QA auto-binds speaker-notes.md and current previews. An isolated visual-critic must
-read every page; runtime receipts and image hashes are verified before QA/complete.
-A/B/D research requires an isolated researcher receipt. `next --json` provides a
-compact stage contract. Image provider commands require independent user-approved
-command SHA256 flags; project JSON cannot authorize execution.
-CI lints skills and tests Python 3.11/3.12 with Claude Code 2.1.272 and Ruff 0.16.7.
-Run the release workflow on main: every validation job must pass before annotated
-tag and GitHub Release creation. PowerPoint compatibility is tracked separately
-using references/powerpoint-smoke.md; LibreOffice success is not Office certification.
+Per-work state lives in `outputs/.pptx-work/<work-id>/workflow-state.json`
+(`--work-id` on init/confirm). Modes: `create`, `edit_ooxml`,
+`rebuild_from_source` (needs `source-analysis.md`). Edits keep the source file
+and require `change-summary.md`. Isolated `visual-critic` / researcher receipts
+are required before QA/complete where those stages apply. Image provider
+commands need a user-approved SHA256; project JSON cannot authorize them.
+PowerPoint COM checks are separate: `references/powerpoint-smoke.md`. LibreOffice
+success is not Office certification.

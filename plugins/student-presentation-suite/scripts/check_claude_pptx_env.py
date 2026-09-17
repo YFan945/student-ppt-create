@@ -184,8 +184,10 @@ def resolve_image_sources(project: Path) -> dict[str, Any]:
         return base
 
     try:
-        raw = json.loads(config_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+        from shared.pptx_runtime.fetch_images import load_image_sources_contract, resolve_assets_dir
+
+        raw = load_image_sources_contract(config_path)
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
         base["configured"] = True
         base["detail"] = f"image-sources.json could not be read: {exc}"
         return base
@@ -224,11 +226,14 @@ def resolve_image_sources(project: Path) -> dict[str, Any]:
             record["available"] = False
             record["reason"] = "disabled"
         elif kind == "user-assets":
-            assets_dir = entry.get("assets_dir")
-            resolved = (project / str(assets_dir)) if assets_dir else None
+            assets_dir = entry.get("assets_dir") or "assets"
+            resolved = resolve_assets_dir(str(assets_dir), project)
             available = bool(resolved and resolved.is_dir())
             record["available"] = available
-            record["reason"] = None if available else "assets_dir missing"
+            if resolved is None:
+                record["reason"] = "assets_dir escapes project root"
+            else:
+                record["reason"] = None if available else "assets_dir missing"
             record["assets_dir"] = str(resolved) if resolved else None
             user_assets_ready = user_assets_ready or available
         elif kind == "web-search":

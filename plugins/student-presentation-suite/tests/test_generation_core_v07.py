@@ -221,7 +221,7 @@ console.log(JSON.stringify(registry.analyzeDeck()));
             }
         ]
         self.assertFalse(
-            self.npm_audit.evaluate(known, dt.date(2026, 10, 2))["ok"]
+            self.npm_audit.evaluate(known, dt.date(2026, 12, 2))["ok"]
         )
 
 

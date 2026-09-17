@@ -214,10 +214,12 @@ class DesignTokenTests(unittest.TestCase):
             deck.save(pptx_path)
 
             written = apply_cjk_fonts(
-                pptx_path, {"Cambria": "SimHei", "Calibri": "Microsoft YaHei"}
+                pptx_path,
+                {"Cambria": "SimHei", "Calibri": "Microsoft YaHei"},
+                Path(tmp) / "tiny-cjk.pptx",
             )
             self.assertEqual(2, written)
-            reloaded = Presentation(pptx_path)
+            reloaded = Presentation(Path(tmp) / "tiny-cjk.pptx")
             ea_faces = []
             for shape in reloaded.slides[0].shapes:
                 for para in shape.text_frame.paragraphs:
