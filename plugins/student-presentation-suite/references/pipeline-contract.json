@@ -61,8 +61,9 @@
       "Do not reuse previous-build images. Pipeline archives stale evidence."
     ],
     "qa": [
-      "Spawn student-presentation-suite:visual-critic in foreground WITHOUT a name. Pass absolute work-dir. Never nest the critic inside another agent.",
-      "Critic Reads every image, Writes visual-review.json with PPTX/contact/page hashes; hook writes critic-execution.json.",
+      "Spawn student-presentation-suite:visual-critic in foreground WITHOUT a name. Pass the absolute work-dir in its prompt. Never nest the critic inside another agent.",
+      "The runtime hook materializes hash-bound critic-preview/*.jpg images. Critic Reads the overview and every page preview, not the full-size render PNGs; the hook maps those reads back to the current original contact/page SHA256 values.",
+      "Critic Writes visual-review.json with PPTX/contact/original-page hashes; hook writes critic-execution.json. Existing QA still requires complete original render coverage through the verified preview mapping.",
       "QA automatically uses speaker-notes.md plus current contact sheet/pages. Missing required inputs block complete."
     ],
     "repair": [
