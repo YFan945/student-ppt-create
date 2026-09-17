@@ -37,11 +37,21 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 
 - work-dir（绝对路径，唯一工作区）：<absolute work-dir>
 - 目标页：<slide ids（calibration/repair）｜"全部剩余 scaffold 页"（initial）>
+- **先用本页简报拿全部上下文**（一次调用代替逐字段挖 JSON——2026-09-17 live 一轮 repair
+  为此跑了 19~46 条内联脚本、每条约 150K 常驻上下文）：
+  `python "<CLAUDE_PLUGIN_ROOT>/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --slide <N> --json`
+  （`initial` 轮不带 `--slide`，一次拿到全 deck 每页的 claim / planned numbers / 本页 blocker）。
+  它对每页输出的 claim、numbers 与 actual-content 门判定同源；来源标题来自 research-pack 原文。
+  **不要用 `node -e ... require('./*.json')` 挖 work-dir 文件**——hook 会拒绝并给出该命令。
 - 先读冻结契约：<work-dir>/slide-spec-compiled.yaml 与 <work-dir>/art-direction.yaml；
   Helper API 只用 node "<CLAUDE_PLUGIN_ROOT>/scripts/pptx-helpers.js" --describe
   （绝对路径调用；禁止 node -e require('pptxgenjs')——项目 cwd 解析不到模块）。
 - 上屏硬要求：本页 title、claim 与每个 planned number 必须以可见文本出现
   （actual-content 门读 PPTX 文本 run；chart 数据标签不算文本 run）。
+- **每个 planned number 只由一个文本载体陈述**：文本载体已经是硬要求，就不要再用柱上数值
+  标签、居中大数字或第二条要点重复同一个值——评审会把同一数值的第二次陈述判为
+  `triple-encoding` / `dual-value-per-bar`；反过来，已由文本载体承担的数值可以省掉图表直标，
+  不会被判"缺直标"。一根柱旁不要并排两个数值（柱高对应哪个无法判定）。
 - 数值轴：每个 chart 显式 valAxisMinVal: 0 与 valAxisMaxVal（不小于数据最大值），
   chart-axis-auto 是 blocker。
 - line series 不依赖线宽/虚线区分系列（pptxgenjs 忽略 series 级 line.width/dashType）；
@@ -51,6 +61,9 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - 末页来源区：COPY.sources 是从 research-pack.json 字节级注入的，逐字渲染、
   禁止改写/翻译/缩写。
 - 调色板：<style seed> 的 light/dark 两套角色色之外，任何十六进制色值即缺陷；中文正文 ≥22pt。
+- **已通过评审的页不得降分**：QA 会对比上一轮的逐页视觉分数，任何一页下降 ≥1.5 分即判
+  `visual_regression`（2026-09-17 live：第 5 轮"提分"把页面改坏，第 6 轮花 40M token 只用来回退，
+  净收益为零）。提升结构张力可以，但不要把已经过关的页当成试验田。
 - 保留 scaffold COPY 字面量（page_copy_fidelity 逐字校验）；不得引入 spec 之外的新数字。
 - 不要运行 ppt_pipeline.py build/render/qa、不要跑 run_with_pptxgenjs.js
   （临时验证只能在系统临时目录，不得在 work-dir 产正式 pptx）。
@@ -73,6 +86,12 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - 判断准绳：<work-dir>/art-direction.yaml；高杠杆页：<ids>。
 - 评分诚实：任一维度低于 6 或全 deck 平均低于 7 会判 blocker；按真实判断给分——
   不要为过门抬分，也不要因数字超限默认有罪。
+- **blocker 口径 = critical + major**（质量门 `BLOCKING_SEVERITIES` 同口径）：回报计数
+  与报告 `blocker_count` 都用这个定义。2026-09-17 live：critic 按自己的习惯回报"blocker 0
+  / major 8"，主会话读成"独立复核判定可交付"，而门同一份报告算出 23 个 blocker。
+- **冻结数值的文本载体不是冗余**：`page_brief.py --slide N --json` 输出的 `numbers` 是
+  actual-content 门的硬要求；同一数值已有文本载体时图表直标可省略，不得因缺直标判 Major。
+  完整仲裁见 skills/sp-deck/references/pptx-visual-critic.md。
 - 每条 issue 必须有 code（小写英文，短横线或下划线皆可）与 severity。
 - 只写复核报告，不生成或修复任何页面/PPTX。
 - 完成后只回：报告路径 + blocker 计数。

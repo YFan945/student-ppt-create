@@ -41,17 +41,27 @@ PLUGIN_HINTS = (
     "visual_reference_select",
     "art_direction_check",
 )
-GREP_SED = re.compile(r"\b(grep|rg|sed|awk|head|tail|cat|type|Get-Content)\b", re.I)
-PLUGIN_INSPECT = re.compile(
-    r"\b(ls|dir|tree|find|stat|du|Get-ChildItem|grep|rg|sed|awk|head|tail|cat|type|Get-Content)\b",
-    re.I,
-)
+_COMMAND_POSITION = r"(?:^|[;&]|&&|\|\|)\s*(?:sudo\s+)?"
+LIST_VERBS = r"(ls|dir|tree|find|stat|du|Get-ChildItem)"
+VIEW_VERBS = r"(grep|rg|sed|awk|head|tail|cat|type|Get-Content)"
+# The verb must sit in *command position* (start of a command, or after a separator).
+# Matching it anywhere in the line made `--work-dir` match `dir`, so the pipeline's own
+# recommended invocation — `python "…/ppt_pipeline.py" next --work-dir <wd>` — came back as
+# "do not ls/grep/cat plugin source": the command the skills require and the guard that
+# polices it disagreed (2026-09-17 live: 6 cost_guard refusals, half of them this shape).
+# Piping into `head`/`tail` is also left alone now: that is how output is *kept small*.
+GREP_SED = re.compile(_COMMAND_POSITION + VIEW_VERBS + r"\b", re.I | re.M)
+PLUGIN_INSPECT = re.compile(_COMMAND_POSITION + LIST_VERBS + r"\b", re.I | re.M)
+# A path shape, not a bare name: `grep -l "student-presentation-suite-scaffold" *.js` is a
+# scaffold-marker check, and the marker happens to share the plugin's name.
 PLUGIN_PATH = re.compile(
-    r"student-presentation-suite|CLAUDE_PLUGIN_ROOT|skills/sp-deck/scripts",
+    r"student-presentation-suite[/\\]|[/\\]student-presentation-suite\b|CLAUDE_PLUGIN_ROOT|skills[/\\]sp-deck[/\\]scripts",
     re.I,
 )
+# The CLI path may be quoted (`python "…/ppt_pipeline.py" next`), which is how the skills
+# write it. A bare `.py\s+next` never matched that form, so the allow-list silently failed.
 PIPELINE_RUN = re.compile(
-    r"ppt_pipeline\.py\s+(next|plan|build|render|qa|repair|complete|status)\b",
+    r"ppt_pipeline\.py['\"]?\s+(next|plan|build|render|qa|repair|complete|status)\b",
     re.I,
 )
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -245,7 +255,13 @@ def check_bash(command: str, builder: bool = False) -> str | None:
             f"Run `{pipeline_hint()}` or `{helpers_hint()}`."
         )
     if "--help" in command and any(hint in command for hint in PLUGIN_HINTS):
-        if "ppt_pipeline.py next" in command:
+        # `ppt_pipeline.py` is the agent's operating surface, and its --help is a few dozen
+        # lines. Refusing it does not save a round trip — the model goes looking for the
+        # invocation by trial and error, which costs the same round trip and produces a
+        # failure instead of information (2026-09-17: after one refusal the next two
+        # attempts were chained --help probes on other scripts). A bare script name is
+        # still refused so the hint can hand over the absolute path it needs anyway.
+        if re.search(r"[/\\]ppt_pipeline\.py", command):
             return None
         if builder:
             return (

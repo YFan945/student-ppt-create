@@ -41,8 +41,9 @@ Inside the plugin package:
 - `references/`: shared intake, standards, cost discipline, image policy, and Slide Spec contracts.
 - `scripts/`: environment checks, schema bridge, validation, session cost review, Research Pack
   validation, and PPTX smoke tooling.
-- `skills/sp-deck/scripts/run_gates.sh`: single-run orchestrator for the v0.8 visual gates; a passing
-  run prints one line, and the full detail lands in `gates-report.json`.
+- `skills/sp-deck/scripts/run_gates.py`: single-run orchestrator for the v0.8 visual gates; a passing
+  run prints one line, and the full detail lands in `gates-report.json`. `run_gates.sh` only locates
+  an interpreter — call the python form, which also works where `sh` resolves to WSL.
 - `commands/sp-cost-report.md`: `/sp-cost-report` entrypoint for `scripts/session_cost.py`.
 - `shared/`: reusable Python implementation.
 - `tests/`: behavioral, schema, runtime, and delivery contracts.
@@ -115,6 +116,7 @@ Canonical ownership:
 - normalize also repairs pptxgenjs rich-text (stray per-run `<a:pPr>`), so multi-run
   inline emphasis is now valid and validated.  to add `<a:ea>` East Asian typefaces (CJK typography pairing lives in design-tokens.json).
 - `references/image-sourcing.md` plus `image-sources.schema.json`: explicit image search/generation capability declaration, permission gate, and provenance recording.
+- `shared/image_capability.py`: whether this session can actually obtain imagery, resolved once for both readers — `check_claude_pptx_env.py` (environment status) and `art_direction_check.py` (refuses an `asset_plan` whose image visuals cannot be delivered).
 - `references/design-tokens.json`: 12 style palettes, each with a light six-role palette and the matching dark scheme for cover/section/closing pages; `shared/design_tokens.py` owns dark-companion derivation and contrast floors.
 - PPTX skill references: production mechanics and visual style controls.
 

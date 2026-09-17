@@ -59,6 +59,41 @@ class BuilderGuardTests(unittest.TestCase):
         event["tool_input"] = {"file_path": str(manifest)}
         self.assertEqual(0, guard.handle(event))
 
+    def shell_event(self, command: str, **extra):
+        return {
+            "cwd": str(self.project),
+            "session_id": "parent",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            **extra,
+        }
+
+    def test_builder_inline_json_extraction_is_redirected(self) -> None:
+        """2026-09-17 live: 19-46 inline scripts per repair round, each one a full context
+        round-trip at ~150K resident context. page_brief.py answers the same question once."""
+        command = (
+            "cd \"$WD\" && node -e \" const q=require('./qa-quality.json');"
+            " const s=JSON.stringify(q); console.log(s.slice(0,3000)); \""
+        )
+        event = self.shell_event(command, agent_type=guard.BUILDER, agent_id="builder-child")
+        self.assertEqual(2, guard.handle(event))
+
+    def test_builder_keeps_legitimate_node_commands(self) -> None:
+        for command in (
+            "node --check pages/p07-s07.js",
+            "node deck.js /tmp/check.pptx",
+            "node -e \"console.log(1+1)\"",
+            "node \"$CLAUDE_PLUGIN_ROOT/scripts/pptx-helpers.js\" --describe",
+        ):
+            with self.subTest(command=command):
+                event = self.shell_event(command, agent_type=guard.BUILDER, agent_id="builder-child")
+                self.assertEqual(0, guard.handle(event))
+
+    def test_parent_session_inline_node_is_not_policed(self) -> None:
+        command = "node -e \"console.log(require('./build-manifest.json').state)\""
+        self.assertEqual(0, guard.handle(self.shell_event(command)))
+
 
 if __name__ == "__main__":
     unittest.main()

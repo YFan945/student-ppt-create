@@ -38,6 +38,11 @@ For `repair` mode:
 - read the caller-provided blocker summary and current manifest;
 - edit only the blocker pages plus any directly shared helper/page module that must change to fix them;
 - do not opportunistically redesign unrelated pages;
+- **never make an accepted page worse.** The quality gate compares this round's per-slide
+  visual scores with the previous review and reports `visual_regression` for any page that
+  drops 1.5 or more (2026-09-17 live: a "raise scores" round made pages worse and the next
+  round cost 40M tokens purely undoing it). Adding structure is fine; treating a passing
+  page as a test bed is not;
 - never claim a blocker is fixed without changing the relevant generator artifact.
 
 ## Hard boundaries

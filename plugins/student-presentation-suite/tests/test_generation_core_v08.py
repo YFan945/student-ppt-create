@@ -278,6 +278,78 @@ class GenerationCoreV08Tests(unittest.TestCase):
         selected = [item for item in self.library["references"] if item["id"] in ids]
         return {"version": "0.8", "selected": selected}
 
+    def declare_image_capability(self, root: Path, *, ready: bool = True) -> None:
+        """State the session's image capability, as a real project would.
+
+        `good_art_direction` plans hero/evidence visuals, and the Art Direction gate refuses
+        a plan that promises images with no image source declared (undeclared = unavailable
+        per references/image-sourcing.md).
+        """
+        (root / "image-sources.json").write_text(
+            json.dumps(
+                {
+                    "version": "0.8",
+                    "permission": {
+                        "allow_web_search": False,
+                        "allow_generation": ready,
+                        "record_source": True,
+                    },
+                    "providers": [
+                        {
+                            "id": "test-imagegen",
+                            "kind": "image-generation",
+                            "enabled": ready,
+                            "capability": "skill:imagegen",
+                            "permission": "generated",
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+
+    def test_art_direction_refuses_an_asset_plan_with_no_image_source(self) -> None:
+        """2026-09-17 live: asset_plan promised hero visuals, no image-sources.json existed,
+        and hero-visual-missing survived every critique round with no way to fix it."""
+        result = self.art.validate_art_direction(
+            self.good_art_direction(),
+            high_score=True,
+            image_sources={"configured": False, "detail": "No image-sources.json declared"},
+        )
+        self.assertFalse(result["ok"])
+        self.assertIn("asset_plan_visuals_unavailable", {item["code"] for item in result["issues"]})
+
+    def test_art_direction_only_warns_when_declared_image_sources_are_not_ready(self) -> None:
+        """A declaration exists, so the deterministic stack may legitimately deliver those
+        slots (the golden sample documents exactly that); this is not a blocker."""
+        result = self.art.validate_art_direction(
+            self.good_art_direction(),
+            high_score=True,
+            image_sources={"configured": True, "detail": "1 provider declared; none ready"},
+        )
+        self.assertTrue(result["ok"], result["issues"])
+        codes = {item["code"]: item["severity"] for item in result["issues"]}
+        self.assertEqual("minor", codes.get("asset_plan_visuals_not_ready"))
+
+    def test_art_direction_mix_floor_survives_without_image_capability(self) -> None:
+        """With no imagery the achievable categories are diagrams/native_charts/typography_led,
+        so the 'at least four kinds' floor must not demand an image nobody can fetch."""
+        data = self.good_art_direction()
+        data["asset_plan"] = {"diagrams": 2, "native_charts": 2, "typography_led": 1}
+        result = self.art.validate_art_direction(
+            data,
+            high_score=True,
+            image_sources={"configured": False, "detail": "No image-sources.json declared"},
+        )
+        self.assertTrue(result["ok"], result["issues"])
+
+        with_image = self.art.validate_art_direction(
+            self.good_art_direction((1, 2, 5)),
+            high_score=True,
+            image_sources={"configured": True, "generation_ready": True, "detail": "ready"},
+        )
+        self.assertTrue(with_image["ok"], with_image["issues"])
+
     def test_visual_generation_gate_binds_high_leverage_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -288,6 +360,7 @@ class GenerationCoreV08Tests(unittest.TestCase):
             )
             art = root / "art-direction.yaml"
             art.write_text(yaml.safe_dump(self.good_art_direction((1, 2, 3)), sort_keys=False), encoding="utf-8")
+            self.declare_image_capability(root)
 
             for slide in (1, 2, 3):
                 (root / f"references-slide-{slide}.json").write_text(
@@ -315,6 +388,7 @@ class GenerationCoreV08Tests(unittest.TestCase):
             spec.write_text(yaml.safe_dump({"slides": [{"id": 1}, {"id": 2}, {"id": 3}]}), encoding="utf-8")
             art = root / "art-direction.yaml"
             art.write_text(yaml.safe_dump(self.good_art_direction((1, 2, 3))), encoding="utf-8")
+            self.declare_image_capability(root)
             for slide in (1, 2, 3):
                 (root / f"references-slide-{slide}.json").write_text(json.dumps(self.make_reference_selection()), encoding="utf-8")
                 candidate_file = root / f"composition-candidates-{slide}.json"

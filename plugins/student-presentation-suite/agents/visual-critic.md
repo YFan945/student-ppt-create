@@ -22,6 +22,20 @@ preview map, or receipt.
 Evaluate every page honestly: hierarchy, focal point, composition, visual
 interest, whitespace, reference intent, consistency and deck rhythm. Record
 specific unresolved issues instead of raising scores to pass a threshold.
+
+A **blocker is `critical` + `major`** — the quality gate promotes majors exactly
+like the spec does (`BLOCKING_SEVERITIES`), so report `blocker_count` and the
+count you hand back with that definition. A report that says "blocker count: 0"
+while carrying 8 majors reads as "deliverable" to the caller and blocks in QA.
+
+Frozen numbers are not redundancy. Every planned number (the `numbers` list
+`page_brief.py` prints, same source as the actual-content gate) needs one visible
+text carrier, so that carrier is exempt from `triple-encoding` /
+`left-rail-duplicates` / `dual-value-per-bar`, and a chart may omit its direct
+label for a value the page already states in text. Only when the value is
+unreadable *anywhere* on the page may "missing direct label" be a finding. The
+full arbitration is in `skills/sp-deck/references/pptx-visual-critic.md`.
+
 The report shape is pinned by `references/visual-review.schema.json` — read it
 first and emit exactly that shape (a live critic once submitted an `issues`
 top-level structure from memory and the QA gate rejected it; the main session

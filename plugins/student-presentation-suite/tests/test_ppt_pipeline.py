@@ -117,6 +117,13 @@ class FakeRunner:
         out = flag_value("--output")
         if out:
             report_path = Path(out)
+            failures = getattr(self, "report_failures", None) or {}
+            if report_path.name in failures:
+                report_path.write_text(
+                    json.dumps({"ok": False, "issues": failures[report_path.name]}),
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(argv, 2, stdout="", stderr="")
             if report_path.name == "qa-rendered.json" and getattr(self, "render_fails", False):
                 report_path.write_text(
                     json.dumps({"ok": False, "issues": [{
@@ -305,6 +312,11 @@ class PlanTests(PipelineTestCase):
         self.assertIn("slide_spec", manifest["inputs"])
         self.assertTrue((self.work / "slide-spec-lock.json").is_file())
         self.assertEqual(len([c for c in runner.calls if "freeze" in c]), 1)
+        # The Art Direction gate needs the work dir to resolve this session's image
+        # capability; dropping the flag silently disables asset_plan feasibility checking.
+        art_call = next(c for c in runner.calls if "art_direction_check.py" in " ".join(c))
+        self.assertIn("--work-dir", art_call)
+        self.assertEqual(str(self.work), art_call[art_call.index("--work-dir") + 1])
         mirrored = json.loads(self.workflow_state.read_text(encoding="utf-8"))
         self.assertEqual(mirrored["state"], "planned")
         self.assertTrue((self.work / "pages" / "p01-cover.js").is_file())
@@ -436,6 +448,105 @@ class BuildTests(PipelineTestCase):
         pp.save_manifest(self.work, manifest)
         pp.mirror_workflow_state(manifest, manifest["state"])
         self.assertEqual(pp.main(["repair", "--work-dir", str(self.work), "--reason", "again"]), 2)
+
+    def qa_with_blockers(self, blockers: int = 1) -> None:
+        manifest = self.manifest()
+        manifest["state"] = "qa"
+        manifest["qa"] = {"ok": False, "blockers": blockers, "stages": {}}
+        pp.save_manifest(self.work, manifest)
+        pp.mirror_workflow_state(manifest, manifest["state"])
+
+    def test_repair_extend_grants_rounds_and_records_the_justification(self) -> None:
+        """A run out of rounds must be able to continue without editing the installed
+        plugin's pipeline-contract.json — the 2026-09-17 live run raised the budget that
+        way, which does not survive a reinstall and is not auditable."""
+        self.prepared()
+        self.qa_with_blockers()
+        manifest = self.manifest()
+        manifest["build"]["repair_count"] = pp.MAX_REPAIRS
+        pp.save_manifest(self.work, manifest)
+
+        self.assertEqual(
+            pp.main(["repair", "--work-dir", str(self.work), "--reason", "retry"]),
+            2,
+            "base budget is exhausted",
+        )
+        self.assertEqual(
+            pp.main(
+                [
+                    "repair", "--work-dir", str(self.work), "--reason", "fix what round 3 broke",
+                    "--extend", "2",
+                    "--extend-reason",
+                    "round 3 resolved 4 blockers and introduced 1 (chart axis); that one is bounded",
+                ]
+            ),
+            0,
+        )
+        entry = self.manifest()["build"]["repair_budget_grants"][0]
+        self.assertEqual(2, entry["rounds"])
+        self.assertIn("blocker", entry["reason"])
+        budget = pp.repair_budget(self.manifest())
+        self.assertEqual(pp.MAX_REPAIRS + 2, budget["effective"])
+        self.assertEqual(pp.MAX_REPAIRS_HARD_CAP, budget["hard_cap"])
+
+    def test_repair_extend_requires_a_blocker_diff_not_just_a_bigger_budget(self) -> None:
+        self.prepared()
+        self.qa_with_blockers()
+        manifest = self.manifest()
+        manifest["build"]["repair_count"] = pp.MAX_REPAIRS
+        pp.save_manifest(self.work, manifest)
+        self.assertEqual(
+            pp.main(["repair", "--work-dir", str(self.work), "--reason", "again", "--extend", "3"]),
+            2,
+            "--extend without --extend-reason is refused",
+        )
+        self.assertEqual(
+            pp.main(
+                [
+                    "repair", "--work-dir", str(self.work), "--reason", "again",
+                    "--extend", "3", "--extend-reason", "more",
+                ]
+            ),
+            2,
+            "a one-word justification is not a blocker diff",
+        )
+
+    def test_repair_extend_cannot_exceed_the_hard_cap(self) -> None:
+        self.prepared()
+        self.qa_with_blockers()
+        manifest = self.manifest()
+        manifest["build"]["repair_count"] = pp.MAX_REPAIRS
+        manifest["build"]["repair_budget_grants"] = [
+            {"rounds": pp.MAX_REPAIRS_HARD_CAP, "reason": "earlier grants"}
+        ]
+        pp.save_manifest(self.work, manifest)
+        self.assertEqual(
+            pp.main(
+                [
+                    "repair", "--work-dir", str(self.work), "--reason", "again",
+                    "--extend", "1", "--extend-reason", "one more bounded round for the axis fix",
+                ]
+            ),
+            2,
+        )
+
+    def test_next_reports_the_effective_budget(self) -> None:
+        self.prepared()
+        self.qa_with_blockers()
+        manifest = self.manifest()
+        manifest["build"]["repair_count"] = pp.MAX_REPAIRS
+        manifest["build"]["repair_budget_grants"] = [
+            {"rounds": 2, "reason": "round 3 net-resolved 4 blockers"}
+        ]
+        pp.save_manifest(self.work, manifest)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = pp.main(["next", "--work-dir", str(self.work), "--json"])
+        self.assertEqual(0, code)
+        payload = json.loads(buffer.getvalue())
+        self.assertEqual(pp.MAX_REPAIRS, payload["repair_budget"]["base"])
+        self.assertEqual(2, payload["repair_budget"]["granted"])
+        self.assertEqual(pp.MAX_REPAIRS + 2, payload["repair_budget"]["effective"])
 
     def test_build_without_pages_is_refused(self) -> None:
         self.prepared()
@@ -574,7 +685,9 @@ class QaDagTests(PipelineTestCase):
         self.assertEqual([Path(p["path"]).name for p in qa["previews"]], ["preview-01.png", "preview-02.png"])
         self.assertTrue(all(p["sha256"] for p in qa["previews"]))
 
-    def test_failing_stage_stops_the_dag(self) -> None:
+    def test_artifact_gate_failure_stops_the_dag(self) -> None:
+        """`rendered` is an artifact-availability gate: without render evidence the later
+        gates have nothing valid to read, so the DAG stops there."""
         self.producing_manifest()
         runner = FakeRunner(self.work)
         runner.render_fails = True
@@ -584,6 +697,49 @@ class QaDagTests(PipelineTestCase):
         executed = " | ".join(" ".join(c) for c in runner.calls)
         self.assertIn("qa-rendered.json", executed)
         self.assertNotIn("qa-delivery.json", executed)
+
+    def test_content_gate_failure_still_runs_every_later_gate(self) -> None:
+        """2026-09-17 live: fail-fast let each repair round see only one gate's problems, so
+        6 rounds were spent discovering one gate per round (~199M tokens, 60% of the session).
+        Every content gate must run on the same build and report together."""
+        self.producing_manifest()
+        runner = FakeRunner(self.work)
+        runner.report_failures = {
+            "qa-actual-content.json": [
+                {"severity": "major", "code": "missing_key_claim", "message": "slide 3 claim is not on the page"},
+                {"severity": "major", "code": "planned_numbers_missing", "message": "85% is missing", "slide": 3},
+            ],
+            "qa-quality.json": [
+                {"severity": "major", "code": "speaker_notes_missing", "message": "slide 4 has no notes in the notes pane"},
+            ],
+            "qa-delivery.json": [
+                {"severity": "major", "code": "delivery_incomplete", "message": "upstream gates failed"},
+            ],
+        }
+        pp._runner = runner
+        rc = pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])])
+        self.assertEqual(rc, 2)
+
+        executed = " | ".join(" ".join(c) for c in runner.calls)
+        for report in (
+            "qa-package.json", "qa-rendered.json", "qa-actual-content.json",
+            "qa-quality.json", "qa-delivery.json",
+        ):
+            self.assertIn(report, executed)
+
+        report = json.loads((self.work / "pipeline-qa.json").read_text(encoding="utf-8"))
+        self.assertEqual(["actual_content", "quality", "delivery"], report["failed_stages"])
+        self.assertEqual(
+            {
+                "actual_content": ["missing_key_claim", "planned_numbers_missing"],
+                "quality": ["speaker_notes_missing"],
+            },
+            report["blockers_by_gate"],
+        )
+        # delivery only summarises its upstream reports; its failure is derived, not a blocker
+        # of its own, and must not be handed to the builder as a separate thing to fix.
+        self.assertIn("delivery_incomplete", report["derived_problems"])
+        self.assertEqual(3, report["counts"]["blockers"])
 
     def test_incomplete_plan_inputs_skip_delivery_and_block_completion(self) -> None:
         self.producing_manifest()
@@ -596,6 +752,88 @@ class QaDagTests(PipelineTestCase):
             "qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])
         ]), 2)
         self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)
+
+
+class GateRegressionTests(PipelineTestCase):
+    """A gate that passed and now fails means the last change broke it.
+
+    2026-09-17 live: repair round 6 broke `actual_content`, which had passed since build 3.
+    Nothing compared gate status across rounds, so it showed up only as another pile of
+    blockers — after the budget was gone, on a round that had effectively undone its own
+    predecessor.
+    """
+
+    def test_a_gate_that_used_to_pass_and_now_fails_is_named(self) -> None:
+        (self.work / "gate-history.json").write_text(
+            json.dumps({"actual_content": {"ok": True, "round": 3}, "rendered": {"ok": True, "round": 3}}),
+            encoding="utf-8",
+        )
+        problems, history = pp.gate_regressions(
+            self.work,
+            {"actual_content": {"ok": False}, "rendered": {"ok": True}},
+        )
+        self.assertEqual(["gate_regression"], [item["code"] for item in problems])
+        self.assertIn("actual_content", problems[0]["message"])
+        self.assertEqual(4, history["actual_content"]["round"])
+        self.assertFalse(history["actual_content"]["ok"])
+
+    def test_gates_that_did_not_run_keep_their_record(self) -> None:
+        """A hard stop must not erase the record of a gate that had been passing."""
+        (self.work / "gate-history.json").write_text(
+            json.dumps({"delivery": {"ok": True, "round": 2}}), encoding="utf-8"
+        )
+        _, history = pp.gate_regressions(self.work, {"package": {"ok": True}})
+        self.assertEqual({"ok": True, "round": 2}, history["delivery"])
+
+    def test_a_first_run_is_not_a_regression(self) -> None:
+        problems, history = pp.gate_regressions(self.work, {"quality": {"ok": False}})
+        self.assertEqual([], problems)
+        self.assertEqual(1, history["quality"]["round"])
+
+
+class RepairConvergenceTests(PipelineTestCase):
+    """`next` publishes the round-over-round blocker trend so "keep going or stop" is a
+    reading rather than another question to the user (2026-09-17: the budget ran out with 23
+    majors left, the user was asked twice, and one granted round only undid its predecessor)."""
+
+    def write_history(self, rounds: list[dict]) -> None:
+        (self.work / "gate-history.json").write_text(
+            json.dumps({"_rounds": rounds}), encoding="utf-8"
+        )
+
+    def test_progress_is_reported_with_the_numbers(self) -> None:
+        self.write_history([
+            {"round": 1, "blockers": 23, "failed": ["quality"]},
+            {"round": 2, "blockers": 9, "failed": ["quality"]},
+        ])
+        result = pp.repair_convergence(self.work)
+        self.assertEqual("improving", result["trend"])
+        self.assertEqual(23, result["previous_blockers"])
+        self.assertEqual(9, result["current_blockers"])
+
+    def test_a_flat_round_says_change_approach(self) -> None:
+        self.write_history([
+            {"round": 3, "blockers": 9, "failed": ["quality"]},
+            {"round": 4, "blockers": 9, "failed": ["quality"]},
+        ])
+        result = pp.repair_convergence(self.work)
+        self.assertEqual("flat", result["trend"])
+        self.assertIn("no blockers net", result["advice"])
+
+    def test_a_round_that_added_blockers_says_recover_first(self) -> None:
+        """2026-09-17: round 6 broke `actual_content`, which had been passing since build 3."""
+        self.write_history([
+            {"round": 5, "blockers": 4, "failed": []},
+            {"round": 6, "blockers": 7, "failed": ["actual_content"]},
+        ])
+        result = pp.repair_convergence(self.work)
+        self.assertEqual("worse", result["trend"])
+        self.assertIn("ADDED", result["advice"])
+
+    def test_without_two_rounds_there_is_nothing_to_compare(self) -> None:
+        self.assertIsNone(pp.repair_convergence(self.work))
+        self.write_history([{"round": 1, "blockers": 5, "failed": []}])
+        self.assertIsNone(pp.repair_convergence(self.work))
 
 
 class CompleteTests(PipelineTestCase):

@@ -118,6 +118,27 @@ class VisualReviewSchemaTests(unittest.TestCase):
             self.assertIn("slides", messages[0])
             self.assertIn("visual-review.schema.json", messages[0])
 
+    def test_declared_blocker_count_disagreeing_with_the_gate_is_named(self) -> None:
+        """2026-09-17 live: critic reported 'blocker count: 0 (major 8)' under its own
+        reading of the word, the caller read that as 'deliverable', and the gate counting
+        critical+major answered with 23 blockers on the very same report. Both numbers and
+        the definition must appear together."""
+        quality = load_module("pptx_quality_gate_v071_blocker_count_test", QUALITY)
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "deck.pptx"
+            pptx.write_bytes(b"deck-bytes")
+            report_path, report = self._bound_report(tmp, pptx)
+            report["blocker_count"] = 0
+            report["slides"][0]["issues"] = [
+                {"code": "crowded-rail", "severity": "major", "message": "左栏过密"}
+            ]
+            report_path.write_text(json.dumps(report, ensure_ascii=False), encoding="utf-8")
+            result = quality.validate_visual_report(report_path, pptx, 2, high_score=True)
+            mismatch = [item for item in result["issues"] if item["code"] == "visual_review_blocker_count_mismatch"]
+            self.assertTrue(mismatch, result["issues"])
+            self.assertIn("critical + major", mismatch[0]["message"])
+            self.assertFalse(result["ok"], "the major itself still blocks")
+
     def test_extra_properties_are_advisory_not_blocking(self) -> None:
         """Unknown fields must never cost a repair round: the schema declares them
         invalid, the gate only reports them."""

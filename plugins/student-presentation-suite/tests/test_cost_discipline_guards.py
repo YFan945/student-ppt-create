@@ -107,6 +107,51 @@ class CostGuardTests(unittest.TestCase):
         ))
         self.assertEqual(rc, 2)
 
+    def test_pipeline_commands_survive_the_plugin_cache_path(self) -> None:
+        """2026-09-17 live: the skills require `python "…/ppt_pipeline.py" next --work-dir <wd>`
+        and the guard refused that exact string — the quoted path defeated the PIPELINE_RUN
+        allow-list, while `--work-dir` matched the `dir` verb from the inspect pattern. Six
+        cost_guard refusals that session, half of them this shape."""
+        command = (
+            'python "C:/Users/u/.claude/plugins/cache/claude-personal/student-presentation-suite/0.13.4'
+            '/skills/sp-deck/scripts/ppt_pipeline.py" next --work-dir "E:/x/outputs/.pptx-work/carbon" --json'
+        )
+        self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
+
+    def test_run_gates_with_work_dir_is_not_blocked(self) -> None:
+        command = (
+            'bash "C:/Users/u/.claude/plugins/cache/claude-personal/student-presentation-suite/0.13.4'
+            '/skills/sp-deck/scripts/run_gates.sh" --work-dir "E:/x/outputs/.pptx-work/carbon"'
+        )
+        self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
+
+    def test_piped_head_is_not_a_plugin_inspection(self) -> None:
+        """Piping into head is how the output is kept small; refusing it pushes more text
+        into the context, which is the opposite of the guard's purpose."""
+        command = (
+            'cd "E:/x" && python "C:/Users/u/.claude/plugins/cache/claude-personal/'
+            'student-presentation-suite/0.13.4/scripts/workflow_guard.py" init --work-id carbon 2>&1 | head -40'
+        )
+        self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
+
+    def test_scaffold_marker_check_is_not_a_plugin_path(self) -> None:
+        """The scaffold marker string begins with the plugin's name; scanning the work
+        directory for it is a page check, not an attempt to read plugin source."""
+        command = 'grep -l "student-presentation-suite-scaffold" *.js || echo none'
+        self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
+
+    def test_pipeline_cli_help_is_allowed(self) -> None:
+        """--help on the agent's own operating surface is cheaper than the trial-and-error
+        it replaces: on 2026-09-17 one --help refusal led to two more chained --help probes,
+        same round trips but producing failures instead of information."""
+        base = "C:/Users/u/.claude/plugins/cache/claude-personal/student-presentation-suite/0.13.4"
+        for command in (
+            f'python "{base}/skills/sp-deck/scripts/ppt_pipeline.py" --help',
+            f'python "{base}/skills/sp-deck/scripts/ppt_pipeline.py" build --help',
+        ):
+            with self.subTest(command=command[-40:]):
+                self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
+
     def test_validate_research_pack_help_is_blocked(self) -> None:
         rc = self.run_guard(self.event(
             "Bash",

@@ -126,6 +126,30 @@ def planned_slides(spec: dict[str, Any]) -> list[dict[str, Any]]:
     return [item for item in raw if isinstance(item, dict)]
 
 
+NUMBER_RE = re.compile(r"(?<!\w)(?:\d+(?:\.\d+)?%?|\d{1,3}(?:,\d{3})+)(?!\w)")
+
+
+def planned_requirements(planned: dict[str, Any]) -> dict[str, Any]:
+    """Exactly what a slide must render, derived from the frozen spec.
+
+    The readback gate and `page_brief.py` (what the builder reads instead of
+    hand-rolling `node -e` extractors over the same files) both call this, so the
+    requirement the builder is handed is byte-identical to the one that will be
+    judged. Keep the number pattern in sync with `check()`, which is why it lives
+    here rather than in either caller.
+    """
+    title = str(planned.get("title") or "").strip()
+    claim = str(planned.get("claim") or planned.get("key_line") or "").strip()
+    copy_fragments = compact_fragments(planned.get("slide_copy"))
+    numbers = sorted(set(NUMBER_RE.findall(" ".join([title, claim, *copy_fragments]))))
+    return {
+        "title": title,
+        "claim": claim,
+        "copy_fragments": copy_fragments,
+        "numbers": numbers,
+    }
+
+
 def check(spec: dict[str, Any], actual: list[str]) -> dict[str, Any]:
     slides = planned_slides(spec)
     issues: list[dict[str, Any]] = []
@@ -144,15 +168,16 @@ def check(spec: dict[str, Any], actual: list[str]) -> dict[str, Any]:
         actual_norm = normalize(actual_text)
         slide_issues: list[dict[str, Any]] = []
 
-        title = str(planned.get("title") or "").strip()
+        requirements = planned_requirements(planned)
+        title = requirements["title"]
         if title and normalize(title) not in actual_norm:
             slide_issues.append({"severity": "major", "code": "missing_title", "expected": title})
 
-        claim = str(planned.get("claim") or planned.get("key_line") or "").strip()
+        claim = requirements["claim"]
         if claim and len(normalize(claim)) >= 6 and normalize(claim) not in actual_norm:
             slide_issues.append({"severity": "major", "code": "missing_key_claim", "expected": claim})
 
-        copy_fragments = compact_fragments(planned.get("slide_copy"))
+        copy_fragments = requirements["copy_fragments"]
         missing_copy = [frag for frag in copy_fragments if len(normalize(frag)) >= 6 and normalize(frag) not in actual_norm]
         if missing_copy:
             slide_issues.append({
@@ -161,10 +186,7 @@ def check(spec: dict[str, Any], actual: list[str]) -> dict[str, Any]:
                 "missing": missing_copy[:8],
             })
 
-        numeric_claims = re.findall(
-            r"(?<!\w)(?:\d+(?:\.\d+)?%?|\d{1,3}(?:,\d{3})+)(?!\w)",
-            " ".join([title, claim, *copy_fragments]),
-        )
+        numeric_claims = requirements["numbers"]
         missing_numbers = sorted({n for n in numeric_claims if normalize(n) not in actual_norm})
         if missing_numbers:
             slide_issues.append({"severity": "major", "code": "planned_numbers_missing", "missing": missing_numbers})

@@ -9,7 +9,7 @@ used only as the intake authorization source and is mirrored automatically.
     plan      verify intake, freeze, preflight, scaffold pages/  -> planned
     build     run the generator; refuses unsplitted deck.js      -> producing
     render    raster pages + contact-sheet.png (hash-cached)
-    qa        fail-fast QA DAG                                   -> qa
+    qa        QA DAG: artifact gates stop, content gates all run -> qa
     repair    QA blockers -> producing (budget from contract)
     complete  qa + delivery ok                                   -> complete
     status    one-line manifest summary
@@ -67,7 +67,27 @@ def load_contract() -> dict[str, Any]:
 CONTRACT = load_contract()
 MANIFEST_VERSION = str(CONTRACT.get("manifest_version") or "1.1")
 MAX_REPAIRS = int(CONTRACT.get("max_repairs") or 3)
+# 提额上限：`repair --extend` 可以在 base budget 之上追加轮次，但不能无界追加。
+# 没有这个机制时，超预算的唯一出路是改已安装插件里的 pipeline-contract.json（2026-09-17
+# live 就是这么做的）——升级即失效、不可审计，也违反"You never write into the installed
+# plugin"。上限本身来自契约，所以仍然是一处定义。
+MAX_REPAIRS_HARD_CAP = max(MAX_REPAIRS, int(CONTRACT.get("max_repairs_hard_cap") or 12))
 QA_ORDER = tuple(CONTRACT.get("qa_order") or ("package", "rendered", "actual_content", "quality", "delivery"))
+# QA 门分两类，这个区分决定了循环能不能提前停。
+#
+# 产物可用性门回答"这个 PPTX 本身能不能用"：包结构非法或渲染证据缺失时，后续门读不到
+# 有效输入，结论没有意义 → 失败即停。
+#
+# 内容质量门（actual_content / quality / delivery）各自独立地读 PPTX、spec 和上游报告，
+# 必须**全部跑完再汇总**。2026-09-18 复盘：原先的 fail-fast 让每轮 repair 只能看到一层门
+# 的问题，6 轮 repair 恰好等于门的逐层暴露（轴 → claim → 来源区 → notes/配色 → 视觉），
+# 累计约 199M token，占该次会话总消耗的 60%。
+QA_HARD_STOP_STAGES = ("package", "rendered")
+# delivery 只是把上游报告的结论汇总成一个交付状态；上游已经失败时它的失败没有增量信息，
+# 记为派生（保留在报告里，但不计入 blocker），否则 repair 会被指向一个没有独立问题的地方。
+QA_DERIVED_AFTER_UPSTREAM_FAILURE = ("delivery",)
+QA_BLOCKING_SEVERITIES = ("critical", "major")
+GATE_HISTORY_NAME = "gate-history.json"
 BUILD_FROM = {"planned", "producing"}
 QA_FROM = {"producing", "qa"}
 
@@ -581,6 +601,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     ad_report = work_dir / "art-direction-check.json"
     ad_check = _runner([
         sys.executable, str(HERE / "art_direction_check.py"), str(art),
+        "--work-dir", str(work_dir),
         "--output", str(ad_report), "--json",
     ])
     if ad_report.is_file():
@@ -968,21 +989,54 @@ def cmd_qa(args: argparse.Namespace) -> int:
     for stage in stages:
         ok, stage_problems, binding = collect(stage)
         reports[stage.artifact] = binding
+        if not ok and stage.name in QA_DERIVED_AFTER_UPSTREAM_FAILURE and any(
+            not data.get("ok", True) for name, data in reports.items() if name != stage.artifact
+        ):
+            for item in stage_problems:
+                item["derived"] = True
+            binding["derived_from_upstream"] = True
         problems.extend(stage_problems)
-        if not ok:
+        if not ok and stage.name in QA_HARD_STOP_STAGES:
             break
+    regressions, gate_history = gate_regressions(work_dir, reports)
+    problems.extend(regressions)
     problems = dedupe(problems)
     if set(reports) != set(QA_ORDER):
         problems.append({"gate": "pipeline", "severity": "major", "code": "missing_stages", "message": "All QA stages, including delivery, must run and pass"})
-    counts = {s: sum(1 for p in problems if p["severity"] == s) for s in ("critical", "major", "minor")}
+    counts = {s: sum(1 for p in problems if p["severity"] == s and not p.get("derived")) for s in ("critical", "major", "minor")}
     blockers = counts["critical"] + counts["major"]
+    blockers_by_gate: dict[str, list[str]] = {}
+    # keys follow qa_order (actual_content), not the display name (actual-content), so the
+    # report and `failed_stages` can be read with one vocabulary.
+    artifact_of = {stage.name: stage.artifact for stage in stages}
+    for item in problems:
+        if item.get("derived") or item["severity"] not in QA_BLOCKING_SEVERITIES:
+            continue
+        gate = str(item.get("gate") or "pipeline")
+        blockers_by_gate.setdefault(artifact_of.get(gate, gate), []).append(str(item.get("code") or "issue"))
+    failed_stages = [name for name, data in reports.items() if not data.get("ok", True)]
+    # Round-over-round blocker counts: this is what tells a repair round from a round that
+    # only moved blockers around. `next` reports the trend so "keep going or stop" is a
+    # reading, not another question to the user.
+    rounds = [item for item in (gate_history.get("_rounds") or []) if isinstance(item, dict)]
+    rounds.append({"round": len(rounds) + 1, "blockers": blockers, "failed": failed_stages})
+    gate_history["_rounds"] = rounds[-8:]
     qa_report = {
         "ok": blockers == 0, "pipeline_version": MANIFEST_VERSION,
         "qa_order": list(QA_ORDER), "pptx": str(pptx),
         "counts": {"blockers": blockers, **counts}, "problems": problems, "reports": reports,
+        # Every content gate runs before this report is written, so a repair round can be
+        # handed the complete blocker set in one go instead of discovering one gate per round.
+        "failed_stages": failed_stages, "blockers_by_gate": blockers_by_gate,
+        "derived_problems": [item["code"] for item in problems if item.get("derived")],
+        "gate_regressions": [item["message"] for item in regressions],
     }
     qa_report_path = work_dir / "pipeline-qa.json"
     qa_report_path.write_text(json.dumps(qa_report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (work_dir / GATE_HISTORY_NAME).write_text(
+        json.dumps(gate_history, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     before = str(manifest.get("state"))
     manifest["qa"] = {
         "ok": qa_report["ok"], "blockers": blockers, "input_fingerprint": fingerprint,
@@ -1001,21 +1055,47 @@ def cmd_qa(args: argparse.Namespace) -> int:
     line = (
         f"ppt_pipeline: {'ok' if qa_report['ok'] else 'blocked'} — blockers {blockers} "
         f"(critical {counts['critical']}, major {counts['major']}), minor {counts['minor']} | "
-        f"stages: {names} | report: {qa_report_path}"
+        f"stages: {names} | failed: {', '.join(failed_stages) or 'none'} | report: {qa_report_path}"
     )
-    write_stage_summary(
-        work_dir,
-        "qa",
-        [
-            f"- {line}",
-            f"- report: `{qa_report_path}`",
-            "- next: `ppt_pipeline.py complete` if ok, else `repair --reason …` then rebuild",
-        ],
-    )
+    summary_lines = [f"- {line}", f"- report: `{qa_report_path}`"]
+    if blockers_by_gate:
+        summary_lines.append(
+            "- blockers by gate: "
+            + "; ".join(f"{gate}: {', '.join(codes)}" for gate, codes in sorted(blockers_by_gate.items()))
+        )
+        summary_lines.append(
+            "- every content gate already ran on this build — hand the whole list to ONE repair "
+            "round; do not fix one gate per round (that cost 6 rounds and ~199M tokens on 2026-09-17)"
+        )
+    summary_lines.append("- next: `ppt_pipeline.py complete` if ok, else `repair --reason …` then rebuild")
+    write_stage_summary(work_dir, "qa", summary_lines)
     print(line)
     for item in problems[: args.max_items]:
-        print(f"  [{item['severity']}] {item['gate']}/{item['code']} — {str(item['message'])[:200]}")
+        mark = " (derived)" if item.get("derived") else ""
+        print(f"  [{item['severity']}]{mark} {item['gate']}/{item['code']} — {str(item['message'])[:200]}")
     return 0 if qa_report["ok"] else 2
+
+
+def repair_budget(manifest: dict[str, Any] | None) -> dict[str, Any]:
+    """Base budget + rounds granted this run, read from the manifest.
+
+    The budget used to be a bare constant, so a run that ran out of rounds had nowhere to
+    record a decision except the installed plugin's contract file. Grants live in the
+    manifest instead: they survive the plugin being reinstalled, they travel with the work
+    id, and they are auditable next to the QA rounds that justified them.
+    """
+    grants = []
+    for entry in ((manifest or {}).get("build") or {}).get("repair_budget_grants") or []:
+        if isinstance(entry, dict):
+            grants.append(entry)
+    granted = sum(int(entry.get("rounds") or 0) for entry in grants)
+    return {
+        "base": MAX_REPAIRS,
+        "granted": granted,
+        "effective": MAX_REPAIRS + granted,
+        "hard_cap": MAX_REPAIRS_HARD_CAP,
+        "grants": grants,
+    }
 
 
 def cmd_repair(args: argparse.Namespace) -> int:
@@ -1029,8 +1109,43 @@ def cmd_repair(args: argparse.Namespace) -> int:
         raise RefusedError("QA has no blockers; complete instead of repairing")
     build_info = manifest.setdefault("build", {})
     repairs = int(build_info.get("repair_count") or 0)
-    if repairs >= MAX_REPAIRS:
-        raise RefusedError(f"repair budget exhausted ({MAX_REPAIRS}); mark the task incomplete")
+    if args.extend:
+        # 提额必须写明"这轮要修什么、上轮 blocker 差异是什么"：契约要求的不是更大的预算，
+        # 而是不同的做法。trend 一并记录，让"flat/worse 还继续加轮次"在报告里留下痕迹。
+        reason = str(args.extend_reason or "").strip()
+        if len(reason) < 24:
+            raise RefusedError(
+                "repair --extend needs --extend-reason describing the round-over-round blocker "
+                "diff (what was resolved, what is new). Repeating the same approach with a bigger "
+                "budget is not a repair strategy — `next --json` carries repair_convergence."
+            )
+        budget = repair_budget(manifest)
+        if budget["effective"] + int(args.extend) > MAX_REPAIRS_HARD_CAP:
+            raise RefusedError(
+                f"repair budget hard cap reached: base {MAX_REPAIRS} + granted {budget['granted']} "
+                f"+ requested {int(args.extend)} exceeds {MAX_REPAIRS_HARD_CAP} "
+                f"(contract max_repairs_hard_cap). Deliver what is on disk as `incomplete` instead."
+            )
+        convergence = repair_convergence(work_dir) or {}
+        build_info.setdefault("repair_budget_grants", []).append(
+            {
+                "rounds": int(args.extend),
+                "reason": reason,
+                "trend": convergence.get("trend"),
+                "blockers_at_grant": blockers,
+                "repairs_used": repairs,
+            }
+        )
+        print(
+            f"ppt_pipeline: repair budget extended by {int(args.extend)} "
+            f"(base {MAX_REPAIRS} + granted {budget['granted'] + int(args.extend)}, "
+            f"hard cap {MAX_REPAIRS_HARD_CAP}; trend {convergence.get('trend') or 'unknown'})"
+        )
+    budget = repair_budget(manifest)
+    if repairs >= budget["effective"]:
+        raise RefusedError(
+            f"repair budget exhausted ({repairs}/{budget['effective']}); mark the task incomplete"
+        )
     build_info["repair_count"] = repairs + 1
     build_info["pending_repair"] = True
     build_info.setdefault("repair_reasons", []).append(args.reason)
@@ -1039,7 +1154,7 @@ def cmd_repair(args: argparse.Namespace) -> int:
     record(manifest, "repair", before, "producing", repair_count=repairs + 1, reason=args.reason)
     save_manifest(work_dir, manifest)
     mirror_workflow_state(manifest, "producing", reason=args.reason)
-    print(f"ppt_pipeline: repair {repairs + 1}/{MAX_REPAIRS} — change generator, then build → render → qa")
+    print(f"ppt_pipeline: repair {repairs + 1}/{budget['effective']} — change generator, then build → render → qa")
     return 0
 
 
@@ -1088,12 +1203,119 @@ def cmd_status(args: argparse.Namespace) -> int:
     build = manifest.get("build") or {}
     qa = manifest.get("qa") or {}
     render = manifest.get("render") or {}
+    budget = repair_budget(manifest)
+    granted = f" (base {budget['base']} + granted {budget['granted']})" if budget["granted"] else ""
     print(
         f"ppt_pipeline: {manifest.get('state')} — builds {build.get('build_count', 0)}, "
-        f"repairs {build.get('repair_count', 0)}/{MAX_REPAIRS}, rendered {render.get('page_count', 0)} | "
+        f"repairs {build.get('repair_count', 0)}/{budget['effective']}{granted}, "
+        f"rendered {render.get('page_count', 0)} | "
         f"qa {'ok' if qa.get('ok') else str(qa.get('blockers', '-')) + ' blockers'}"
     )
     return 0
+
+
+def gate_regressions(
+    work_dir: Path,
+    reports: dict[str, Any],
+    *,
+    blockers: int = 0,
+    failed: list[str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """A gate that passed on the previous build and fails now means the change broke it.
+
+    2026-09-17 live: repair round 6 broke `actual_content`, which had passed since build 3.
+    Nothing compared gate status across rounds, so the breakage surfaced only as another
+    blocker pile, the budget was already spent, and the round had effectively undone its own
+    predecessor. Naming the regression at the moment it appears is what makes "repair"
+    converge instead of oscillate.
+
+    Returns the problems to add plus the history to persist (round counter per gate).
+    """
+    path = work_dir / GATE_HISTORY_NAME
+    previous: dict[str, Any] = {}
+    if path.is_file():
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                previous = loaded
+        except (OSError, json.JSONDecodeError):
+            previous = {}
+
+    problems: list[dict[str, Any]] = []
+    history: dict[str, Any] = {}
+    for name, data in reports.items():
+        ok = bool(data.get("ok"))
+        entry = previous.get(name) if isinstance(previous.get(name), dict) else {}
+        history[name] = {"ok": ok, "round": int(entry.get("round") or 0) + 1}
+        if entry.get("ok") is True and not ok:
+            problems.append(
+                {
+                    "gate": "pipeline",
+                    "severity": "major",
+                    "code": "gate_regression",
+                    "message": (
+                        f"`{name}` passed on the previous build and fails now: the last change "
+                        "broke a gate that was already working. Restore it before anything else."
+                    ),
+                }
+            )
+    # Gates that did not run this round keep their last state: otherwise a hard stop would
+    # silently erase the record of a gate that had been passing.
+    for name, entry in previous.items():
+        if name.startswith("_"):
+            continue
+        history.setdefault(name, entry)
+    rounds = [item for item in (previous.get("_rounds") or []) if isinstance(item, dict)]
+    rounds.append({"round": len(rounds) + 1, "blockers": int(blockers), "failed": list(failed or [])})
+    history["_rounds"] = rounds[-8:]
+    return problems, history
+
+
+def repair_convergence(work_dir: Path) -> dict[str, Any] | None:
+    """Whether the repair rounds are converging, read from the QA round history.
+
+    2026-09-17 live: the budget was a fixed count of rounds while the blocker count barely
+    moved, so the run ended in a user prompt — "repair budget exhausted, 23 majors left, what
+    now?" — and the granted rounds included one that only undid its predecessor. Publishing
+    the trend lets the main session decide from numbers instead of asking the user to guess,
+    and gives it an explicit stop condition when a round made things worse.
+    """
+    path = work_dir / GATE_HISTORY_NAME
+    if not path.is_file():
+        return None
+    try:
+        history = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(history, dict):
+        return None
+    rounds = [item for item in (history.get("_rounds") or []) if isinstance(item, dict)]
+    if len(rounds) < 2:
+        return None
+    previous = int(rounds[-2].get("blockers") or 0)
+    current = int(rounds[-1].get("blockers") or 0)
+    if current < previous:
+        trend = "improving"
+        advice = "the blocker count is coming down; another round is justified"
+    elif current == previous:
+        trend = "flat"
+        advice = (
+            "the last round removed no blockers net: change the approach or deliver incomplete — "
+            "repeating it with more budget is not a repair strategy"
+        )
+    else:
+        trend = "worse"
+        advice = (
+            "the last round ADDED blockers: recover the regression first; granting more rounds "
+            "on the same approach only moves the cost"
+        )
+    return {
+        "rounds": rounds,
+        "previous_blockers": previous,
+        "current_blockers": current,
+        "trend": trend,
+        "advice": advice,
+    }
 
 
 def _research_budget(work_dir: Path) -> dict[str, Any] | None:
@@ -1190,6 +1412,9 @@ def cmd_next(args: argparse.Namespace) -> int:
             "allowed_writes": ["pages/pNN-*.js"],
             "notes": "different pages must be Edit'ed in the same turn (CD-1, CD-2)",
         }
+        convergence = repair_convergence(work_dir)
+        if convergence:
+            payload["repair_convergence"] = convergence
         if state == "planned":
             if manifest.get("mode") == "edit_ooxml":
                 payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
@@ -1294,6 +1519,9 @@ def cmd_next(args: argparse.Namespace) -> int:
         "qa_order": list(QA_ORDER), "max_repairs": MAX_REPAIRS,
         "contract_sha256": sha256_file(CONTRACT_PATH),
     }
+    # 提额是数据决定的事，不是问用户的事：budget 与 trend 一起给出，主会话据此决定续轮、
+    # 换做法还是交付 incomplete。`--extend` 把决定写进 manifest，不需要改插件契约文件。
+    payload["repair_budget"] = repair_budget(manifest)
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
@@ -1351,7 +1579,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     render.add_argument("--cols", type=int, default=3)
     render.set_defaults(func=cmd_render)
 
-    qa = sub.add_parser("qa", help="run fail-fast QA DAG; identical inputs reuse prior result")
+    qa = sub.add_parser("qa", help="run QA DAG (content gates all run, then one blocker set); identical inputs reuse prior result")
     qa.add_argument("--work-dir", type=Path, required=True)
     qa.add_argument("--visual-review", type=Path)
     qa.add_argument("--notes", type=Path)
@@ -1360,9 +1588,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     qa.add_argument("--max-items", type=int, default=12)
     qa.set_defaults(func=cmd_qa)
 
-    repair = sub.add_parser("repair", help=f"qa blockers -> producing; max {MAX_REPAIRS}")
+    repair = sub.add_parser("repair", help=f"qa blockers -> producing; base budget {MAX_REPAIRS}")
     repair.add_argument("--work-dir", type=Path, required=True)
     repair.add_argument("--reason", required=True)
+    repair.add_argument(
+        "--extend",
+        type=int,
+        default=0,
+        help=f"grant N extra rounds beyond the base budget (recorded in the manifest; hard cap {MAX_REPAIRS_HARD_CAP})",
+    )
+    repair.add_argument(
+        "--extend-reason",
+        help="required with --extend: the round-over-round blocker diff that justifies more rounds",
+    )
     repair.add_argument("--force", action="store_true")
     repair.set_defaults(func=cmd_repair)
 

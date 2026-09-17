@@ -166,7 +166,7 @@ Evidence Ledger 的每一条都能对应到 `research/*.json` 中的一条记录
 门禁统一通过一次运行完成：
 
 ```bash
-sh "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.sh" \
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
   --art-direction <art-direction.yaml> \
   --slide-spec <slide-spec.yaml> \
   --evidence-dir <work-id 目录> \

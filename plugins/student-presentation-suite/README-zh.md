@@ -206,7 +206,7 @@ dashboard/architecture/matrix/quote/summary/reference 等布局族。图片默�
 v0.8 的视觉门禁（Art Direction、composition 候选、探索证据）由一次运行覆盖：
 
 ```powershell
-sh skills/sp-deck/scripts/run_gates.sh --art-direction <a.yaml> --slide-spec <s.yaml> --evidence-dir <work-id> --lock-file <lock.json>
+python skills/sp-deck/scripts/run_gates.py --art-direction <a.yaml> --slide-spec <s.yaml> --evidence-dir <work-id> --lock-file <lock.json>
 ```
 
 通过时只回显 1 行，完整明细写入 `gates-report.json`；单个 gate 脚本仍可单独调用用于调试。

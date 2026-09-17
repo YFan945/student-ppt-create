@@ -15,6 +15,13 @@ import sys
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared import image_capability  # noqa: E402
+from shared.runtime_paths import project_root  # noqa: E402
+
 BLOCKING = {"critical", "major"}
 REQUIRED_SECTIONS = (
     "concept",
@@ -102,6 +109,28 @@ def _collect_strings(value: Any) -> list[str]:
     return []
 
 
+def project_dir_for(work_dir: Path | None) -> Path:
+    """The project an Art Direction belongs to, so `image-sources.json` can be found.
+
+    A work directory is `<project>/outputs/.pptx-work/<work-id>`; the declaration
+    file lives at the project root (or wherever `SPS_IMAGE_SOURCES` points).
+    """
+    if work_dir is not None:
+        resolved = work_dir.expanduser().resolve()
+        for candidate in (resolved, *resolved.parents):
+            if (candidate / image_capability.IMAGE_SOURCE_CONFIG_NAME).is_file():
+                return candidate
+        for candidate in (resolved, *resolved.parents):
+            if candidate.name == "outputs":
+                return candidate.parent
+    return project_root()
+
+
+def resolve_capability(work_dir: Path | None) -> dict[str, Any]:
+    """Resolved image capability for this session; `None`-safe when no work dir is known."""
+    return image_capability.resolve_image_sources(project_dir_for(work_dir))
+
+
 def capability_issues(data: dict[str, Any]) -> list[dict[str, str]]:
     """Refuse design contracts the runtime cannot render (2026-09-17).
 
@@ -127,7 +156,13 @@ def capability_issues(data: dict[str, Any]) -> list[dict[str, str]]:
     return issues
 
 
-def validate_art_direction(data: dict[str, Any], *, high_score: bool = True) -> dict[str, Any]:
+def validate_art_direction(
+    data: dict[str, Any],
+    *,
+    high_score: bool = True,
+    image_sources: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Validate Art Direction. `image_sources` is the resolved capability (None = not asked)."""
     issues: list[dict[str, str]] = []
     for field in REQUIRED_SECTIONS:
         value = data.get(field)
@@ -196,6 +231,50 @@ def validate_art_direction(data: dict[str, Any], *, high_score: bool = True) -> 
         and not isinstance(value, bool)
         and value > 0
     )
+    # 图像能力决定 mix 下限：拿不到图时可用类别只有 diagrams / native_charts /
+    # typography_led 三类，仍按"至少四类"要求等于强制声明拿不到的图——2026-09-17 live 的
+    # asset_plan 正是这样写下 hero_visuals: 2 的，随后 hero-visual-missing 从第一轮
+    # critique 一路复现到最后一轮，预算内无法修复。
+    imagery_ok = image_capability.imagery_available(image_sources) if image_sources is not None else None
+    image_visuals = sum(
+        int(asset_plan.get(key) or 0)
+        for key in ("hero_visuals", "evidence_visuals")
+        if isinstance(asset_plan.get(key), int) and not isinstance(asset_plan.get(key), bool)
+    )
+    if image_visuals > 0 and imagery_ok is False:
+        # 两个档：根本没声明图源是阻断（live 用户项目就是这样——asset_plan 写了
+        # hero_visuals: 2，而项目里没有 image-sources.json，hero-visual-missing 从第一轮
+        # critique 复现到最后一轮、预算内修不掉）；声明了但都不 ready 只是提醒，因为
+        # deterministic visual stack 本就是 asset_plan 的合法交付方式（golden sample 的
+        # asset-manifest 就是这么写的），是否要为这几页补图由主会话在冻结前决定。
+        configured = bool((image_sources or {}).get("configured"))
+        detail = str((image_sources or {}).get("detail") or "no image-sources.json declared")
+        if configured:
+            issues.append(
+                issue(
+                    "minor",
+                    "asset_plan_visuals_not_ready",
+                    f"asset_plan counts {image_visuals} image-based visual(s) "
+                    f"(hero_visuals/evidence_visuals) but no declared provider is ready: {detail} "
+                    "Either confirm these pages are delivered by the deterministic stack "
+                    "(diagrams / native_charts / typography_led) or enable a provider before "
+                    "freezing — after the freeze the critic reads an undelivered hero visual as "
+                    "an unfixable blocker.",
+                )
+            )
+        else:
+            issues.append(
+                issue(
+                    "major",
+                    "asset_plan_visuals_unavailable",
+                    f"asset_plan promises {image_visuals} image-based visual(s) (hero_visuals/"
+                    "evidence_visuals) but this session declares no image source at all "
+                    "(references/image-sourcing.md: undeclared means unavailable). Either declare "
+                    "one or plan the deterministic stack (diagrams / native_charts / "
+                    "typography_led) — a promise nobody can deliver becomes a blocker the critic "
+                    "repeats every round until the repair budget runs out.",
+                )
+            )
     if high_score:
         # 旧判定只数"有几个类别 >0"，不看总量：4 个类别各配 1 个元素的 8 页 deck
         # 也能放行。加总量下限（审查第 19 条的原始反例即 total=4）。
@@ -204,7 +283,8 @@ def validate_art_direction(data: dict[str, Any], *, high_score: bool = True) -> 
             for key in mix_keys
             if isinstance(asset_plan.get(key), int) and not isinstance(asset_plan.get(key), bool)
         )
-        if visual_mix < 4:
+        min_mix = 3 if imagery_ok is False else 4
+        if visual_mix < min_mix:
             issues.append(issue("major", "asset_mix_too_thin", "High-score Art Direction needs a deliberate mix of visual assets/strategies."))
         elif total_visuals < 5:
             issues.append(issue("major", "asset_mix_total_too_low", f"High-score Art Direction plans only {total_visuals} visual elements across the deck; raise the asset_plan totals."))
@@ -229,6 +309,13 @@ def validate_art_direction(data: dict[str, Any], *, high_score: bool = True) -> 
         "high_leverage_slides": high_numbers,
         "blocker_count": len(blockers),
         "issue_count": len(issues),
+        # None = 调用方未解析能力（老调用点），不是"没有能力"；report 里保留原始判定，
+        # 让 plan 报告能回答"这次为什么要求确定性视觉栈"。
+        "image_capability": {
+            "available": imagery_ok,
+            "configured": bool((image_sources or {}).get("configured")) if image_sources is not None else None,
+            "detail": str((image_sources or {}).get("detail") or "") or None,
+        },
         "issues": issues,
     }
 
@@ -237,6 +324,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("art_direction", type=Path)
     parser.add_argument("--quality", choices=["high-score", "standard"], default="high-score")
+    parser.add_argument(
+        "--work-dir",
+        type=Path,
+        help="work directory; enables the asset_plan <-> image capability check",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict", action="store_true", help="deprecated no-op alias; gates are fail-closed by default")
@@ -247,7 +339,11 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    report = validate_art_direction(load_structured(args.art_direction), high_score=args.quality == "high-score")
+    report = validate_art_direction(
+        load_structured(args.art_direction),
+        high_score=args.quality == "high-score",
+        image_sources=resolve_capability(args.work_dir),
+    )
     payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

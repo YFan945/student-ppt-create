@@ -249,7 +249,7 @@ The v0.8 visual gates (Art Direction, composition candidates, exploration eviden
 pass, so a passing run prints one line instead of four JSON reports:
 
 ```powershell
-sh skills/sp-deck/scripts/run_gates.sh --art-direction <a.yaml> --slide-spec <s.yaml> --evidence-dir <work-id> --lock-file <lock.json>
+python skills/sp-deck/scripts/run_gates.py --art-direction <a.yaml> --slide-spec <s.yaml> --evidence-dir <work-id> --lock-file <lock.json>
 ```
 
 Full detail still lands in `gates-report.json`, and every individual gate script stays callable

@@ -94,6 +94,41 @@ class CalibrationPreviewTests(unittest.TestCase):
         self.assertEqual(calibration.sha256_file(page4), manifest["pages"][1]["sha256"])
         self.assertTrue(manifest["pptx"]["sha256"])
 
+    def test_rerun_after_a_calibration_fix_round_is_not_blocked_by_its_own_output(self) -> None:
+        """run_with_pptxgenjs.js refuses to overwrite; the helper clears its own preview first.
+
+        2026-09-17 live: the resume path ("respawn the builder for the calibration pages,
+        then rerun calibration_preview.py") failed at exit 2 because the previous
+        calibration.pptx was still there, and the round went to deleting it by hand.
+        """
+        self.write_page(1)
+        self.write_page(4)
+        stale = self.work / "calibration" / "calibration.pptx"
+        stale.parent.mkdir(parents=True)
+        stale.write_bytes(b"previous preview")
+
+        original = calibration.run_checked
+
+        def fake_run(argv: list[str], label: str) -> None:
+            if label == "calibration build":
+                output = Path(argv[argv.index("--output") + 1])
+                if output.exists():
+                    raise RuntimeError("calibration build failed (exit 2): Refusing to overwrite existing output")
+                output.write_bytes(b"pptx")
+            elif label == "calibration render":
+                out_dir = Path(argv[argv.index("--output-dir") + 1])
+                out_dir.mkdir(parents=True, exist_ok=True)
+                for number in (1, 4):
+                    (out_dir / f"calibration-{number}.png").write_bytes(b"img")
+
+        calibration.run_checked = fake_run
+        try:
+            result = calibration.build_preview(self.work, [1, 4])
+        finally:
+            calibration.run_checked = original
+        self.assertTrue(Path(result["manifest"]).is_file())
+        self.assertEqual(b"pptx", stale.read_bytes())
+
 
 if __name__ == "__main__":
     unittest.main()

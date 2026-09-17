@@ -29,8 +29,15 @@
       "description": "一基页码（字符串键）→ 当前渲染页 PNG sha256"
     },
     "page_count": {"type": "integer", "minimum": 1},
-    "verdict": {"enum": ["pass", "pass_with_issues", "needs_repair"]},
-    "blocker_count": {"type": "integer", "minimum": 0},
+    "verdict": {
+      "enum": ["pass", "pass_with_issues", "needs_repair"],
+      "description": "needs_repair 当且仅当 blocker_count > 0；pass_with_issues 只能是'有 minor、无 blocker'"
+    },
+    "blocker_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "critical + major。质量门（pptx_quality_gate_v071.py 的 BLOCKING_SEVERITIES）就是这么算的，critic 的汇总必须是同一口径——2026-09-17 live：critic 只把 critical 当 blocker，回报 'blocker 0 / major 8'，主会话据此认为独立复核判定可交付，而门对同一份报告算出 23 个 blocker"
+    },
     "severity_counts": {
       "type": "object",
       "required": ["critical", "major", "minor"],

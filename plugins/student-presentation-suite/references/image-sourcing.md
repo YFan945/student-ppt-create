@@ -57,6 +57,13 @@ env check → 读取 image-sources.json，确认 search/generation/user-assets �
 
 保持"先解析能力，再规划构图"的顺序：不要先画好版式再发现拿不到图。
 
+`art_direction_check.py` 在 plan 阶段校验这条顺序：`asset_plan` 的
+`hero_visuals` / `evidence_visuals` 计数 > 0 而本会话**没有任何 image-sources.json** 时直接
+拒绝（`asset_plan_visuals_unavailable`，undeclared = unavailable）；已声明但 provider 都不
+ready 时只给一条 minor（`asset_plan_visuals_not_ready`）——这几页由 deterministic visual
+stack 交付是合法的，只需在冻结前确认。冻结之后再发现声明兑现不了，critic 每轮都会报
+`hero-visual-missing`，而修复预算内没有任何办法补图（2026-09-17 live）。
+
 **检索一律委派给子代理**（`cost-discipline.md` CD-5）：图片检索由子代理执行，主流程只
 接收结构化结果（`slide` / `purpose` / `provider_id` / `source_url` / `license` /
 `retrieved_at` / `alt_text` / `fallback`）与原始文件路径，不接收检索原始正文——原始结果

@@ -24,6 +24,15 @@ PUBLIC_DECK_ENTRYPOINTS = frozenset(
         "ppt_pipeline.py",
         "calibration_preview.py",
         "visual_reference_select.py",
+        # page_brief.py: the projection tool the builder is *required* to use
+        # (spawn-templates.md) and the one builder_guard redirects inline `node -e`
+        # to. Leaving it off this list re-created the 0.13.4 failure — the command
+        # the instructions mandate being refused by the guard that polices it.
+        "page_brief.py",
+        # run_gates.py is the canonical gate orchestrator (run_gates.sh only locates
+        # an interpreter); on hosts where `sh` resolves to WSL, the .sh wrapper cannot
+        # open a `C:/...` path and exits 127, so the python form must stay runnable.
+        "run_gates.py",
         "run_gates.sh",
     }
 )
@@ -96,10 +105,13 @@ def _builder_allowlist() -> str:
     parts = []
     helper = here / "scripts" / "pptx-helpers.js"
     select = here / "skills" / "sp-deck" / "scripts" / "visual_reference_select.py"
+    brief = here / "skills" / "sp-deck" / "scripts" / "page_brief.py"
     if helper.is_file():
         parts.append(f'node "{helper}" --describe')
     if select.is_file():
         parts.append(f'python "{select}" --role <role> --grammar <grammar> --visual-strategy <strategy> --output composition/<id>.json')
+    if brief.is_file():
+        parts.append(f'python "{brief}" --work-dir <wd> --slide <N> --json')
     return "; ".join(parts) or "pptx-helpers.js --describe and visual_reference_select.py"
 
 

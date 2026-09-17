@@ -7,7 +7,6 @@ import argparse
 import importlib.util
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -17,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from shared import image_capability
 from shared.pptx_runtime.openxml import build_openxml_validator, dotnet_sdk_path
 from shared.pptx_runtime.soffice import af_unix_available
 from shared.runtime_paths import project_root
@@ -41,19 +41,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def command_path(name: str, extra_paths: list[Path] | None = None) -> str | None:
-    if os.name == "nt" and not Path(name).suffix:
-        for suffix in (".cmd", ".exe", ".bat"):
-            found = shutil.which(name + suffix)
-            if found:
-                return found
-    found = shutil.which(name)
-    if found:
-        return found
-    for path in extra_paths or []:
-        if path.is_file():
-            return str(path)
-    return None
+command_path = image_capability.command_path
 
 
 def python_module(name: str) -> bool:
@@ -151,134 +139,9 @@ def resolve_pptxgenjs(project: Path) -> dict[str, Any]:
     }
 
 
-IMAGE_SOURCE_CONFIG_NAME = "image-sources.json"
-
-
-def image_source_config_path(project: Path) -> Path | None:
-    override = os.environ.get("SPS_IMAGE_SOURCES", "").strip()
-    if override:
-        candidate = Path(override).expanduser()
-        return candidate if candidate.is_file() else None
-    candidate = project / IMAGE_SOURCE_CONFIG_NAME
-    return candidate if candidate.is_file() else None
-
-
-def resolve_image_sources(project: Path) -> dict[str, Any]:
-    """读项目里的 image-sources.json，报告 search/generation/user-assets 是否就绪。
-
-    未配置时返回安全的"未声明"状态，不把缺失当成错误。
-    """
-    config_path = image_source_config_path(project)
-    base = {
-        "ok": False,
-        "configured": False,
-        "config_path": str(config_path) if config_path else None,
-        "search_ready": False,
-        "generation_ready": False,
-        "user_assets_ready": False,
-        "permission": {},
-        "providers": [],
-        "detail": "No image-sources.json declared; image search and generation are treated as unavailable.",
-    }
-    if config_path is None:
-        return base
-
-    try:
-        from shared.pptx_runtime.fetch_images import load_image_sources_contract, resolve_assets_dir
-
-        raw = load_image_sources_contract(config_path)
-    except (OSError, json.JSONDecodeError, ValueError) as exc:
-        base["configured"] = True
-        base["detail"] = f"image-sources.json could not be read: {exc}"
-        return base
-
-    if not isinstance(raw, dict) or not isinstance(raw.get("providers"), list):
-        base["configured"] = True
-        base["detail"] = "image-sources.json must contain a providers array."
-        return base
-
-    permission = raw.get("permission") if isinstance(raw.get("permission"), dict) else {}
-    # 缺省即拒绝（fail-closed），与执行侧 fetch_images.py:50,53 的真值判定保持一致。
-    # 旧写法 `is not False` 会在字段缺失时放行，导致环境检查报 ready、实际却被跳过。
-    allow_search = permission.get("allow_web_search") is True
-    allow_generation = permission.get("allow_generation") is True
-
-    providers: list[dict[str, Any]] = []
-    search_ready = generation_ready = user_assets_ready = False
-    for entry in raw["providers"]:
-        if not isinstance(entry, dict):
-            continue
-        kind = str(entry.get("kind") or "")
-        enabled = bool(entry.get("enabled"))
-        record: dict[str, Any] = {
-            "id": entry.get("id"),
-            "kind": kind,
-            "enabled": enabled,
-            "capability": entry.get("capability"),
-            "permission": entry.get("permission"),
-        }
-        missing_commands = [
-            name for name in (entry.get("requires") or []) if command_path(str(name)) is None
-        ]
-        record["missing_commands"] = missing_commands
-
-        if not enabled:
-            record["available"] = False
-            record["reason"] = "disabled"
-        elif kind == "user-assets":
-            assets_dir = entry.get("assets_dir") or "assets"
-            resolved = resolve_assets_dir(str(assets_dir), project)
-            available = bool(resolved and resolved.is_dir())
-            record["available"] = available
-            if resolved is None:
-                record["reason"] = "assets_dir escapes project root"
-            else:
-                record["reason"] = None if available else "assets_dir missing"
-            record["assets_dir"] = str(resolved) if resolved else None
-            user_assets_ready = user_assets_ready or available
-        elif kind == "web-search":
-            available = allow_search and not missing_commands
-            record["available"] = available
-            record["reason"] = (
-                None
-                if available
-                else ("permission denied" if not allow_search else "required command missing")
-            )
-            search_ready = search_ready or available
-        elif kind == "image-generation":
-            available = allow_generation and bool(entry.get("capability")) and not missing_commands
-            record["available"] = available
-            record["reason"] = (
-                None
-                if available
-                else (
-                    "permission denied"
-                    if not allow_generation
-                    else "missing capability declaration or required command"
-                )
-            )
-            generation_ready = generation_ready or available
-        else:
-            record["available"] = False
-            record["reason"] = "unknown provider kind"
-        providers.append(record)
-
-    declared = bool(providers)
-    return {
-        "ok": declared,
-        "configured": True,
-        "config_path": str(config_path),
-        "search_ready": search_ready,
-        "generation_ready": generation_ready,
-        "user_assets_ready": user_assets_ready,
-        "permission": permission,
-        "providers": providers,
-        "detail": (
-            f"{len(providers)} provider(s) declared; "
-            f"search_ready={search_ready}, generation_ready={generation_ready}, "
-            f"user_assets_ready={user_assets_ready}."
-        ),
-    }
+IMAGE_SOURCE_CONFIG_NAME = image_capability.IMAGE_SOURCE_CONFIG_NAME
+image_source_config_path = image_capability.image_source_config_path
+resolve_image_sources = image_capability.resolve_image_sources
 
 
 def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[str, Any]:

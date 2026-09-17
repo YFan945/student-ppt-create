@@ -2,6 +2,166 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.14.1 — 2026-09-18
+
+来源：2026-09-18 对 0.13.4 live 会话 transcript 的成本诊断
+（`outputs/token-rework-analysis-2026-09-18.md`）。子代理侧 286M 输入 token 里 **86% 花在
+builder，其中 6 轮 repair 占 199M**——是 initial 全量实现（29.1M）的 6.8 倍。根因不是"搜索次数"
+（同一会话 WebSearch 只有 16 次），而是**返工循环**：门串行让每轮只能看到一层问题；builder 缺少
+投影式读取工具，一轮内自建 19~46 条内联脚本挖 JSON；视觉改动没有回归对比，第 5 轮改坏、第 6 轮
+花 40M token 只用来回退。本批四项修复都落在"运行时能挡住"的位置（批次三）。
+
+### QA：内容门全部跑完再汇总（解"6 轮 repair = 6 层门"）
+
+- `ppt_pipeline.py qa`：产物可用性门（`package` / `rendered`）失败即停；内容质量门
+  （`actual-content` / `quality` / `delivery`）**全部跑完再汇总**。原先的 `if not ok: break`
+  让每轮 repair 只能看到一层门的问题——6 轮 repair 恰好对应门（rendered → actual-content →
+  quality → evidence → 视觉）的逐层暴露，每轮都在"盲修"下游没跑过的门。
+- `pipeline-qa.json` 新增 `failed_stages` / `blockers_by_gate` / `derived_problems`：一轮 repair
+  拿到的就是完整清单。`delivery` 只汇总上游报告的结论，上游失败时它的失败记为派生、不计入
+  blocker，避免把 builder 指向一个没有独立问题的地方。
+- stage summary 与 SKILL 第 13/14 步同步：按报告路径交给 builder 自己读，**按门分批修是禁止项**。
+
+### Builder：投影式读取工具取代内联脚本（解"每轮 19~46 条 `node -e`"）
+
+- 新增 `skills/sp-deck/scripts/page_brief.py`：一次调用给出每页的逐字 `claim`、planned numbers、
+  本页 blocker、引用来源（标题取自 research-pack 原文）。`--slide N` 给单页完整上下文，省略则给
+  全 deck（`initial` 轮一次拿完，不再重复读 spec 11 次）。其 numbers 由新抽出的
+  `pptx_actual_content_check.planned_requirements()` 产出，**与 actual-content 门同源**。
+- `generator_scaffold.py`：page stub 从"本页要有 planned numbers"的通用提示，改为**注入本页实际
+  内容**（title / claim / numbers / copy 片段），同一函数产出，stub 与门不可能互相矛盾。顺带修掉
+  一个真实缺陷：spec 的 title 含 `*/` 时会提前闭合 JS 文档注释、把剩余标题变成代码。
+- `builder_guard.py` 扩到 shell 工具：builder 的内联 `node -e …require('./*.json')…` 被拒绝并指向
+  `page_brief.py`（`node` 语法校验、`pptx-helpers.js --describe`、临时目录试渲染不受影响）。
+  `hooks.json` 的 builder_guard matcher 同步为 `Read|Write|Edit|Bash|PowerShell`。
+
+### 视觉：回归检测与归因（解"第 5 轮改坏 → 第 6 轮回退"）
+
+- `pptx_quality_gate_v071.py` 新增逐页分数对比：任一页相比**上一轮**下降 ≥1.5 判
+  `visual_regression`（并给出前后分数）；低于**历史最佳** ≥1.5 判 `visual_regression_sustained`
+  （捕捉每轮只降一点点的累积退化）。历史写在 work-dir 的 `visual-score-history.json`。
+  第 5→6 轮那类"改了又撤"从此在 QA 里被点名归因，而不是变成一轮模糊的"revert regressions"。
+- `presentation-builder.md` 与 spawn 模板：明确"不得把已通过的页当试验田"。
+
+### 预算与轮次
+
+- `pipeline-contract.json` + SKILL：提额（超过 `max_repairs`）必须附本轮与上轮的 blocker 差异；
+  用同一做法加预算不构成修复策略（live 里 3 次提额中有一轮纯用于回退）。
+
+### 守卫：修掉正则误伤（解"强制的命令恰好是被拦的命令"）
+
+- `cost_guard.py`：`PLUGIN_INSPECT` / `GREP_SED` 原先在**整行任意位置**匹配
+  `ls|dir|grep|head|…`，于是 `--work-dir` 里的 `dir` 命中了 `dir` 动词；而放行用的
+  `PIPELINE_RUN` 要求 `.py` 后紧跟空白，**带引号的写法**
+  （`python "…/ppt_pipeline.py" next --work-dir <wd>`，正是 SKILL 推荐的写法）静默失配。
+  两者叠加的结果是"pipeline 要求的命令被 pipeline 自己的守卫拦下"——2026-09-17 live 的
+  6 次 cost_guard 拦截里有一半是这一形态。
+  现在：动词必须出现在**命令位置**（行首或 `&&` / `;` / `||` 之后）；`PLUGIN_PATH` 要求路径形态
+  （`grep -l "student-presentation-suite-scaffold"` 不再因为标记名与插件同名而被判成读插件源）；
+  管道里的 `head` / `tail` 放行——那是把输出**变小**的手段，拦它等于把更多文本灌进上下文。
+  真正的拦截（列举插件缓存、cat 插件源码）保持不变。
+- `--help`：带路径的 `ppt_pipeline.py --help`（含子命令 help）放行。pipeline CLI 是 agent 的
+  操作面，help 只有几十行；拦它不会省轮次——模型改用试错找调用方式，同样的轮次产出的是
+  失败而非信息（live：一次 `--help` 被拒后，紧接着的两条命令还是连环 `--help` 探测）。
+  裸脚本名的调用仍然拒绝，让提示把绝对路径交出去。
+
+### QA：门级回归与收敛度（解"提额之后把已经通过的门弄坏"）
+
+- `gate_regressions()`：把每轮各门的通过状态记进 work-dir 的 `gate-history.json`，某门从
+  通过变为失败即报 `gate_regression`。2026-09-17 live 第 6 轮把 `actual_content` 弄坏
+  （该门自 build 3 起一直通过），当时没有任何东西对比过门的状态，于是它只表现为"又一堆
+  blocker"，等被发现时额度已经用完、且那一轮做的事正好是回退自己的上一轮。
+- `repair_convergence()`：`next --json` 现在输出逐轮 blocker 数与趋势。`improving` 才值得续轮，
+  `flat` 要换做法，`worse` 必须先恢复被弄坏的回归——**这三种结论都由数据判定，不必再问用户**
+  （live 里预算耗尽后问了两次，其中一次批准的轮次净收益为零）。
+
+### 测试（批次三）
+
+- 新增：内容门失败后下游门仍全部执行、`blockers_by_gate` 归类正确、派生 blocker 不计入；
+  `page_brief` 与门同源 / 来源逐字节 / 派生分离 / 全 deck 覆盖；scaffold 注入本页契约与注释闭合；
+  builder 内联 JSON 提取被拒而合法 node 命令放行；视觉回归的三个方向（相邻下降、噪声不报、
+  累积退化）；门级回归（通过→失败被点名、未跑的门保留记录、首次运行不算回归）；
+  收敛度三个趋势；cost_guard 的四个误伤场景放行 + 三个真实拦截保留。
+- 全量 617 用例通过。
+
+来源：2026-09-18 对同一份 transcript 的**契约矛盾**复核（批次四）。批次三修的是"每轮只能看到
+一层门"，批次四修的是**两边都是明文规定、却互相要求相反行为**的地方——这类矛盾不会让某一轮报错，
+只会让 repair 在夹缝里来回改，直到预算烧完。
+
+### 守卫 vs 指令：强制的命令不能被自家守卫拦下（第二次发生）
+
+- `production_entry_guard.py` 放行 `page_brief.py` 与 `run_gates.py`。`page_brief.py` 是
+  spawn-templates 与 `builder_guard` 拒绝消息**共同强制** builder 使用的投影工具，却没进白名单——
+  builder 一调用就被拒，与 2026-09-17 的 `visual_reference_select.py` 是同一形态的重演；而且这次
+  更死：`builder_guard` 拒绝内联 `node -e` 后给出的唯一替代路径就是这条会被拒的命令。
+- 拒绝消息一律给出**解析后的绝对路径**（`builder_guard` 原先让子代理去展开
+  `${CLAUDE_PLUGIN_ROOT}`，子代理 shell 是否继承该变量不是我们能假设的）；spawn-templates 里新加的
+  命令行同步为与相邻行一致的 `<CLAUDE_PLUGIN_ROOT>` 占位符形态。
+- 新增 `tests/test_instruction_guard_consistency.py`：把 spawn 模板与三个守卫的拒绝提示里的命令
+  机械地过一遍守卫，按主会话 / builder / researcher / critic 身份断言全部放行，同时保留三条真实
+  拦截（读插件源码、`ls` 插件目录、`grep` 守卫源码）。指令、提示与白名单是同一个事实的三份拷贝，
+  以后由测试比对，不再靠评审。
+
+### Calibration：重跑不再被自己的输出挡住
+
+- `calibration_preview.py` 在构建前删除上一份 `calibration.pptx`。该文件与它已经清掉的 render PNG
+  同为**不可交付的临时预览证据**，而 `run_with_pptxgenjs.js` 拒绝覆盖已存在的输出——于是 0.13.5
+  写明的恢复流程（"builder 修完 calibration 页后重跑 helper"）第二次必定 exit 2，live 里那一轮
+  花在手工删文件上。
+
+### blocker 口径：critic 与质量门说同一个词
+
+- 质量门按 `BLOCKING_SEVERITIES = {critical, major}` 计 blocker，但没有任何地方告诉 critic 这一点。
+  live 里 critic 回报"blocker 数：0（major 8）"，主会话据此认定"独立复核判定可交付"，而门对同一份
+  报告算出 23 个 blocker，这个分歧被一路带进了提额决策。
+- `visual-review.schema.json` 的 `blocker_count` / `verdict` 写入定义；`agents/visual-critic.md`、
+  `skills/sp-deck/references/pptx-visual-critic.md` 与 spawn 模板同步；质量门在报告自称
+  `blocker_count: 0` 而门推出 blocker 时补一条 minor `visual_review_blocker_count_mismatch`，把两个
+  数字和定义写在同一条里。
+
+### 冻结数值 × chart grammar：写明谁让路
+
+- 三条规则互相顶：actual-content 门要求每个 planned number 有可见文本载体（chart 数据标签不算
+  文本 run）；critic 按 chart grammar 要求柱子可直读；反冗余判定又把"同一数值出现两次"记成缺陷。
+  live 第 5→7 轮就在删直标 / 加回直标之间震荡，最后一轮把一直通过的 `actual_content` 门弄坏了。
+- 仲裁写进 `pptx-visual-critic.md`、critic agent 定义、spawn 模板（builder 与 critic 两侧）与
+  scaffold 的 ON-SCREEN REQUIRED 注释块：冻结数值的文本载体**不是**冗余；已有文本载体的数值可以
+  省掉图表直标且不得判 Major；真正算缺陷的三种重复（两个文本载体同值、一根柱旁两个数值、
+  左栏逐条抄右栏数值）必须点名。
+
+### asset_plan 是交付承诺：规划期校验图像能力
+
+- 新增 `shared/image_capability.py`（`scripts/check_claude_pptx_env.py` 的原实现迁入，两个读者共用
+  一个 owner）：`art_direction_check.py --work-dir` 现在会解析本会话的 `image-sources.json`。
+  完全没有声明时，声明了 `hero_visuals` / `evidence_visuals` 的 plan 直接拒绝
+  （`asset_plan_visuals_unavailable`，undeclared = unavailable）；已声明但 provider 都不 ready 时
+  只给 minor（`asset_plan_visuals_not_ready`），因为 deterministic visual stack 本就是合法交付方式
+  （golden sample 的 asset-manifest 即如此写）。没有图像能力时 mix 下限从"四类"降到可用的三类。
+- 背景：live 的封面声明了生成插图但项目里没有 `image-sources.json`，`hero-visual-missing` 从第一轮
+  critique 到最后一轮都在，预算内无法修复。
+
+### 提额：写进 manifest，不改已安装插件
+
+- `ppt_pipeline.py repair --extend N --extend-reason "<本轮与上轮的 blocker 差异>"`：授权记录在
+  `build-manifest.json` 的 `build.repair_budget_grants`（含授权时的 blocker 数与
+  `repair_convergence` 趋势），`next --json` 新增 `repair_budget`（base / granted / effective /
+  hard_cap），`status` 显示有效预算。硬顶由契约 `max_repairs_hard_cap`（12）强制，到顶只能如实交付
+  `incomplete`。原先超预算的唯一出路是改插件 cache 里的 `pipeline-contract.json`（live 就是这么做
+  的）——升级即失效、不可审计，也违反仓库自己的"不写已安装插件"。
+
+### 门禁调用形式
+
+- 文档与 SKILL 的推荐命令从 `sh …/run_gates.sh` 改为 `python …/run_gates.py`（`run_gates.sh` 仍保留，
+  只是定位解释器的包装）。live 里 `sh` 解析到 WSL，`C:/...` 路径打不开，exit 127 白跑一轮；
+  `run_gates.py` 本来才是 canonical 实现，现已在守卫白名单内。
+
+### 测试（批次四）
+
+- 新增：模板 / 守卫提示的命令一致性（4 类身份）、真实拦截仍拦截、calibration 重跑不被自身输出挡住、
+  critic blocker 口径三处同步、asset_plan 无声明拒绝 / 已声明未就绪只提醒 / 无图像能力时 mix 下限、
+  `--extend` 授权与记录 / 缺 blocker diff 拒绝 / 硬顶拒绝 / `next` 报告有效预算。
+- 全量 636 用例通过（批三基线 617）。
+
 ## 0.14.0 — 2026-09-18
 
 来源：2026-09-17 0.13.4 全程 live 会话复盘的**契约级**修复（批次二）。0.13.5 修的是

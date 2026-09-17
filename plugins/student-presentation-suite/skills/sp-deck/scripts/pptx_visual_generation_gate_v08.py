@@ -150,7 +150,11 @@ def validate_visual_generation(
             "issues": [issue("critical", "art_direction_unreadable", str(exc))],
         }
 
-    art_report = art_check.validate_art_direction(art_data, high_score=high_score)
+    art_report = art_check.validate_art_direction(
+        art_data,
+        high_score=high_score,
+        image_sources=art_check.resolve_capability(evidence_dir),
+    )
     if not art_report["ok"]:
         for item in art_report["issues"]:
             if item.get("severity") in BLOCKING:

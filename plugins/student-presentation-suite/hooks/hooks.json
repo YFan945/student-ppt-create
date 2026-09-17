@@ -30,7 +30,7 @@
         ]
       },
       {
-        "matcher": "Read|Write|Edit",
+        "matcher": "Read|Write|Edit|Bash|PowerShell",
         "hooks": [
           {
             "type": "command",

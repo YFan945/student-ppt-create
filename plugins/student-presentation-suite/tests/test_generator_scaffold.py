@@ -101,6 +101,56 @@ class ScaffoldContractTests(unittest.TestCase):
             last = (work / "pages" / "p01-s01.js").read_text(encoding="utf-8")
             self.assertIn("Only Source", last)
 
+    def test_page_stub_injects_this_pages_verbatim_requirements(self) -> None:
+        """2026-09-18: the stub only said "this page needs its numbers" without saying
+        which, so the builder re-read slide-spec-compiled.yaml 11 times in one round."""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            spec = work / "spec.json"
+            spec.write_text(
+                json.dumps(
+                    {
+                        "slides": [
+                            {
+                                "id": 7,
+                                "title": "储能缺口决定替代速度",
+                                "claim": "储能时长从 4 小时走到 10 小时，度电成本才追平",
+                                "slide_copy": ["85% 的新增装机来自光伏"],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.scaffold.scaffold_generator(work, spec)
+            stub = (work / "pages" / "p07-s07.js").read_text(encoding="utf-8")
+            self.assertIn("claim:   储能时长从 4 小时走到 10 小时，度电成本才追平", stub)
+            self.assertIn("numbers: 10 · 4 · 85%", stub)
+            self.assertIn("copy:    85% 的新增装机来自光伏", stub)
+
+    def test_spec_text_cannot_close_the_stub_comment(self) -> None:
+        """A spec title or claim containing */ must not truncate a comment and turn the
+        rest of the text into code (the doc comment is still a comment)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            spec = work / "spec.json"
+            spec.write_text(
+                json.dumps(
+                    {"slides": [{"id": 1, "title": "a */ b", "claim": "c */ d"}]}
+                ),
+                encoding="utf-8",
+            )
+            result = self.scaffold.scaffold_generator(work, spec)
+            stub = (work / "pages" / result["pages"][0]).read_text(encoding="utf-8")
+            self.assertIn("a * / b", stub)
+            self.assertIn("c * / d", stub)
+            head, _, _ = stub.partition("\nmodule.exports")
+            self.assertEqual(
+                head.count("/*"),
+                head.count("*/"),
+                "every comment opened in the header must close exactly once",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

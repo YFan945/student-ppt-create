@@ -99,6 +99,23 @@ avoid:
 
 The exact values can differ, but all major sections above must exist in high-score create/rebuild mode.
 
+`asset_plan` is a **delivery promise, not a wish list**: `art_direction_check.py` validates it
+against this session's image capability (`image-sources.json` — whether search / generation /
+user-assets are ready). With **no declaration at all** the plan is refused
+(`asset_plan_visuals_unavailable`): undeclared means unavailable, and an undelivered hero visual
+turns into a blocker the critic repeats every round — inside a budget that cannot fix it
+(2026-09-17 live: the cover's declared generated illustration never landed and the blocker
+survived from the first critique to the last). With a declaration present but nothing ready you
+get an advisory (`asset_plan_visuals_not_ready`), because the deterministic stack is a legitimate
+way to deliver those slots — just confirm it before the freeze. With no image capability the mix
+floor drops to the three achievable categories (`diagrams` / `native_charts` / `typography_led`)
+instead of demanding an image you cannot get.
+
+`chart_grammar.labels: "direct labels where possible"` yields to the readback gate: a frozen
+planned number already stated by a text carrier does not also need a direct label, and repeating
+it there reads as double encoding. See
+`skills/sp-deck/references/pptx-visual-critic.md` for who yields to whom.
+
 ## Positive design priors
 
 Art Direction must describe **what to do**, not only what to avoid.

@@ -37,6 +37,12 @@ def _enforce_pipeline_hook_health() -> None:
 
 _enforce_pipeline_hook_health()
 
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import pptx_actual_content_check as actual_check  # noqa: E402
+
 SCAFFOLD_MARKER = "student-presentation-suite-scaffold"
 PAGE_NAME_RE = re.compile(r"^p(\d{2})-.+\.js$")
 
@@ -81,10 +87,7 @@ PAGE_STUB = """\
 'use strict';
 /* {marker} */
 /** Slide {n} — {title} */
-/* ON-SCREEN REQUIRED (actual-content gate reads PPTX text runs): this page's
-   title, claim and every planned number must appear as visible text. Chart
-   data labels are NOT text runs — numbers that only live in a chart will
-   fail planned_numbers_missing; keep a text element for each planned number. */
+{on_screen_block}
 module.exports = function (ctx) {{
   const {{ slide, n, H, registry }} = ctx;
   const COPY = {{
@@ -159,6 +162,48 @@ def listed_page_files(pages_dir: Path) -> list[Path]:
 
 def js_string(value: str) -> str:
     return json.dumps(str(value or ""), ensure_ascii=False)
+
+
+def _comment_safe(text: Any) -> str:
+    """One line, and never able to close the enclosing block comment."""
+    return " ".join(str(text or "").replace("*/", "* /").split())
+
+
+def _on_screen_block(planned: dict[str, Any]) -> str:
+    """Spell out this page's verbatim on-screen strings inside the stub.
+
+    2026-09-18 transcript analysis: the stub only said "this page needs its numbers to
+    appear", so the builder re-read slide-spec-compiled.yaml 11 times in a single round to
+    find out *which* numbers. The strings come from the same function the readback gate
+    judges with, so the stub and the gate cannot disagree.
+    """
+    required = actual_check.planned_requirements(planned)
+    lines = [
+        "/* ON-SCREEN REQUIRED — the actual-content gate matches PPTX text runs byte-exact",
+        "   and reports missing_title / missing_key_claim / planned_numbers_missing.",
+        "   Chart data labels are NOT text runs. Render these verbatim:",
+    ]
+    if required["title"]:
+        lines.append(f"   title:   {_comment_safe(required['title'])}")
+    if required["claim"]:
+        lines.append(f"   claim:   {_comment_safe(required['claim'])}")
+    if required["numbers"]:
+        lines.append("   numbers: " + " · ".join(_comment_safe(item) for item in required["numbers"]))
+    for fragment in required["copy_fragments"][:6]:
+        lines.append(f"   copy:    {_comment_safe(fragment)}")
+    if required["numbers"]:
+        # One carrier per number. Repeating a required number in a second visible place
+        # (bar label, big centred figure, second bullet) reads as triple-encoding to the
+        # critic; dropping the chart's direct label for a number the text already states
+        # is not a defect. 2026-09-17 live: rounds 5-7 oscillated between these two
+        # readings, and the last one broke the actual-content gate undoing the other.
+        lines.append(
+            "   Each number above takes exactly ONE text carrier; do not restate it in a chart "
+            "data label or a second bullet, and a bar whose value is already in text needs no "
+            "direct label."
+        )
+    lines.append("*/")
+    return "\n".join(lines)
 
 
 def _pack_sources(work_dir: Path) -> list[dict[str, Any]]:
@@ -246,11 +291,14 @@ def scaffold_generator(work_dir: Path, spec_path: Path) -> dict[str, Any]:
         stub = PAGE_STUB.format(
             marker=SCAFFOLD_MARKER,
             n=int(slide["id"]),
-            title=str(slide.get("title") or f"Slide {slide['id']}"),
+            # The doc comment is a comment: a spec title containing `*/` must not be able
+            # to close it early and turn the rest of the title into code.
+            title=_comment_safe(str(slide.get("title") or f"Slide {slide['id']}")),
             title_js=js_string(str(slide.get("title") or f"Slide {slide['id']}")),
             claim_js=js_string(str(slide.get("claim") or "")),
             copy_js=js_string(str(slide.get("slide_copy") or "")),
             sources_line=sources_line,
+            on_screen_block=_on_screen_block(slide),
         )
         target = pages_dir / name
         if write_if_scaffoldable(target, stub):

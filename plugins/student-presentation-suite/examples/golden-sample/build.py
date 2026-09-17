@@ -112,7 +112,10 @@ def main() -> int:
     tokens = write_tokens()
     note("tokens", str(TOKENS_FILE))
 
-    run(py(SKILL_SCRIPTS / "art_direction_check.py", ART_DIRECTION, "--strict", "--json"),
+    # --work-dir points the checker at this sample's own image-sources.json, so its
+    # asset_plan is judged against the capability the sample declares.
+    run(py(SKILL_SCRIPTS / "art_direction_check.py", ART_DIRECTION, "--strict", "--json",
+           "--work-dir", HERE),
         "art-direction")
     note("art-direction gate")
 

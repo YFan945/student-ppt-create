@@ -134,6 +134,14 @@ def build_preview(work_dir: Path, slides: list[int]) -> dict[str, Any]:
 
     deck_js = target / "calibration-deck.js"
     pptx = target / "calibration.pptx"
+    # calibration.pptx is disposable preview evidence, exactly like the PNGs above:
+    # clearing one and not the other made the documented resume path unusable. A
+    # calibration fix round is followed by "rerun the helper", but
+    # run_with_pptxgenjs.js refuses to overwrite an existing output, so the second
+    # run died at exit 2 (2026-09-17 live) and the round went to deleting the file
+    # by hand.
+    if pptx.exists():
+        pptx.unlink()
     write_calibration_deck(deck_js, list(zip(slides, pages, strict=True)))
     run_checked(
         ["node", str(BUILDER), "--output", str(pptx), str(deck_js)],

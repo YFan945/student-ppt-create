@@ -15,6 +15,17 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
    深色封面/章节/收尾页必须来自 `dark_palette`，不能是生成时临时挑的深色；发现任何 palette
    之外的强调色或底色、或直接写死的 hex，按 `art-direction` / `implementation` 返修。
 
+## blocker 口径必须与质量门一致
+
+**blocker = `critical` + `major`。** QA 质量门（`pptx_quality_gate_v071.py` 的
+`BLOCKING_SEVERITIES`）把 major 也当 blocker，`minor` 不阻塞；你的 `blocker_count` 与回给
+主会话的计数都必须用这个口径。
+
+2026-09-17 live：critic 按自己的习惯回报"blocker 数：0（critical 0 / major 8 / minor 12）"，
+主会话据此判断"独立复核已判定可交付"，而质量门同一份报告算出 23 个 blocker——两边对同一个
+词的含义不同，主会话在报告里反复写"差一口气"，并把这种不确定性带进了提额决策。分 severity
+逐条给分是对的，汇总口径必须统一。
+
 ## visual-review.json
 
 形状的**唯一 canonical 来源是 `references/visual-review.schema.json`**（本示例与它逐字段一致）。
@@ -115,6 +126,31 @@ High-score 默认每项不低于 6、整套平均不低于 7。低于阈值属�
 - **Palette consistency**：cover/section/closing 是否真的用了该风格的 `dark_palette`，还是生产时另挑了一套深色；把深浅两页并排放，强调色与中性色是否仍属同一色系。
 
 如果 high-leverage 页 `reference_intent_preserved=false` 或 asset plan 明显未实现，默认至少 Minor；若因此页面落入 card-grid/weak hierarchy/无 focal point，则 Major。
+
+## 冻结数值 × chart grammar：谁让路（v0.14.1）
+
+三条规则在页面上会互相顶：actual-content 门要求每个 planned number 有**可见文本载体**
+（chart 数据标签不算文本 run）；你自己按 chart grammar 会要求柱子可直读；而反冗余判定又会
+把"同一数值出现两次"记成缺陷。不写清优先级，builder 就只能在夹缝里来回改——2026-09-17 live
+第 5→7 轮就是这样震荡的（删直标 →"最高两根柱无法直读"→ 加回直标 →"18.4 被陈述三次"），
+最后一轮还把一直通过的 `actual_content` 门弄坏了。
+
+仲裁规则：
+
+1. **冻结数值的文本载体不是冗余。** planned number（见 `page_brief.py` 输出的
+   `numbers`，与 actual-content 门同源）在页面上必须且只须由一个文本载体陈述。这个载体
+   不得被记为 `triple-encoding` / `left-rail-duplicates` / `dual-value-per-bar` 之类的重复缺陷。
+2. **同一数值已有文本载体时，图表的直标可省略，且不得因缺直标判 Major。** 可读性由文本载体
+   满足；"最高两根柱无法直接读取"只有在页面上**任何地方**都读不到该数值时才成立。
+3. **真正的重复缺陷有三种**，必须点名是哪一种：
+   - 同一数值被两个**文本**载体陈述（居中大数字 + 柱上数值标签 + 要点句同值）；
+   - 一根柱旁并排两个数值，柱高对应哪个无法判定；
+   - 左栏把右栏柱图的数值逐条抄一遍，不提供新信息。
+4. 判定前先读 `page_brief.py` 输出的该页 `numbers`：它们是冻结要求，属于豁免面。写 issue 时
+   要说明"这个数值的文本载体是冻结要求的"，否则 repair 会去删掉门要求的东西。
+5. 缺图导致的"asset plan 未实现"（hero/evidence visual 从未落地）按 asset 层判，但请把
+   `art-direction` 的 `asset_plan` 与页面对照后再下结论：计划里声明的图，页面上没有就是
+   Major，不要用"文字已足够"替它开脱。
 
 ## Deck-level rhythm
 

@@ -321,6 +321,22 @@ def validate_visual_report(
         issues.append(issue("major", "visual_average_low", f"Average visual score {average_score:.2f} is below {target_average:.1f}."))
 
     blockers = [item for item in issues if item["severity"] in BLOCKING_SEVERITIES]
+    # blocker = critical + major everywhere in this suite; a report that calls itself clean
+    # while carrying majors is how the caller ends up believing a blocked deck is deliverable
+    # (2026-09-17 live: "the independent critic judged it deliverable" sat next to a gate
+    # reporting 23 blockers on the very same report). Name the disagreement with both numbers
+    # and the definition, so the caller reads the gate's count.
+    declared = report.get("blocker_count")
+    if isinstance(declared, int) and not isinstance(declared, bool) and declared == 0 and blockers:
+        issues.append(
+            issue(
+                "minor",
+                "visual_review_blocker_count_mismatch",
+                f"Report declares blocker_count 0 while this gate derives {len(blockers)} blockers "
+                "from the same report (blocker = critical + major). The count is not a gate input; "
+                "it is how the caller reads the verdict.",
+            )
+        )
     return {
         "ok": not blockers,
         "report_sha256": sha256_file(report_path),
@@ -486,6 +502,90 @@ def check_timing(spec: dict[str, Any], notes_by_slide: dict[int, str] | None = N
     }
 
 
+SCORE_HISTORY_NAME = "visual-score-history.json"
+
+
+def score_snapshot(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Per-slide average of the five visual scores, keyed by one-based slide number."""
+    snapshot: dict[str, dict[str, Any]] = {}
+    for item in report.get("slides") or []:
+        if not isinstance(item, dict) or not isinstance(item.get("slide"), int):
+            continue
+        scores = item.get("scores") if isinstance(item.get("scores"), dict) else {}
+        values = [
+            float(scores[field])
+            for field in SCORE_FIELDS
+            if isinstance(scores.get(field), (int, float)) and not isinstance(scores.get(field), bool)
+        ]
+        if not values:
+            continue
+        snapshot[str(int(item["slide"]))] = {"average": round(sum(values) / len(values), 3)}
+    return snapshot
+
+
+def check_visual_regression(
+    history_path: Path,
+    report: dict[str, Any],
+    *,
+    threshold: float = 1.5,
+) -> tuple[list[dict[str, Any]], dict[str, dict[str, Any]]]:
+    """Compare this review with the previous one, so a change that made a page worse is
+    caught and attributed instead of surfacing as a vague "revert regressions" round.
+
+    2026-09-17 live: repair round 5 ("differentiate pages and raise scores") cost 15.8M
+    and round 6 spent 40.1M undoing it — 56M for zero net change. Neither round could see
+    that a previously accepted page had gotten worse, because nothing compared reviews.
+
+    Returns the issues plus the merged history to persist (latest score wins, best kept).
+    """
+    previous: dict[str, Any] = {}
+    if history_path.is_file():
+        try:
+            loaded = json.loads(history_path.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                previous = loaded
+        except (OSError, json.JSONDecodeError):
+            previous = {}
+
+    current = score_snapshot(report)
+    issues: list[dict[str, Any]] = []
+    merged: dict[str, dict[str, Any]] = {}
+    for key, now in current.items():
+        now_average = float(now.get("average") or 0)
+        entry = previous.get(key)
+        last = float(entry.get("average") or 0) if isinstance(entry, dict) else 0.0
+        best = float(entry.get("best") or last) if isinstance(entry, dict) else 0.0
+        if last and last - now_average >= threshold:
+            issues.append(
+                issue(
+                    "major",
+                    "visual_regression",
+                    f"Slide {key} scored {last:g} in the previous review and {now_average:g} now "
+                    f"(down {last - now_average:g}): the last change made this page worse. Restore "
+                    "the earlier design instead of redesigning it again.",
+                    slide=int(key),
+                    previous_average=round(last, 3),
+                    current_average=round(now_average, 3),
+                )
+            )
+        elif best and best - now_average >= threshold:
+            issues.append(
+                issue(
+                    "major",
+                    "visual_regression_sustained",
+                    f"Slide {key} is at {now_average:g}, below the best accepted {best:g} "
+                    f"(down {best - now_average:g}). Recover the earlier design.",
+                    slide=int(key),
+                    best_average=round(best, 3),
+                    current_average=round(now_average, 3),
+                )
+            )
+        merged[key] = {"average": now_average, "best": round(max(best, now_average), 3)}
+    for key, entry in previous.items():
+        merged.setdefault(key, entry)
+    return issues, merged
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Student PPT v0.7.1 quality gate")
     parser.add_argument("--pptx", type=Path, required=True)
@@ -514,8 +614,10 @@ def run(args: argparse.Namespace) -> int:
     visual = validate_visual_report(args.visual_report, args.pptx, len(actual_text), high_score=high_score)
     evidence = check_evidence(spec, actual_text)
     timing = check_timing(spec, actual_check.extract_pptx_notes(args.pptx))
+    history_path = args.pptx.parent / SCORE_HISTORY_NAME
+    regression, merged_scores = check_visual_regression(history_path, load_json(args.visual_report))
     lock_issues = [] if spec_lock["ok"] else [issue("critical", "slide_spec_lock_invalid", message) for message in spec_lock["errors"]]
-    all_issues = lock_issues + visual["issues"] + evidence["issues"] + timing["issues"]
+    all_issues = lock_issues + visual["issues"] + evidence["issues"] + timing["issues"] + regression
     blockers = [item for item in all_issues if item["severity"] in BLOCKING_SEVERITIES]
 
     result = {
@@ -531,6 +633,7 @@ def run(args: argparse.Namespace) -> int:
         "visual": visual,
         "evidence": evidence,
         "timing": timing,
+        "visual_regression": regression,
         "issues": all_issues,
     }
 
@@ -538,6 +641,10 @@ def run(args: argparse.Namespace) -> int:
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(payload + "\n", encoding="utf-8")
+    history_path.write_text(
+        json.dumps(merged_scores, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
     if args.json or not args.output:
         print(payload)
     if args.strict and not result["ok"]:

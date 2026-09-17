@@ -10,7 +10,7 @@
       "displayName": "Student Presentation Suite",
       "source": "./plugins/student-presentation-suite",
       "description": "University presentation research, planning, PPTX generation, and review skills.",
-      "version": "0.14.0",
+      "version": "0.14.1",
       "author": {
         "name": "YFan945"
       },

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import sys
 import unittest
@@ -16,6 +17,7 @@ import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import yaml
 
@@ -46,9 +48,15 @@ class RunGatesSummaryTests(unittest.TestCase):
         clean checkout. The visual-generation gate only needs the wireframe package to
         expose the same number of `ppt/slides/slideN.xml` entries as the candidate count,
         so synthesize that minimal package for the contract test.
+
+        The golden `image-sources.json` comes along because the Art Direction gate now
+        resolves image capability from the project: without any declaration the sample's
+        `asset_plan` (hero_visuals/evidence_visuals) is refused as undeliverable, which is
+        a property of the session rather than of the fixture under test.
         """
         evidence = root / "golden-composition"
         evidence.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(GOLDEN / "image-sources.json", root / "image-sources.json")
         source = GOLDEN / "composition"
         for slide in HIGH_LEVERAGE:
             candidate_name = f"composition-candidates-{slide}.json"
@@ -136,17 +144,21 @@ class RunGatesSummaryTests(unittest.TestCase):
     def test_candidates_only_mode_reports_the_composition_gate(self) -> None:
         with TemporaryDirectory() as tmp:
             out = Path(tmp) / "gates-report.json"
-            code, stdout = self.invoke(
-                [
-                    "--art-direction",
-                    str(GOLDEN / "art-direction.yaml"),
-                    "--candidates",
-                    str(GOLDEN / "composition" / "composition-candidates-1.json"),
-                    str(GOLDEN / "composition" / "composition-candidates-9.json"),
-                    "--output",
-                    str(out),
-                ]
-            )
+            # No --evidence-dir, so the Art Direction gate resolves the session's image
+            # capability from the project root; declare it the way a real session does
+            # instead of leaving it undeclared (undeclared means unavailable).
+            with patch.dict(os.environ, {"SPS_IMAGE_SOURCES": str(GOLDEN / "image-sources.json")}):
+                code, stdout = self.invoke(
+                    [
+                        "--art-direction",
+                        str(GOLDEN / "art-direction.yaml"),
+                        "--candidates",
+                        str(GOLDEN / "composition" / "composition-candidates-1.json"),
+                        str(GOLDEN / "composition" / "composition-candidates-9.json"),
+                        "--output",
+                        str(out),
+                    ]
+                )
             self.assertEqual(0, code)
             self.assertEqual(1, len(stdout.splitlines()), stdout)
             report = json.loads(out.read_text(encoding="utf-8"))

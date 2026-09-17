@@ -122,6 +122,9 @@ def collect_art_direction(args: argparse.Namespace, gates: dict[str, Any], probl
     report = art_check.validate_art_direction(
         art_check.load_structured(art_path),
         high_score=args.quality == "high-score",
+        # --evidence-dir is the work dir; that is how the gate finds the project's
+        # image-sources.json and can refuse an asset_plan nobody can deliver.
+        image_sources=art_check.resolve_capability(getattr(args, "evidence_dir", None)),
     )
     gates["art_direction"] = {
         "ok": bool(report.get("ok")),

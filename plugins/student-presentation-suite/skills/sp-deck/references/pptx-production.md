@@ -15,7 +15,7 @@
   `run_gates.sh` 覆盖，通过时只回显 1 行，明细写入 `gates-report.json`：
 
 ```bash
-sh "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.sh" \
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
   --art-direction outputs/.pptx-work/<work-id>/art-direction.yaml \
   --slide-spec outputs/.pptx-work/<work-id>/slide-spec.yaml \
   --evidence-dir outputs/.pptx-work/<work-id> \
@@ -23,7 +23,7 @@ sh "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.sh" \
 ```
 
   wireframe 尚未生成时，可只校验候选文件：
-  `run_gates.sh --art-direction <...> --candidates <composition-candidates-N.json> [更多候选…]`。
+  `run_gates.py --art-direction <...> --candidates <composition-candidates-N.json> [更多候选…]`。
   单个 gate 脚本仍可直接调用，用于调试某个具体门禁。
 
 - **禁止整文件重写（CD-2）**：生成器按页拆成 `deck.js` + `pages/pNN-*.js`，**不是**
@@ -84,7 +84,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/art_direction_check.py" \
   <art-direction.yaml> --quality <high-score|standard> --output <art-direction-report.json> --json --strict
 ```
 
-单独调用只用于调试这个门禁；批量流程改用 `run_gates.sh`（CD-6），并把 `--json` 去掉——
+单独调用只用于调试这个门禁；批量流程改用 `run_gates.py`（CD-6），并把 `--json` 去掉——
 报告落盘即可，不需要回显。
 
 ### Visual Reference Retrieval
