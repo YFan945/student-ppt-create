@@ -20,6 +20,14 @@ The instrument is `claude -p --output-format json`: its result carries
 "the docs say retrieval is isolated" and "the runtime spawned a foreground
 subagent".
 
+Headless `-p` plus `--permission-mode acceptEdits` auto-allows writes in the
+project dir, but not Read of the plugin root, Bash, or PowerShell. Those
+prompts become `permission_denials` and fail this smoke. The command therefore
+pre-allows the researcher tool set (`--allowedTools`) and grants the plugin
+root as an extra working directory (`--add-dir`). Scope D also denies
+WebSearch/WebFetch. Remaining denials still fail the mechanism verdict.
+`bypassPermissions` is not used.
+
 The accepted evidence changed in 0.12.0. Earlier revisions relied on `context: fork`
 in the skill frontmatter, and this scaffold also accepted a fork event in the
 stream as proof. Two live runs showed that under `claude -p` no subagent was
@@ -55,6 +63,21 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_INVOCATION = "/student-presentation-suite:sp-research {work_id} {brief} {scope} {materials}"
+DEFAULT_PERMISSION_MODE = "acceptEdits"
+# Parent needs Agent/Skill to spawn; the child frontmatter is the rest.
+# Matches agents/presentation-researcher.md plus the spawn tools.
+CORE_ALLOWED_TOOLS = (
+    "Read",
+    "Write",
+    "Edit",
+    "Grep",
+    "Glob",
+    "Bash",
+    "PowerShell",
+    "Agent",
+    "Skill",
+)
+WEB_TOOLS = ("WebSearch", "WebFetch")
 BRIEF = """# Presentation Brief
 
 topic: smoke test - a single claim that must be sourced
@@ -83,6 +106,18 @@ SCENARIOS = {
 }
 
 
+def allowed_tools_for_scope(scope: str) -> tuple[str, ...]:
+    """Tools pre-allowed under headless `-p` so they are not auto-denied.
+
+    Scope D is fail-closed on the network: WebSearch/WebFetch stay off the
+    allow list and are also passed to `--disallowedTools`.
+    """
+    tools = list(CORE_ALLOWED_TOOLS)
+    if str(scope).upper() != "D":
+        tools.extend(WEB_TOOLS)
+    return tuple(tools)
+
+
 def find_claude() -> str | None:
     import os
 
@@ -104,21 +139,33 @@ def build_command(
     budget: float,
     model: str | None,
     stream: bool = False,
+    *,
+    scope: str = "A",
+    permission_mode: str = DEFAULT_PERMISSION_MODE,
+    allowed_tools: tuple[str, ...] | None = None,
 ) -> list[str]:
+    plugin = str(plugin_dir.resolve())
+    tools = allowed_tools if allowed_tools is not None else allowed_tools_for_scope(scope)
     command = [
         claude,
         "-p",
         invocation,
         "--plugin-dir",
-        str(plugin_dir.resolve()),
+        plugin,
+        "--add-dir",
+        plugin,
         "--output-format",
         "stream-json" if stream else "json",
         "--permission-mode",
-        "acceptEdits",
+        permission_mode,
+        "--allowedTools",
+        ",".join(tools),
         "--max-budget-usd",
         str(budget),
         "--no-session-persistence",
     ]
+    if str(scope).upper() == "D":
+        command += ["--disallowedTools", ",".join(WEB_TOOLS)]
     if stream:
         command += ["--verbose"]
     if model:
@@ -255,6 +302,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--work-dir", type=Path, help="project dir / CLAUDE_PROJECT_DIR (defaults to a temp dir)")
     parser.add_argument("--max-budget-usd", type=float, help="override the scenario budget")
     parser.add_argument("--model", help="pass through to --model; use to bypass a per-model rate limit")
+    parser.add_argument(
+        "--permission-mode",
+        default=DEFAULT_PERMISSION_MODE,
+        help=(
+            "passed through to claude; default acceptEdits. "
+            "Do not use bypassPermissions — this smoke pre-allows researcher tools instead."
+        ),
+    )
     parser.add_argument("--output", type=Path, help="where to write the raw result JSON")
     parser.add_argument("--validate", action="store_true", help="run validate_research_pack.py on the pack")
     parser.add_argument(
@@ -311,7 +366,16 @@ def main(argv: list[str] | None = None) -> int:
     invocation = DEFAULT_INVOCATION.format(
         work_id=work_id, brief=str(brief.resolve()), scope=scope, materials=mat_arg
     )
-    command = build_command(claude, plugin_dir, invocation, budget, args.model, stream=args.stream)
+    command = build_command(
+        claude,
+        plugin_dir,
+        invocation,
+        budget,
+        args.model,
+        stream=args.stream,
+        scope=scope,
+        permission_mode=args.permission_mode,
+    )
 
     result = subprocess.run(
         command,

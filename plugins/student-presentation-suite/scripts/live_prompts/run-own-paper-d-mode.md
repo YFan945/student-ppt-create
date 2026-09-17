@@ -37,7 +37,10 @@ python plugins/student-presentation-suite/scripts/smoke_research_fork.py \
 ```bash
 claude -p "/student-presentation-suite:sp-research live-d-paper <brief绝对路径> D <论文绝对路径>" \
   --plugin-dir plugins/student-presentation-suite \
+  --add-dir plugins/student-presentation-suite \
   --output-format json \
+  --allowedTools "Read,Write,Edit,Grep,Glob,Bash,PowerShell,Agent,Skill" \
+  --disallowedTools "WebSearch,WebFetch" \
   --permission-mode acceptEdits --max-budget-usd 1 --no-session-persistence
 ```
 

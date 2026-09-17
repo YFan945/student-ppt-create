@@ -13,6 +13,22 @@
 没有任何 subagent 事件，而 skill 实际内联跑在主会话里（见 `FINDINGS.md` 第三、六节）。
 产物半边（真实联网检索质量）需要真实模型 + 网络，成本随网络放开，单独报告。
 
+## Headless 权限（`claude -p`）
+
+`--permission-mode acceptEdits` 只自动放行工作目录（及 `--add-dir`）里的写文件和常见
+`mkdir`/`mv`/`cp`。研究员要 Read 插件根下的 references / 跑 `validate_research_pack.py`，
+以及 Bash / PowerShell，在 `-p` 下会变成 `permission_denials`（0.13.0 实测，见
+`FINDINGS.md` 第七节）。
+
+脚手架因此会：
+
+- `--add-dir <plugin-dir>`，让插件根成为额外工作目录
+- `--allowedTools` 预放行 `presentation-researcher` 的工具，外加父会话 spawn 用的 `Agent` / `Skill`
+- 场景 D 再加 `--disallowedTools WebSearch,WebFetch`（禁网失败即关）
+- **不用** `bypassPermissions`
+
+`permission_denials` 非空时，机制半边仍然失败。不要把 denials 从判定里拿掉。
+
 ## 目录内容
 
 - `ai-agent-trends-2026.brief.md` —— 场景 A 的 Presentation Brief（联网，2026 AI Agent 趋势）
@@ -47,9 +63,14 @@ python plugins/student-presentation-suite/scripts/smoke_research_fork.py \
 ```bash
 claude -p "/student-presentation-suite:sp-research <work_id> <brief绝对路径> <scope> <materials>" \
   --plugin-dir plugins/student-presentation-suite \
+  --add-dir plugins/student-presentation-suite \
   --output-format json \
+  --allowedTools "Read,Write,Edit,Grep,Glob,Bash,PowerShell,Agent,Skill,WebSearch,WebFetch" \
   --permission-mode acceptEdits --max-budget-usd <n> --no-session-persistence
 ```
+
+场景 D 把 `WebSearch,WebFetch` 从 `--allowedTools` 拿掉，并加上
+`--disallowedTools "WebSearch,WebFetch"`。完整命令见 `run-own-paper-d-mode.md`。
 
 ## 默认模型被限流时
 

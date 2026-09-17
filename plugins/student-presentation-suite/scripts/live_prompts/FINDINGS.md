@@ -91,6 +91,23 @@ D-mode `sample-paper.md`，Claude Code 2.1.272，预算上限 $1：
 - 原始运行 session：d57095b8-84ca-45d5-8bc5-f9df63e6bd05；child：a7e29b796579e99ce。
 - pack SHA256：021955feebe9ef0654a9154c0e81e05a52e50f97af5e10dd156c78aaa6b7e14d。
 
-结论：显式 spawn 和运行时产物绑定已有真实证据；完整 E2E 权限路径仍需后续修复/验收。
+结论：显式 spawn 和运行时产物绑定已有真实证据；完整 E2E 权限路径当时未修（见第八节）。
 
 第二次限定工具权限的补测中，pack validation 通过，但 CLI 返回纯文本 envelope，stderr 报 `unrecognized_model: deepseek-flash[1m]`，没有 subagent_stats 和 runtime receipt。该次不能作为隔离成功证据；保留第一次真实前台 spawn + receipt 的结果，不把补测记为通过。
+
+## 八、headless 权限路径
+
+根因不是 spawn：`acceptEdits` 在 `-p` 下只自动放行工作目录里的写文件和常见 `mkdir`/`mv`/`cp`。
+smoke 的 cwd 是临时项目，研究员 Read 插件根（references / `validate_research_pack.py`）以及
+Bash / PowerShell 都会弹权限；无人应答即记入 `permission_denials`，严格 smoke 失败。
+
+处理（不使用 `bypassPermissions`）：
+
+- `smoke_research_fork.py` 给 `claude -p` 加上 `--add-dir <plugin-dir>`，并把研究员工具
+  （外加父会话的 `Agent` / `Skill`）写入 `--allowedTools`
+- 场景 D 同时 `--disallowedTools WebSearch,WebFetch`
+- `permission_denials` 非空仍判机制失败
+- 裸跑命令见 `README.md` 与两份 `run-*.md`
+
+本节省的是命令构造与文档；要宣称无障碍 Live E2E 通过，仍须用上述命令重跑一次
+`smoke_research_fork.py --scenario d-mode`（及 A 模式）并确认 denials 为空。

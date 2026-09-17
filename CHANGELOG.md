@@ -2,6 +2,17 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.13.4 — 2026-09-17
+
+### Live E2E：headless 研究权限路径
+
+- 研究 smoke 在 headless `claude -p` 上把插件根加为额外工作目录，并预放行研究员工具
+  （父会话 spawn 用的 Agent / Skill 一并放行）。`acceptEdits` 不再把插件根 Read 和
+  Bash / PowerShell 变成自动拒绝。
+- 场景 D 额外禁止 WebSearch / WebFetch。不使用 bypassPermissions。剩余权限拒绝仍判
+  机制失败。
+- `scripts/live_prompts/` 裸跑命令与 FINDINGS 同步。
+
 ## 0.13.3 — 2026-09-17
 
 ### 文档：README 职责拆分，去掉拷贝段与 `claude-code` 漂移
