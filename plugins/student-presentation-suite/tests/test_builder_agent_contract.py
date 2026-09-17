@@ -27,22 +27,27 @@ class BuilderAgentContractTests(unittest.TestCase):
         self.assertIn("BUILDER_DONE", text)
         self.assertIn("BUILDER_BLOCKED", text)
         self.assertIn("student-presentation-suite-scaffold", text)
+        self.assertIn("`calibration`, `initial`, or `repair`", text)
 
     def test_machine_contract_routes_generation_and_repair_to_builder(self) -> None:
         contract = json.loads(self.read("references/pipeline-contract.json"))
         self.assertTrue(contract["repeat_policy"]["page_generation_requires_isolated_builder"])
+        self.assertTrue(contract["repeat_policy"]["high_leverage_calibration_before_full_generation"])
         build = "\n".join(contract["stage_contracts"]["build"])
         repair = "\n".join(contract["stage_contracts"]["repair"])
         self.assertIn("student-presentation-suite:presentation-builder", build)
-        self.assertIn("must not implement page modules itself", build)
+        self.assertIn("main session must not implement or read page modules itself", build)
+        self.assertIn("mode=calibration", build)
+        self.assertIn("mode=initial", build)
         self.assertIn("student-presentation-suite:presentation-builder", repair)
         self.assertIn("mode=repair", repair)
 
     def test_sp_deck_keeps_page_source_out_of_main_context(self) -> None:
         skill = self.read("skills/sp-deck/SKILL.md")
         self.assertIn("student-presentation-suite:presentation-builder", skill)
-        self.assertIn("主会话不得直接实现或修复 `pages/pNN-*.js`", skill)
+        self.assertIn("主会话不得直接实现、读取或修复 `pages/pNN-*.js`", skill)
         self.assertIn("不接收页面源码", skill)
+        self.assertIn("mode=calibration", skill)
         self.assertIn("mode=initial", skill)
         self.assertIn("mode=repair", skill)
 
