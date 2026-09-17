@@ -108,6 +108,15 @@ class ProductionEntryGuardTests(unittest.TestCase):
             self.run_guard('node "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" --probe'),
         )
 
+    def test_probe_does_not_whitelist_later_builder_generation(self) -> None:
+        command = (
+            'node "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" --probe '
+            '&& node "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" --output out.pptx deck.js'
+        )
+        code, message = self.run_guard(command)
+        self.assertEqual(2, code)
+        self.assertIn("Direct run_with_pptxgenjs.js generation", message)
+
     def test_unrelated_root_utilities_are_out_of_scope(self) -> None:
         commands = [
             'python "${CLAUDE_PLUGIN_ROOT}/scripts/session_cost.py" --json session.jsonl',
