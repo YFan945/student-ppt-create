@@ -742,9 +742,10 @@ function addTextBox(slide, text, box, tokens, lang, opts) {
     h: box.h,
     fontSize,
     fontFace: (opts && opts.fontFace) || fonts.body,
-    color: opts && opts.color
-      ? assertHexColor(opts.color, (opts && opts.label) || '文本框')
-      : color(tokens, 'primary_text'),
+    color:
+      opts && opts.color
+        ? assertHexColor(opts.color, (opts && opts.label) || '文本框')
+        : color(tokens, 'primary_text'),
     align: (opts && opts.align) || 'left',
     valign: (opts && opts.valign) || 'top',
     margin,

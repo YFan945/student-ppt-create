@@ -100,6 +100,7 @@
 - `color()` 缺 palette 角色时改为抛错后，`scenario_render_matrix` 的夹具补齐六角色
   （原先缺 `surface` / accent，CI render 在 `addArchitecture` 处直接炸掉）。
 - Windows 上 evidence lock `unlink` 的 `PermissionError` 用 `contextlib.suppress`，过 ruff SIM105。
+- `pptx-helpers.js` 过 Prettier（`color()` 抛错改动漏了格式化，挡住 runtime lint）。
 
 ### 修复：REFUSED 不带下一步、Art Direction 解析错误是裸 traceback
 
