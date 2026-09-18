@@ -166,6 +166,42 @@ class PageBriefStrategyProjectionTests(unittest.TestCase):
         self.assertIn("仅在未提供 packet 时", templates)
         self.assertIn("不要再调 page_brief.py", templates)
 
+    def test_every_projected_file_mention_in_spawn_templates_is_fallback_gated(self) -> None:
+        """Batch 2.3: three prose surfaces (先读冻结契约 / 要上下文就用 page_brief /
+        请自行读报告原文) kept telling the builder to read inputs the packet
+        projects — the same drift found three times by hand. This test makes CI
+        catch it: the contract owns the no-reread list, and ANY mention of one of
+        those artifacts in the builder template must sit either inside the packet
+        entry (which enumerates and forbids them) or inside a fallback-gated
+        bullet. A new unconditional '先读 slide-spec' fails here, not in a live run."""
+        packet_contract = load_contract()["presentation_builder"]["packet"]
+        tokens = packet_contract["no_reread_files"]
+        gates = ("未提供 packet", "有 packet", "已拿到", "fallback")
+        text = TEMPLATES_MD.read_text(encoding="utf-8")
+        blocks = re.split(r"^## ", text, flags=re.M)
+        builder_block = next(block for block in blocks if block.startswith("builder"))
+        fenced = re.search(r"```text\n(.*?)```", builder_block, flags=re.S)
+        self.assertIsNotNone(fenced, "builder 段必须包含 ```text 模板块")
+        bullets: list[str] = []
+        for line in fenced.group(1).splitlines():
+            if line.startswith("- "):
+                bullets.append(line)
+            elif bullets and (line.startswith("  ") or not line.strip()):
+                bullets[-1] += "\n" + line
+        entry = next((b for b in bullets if "唯一任务输入" in b), "")
+        self.assertTrue(entry, "builder 模板必须有 packet 任务输入条目")
+        for token in tokens:
+            self.assertIn(token, entry, f"packet 条目必须点名禁重读对象：{token}")
+        for bullet in bullets:
+            if bullet is entry:
+                continue
+            for token in tokens:
+                if token in bullet:
+                    self.assertTrue(
+                        any(gate in bullet for gate in gates),
+                        f"builder 模板里提到 '{token}' 的条目必须是 fallback-gated（有 packet 时不得重读）：\n{bullet}",
+                    )
+
     def test_guard_refusals_cite_the_contract_not_their_own_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)

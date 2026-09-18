@@ -40,8 +40,8 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   `builder-packets/`）。有 packet 时它就是本轮唯一任务输入：assigned slides、规格拷贝、
   planned numbers、版式、evidence、来源、blocker、允许文件与讲稿目标都在里面——
   不要再去读 slide-spec-compiled.yaml / art-direction.yaml / research-pack.json /
-  build-manifest.json / QA 报告（packet 的字段与它们同源）。未提供 packet 或字段缺失时，
-  按下面的 page_brief 流程取上下文。
+  build-manifest.json / pipeline-qa.json / pre-qa 报告（packet 的字段与它们同源）。
+  未提供 packet 或字段缺失时，按下面的 page_brief 流程取上下文。
 - 目标页：<slide ids（calibration/repair）｜shard 的 slide ids（initial 分片）｜"全部剩余 scaffold 页"（initial 未分片）>
 - **本实例只做上面这些 slide ids**：绝不读、写、改别人的 `pages/pNN-*.js`。分片由管线按页号
   轮转计算、天然互斥；越界改页会覆盖另一个并发 builder 的成果，而那是无法回滚的。
@@ -60,7 +60,8 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   只是白白多付一个上下文往返。它对每页输出的 claim、numbers 与 actual-content 门判定同源；
   来源标题来自 research-pack 原文。
   **不要用 `node -e ... require('./*.json')` 挖 work-dir 文件**——hook 会拒绝并给出该命令。
-- 先读冻结契约：<work-dir>/slide-spec-compiled.yaml 与 <work-dir>/art-direction.yaml；
+- 仅在未提供 packet 时，先读冻结契约：<work-dir>/slide-spec-compiled.yaml 与
+  <work-dir>/art-direction.yaml——有 packet 时两者已投影进 packet，不要重读；
   Helper API 只用 node "<CLAUDE_PLUGIN_ROOT>/scripts/pptx-helpers.js" --describe
   （绝对路径调用；禁止 node -e require('pptxgenjs')——项目 cwd 解析不到模块）。
 - 上屏硬要求：本页 title、claim 与每个 planned number 必须以可见文本出现
@@ -76,7 +77,8 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - 讲稿（涉及时）：写入每页 PPTX 备注区（slide.addNotes，每页一次、纯文本），
   并同步 speaker-notes.md——质量门读的是 PPTX 备注区。
 - 末页来源区：COPY.sources 是从 research-pack.json 字节级注入的，逐字渲染、
-  禁止改写/翻译/缩写。
+  禁止改写/翻译/缩写（有 packet 时来源已在 packet 的 slides[].sources，同样逐字渲染即可，
+  不需要再读 research-pack）。
 - 调色板：<style seed> 的 light/dark 两套角色色之外，任何十六进制色值即缺陷；中文正文 ≥22pt。
 - **已通过评审的页不得降分**：QA 会对比上一轮的逐页视觉分数，任何一页下降 ≥1.5 分即判
   `visual_regression`（2026-09-17 live：第 5 轮"提分"把页面改坏，第 6 轮花 40M token 只用来回退，
@@ -88,13 +90,16 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   这份上下文。要反馈就回报 BUILDER_DONE，主会话渲染后把报告路径给你。
 - **改页用 Edit 工具，不要用 shell 里的正则脚本改 `pages/pNN-*.js`**；也不要用内联脚本
   （`node -e` / `python -c` / `python - <<'PY'`）去挖 work-dir 的 JSON/YAML——hook 会拒绝。
-  要上下文就用 `page_brief.py`，一次给全。
+  要上下文就用 `page_brief.py`，一次给全（仅当未提供 packet；已拿到 packet 时不要调）。
 - 不要运行 ppt_pipeline.py build/render/qa、不要跑 run_with_pptxgenjs.js
   （临时验证只能在系统临时目录，不得在 work-dir 产正式 pptx）。
-- 不改 slide-spec-compiled.yaml、art-direction.yaml、build-manifest.json、visual-review.json。
+- 不改（有无 packet 都不改；有 packet 时这些也已投影进 packet，同样不读）
+  slide-spec-compiled.yaml、art-direction.yaml、build-manifest.json、visual-review.json。
 - 本轮任务细节：<报告路径 + 一句话摘要；报告可能是 pre-qa-actual-content.json /
   pre-qa-rendered.json / pre-qa-quality.json（确定性预检，此路径不消耗 repair 轮、critic
-  尚未运行）或 pipeline-qa.json（正式 QA blocker）。请自行读报告原文，不要依赖转述>。
+  尚未运行）或 pipeline-qa.json（正式 QA blocker）>。仅在未提供 packet 时自行读报告
+  原文，不要依赖转述；已拿到 Repair Packet 时，其 slides[].blockers / deck_blockers /
+  must_not_regress 就是报告投影，不要再读这些报告。
 - **本轮只服务这一轮**：不要接受"继续同一个实例"的延续指令，也不要假设自己见过上一轮的页面；
   带着上一轮的历史只会让本轮每个请求都更贵。
 - 完成后只回契约信封：BUILDER_DONE / BUILDER_BLOCKED（字段以你的 agent 契约为准）。

@@ -2,6 +2,31 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — v0.15 Pipeline Simplification（Batch 2.3：spawn 模板收口 + CI 咬合）
+
+Owner 细读发现 spawn-templates.md 仍有三处旧规则残留（先读冻结契约 / 要上下文就用
+page_brief / 请自行读报告原文），与 Packet contract 冲突。本轮除修掉三处外，把
+「packet 模式禁止重读已投影文件」这组语义从人工审查转为 CI 钉死：
+
+### 模板收口（spawn-templates.md builder 段）
+
+- 「先读冻结契约」条目标注**仅在未提供 packet 时**，并注明有 packet 时两份契约已投影、不要重读；
+- 「要上下文就用 page_brief，一次给全」标注**仅当未提供 packet；已拿到 packet 时不要调**；
+- 「本轮任务细节……请自行读报告原文」改为：仅在未提供 packet 时读报告原文；已拿到
+  Repair Packet 时其 slides[].blockers / deck_blockers / must_not_regress 就是报告投影，
+  不再读 pipeline-qa / pre-qa 报告；
+- 顺带收口两处次要残留：末页来源区注明有 packet 时来源已在 slides[].sources；
+  「不改 slide-spec 等四件」条目注明有 packet 时同样不读。
+
+### CI 咬合（核心）
+
+- `agent-behavior-contract.json` 的 packet 小节新增 **`no_reread_files` 清单**
+  （slide-spec-compiled / art-direction / research-pack / build-manifest / pipeline-qa /
+  pre-qa / page_brief）——禁重读对象由契约单一持有，prose 不得自拟清单；
+- 新增契约测试：扫描 builder 模板的每个条目，凡提及清单内工件，必须落在 packet 任务
+  输入条目（要求逐一枚举禁重读对象）或带 fallback 门控标记的条目内。今后 prose 再出现
+  无条件的「先读 slide-spec」，CI 直接失败，而不是等人工复核。
+
 ## Unreleased — v0.15 Pipeline Simplification（Batch 2.2：page_brief 归零）
 
 Owner 细读发现的最后一条指令歧义：builder.md 顶部说「packet 是 complete task input，

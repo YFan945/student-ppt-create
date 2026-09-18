@@ -30,7 +30,16 @@
       "generator": "skills/sp-deck/scripts/builder_packet.py",
       "packet_dir": "builder-packets/",
       "packet_is_complete_task_input": true,
-      "reread_inputs_covered_by_packet": false
+      "reread_inputs_covered_by_packet": false,
+      "no_reread_files": [
+        "slide-spec-compiled",
+        "art-direction",
+        "research-pack",
+        "build-manifest",
+        "pipeline-qa",
+        "pre-qa",
+        "page_brief"
+      ]
     },
     "edit_scope": {
       "initial": "assigned_pages",
