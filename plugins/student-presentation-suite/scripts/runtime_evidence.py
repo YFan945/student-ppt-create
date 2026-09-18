@@ -102,8 +102,10 @@ def event_lock(event: dict):
             _wait_for_lock(path, deadline)
             continue
         except PermissionError:
-            if not path.exists():
-                raise
+            # Windows delete-pending: an unlink "succeeded" but the name lingers
+            # until every handle closes; exists() then reports False while open()
+            # still fails. Retry exactly like a collision — the 5s deadline still
+            # bounds a genuinely unwritable directory (RuntimeError, not hang).
             _wait_for_lock(path, deadline)
             continue
     try:

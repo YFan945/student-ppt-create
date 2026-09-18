@@ -318,6 +318,28 @@ class RuntimeEvidenceTests(unittest.TestCase):
         receipt = json.loads((self.work / "critic-execution.json").read_text())
         self.assertEqual(receipt["reads"], {str(path): runtime.digest(path) for path in paths})
 
+    def test_windows_delete_pending_open_is_retried_not_raised(self):
+        """Windows delete-pending: after unlink, exists() reports False while open()
+        still raises PermissionError until every handle closes. 2026-09-18 CI: the
+        8-thread parallel-read test hit exactly this and the old
+        `if not path.exists(): raise` turned a routine collision into a failure."""
+        original_open = os.open
+        calls = 0
+
+        def pending_open(path, flags, *args, **kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise PermissionError(13, "delete pending", str(path))
+            return original_open(path, flags, *args, **kwargs)
+
+        with patch.object(runtime.os, "open", side_effect=pending_open), patch.object(
+            runtime.time, "sleep", return_value=None
+        ):
+            with runtime.event_lock(self.event):
+                pass
+        self.assertGreaterEqual(calls, 2)
+
     def test_fileexists_collision_can_disappear_before_retry(self):
         original_open = os.open
         calls = 0
