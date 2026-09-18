@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.14.2
+version: 0.14.4
 ---
 
 # Student Presentation PPT
@@ -65,8 +65,14 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/calibration_preview.py" \
   --work-dir <wd> --slides <id1> <id2> <id3> --json
 ```
 
-helper 只把这些已实现页面组装成临时 `calibration/calibration.pptx`，渲染到 `calibration/render/`，并写绑定页面/PPTX/PNG SHA256 的 `calibration-manifest.json`；**不触碰生产 manifest/state**。主会话在同一轮并行 Read 这 2–3 张 PNG，检查 hierarchy、focal point、密度、配色、图像语言和 Art Direction 一致性。若存在会扩散到全 deck 的 Major/Critical 视觉问题，再 spawn builder `mode=calibration` 只修这些页，随后重跑 helper；不要先生成剩余 10–20 页再发现基础风格错误。
-9. **Full Isolated Page Build**：Calibration 视觉系统可接受后，再 spawn `presentation-builder`，传绝对 work-dir 与 `mode=initial`。Builder 保留已校准页面，按它们已建立的 typography/spacing/surface/image language 实现**所有剩余 scaffold 页面**并写 `speaker-notes.md`。主会话不得打开逐页源码复核，只接受紧凑信封。
+helper 只把这些已实现页面组装成临时 `calibration/calibration.pptx`，渲染到 `calibration/render/`，并写绑定页面/PPTX/PNG SHA256 的 `calibration-manifest.json`；**不触碰生产 manifest/state**。
+
+**校准必须由独立 critic 评审，不能由主会话自己看图**。主会话是这份 spec 与 art direction 的作者，检查 hierarchy/密度/配色时会全部通过，唯独看不见自己选的视觉语言是否在每一页重复。2026-09-18 live 就是这样：主会话接受了 3 张校准图，独立 critic 随后判定"13 页套同一个带边框通栏面板"要求全 deck 重做，代价 76.4M token（该次会话的 58.8%），而 3 页规模的评审只需 1.4M。
+
+`next --json` 这时给出 critic 的 spawn 参数与 `calibration/calibration-visual-review.json` 的写入路径：spawn `student-presentation-suite:visual-critic`（不传 `name`），**只判会扩散到全 deck 的形态**——不同页型是否套用了同一结构、Art Direction 是否一致、页型之间是否还看得出区别；细则打磨留给最终 critic。评审带 Major/Critical 就 spawn builder `mode=calibration` 只修这些页并重跑 helper；**评审全绿之前正式 `build` 会被机械拒绝**。不要先生成剩余 10–20 页再发现基础风格错误。
+9. **Full Isolated Page Build**：Calibration 视觉系统经独立评审可接受后，再 spawn `presentation-builder`，传绝对 work-dir 与 `mode=initial`。Builder 保留已校准页面，按它们已建立的 typography/spacing/surface/image language 实现**所有剩余 scaffold 页面**。主会话不得打开逐页源码复核，只接受紧凑信封。
+
+   **页数够多时并行分片（`next --json` 会给出 `builder_shards`）**：墙钟 = 回合数 × 每回合往返延迟，而全套门实测只花 150 秒（占全程 1.7%）——**唯一不碰门、又能压缩墙钟的杠杆就是让页面工作并发**。给出 `builder_shards` 时，在**同一条消息里 spawn 全部 shard**（每个都不传 `name`），每个只做自己的 slide ids、只写自己的 `speaker-notes-shard-<N>.md`，绝不碰别人的页面；`build` 会把碎片按页序拼成 `speaker-notes.md`。分片由管线按页号轮转计算，天然互斥且页数均衡。少于 `parallel_builder_min_pages`（默认 4）页时不拆——启动与读取开销不划算。
 10. **Exploration Gates + Production Build**：运行一次 gates orchestrator，只把 blocker 回到主上下文，完整结果写盘：
 
 ```bash
@@ -75,10 +81,22 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 ```
 
 Windows 下优先用这个 python 形式；`run_gates.sh` 只是定位解释器的包装，在 `sh` 解析到 WSL 的机器上打不开 `C:/...` 路径（2026-09-17 live：exit 127，白跑一轮）。`edit_ooxml` 直接走原 OOXML 路径；create/rebuild 只有在所有页面 scaffold marker 都删除后才调用 `ppt_pipeline.py build --work-dir <wd> --entry <deck.js>`。任何未实现页仍会被正式 build 机械拒绝。Calibration PPTX 不是可交付物，也不能替代正式 build。
-11. **Render**：调用 `ppt_pipeline.py render --work-dir <wd>`。Pipeline 一次渲染全部页面并生成 `contact-sheet.png` / 缩略图；相同 PPTX hash 复用。build 后旧渲染证据被归档，repair 后必须重新 render。**render 只接受确定性预检全绿的 deck**：build 打包后会立即在本地跑 `rendered` + `actual-content` 两道确定性门（只读 PPTX 本身、不依赖 critic）；不绿时 `render` 直接拒绝，`next --json` 会指向免 repair 轮的修法——spawn builder `mode=repair` 读 `pre-qa-*.json` 报告改页后重建（连续失败上限 `max_pre_qa_rebuilds`，超过即转正式 render/critic 流程）。critic 从此只评审确定性门全绿的 deck，不再为一个注定返工的 deck 花一整轮评审。
+11. **Render**：调用 `ppt_pipeline.py render --work-dir <wd>`。Pipeline 一次渲染全部页面并生成 `contact-sheet.png` / 缩略图；相同 PPTX hash 复用。build 后旧渲染证据被归档，repair 后必须重新 render。**render 只接受确定性预检全绿的 deck**：build 打包后会立即在本地跑 `rendered` + `actual-content` + `quality` 的确定性部分（evidence/timing/lock，只读 PPTX 与 spec、不依赖 critic）；不绿时 `render` 直接拒绝，`next --json` 会指向免 repair 轮的修法——spawn builder `mode=repair` 读 `pre-qa-*.json` 报告改页后重建（连续失败上限 `max_pre_qa_rebuilds`，超过即转正式 render/critic 流程）。critic 从此只评审确定性门全绿的 deck，不再为一个注定返工的 deck 花一整轮评审。
 12. **Visual Critique**：Agent `student-presentation-suite:visual-critic`，不传 `name`，独立读取当前 contact sheet 和所有页图，写绑定当前 SHA256 的 `visual-review.json`；最终 critic 仍负责全 deck rhythm，Calibration 不能替代它。
 13. **QA DAG**：必须已有 `critic-execution.json`；`ppt_pipeline.py qa --work-dir <wd> --visual-review <visual-review.json>` 按 `package → rendered → actual-content → quality → delivery` 执行并绑定本轮输入。**产物可用性门（package/rendered）失败即停；内容质量门（actual-content/quality/delivery）全部跑完再汇总**——一轮 repair 必须拿到完整 blocker 清单，而不是每轮只发现一层门（2026-09-17 live 因此耗掉 6 轮 repair、约 199M token）。`pipeline-qa.json` 的 `failed_stages` 与 `blockers_by_gate` 就是给 repair 的清单：传报告路径给 builder 让它自己读，不要转抄；`derived_problems` 是上游失败的派生结论，不要当成独立任务去修。
-14. **Repair**：只有 QA blocker 才先运行 `ppt_pipeline.py repair --reason <摘要>`；随后 spawn `presentation-builder mode=repair`，只改 blocker 页及直接共享依赖。**给 builder 的输入是 `pipeline-qa.json` 路径 + 一句话摘要**——该报告已含全部门的问题（`failed_stages` / `blockers_by_gate`），一轮把它们全修完，不要按门分批。收到 `BUILDER_DONE` 后重新 `build → render → critique → qa`（重建后若确定性预检不绿，仍先走免 repair 轮的预检修法）。generator hash 未变化时 build 拒绝；超过预算转 `incomplete`。**续轮与否由数据判定，不问用户**：`next --json` 的 `repair_convergence` 给出逐轮 blocker 数与趋势（`improving` 才值得继续，`flat` 要换做法，`worse` 必须先恢复被弄坏的回归），`repair_budget` 给出 `base`/`granted`/`effective`/`hard_cap`。需要提额时用 `ppt_pipeline.py repair --extend N --extend-reason "<本轮与上轮的 blocker 差异>"`——授权写进 `build-manifest.json`，**不要改已安装插件里的 `pipeline-contract.json`**（升级即失效、不可审计）；硬顶由契约 `max_repairs_hard_cap` 强制，到顶就如实交付 `incomplete`。
+14. **Repair**：只有 QA blocker 才先运行 `ppt_pipeline.py repair --reason <摘要>`；随后 spawn `presentation-builder mode=repair`，只改 blocker 页及直接共享依赖。**给 builder 的输入是 `pipeline-qa.json` 路径 + 一句话摘要**——该报告已含全部门的问题（`failed_stages` / `blockers_by_gate`），一轮把它们全修完，不要按门分批。
+
+   **每轮必须 spawn 一个新的 builder 实例，不要用 SendMessage 继续上一个。** 一个实例扛多轮时上下文只增不减：2026-09-18 live 的一个 builder 实例从 8.7K 涨到 **699K**，261 个请求里 212 个在 ≥200K 上下文下发出（占其成本的 96.1%），最后一轮仅 3 个请求就花了 2.1M token。**实测反事实**：只做重置是 **98.7M → 80.9M（省 17.8M）**——轮 1 在实例内部自己就会涨到 606K，重置修不了它，其余要靠不让全 deck 返工发生。`next --json` 的 `builder_instance_reuse` 会在检出复用时报出实例与轮次——看到它就把下一轮换成新 spawn。
+
+   **builder 自己不 build、不 render**（渲染与 `calibration_preview.py` 属于主会话，hook 会拒绝）；页面全改完再回报，主会话跑唯一一次 build。若 builder 在 build 之后又改了页，`build` 允许**一次**补差量重建（`carryover_builds`），避免为一处微调单开一轮。
+
+   **blocker 页跨多个 shard 时同样并行**：`next --json` 在 `qa` 状态给出的 `builder_shards` 覆盖 blocker 页，`repair` 之后在**同一条消息**里 spawn 一个 builder 对应一个 shard。**没有页号的 deck 级 blocker 例外**——那说明整 deck 都在范围内，用**一个** builder 读报告，不要分片。
+
+   **减少回合数本身就是目标**：实测每个回合平均只带 ~1.0 个工具调用（发一个、等结果、再发下一个）。合并调用（CD-1）在时间上等价于省钱——一个回合 10~19 秒，13 页的构建阶段每少 30 个回合就是少 5~10 分钟。`page_brief.py --work-dir <wd> --json`（不带 `--slide`）一次给全 deck 每页的契约，不要逐页调。
+
+   收到 `BUILDER_DONE` 后重新 `build → render → critique → qa`（重建后若确定性预检不绿，仍先走免 repair 轮的预检修法）。generator hash 未变化时 build 拒绝；超过预算转 `incomplete`。
+
+   **续轮与否由数据判定，不问用户**：`next --json` 的 `repair_convergence` 给出逐轮 blocker 数与趋势（`improving` 才值得继续，`flat` 要换做法，`worse` 必须先恢复被弄坏的回归），`repair_budget` 给出 `base`/`granted`/`effective`/`hard_cap`。**若 `repair_convergence.suspect_gate_defect` 出现**（某组 blocker 连续两轮逐字相同、其余在动），说明这组不是页面能修的：对着产物核对一次，要么它有页面级修法（写进 `--extend-reason`），要么它是门的误报——记为已知门限、继续修剩下的，**不要为它问用户交付策略**，提额也会被拒绝。需要提额时用 `ppt_pipeline.py repair --extend N --extend-reason "<本轮与上轮的 blocker 差异>"`——授权写进 `build-manifest.json`，**不要改已安装插件里的 `pipeline-contract.json`**（升级即失效、不可审计）；硬顶由契约 `max_repairs_hard_cap` 强制，到顶就如实交付 `incomplete`。
 15. **Complete**：`ppt_pipeline.py complete --work-dir <wd>`；QA 全绿且 delivery 真正通过才允许完成。
 
 ## Generation core contract
@@ -88,15 +106,15 @@ Production Summary confirmation
 → isolated research / compiled Slide Spec / Art Direction
 → ppt_pipeline plan
 → isolated builder(calibration: 2–3 high-leverage pages)
-→ deterministic calibration preview + main-session visual check
+→ deterministic calibration preview + independent visual-critic review（全绿才放行正式 build）
 → isolated builder(initial: remaining pages, preserving calibration)
-→ exploration gates → production build（确定性预检：rendered + actual-content）
+→ exploration gates → production build（确定性预检：rendered + actual-content + quality 确定性部分）
 → render（预检全绿才放行）→ isolated visual-critic + QA DAG（内容门全跑后汇总）
-→ bounded repair → isolated builder(repair targets only)
+→ bounded repair（每轮新 spawn 一个 builder 实例）→ isolated builder(repair targets only)
 → build → render → critique → QA → complete
 ```
 
-核心原则：**先用极少数真实页面校准视觉系统，再把该系统扩散到整套 deck。** Skill 负责智能编排，Builder/Researcher/Critic 各自隔离高上下文工作，Pipeline 负责确定性状态和交付；Calibration helper 只负责便宜、可追溯的早期视觉反馈。
+核心原则：**先用极少数真实页面校准视觉系统，再把该系统扩散到整套 deck。** Skill 负责智能编排，Builder/Researcher/Critic 各自隔离高上下文工作，Pipeline 负责确定性状态和交付；Calibration helper 只负责便宜、可追溯的早期视觉反馈，**但它的判定权属于独立 critic，不属于 spec 的作者**。
 
 ## Output contract
 

@@ -107,6 +107,16 @@ Rules:
 5. unused ledger entries are at least Minor findings;
 6. fix missing reference presentation instead of deleting evidence refs to game the gate.
 
+**Match against the sources, not against the evidence claims.** `evidence_ledger.title` is a
+claim, a value or a quote — `research_pack_to_evidence.py` builds it from `finding.claim` /
+`data_point.meaning` / quote text — so it is text a bibliography never carries. The bibliography
+renders `source_ledger`, the same records the compiler writes into the spec, and the closure check
+resolves each used entry's `source_ids` to those records. A cited id the ledger does not contain is
+`unresolved_source_ref`; a resolvable source missing from the reference area is
+`missing_final_reference`. 2026-09-18 live: matching claim text against the band failed for 16 of
+42 used entries no matter what the pages said, which pinned QA above zero and made `complete`
+unreachable by construction — the band already listed all 25 source titles verbatim.
+
 `pptx_quality_gate_v071.py` performs deterministic closure checks on ledger usage and final references.
 
 ## Gap Detection

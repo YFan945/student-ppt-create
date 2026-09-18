@@ -438,6 +438,18 @@ class PreQaGateTests(PipelineTestCase):
         self.assertIn("actual_content", pre_qa["stages"])
         self.assertTrue((self.work / "pre-qa-actual-content.json").is_file())
 
+    def test_pre_qa_includes_the_quality_gate_deterministic_half(self) -> None:
+        """2026-09-18 live: build #1 reported 0 pre-QA blockers, render and a full critic pass
+        were paid for, and QA then returned 48 — 16 of them computable from the PPTX and spec."""
+        self.assertEqual(self.build(FakeRunner(self.work)), 0)
+        stages = pp.pre_qa_stages(self.manifest(), self.work)
+        names = [stage.name for stage in stages]
+        self.assertIn("quality-deterministic", names)
+        argv = " ".join(stages[names.index("quality-deterministic")].argv)
+        self.assertIn("pptx_quality_gate_v071.py", argv)
+        self.assertIn("pre-qa-quality.json", argv)
+        self.assertNotIn("--visual-report", argv, "pre-QA must not require the critic report")
+
     def test_pre_qa_failure_blocks_neither_build_nor_budget(self) -> None:
         rc = self.build(self.failing_runner())
         self.assertEqual(0, rc, "the deck itself built; pre-QA is routing, not a build failure")
@@ -529,6 +541,32 @@ class BuildTests(PipelineTestCase):
         self.assertIn("p01-cover.js", generator_paths)
 
     def test_identical_repeat_build_is_refused(self) -> None:
+        self.prepared()
+        entry = self.entry()
+        self.assertEqual(pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 0)
+        self.assertEqual(pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 2)
+
+    def test_one_carryover_build_lets_post_build_edits_reach_the_artifact(self) -> None:
+        """2026-09-18 live: an entire repair round existed only to carry two pages' tweaks.
+
+        The builder looked at the rendered deck after building, adjusted p6/p8, and the single
+        allowed build per round stranded those edits — so round 3's stated purpose was
+        "把 p6/p8 排版微调带入产物".
+        """
+        self.prepared()
+        entry = self.entry()
+        self.assertEqual(pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 0)
+        page = next((self.work / "pages").glob("p*.js"))
+        page.write_text(page.read_text(encoding="utf-8") + "\n/* tweak */\n", encoding="utf-8")
+        self.assertEqual(pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 0)
+        manifest = self.manifest()
+        self.assertEqual(1, manifest["build"]["carryover_builds"])
+        # A second carry-over would be an edit->build loop that sidesteps the repair budget.
+        page.write_text(page.read_text(encoding="utf-8") + "\n/* tweak again */\n", encoding="utf-8")
+        self.assertEqual(pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 2)
+
+    def test_a_carryover_with_no_page_edit_is_refused(self) -> None:
+        """Carry-over must not become a "rebuild because I asked" path."""
         self.prepared()
         entry = self.entry()
         self.assertEqual(pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 0)
@@ -719,21 +757,105 @@ class BuildTests(PipelineTestCase):
         self.assertIn("calibration_preview.py", payload["next_command"])
         self.assertIn("--slides 1 6 7", payload["next_command"])
 
-    def test_next_with_calibration_render_points_at_review_not_build(self) -> None:
-        """Interrupted calibration-fix rounds resume via review, never a raw full build."""
-        self.plan(self.files)
+    def calibration_with_render(self) -> Path:
         calibration = self.work / "calibration"
         render = calibration / "render"
-        render.mkdir(parents=True)
+        render.mkdir(parents=True, exist_ok=True)
         (calibration / "calibration-manifest.json").write_text(
-            json.dumps({"version": "1.0", "slides": [1, 6, 7]}), encoding="utf-8"
+            json.dumps({"version": "1.0", "slides": [1, 6, 7], "pptx": {"sha256": "cal-pptx-sha"}}),
+            encoding="utf-8",
         )
         (render / "calibration-1.png").write_bytes(b"png")
+        return calibration
+
+    def write_calibration_review(self, calibration: Path, slides: list[dict] | None = None) -> Path:
+        review = calibration / "calibration-visual-review.json"
+        review.write_text(
+            json.dumps(
+                {
+                    "review_version": "0.8",
+                    "pptx_sha256": "cal-pptx-sha",
+                    "slides": slides if slides is not None else [
+                        {"slide": 1, "visual_structure": "cover", "issues": []},
+                        {"slide": 6, "visual_structure": "chart-led", "issues": []},
+                        {"slide": 7, "visual_structure": "compare", "issues": []},
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        return review
+
+    def test_next_with_calibration_render_dispatches_the_independent_review(self) -> None:
+        """Calibration is reviewed by the critic, not by the session that chose the treatment.
+
+        2026-09-18 live: the main session read its own calibration PNGs, accepted the visual
+        system, and the independent critic then rejected the pattern on all 13 built pages.
+        """
+        self.plan(self.files)
+        self.calibration_with_render()
+        payload = self.next_payload()
+        self.assertEqual("student-presentation-suite:visual-critic", payload["agent"])
+        self.assertNotIn("build", payload["next_command"])
+        self.assertIn("no independent calibration review on disk", payload["calibration"]["status"])
+        self.assertEqual([1, 6, 7], payload["calibration"]["slides"])
+        self.assertIn("visual-critic", payload["notes"])
+        self.assertEqual("build", payload["contract"]["stage"])
+
+    def test_next_after_a_green_calibration_review_authorises_the_full_build(self) -> None:
+        self.plan(self.files)
+        calibration = self.calibration_with_render()
+        self.write_calibration_review(calibration)
         payload = self.next_payload()
         self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
-        self.assertNotIn("build", payload["next_command"])
-        self.assertIn("calibration preview is on disk", payload["notes"])
-        self.assertEqual("build", payload["contract"]["stage"])
+        self.assertIn("mode=initial", payload["notes"])
+
+    def test_next_keeps_the_builder_on_a_calibration_that_still_has_findings(self) -> None:
+        self.plan(self.files)
+        calibration = self.calibration_with_render()
+        self.write_calibration_review(
+            calibration,
+            [
+                {"slide": 1, "visual_structure": "cover", "issues": []},
+                {"slide": 6, "visual_structure": "panel", "issues": [
+                    {"severity": "major", "code": "repetitive_structure_run", "message": "same bordered panel"},
+                ]},
+                {"slide": 7, "visual_structure": "compare", "issues": []},
+            ],
+        )
+        payload = self.next_payload()
+        self.assertEqual("student-presentation-suite:visual-critic", payload["agent"])
+        self.assertIn("repetitive_structure_run", payload["calibration"]["status"])
+
+    def prepared_calibrated_without_review(self) -> Path:
+        self.prepared()
+        calibration = self.work / "calibration"
+        (calibration / "render").mkdir(parents=True, exist_ok=True)
+        (calibration / "calibration-manifest.json").write_text(
+            json.dumps({"version": "1.0", "slides": [1, 6], "pptx": {"sha256": "cal-pptx-sha"}}),
+            encoding="utf-8",
+        )
+        return calibration
+
+    def test_full_build_is_refused_until_calibration_is_independently_reviewed(self) -> None:
+        """Doc-only, this rule was already in SKILL.md and a live session still skipped it."""
+        self.prepared_calibrated_without_review()
+        self.implement_scaffolded_pages()
+        rc = pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.work / "deck.js")])
+        self.assertEqual(rc, 2)
+
+    def test_full_build_proceeds_once_the_calibration_review_is_green(self) -> None:
+        calibration = self.prepared_calibrated_without_review()
+        self.implement_scaffolded_pages()
+        self.write_calibration_review(
+            calibration,
+            [
+                {"slide": 1, "visual_structure": "cover", "issues": []},
+                {"slide": 6, "visual_structure": "chart-led", "issues": []},
+            ],
+        )
+        rc = pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.work / "deck.js")])
+        self.assertEqual(rc, 0)
 
     def test_build_rechecks_the_freeze(self) -> None:
         self.prepared()
@@ -945,6 +1067,94 @@ class RepairConvergenceTests(PipelineTestCase):
         self.write_history([{"round": 1, "blockers": 5, "failed": []}])
         self.assertIsNone(pp.repair_convergence(self.work))
 
+    def test_a_frozen_blocker_group_is_named_as_a_gate_candidate(self) -> None:
+        """2026-09-18: 16 blockers identical in all four rounds, while everything else moved.
+
+        The trend read "improving" (48/34/23/17), so the run spent its whole repair budget and
+        5.4M tokens of forensics on a group no page edit could change.
+        """
+        frozen = {"missing_final_reference": 16}
+        self.write_history([
+            {"round": 1, "blockers": 48, "failed": ["quality"],
+             "codes": {**frozen, "bordered_panel_overuse": 32}},
+            {"round": 2, "blockers": 17, "failed": ["quality"], "codes": dict(frozen)},
+        ])
+        result = pp.repair_convergence(self.work)
+        self.assertEqual("improving", result["trend"])
+        suspect = result["suspect_gate_defect"]
+        self.assertEqual(frozen, suspect["codes"])
+        self.assertEqual(16, suspect["blockers"])
+        self.assertIn("gate", suspect["advice"])
+
+    def test_a_group_that_moved_is_not_called_a_gate_defect(self) -> None:
+        self.write_history([
+            {"round": 1, "blockers": 20, "failed": ["quality"],
+             "codes": {"missing_final_reference": 10, "visual_score_low": 10}},
+            {"round": 2, "blockers": 10, "failed": ["quality"],
+             "codes": {"missing_final_reference": 4, "visual_score_low": 6}},
+        ])
+        self.assertNotIn("suspect_gate_defect", pp.repair_convergence(self.work))
+
+    def test_rounds_without_code_detail_do_not_claim_a_gate_defect(self) -> None:
+        """Old gate-history files predate the per-code tally; guessing from counts is not allowed."""
+        self.write_history([
+            {"round": 1, "blockers": 20, "failed": ["quality"]},
+            {"round": 2, "blockers": 20, "failed": ["quality"]},
+        ])
+        self.assertNotIn("suspect_gate_defect", pp.repair_convergence(self.work))
+
+
+class BuilderInstanceTests(PipelineTestCase):
+    """One builder instance serving several rounds is the largest measured cost driver."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.files = self.write_inputs()
+        self.plan(self.files)
+        self.guard = self.work.parent / ".guard"
+        self.guard.mkdir(parents=True, exist_ok=True)
+
+    def manifest_with_rounds(self, stamps: list[str]) -> dict:
+        manifest = self.manifest()
+        manifest["history"] = [
+            {"command": "repair", "at": stamp, "reason": "round"} for stamp in stamps
+        ]
+        return manifest
+
+    def write_instance(self, first: str, last: str, writes: int = 9) -> None:
+        (self.guard / "builder-agent1.json").write_text(
+            json.dumps({
+                "agent_id": "agent1", "first_write_at": first, "last_write_at": last,
+                "writes": writes, "work_ids": [self.work.name],
+            }),
+            encoding="utf-8",
+        )
+
+    def test_one_instance_spanning_two_rounds_is_reported(self) -> None:
+        self.write_instance("2026-09-17T19:49:00+00:00", "2026-09-18T01:46:00+00:00")
+        manifest = self.manifest_with_rounds(["2026-09-17T21:00:00+00:00", "2026-09-18T01:43:00+00:00"])
+        result = pp.builder_instance_reuse(self.work, manifest)
+        self.assertIsNotNone(result)
+        self.assertEqual(2, result["instances"][0]["repair_rounds_spanned"])
+        self.assertIn("NEW", result["advice"])
+
+    def test_an_instance_serving_one_round_is_not_reported(self) -> None:
+        self.write_instance("2026-09-17T20:50:00+00:00", "2026-09-17T21:10:00+00:00")
+        manifest = self.manifest_with_rounds(["2026-09-17T21:00:00+00:00", "2026-09-18T01:43:00+00:00"])
+        self.assertIsNone(pp.builder_instance_reuse(self.work, manifest))
+
+    def test_another_workspace_instance_is_ignored(self) -> None:
+        (self.guard / "builder-agent2.json").write_text(
+            json.dumps({
+                "agent_id": "agent2", "first_write_at": "2026-09-17T19:00:00+00:00",
+                "last_write_at": "2026-09-18T02:00:00+00:00", "writes": 9,
+                "work_ids": ["some-other-deck"],
+            }),
+            encoding="utf-8",
+        )
+        manifest = self.manifest_with_rounds(["2026-09-17T21:00:00+00:00", "2026-09-18T01:43:00+00:00"])
+        self.assertIsNone(pp.builder_instance_reuse(self.work, manifest))
+
 
 class CompleteTests(PipelineTestCase):
     def setUp(self) -> None:
@@ -996,6 +1206,163 @@ class StatusTests(PipelineTestCase):
         with redirect_stdout(buffer):
             rc = pp.cmd_status(ns("status", self.work))
         self.assertEqual(rc, 2)
+
+
+class ParallelBuilderShardTests(PipelineTestCase):
+    """Wall clock is turns x per-turn latency; every gate in the suite costs ~2.5s total.
+
+    2026-09-18 measured the whole gate set at 150s (1.7% of a 147-minute pipeline) against
+    519 model round-trips, so sharding the page work across isolated builders is the only
+    wall-clock lever that does not touch a gate.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.files = self.write_inputs()
+
+    def write_spec(self, count: int) -> None:
+        slides = [
+            {"id": n, "title": f"Slide {n}", "kind": "cover" if n == 1 else "content"}
+            for n in range(1, count + 1)
+        ]
+        self.files["spec"].write_text(
+            json.dumps({"meta": {"slide_count": count, "topic": "test"}, "slides": slides}),
+            encoding="utf-8",
+        )
+
+    def next_payload(self) -> dict:
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = pp.main(["next", "--work-dir", str(self.work), "--json"])
+        self.assertEqual(rc, 0)
+        return json.loads(buffer.getvalue())
+
+    def test_shards_are_disjoint_and_cover_every_page(self) -> None:
+        self.write_spec(9)
+        self.plan(self.files)
+        plan = pp.builder_shards(pp.remaining_scaffold_slides(self.work), self.work)
+        self.assertIsNotNone(plan)
+        self.assertEqual(pp.MAX_PARALLEL_BUILDERS, plan["parallel"])
+        assigned = [slide for shard in plan["shards"] for slide in shard["slides"]]
+        self.assertEqual(sorted(assigned), list(range(1, 10)), "every page exactly once")
+        self.assertEqual(len(assigned), len(set(assigned)), "no page in two shards")
+        for shard in plan["shards"]:
+            self.assertEqual(len(shard["slides"]), len(shard["pages"]))
+        self.assertIn("ONE message", plan["spawn"])
+
+    def test_shards_balance_the_page_count(self) -> None:
+        self.write_spec(9)
+        self.plan(self.files)
+        plan = pp.builder_shards(pp.remaining_scaffold_slides(self.work), self.work)
+        sizes = [len(shard["slides"]) for shard in plan["shards"]]
+        self.assertLessEqual(max(sizes) - min(sizes), 1, sizes)
+
+    def test_below_the_threshold_a_single_builder_is_used(self) -> None:
+        self.write_spec(pp.PARALLEL_MIN_PAGES - 1)
+        self.plan(self.files)
+        self.assertIsNone(pp.builder_shards(pp.remaining_scaffold_slides(self.work), self.work))
+
+    def test_implemented_pages_are_not_sharded_again(self) -> None:
+        self.write_spec(9)
+        self.plan(self.files)
+        self.implement_scaffolded_pages()
+        self.assertEqual([], pp.remaining_scaffold_slides(self.work))
+        self.assertIsNone(pp.builder_shards([], self.work))
+
+    def test_page_files_map_back_to_their_slides(self) -> None:
+        self.write_spec(9)
+        self.plan(self.files)
+        plan = pp.builder_shards([1, 2, 3, 4, 5, 6, 7, 8, 9], self.work)
+        for shard in plan["shards"]:
+            for slide, page in zip(shard["slides"], shard["pages"], strict=True):
+                self.assertTrue(
+                    page.startswith(f"p{slide:02d}-"),
+                    f"{page} does not belong to slide {slide}",
+                )
+
+    def test_deck_level_blockers_yield_no_shard_plan(self) -> None:
+        """A blocker without a slide number is deck-wide; sharding would aim builders wrong."""
+        self.write_spec(9)
+        self.plan(self.files)
+        (self.work / "pipeline-qa.json").write_text(
+            json.dumps({"problems": [
+                {"gate": "quality", "severity": "major", "code": "visual_average_low", "message": "deck"},
+            ]}),
+            encoding="utf-8",
+        )
+        slides = pp.slides_named_in_reports(self.work, ("pipeline-qa.json",))
+        self.assertEqual([], slides)
+        self.assertIsNone(pp.builder_shards(slides, self.work))
+
+    def test_slide_level_blockers_are_sharded(self) -> None:
+        self.write_spec(9)
+        self.plan(self.files)
+        (self.work / "pipeline-qa.json").write_text(
+            json.dumps({"problems": [
+                {"gate": "quality", "severity": "major", "code": "visual_score_low", "slide": 2,
+                 "message": "s2"},
+                {"gate": "quality", "severity": "major", "code": "visual_score_low", "slide": 7,
+                 "message": "s7"},
+                {"gate": "quality", "severity": "major", "code": "visual_score_low", "slide": 9,
+                 "message": "s9"},
+                {"gate": "quality", "severity": "major", "code": "visual_score_low", "slide": 4,
+                 "message": "s4"},
+            ]}),
+            encoding="utf-8",
+        )
+        slides = pp.slides_named_in_reports(self.work, ("pipeline-qa.json",))
+        self.assertEqual([2, 4, 7, 9], slides)
+        plan = pp.builder_shards(slides, self.work)
+        self.assertIsNotNone(plan)
+        self.assertEqual(sorted(s for shard in plan["shards"] for s in shard["slides"]), [2, 4, 7, 9])
+
+    def test_build_assembles_speaker_note_shards_in_order(self) -> None:
+        """Parallel builders cannot each write speaker-notes.md without losing the others'."""
+        self.write_spec(4)
+        self.plan(self.files)
+        self.implement_scaffolded_pages()
+        (self.work / "speaker-notes-shard-2.md").write_text("SECOND half\n", encoding="utf-8")
+        (self.work / "speaker-notes-shard-1.md").write_text("FIRST half\n", encoding="utf-8")
+        used = pp.merge_speaker_note_shards(self.work)
+        self.assertEqual(2, len(used))
+        merged = (self.work / "speaker-notes.md").read_text(encoding="utf-8")
+        self.assertTrue(merged.startswith("FIRST half"), merged)
+        self.assertIn("SECOND half", merged)
+
+    def test_a_single_builder_run_writes_no_merge(self) -> None:
+        self.write_spec(4)
+        self.plan(self.files)
+        self.implement_scaffolded_pages()
+        self.assertEqual([], pp.merge_speaker_note_shards(self.work))
+        self.assertFalse((self.work / "speaker-notes.md").exists())
+
+    def test_next_offers_shards_for_the_full_build(self) -> None:
+        """The plan must reach the main session, or the gain never happens."""
+        self.write_spec(9)
+        self.plan(self.files)
+        calibration = self.work / "calibration"
+        (calibration / "render").mkdir(parents=True, exist_ok=True)
+        (calibration / "calibration-manifest.json").write_text(
+            json.dumps({"version": "1.0", "slides": [1, 5, 9], "pptx": {"sha256": "cal"}}),
+            encoding="utf-8",
+        )
+        (calibration / "render" / "calibration-1.png").write_bytes(b"png")
+        (calibration / "calibration-visual-review.json").write_text(
+            json.dumps({
+                "pptx_sha256": "cal",
+                "slides": [
+                    {"slide": 1, "visual_structure": "cover", "issues": []},
+                    {"slide": 5, "visual_structure": "chart", "issues": []},
+                    {"slide": 9, "visual_structure": "compare", "issues": []},
+                ],
+            }),
+            encoding="utf-8",
+        )
+        payload = self.next_payload()
+        self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
+        self.assertIn("mode=initial", payload["notes"])
+        self.assertIn("builder_shards", payload)
+        self.assertEqual(pp.MAX_PARALLEL_BUILDERS, payload["builder_shards"]["parallel"])
 
 
 if __name__ == "__main__":

@@ -351,7 +351,8 @@ def _clean(value: str) -> str:
     return re.sub(r"\s+", "", value or "").casefold()
 
 
-def evidence_markers(entry: dict[str, Any]) -> list[str]:
+def bibliography_markers(entry: dict[str, Any]) -> list[str]:
+    """Markers a rendered bibliography entry would carry: title, issuer, year, locator."""
     candidates: list[str] = []
     locator = str(entry.get("locator") or "")
     candidates.extend(re.findall(r"(?:arxiv:)?\d{4}\.\d{4,5}|10\.\d{4,9}/[^\s,;]+", locator, flags=re.I))
@@ -372,16 +373,47 @@ def evidence_markers(entry: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(_clean(item) for item in candidates if item))
 
 
-def evidence_match(text: str, entry: dict[str, Any]) -> bool:
-    normalized = _clean(text)
-    markers = evidence_markers(entry)
+def evidence_markers(entry: dict[str, Any]) -> list[str]:
+    return bibliography_markers(entry)
+
+
+def source_markers(entry: dict[str, Any]) -> list[str]:
+    """Markers for a `source_ledger` record — the records the reference area renders."""
+    return bibliography_markers(
+        {
+            "title": entry.get("title"),
+            "author": entry.get("publisher"),
+            "date": entry.get("year") if entry.get("year") is not None else "",
+            "locator": entry.get("url"),
+        }
+    )
+
+
+def markers_match(text: str, markers: list[str]) -> bool:
     if not markers:
         return False
     strong = [m for m in markers if re.fullmatch(r"(?:arxiv:)?\d{4}\.\d{4,5}|10\..+", m)]
-    if any(marker in normalized for marker in strong):
+    if any(marker in text for marker in strong):
         return True
-    matched = sum(marker in normalized for marker in markers)
+    matched = sum(marker in text for marker in markers)
     return matched >= min(2, len(markers))
+
+
+def evidence_match(text: str, entry: dict[str, Any]) -> bool:
+    return markers_match(_clean(text), evidence_markers(entry))
+
+
+def source_identifiable(normalized_reference: str, source: dict[str, Any]) -> bool:
+    """Is this source traceable from the final reference area?
+
+    Either its bibliography markers surface, or its own id token is printed. The
+    reference band renders "<id> <title>" per line, so an id in the area is itself
+    evidence that the source is listed.
+    """
+    if markers_match(normalized_reference, source_markers(source)):
+        return True
+    source_id = _clean(str(source.get("id") or ""))
+    return bool(source_id) and re.search(rf"(?<![a-z0-9]){re.escape(source_id)}(?![0-9])", normalized_reference) is not None
 
 
 def check_evidence(spec: dict[str, Any], actual_text: list[str]) -> dict[str, Any]:
@@ -418,9 +450,39 @@ def check_evidence(spec: dict[str, Any], actual_text: list[str]) -> dict[str, An
     reference_text = "\n".join(actual_text[index - 1] for index in sorted(reference_indices) if 1 <= index <= len(actual_text))
 
     if citation_style != "none":
+        sources_raw = [item for item in spec.get("source_ledger") or [] if isinstance(item, dict)]
+        sources = {str(item.get("id")): item for item in sources_raw if item.get("id")}
+        normalized_reference = _clean(reference_text)
         for ref in sorted(usage):
             entry = ledger.get(ref)
-            if entry and not evidence_match(reference_text, entry):
+            if not entry:
+                continue
+            linked = [str(value) for value in entry.get("source_ids") or []]
+            resolvable = [sources[value] for value in linked if value in sources]
+            if resolvable:
+                # Contract (evidence-and-citations.md): every used SOURCE stays
+                # identifiable in the final reference area. Match the sources the
+                # bibliography renders, not the claim text of the evidence entry.
+                unresolved = [value for value in linked if value not in sources]
+                if unresolved:
+                    # Dropping an unresolvable id would let a deck cite a source the
+                    # bibliography never carries; that is the defect this gate exists for.
+                    issues.append(issue(
+                        "major", "unresolved_source_ref",
+                        f"Evidence {ref} cites source(s) {', '.join(sorted(unresolved))} that the source_ledger does not contain.",
+                        evidence_ref=ref, title=entry.get("title"),
+                    ))
+                missing = [str(source["id"]) for source in resolvable if not source_identifiable(normalized_reference, source)]
+                if missing:
+                    issues.append(issue(
+                        "major", "missing_final_reference",
+                        f"Evidence {ref} is used in the deck but its source(s) {', '.join(missing)} cannot be matched in the final reference area.",
+                        evidence_ref=ref, title=entry.get("title"),
+                    ))
+            elif not evidence_match(reference_text, entry):
+                # Specs compiled before source_ledger existed: no source records to
+                # resolve, so keep the original entry-level check rather than
+                # silently passing every deck.
                 issues.append(issue("major", "missing_final_reference", f"Evidence {ref} is used in the deck but cannot be matched in the final reference area.", evidence_ref=ref, title=entry.get("title")))
 
     unused = sorted(set(ledger) - set(usage))
@@ -591,7 +653,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--pptx", type=Path, required=True)
     parser.add_argument("--slide-spec", type=Path, required=True)
     parser.add_argument("--spec-lock", type=Path, required=True)
-    parser.add_argument("--visual-report", type=Path, required=True)
+    # Optional so the deterministic checks (evidence closure, timing, lock) can run at BUILD
+    # time, before any render or critic cost. 2026-09-18 live: build #1 reported 0 pre-QA
+    # blockers, render + a full critic pass were paid for, and QA then returned 48 blockers —
+    # 16 of them computable from the PPTX and the spec alone.
+    parser.add_argument("--visual-report", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict", action="store_true")
@@ -611,11 +677,24 @@ def run(args: argparse.Namespace) -> int:
     meta = spec.get("meta") or {}
     high_score = str(meta.get("quality_level") or "").lower() == "high-score"
 
-    visual = validate_visual_report(args.visual_report, args.pptx, len(actual_text), high_score=high_score)
+    visual_only = bool(args.visual_report)
+    if visual_only:
+        visual = validate_visual_report(args.visual_report, args.pptx, len(actual_text), high_score=high_score)
+    else:
+        visual = {
+            "ok": True,
+            "issues": [],
+            "skipped": "deterministic-only run: no --visual-report supplied",
+        }
     evidence = check_evidence(spec, actual_text)
     timing = check_timing(spec, actual_check.extract_pptx_notes(args.pptx))
     history_path = args.pptx.parent / SCORE_HISTORY_NAME
-    regression, merged_scores = check_visual_regression(history_path, load_json(args.visual_report))
+    if visual_only:
+        regression, merged_scores = check_visual_regression(history_path, load_json(args.visual_report))
+    else:
+        # No scores to record: writing the history from a deterministic-only run would
+        # overwrite the critic's per-slide baseline with an empty map.
+        regression, merged_scores = [], None
     lock_issues = [] if spec_lock["ok"] else [issue("critical", "slide_spec_lock_invalid", message) for message in spec_lock["errors"]]
     all_issues = lock_issues + visual["issues"] + evidence["issues"] + timing["issues"] + regression
     blockers = [item for item in all_issues if item["severity"] in BLOCKING_SEVERITIES]
@@ -626,7 +705,8 @@ def run(args: argparse.Namespace) -> int:
         "pptx_sha256": sha256_file(args.pptx),
         "slide_spec_sha256": sha256_file(args.slide_spec),
         "spec_lock_sha256": sha256_file(args.spec_lock),
-        "visual_report_sha256": sha256_file(args.visual_report),
+        "visual_report_sha256": sha256_file(args.visual_report) if visual_only else None,
+        "visual_reviewed": visual_only,
         "slide_count": len(actual_text),
         "blocker_count": len(blockers),
         "issue_count": len(all_issues),
@@ -641,10 +721,11 @@ def run(args: argparse.Namespace) -> int:
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(payload + "\n", encoding="utf-8")
-    history_path.write_text(
-        json.dumps(merged_scores, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    if merged_scores is not None:
+        history_path.write_text(
+            json.dumps(merged_scores, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
     if args.json or not args.output:
         print(payload)
     if args.strict and not result["ok"]:

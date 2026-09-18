@@ -2,6 +2,121 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.14.4 — 2026-09-18
+
+来源：owner 提出"我想要一项 ppt 任务能在 20 分钟内解决"。实测把这个目标拆成了可算的数：
+**墙钟 = 回合数 × 往返延迟，而门本身几乎不花时间**——全会话 5 道 QA 门、18 次 build、
+12 次 plan、4 次 render、17 次 gates orchestrator 合计 **150 秒**，只占 147 分钟 pipeline 的
+**1.7%**；其余 100% 是 **519 个模型回合**，而每个回合只带 **0.95 个工具调用**。
+目标页数 10~13 页、时间 20~30 分钟，全部质量门保留。
+
+### 并行 builder 分片（不碰任何门的墙钟杠杆）
+
+- `next --json` 在 `initial`（实现剩余页）与 `repair`（blocker 页）方向给出 `builder_shards`：
+  按页号轮转拆成最多 `max_parallel_builders`（默认 3）个互斥且页数均衡的分片，并明确要求
+  **在同一条消息里 spawn 全部 shard**。少于 `parallel_builder_min_pages`（默认 4）页不拆。
+- 配套：每个 shard 只写自己的 `speaker-notes-shard-<N>.md`，`build` 按页序拼成
+  `speaker-notes.md`（并行时唯一不会互相覆盖的写法）；**没有页号的 deck 级 blocker 不分片**
+  ——那说明整 deck 在范围内，用一个 builder 读报告。
+- 分片只改变"谁在何时写哪个文件"，判定链（critic / QA / delivery）一行没动。
+
+### `session_cost.py` 的计量修正（必要前提）
+
+- **同一 `message.id` 只算一个回合，取 ctx 最大的那一行。** 原先的规则是"2 秒内、usage 完全
+  相同的连续行合并"，这漏掉了流式分片里 usage **不同**的行：一个子代理被读成 **480 个请求**，
+  实际只发了 **261** 个，派生出的每个 per-turn 数字都偏 ~1.8 倍。修好后与手工核对完全一致
+  （261 回合 / 99.1M，峰值 ctx 699,497）。没有 `message.id` 的旧 transcript 走原有规则。
+- 新增回合经济指标：`turns`、`tool_calls_per_turn`、`turn_seconds`(median/p90/mean)、
+  `turns_under_20min`；markdown 报告新增 "Turn economy" 一节，并在回合数 ≥40 且每回合调用
+  <1.6 时给出一条明确的告警（指向 CD-11）。
+
+### 契约与文档
+
+- `pipeline-contract.json`：新增 `max_parallel_builders` / `parallel_builder_min_pages` /
+  `parallel_builder_shards_allowed`，build 与 repair 阶段契约写明分片用法。
+- `cost-discipline.md` 新增 **CD-11**：墙钟 = 回合数 × 往返延迟；把 150 秒 vs 519 回合的
+  实测写进去，明确"合并调用"与"并行分片"是仅有的两条不碰门的时间杠杆。
+- `SKILL.md` 第 9/14 步、`spawn-templates.md`、`agents/presentation-builder.md` 同步
+  分片约束（只做自己的 slide ids、写自己的 notes 碎片、合并工具调用）。
+
+## 0.14.3 — 2026-09-18
+
+来源：owner 对 0.14.2 live 会话的追问——"qa 为什么每次都需要那么多轮；builder 为什么那么久；
+最后都没修复到可达标准的 complete"。复盘同时修正了成本计量口径：**真值 130.0M token，其中
+一个 builder 实例占 98.6M（75.8%）**，而不是先前报告里的 48.0M / 20.1M。
+分析报告：`outputs/cost-time-diagnosis-0.14.2-2026-09-18.md`；脚本：`outputs/_analysis/`。
+
+### `complete` 可达性：`missing_final_reference` 改为按来源匹配（16 → 0）
+
+- **计量口径修正**：同一条 assistant message 在 transcript 里会被写成多行（流式分片），
+  首行只报增量上下文，**终稿行才报完整 prompt**。按首行去重会少算 2.7 倍（子代理 4.9 倍），
+  把全部行相加又会多算。本批数字按"取该 `message.id` 下 ctx 最大的一行"重算；CD-8 已固化口径。
+- **门的意图与实现错位**：`evidence_ledger.title` 按设计是**论断/数值/引文**
+  （`research_pack_to_evidence.py` 从 `finding.claim` / `data_point.meaning` / quote 文本构造），
+  而参考区渲染的是**来源**标题。拿论断标题去匹配书目，对 42 条 used evidence 里的 16 条
+  **数学上不可能成立**——该次会话的 S13 已逐字列出全部 25 条来源标题、按机构分三组，
+  独立 critic 判 0 blocker、均分 7.1，但 QA 恒定报 16 条，`complete` 结构性不可达。
+- 修法：spec 增加 `source_ledger`（由 `research_pack_to_evidence.py` 从 pack 写入），
+  证据闭包校验改为**按 `source_ids` 解析到来源记录**再匹配（`source_markers` /
+  `source_identifiable`）。实测：同一份 deck、同一份 spec，仅补 `source_ledger`，
+  blocker **16 → 0**；把某个来源从参考区拿掉仍会失败，不会变成放行一切的门。
+- 新增 `unresolved_source_ref`：被引用但不在 `source_ledger` 里的来源 id 不再被静默丢弃
+  （那正是"deck 引用了一个不存在来源"的形态）。
+- 没有 `source_ledger` 的旧 spec 保持原有条目级校验，不会因为升级而静默全绿。
+
+### 校准由独立 critic 评审，不由主会话自己看图
+
+- 校准检查原先被设计成"主会话并行 Read 这 2–3 张 PNG"。主会话是 spec 与 Art Direction 的
+  作者，**"我给所有页面都套了同一个面板"恰恰是它看不见的那类问题**：2026-09-18 live 中它
+  接受了校准稿，独立 critic 随后判定"13 页套同一个带边框通栏面板"要求全 deck 重做，
+  轮 1 花掉 **76.4M token（该次会话 58.8%）**，而 3 页规模的评审只需 1.4M。
+- `next --json` 在 planned 状态下、校准渲染就绪后改为给出 `visual-critic` 的 spawn 参数与
+  `calibration/calibration-visual-review.json` 的写入路径；评审带 critical/major 时继续
+  指向 builder `mode=calibration`。
+- **机械拒绝**：有校准证据但评审缺失/过期/带 blocker 时，`build` 拒绝正式构建
+  （`calibration_review()`）。文档约束在本项目已被跳过一次，所以这次落在运行时。
+- `spawn-templates.md` 增加校准专用 critic 模板：只判"铺到全 deck 会重复出现"的形态
+  （不同页型是否套同一结构、Art Direction 一致性、页型是否还分得开），细则打磨留给最终 critic。
+
+### 一个 builder 实例只服务一轮（最大的单项成本）
+
+- 实测：一个实例扛 3 轮 repair，常驻上下文从 8.7K 涨到 **699K**，261 个请求里 **212 个在
+  ≥200K 下发出（占该实例成本 96.1%）**；最后一轮只有 3 个请求却花 2.1M token。
+- **实测反事实（修正早期估算）**：只做实例重置、轮 1 不变，是 **98.7M → 80.9M（省 17.8M）**——
+  轮 1 在单实例内部自己就从 8.7K 长到 606K，重置修不了它；省下的主要是轮 2（17.4M → 3.5M）
+  与轮 3（4.8M → 0.9M）。轮 1 的 38 次自渲染 + 49 次图片读 + 111 次内联脚本另有约 **16M** 的
+  "留存成本"（内容加进上下文后被后续每个请求重付），去掉后约 67M。
+  **最大的杠杆是"校准阶段就挡掉全 deck 返工"，而不是重置实例。**
+- `builder_guard.py` 记录每个 builder 实例的页面写入窗口（`.guard/builder-*.json`），
+  `ppt_pipeline.py` 的 `builder_instance_reuse()` 与 manifest 的 repair 轮次交叉比对，
+  `next --json` 检出跨轮实例时报出实例 id 与覆盖轮次。
+- SKILL 第 14 步、`pipeline-contract.json`、`cost-discipline.md` 新增 **CD-10**：
+  每轮 spawn 新实例，上一轮结论以报告路径 + blocker 清单传递。
+
+### 渲染与内联脚本的归属收口（0.14.1 的收口被绕过的部分）
+
+- **builder 不再自己渲染**：`calibration_preview.py` 与所有 render 属于主会话。实测该实例
+  自行调用 `calibration_preview.py` **38 次**，每轮重渲染又把新 PNG 读回来，是它上下文
+  涨到 699K 的主要来源之一。hook 现在拒绝这些命令（含 `soffice` / `libreoffice`）。
+- **内联脚本按行为收口，而不是按写法**：`node -e` 被拦后 builder 改用
+  `python - <<'PY'` **111 次**，而专门为它做的 `page_brief.py` 只用了 5 次。现在按
+  "是否在读 work-dir 的 JSON/YAML、是否在用正则改 `pages/*.js`"判定，覆盖
+  `-c` / `-e` / heredoc / stdin 各种等价形态；读图测像素的脚本仍然放行。
+- builder 在 build 之后又改页时，`build` 允许**一次**补差量重建（`build.carryover_builds`）：
+  2026-09-18 live 有一整轮 repair 唯一目的是"把 p6/p8 排版微调带入产物"。
+
+### 门的确定性部分提前到 build；门误报不再烧预算
+
+- `pre_qa_stages()` 增加 `quality` 门的确定性一半（evidence closure、notes timing、
+  spec lock）：`pptx_quality_gate_v071.py` 的 `--visual-report` 改为可选，无该参数时只跑
+  这三组、且不写视觉分数历史。2026-09-18 live：build #1 报 0 blocker，render + 一整轮
+  critic 付完之后 QA 回 48 条，其中 16 条只靠 PPTX + spec 就能算出来。
+- `gate-history.json` 的每轮记录增加逐 code blocker 数。`repair_convergence` 据此新增
+  **`suspect_gate_defect`**：某组 blocker 连续两轮逐字相同、其余在动时，直接指出
+  "这是门侧候选，不是页面工作"，并给出"核对一次 → 命名页面级修法或记为已知门限"的做法。
+- 该组占当前 blocker ≥80% 时 `repair --extend` 被拒绝：更多轮次不能移动一个没有任何轮次
+  移动过的东西。2026-09-18 live 为此烧掉 5.4M 取证 + 一次 4.08 小时的用户询问。
+
 ## 0.14.2 — 2026-09-18
 
 来源：owner 对 0.14.1 预算口径的追问——"很多问题是小问题，或者本来在生成时就该做好"。

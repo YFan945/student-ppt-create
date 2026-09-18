@@ -196,16 +196,24 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 ## CD-8 按 200k 窗口工作
 
 管线按 **200k 上下文**设计。模型提供 1M 窗口不是跳过压缩的许可证：峰值仍应
-≤150k，任务总量目标 ≤25M token（一次实测 12 页课程报告在未加约束时约 82.5M
-去重 token / 307 次请求 / 峰值 456k）。
+≤150k，任务总量目标 ≤25M token。
+
+**计量口径（必须沿用）**：一个 API 请求的成本取该 `message.id` 下 **ctx 最大的一行**——
+流式分片会把同一条消息写成多行，首行只报增量，终稿行才报完整 prompt。按首行统计会
+少算 2.7 倍（子代理可达 4.9 倍），把全部行相加又会多算。2026-09-18 同一次会话三种口径
+分别得到 48.0M / 130.0M / 175.7M，真值 **130.0M**。
 
 - 进入新阶段只读 `stage-<state>-summary.md` 与本阶段要改的那一个产物。
 - 下一动作以 `ppt_pipeline.py next --work-dir <wd> [--json]` 为准，不要 `--help`
   插件脚本、不要 grep 插件源码。`scripts/cost_guard.py` 会拦截这些考古动作。
 - 不要把 SKILL 或 20 份 reference 在每一回合重新灌入。
+- **不要自己渲染**：`calibration_preview.py` 与所有 render 属于主会话，
+  `builder_guard.py` 会拒绝。2026-09-18：一个 builder 实例自行调用
+  `calibration_preview.py` **38 次**，每轮重渲染又把新 PNG 读回来，把该实例从 8.7K 推到
+  699K 常驻上下文，而同一实例后续每个请求都要重付这份上下文。
 
-**可验证**：`session_cost.py` 去重后的峰值 context ≤150k；同一 reference 全文读取
-次数 ≤ 1。
+**可验证**：同一 reference 全文读取次数 ≤ 1；单个子代理实例峰值 ctx ≤200k
+（2026-09-18 实测 699k）；`next --json` 的 `builder_instance_reuse` 不报任何实例跨轮。
 
 ## CD-9 读图：并行、一次、看图
 
@@ -222,14 +230,66 @@ DeepSeek Flash 视觉按约 1300×1300 缩放，**每张图封顶 1024 token**�
 否则指向 `render`。**旧图不得用于视觉 critique**——那是针对上一版 PPT 的判断。
 
 **critic 只评审确定性门全绿的 deck**：`build` 打包后立即本地跑 `rendered` +
-`actual-content`（只读 PPTX、零 critic 成本）；不绿时 `render` 拒绝、`next` 指向
-免 repair 轮的 builder 改页重建（上限 `max_pre_qa_rebuilds` 次）。绕过 `next` 直接
-render 或 spawn critic，是对注定返工的 deck 花冤枉钱（2026-09-17 live：一个缺失的
-planned number 付完了 render + 一整轮 critic 才在 QA 暴露）。
+`actual-content` + `quality` 的确定性部分（evidence/timing/lock，只读 PPTX 与 spec、零
+critic 成本）；不绿时 `render` 拒绝、`next` 指向免 repair 轮的 builder 改页重建（上限
+`max_pre_qa_rebuilds` 次）。绕过 `next` 直接 render 或 spawn critic，是对注定返工的 deck
+花冤枉钱（2026-09-17 live：一个缺失的 planned number 付完了 render + 一整轮 critic 才在
+QA 暴露；2026-09-18 live：build #1 报 0 blocker，render + critic 付完之后 QA 回 48 条，
+其中 16 条只靠 PPTX 与 spec 就能算出来）。
+
+**校准的评审者必须是独立 critic，不能是主会话**：主会话写了 spec 与 art direction，
+检查 hierarchy/密度/配色时会全部通过，唯独看不见自己选的视觉语言在每页重复。2026-09-18
+live：主会话接受了校准图，独立 critic 在全量建完后判定"13 页套同一个带边框通栏面板"，
+代价 76.4M token（该次会话 58.8%），而 3 页规模的评审只需 1.4M。
 
 **可验证**：同一 PNG sha256 的 Read 次数 ≤ 1；含图的回合里 `Read` 次数 > 1
 （并行发出），而不是每张图单独一轮；`visual-review.json` 绑定的渲染图 SHA256 与
-`manifest.render.contact_sheet.sha256` 同源。
+`manifest.render.contact_sheet.sha256` 同源；`calibration/calibration-visual-review.json`
+存在且早于正式 build。
+
+## CD-10 一个 builder 实例只服务一轮
+每轮 repair 都 **spawn 一个新的 builder**，不要用 SendMessage 继续上一个实例。
+
+上下文只增不减，所以"同一个实例继续下一轮"会让每一轮的单价都更高：2026-09-18 live
+的一个 builder 实例从 8.7K 涨到 **699K**，261 个请求里 **212 个在 ≥200K 上下文下发出**
+（占该实例成本的 96.1%），最后一轮只有 3 个请求却花了 2.1M token。
+
+**实测反事实（修正早期估算）**：只做实例重置、轮 1 不变，是 **98.7M → 80.9M（省 17.8M）**——
+轮 1 在单实例内部自己就从 8.7K 长到 606K，重置修不了它；省下的主要是轮 2（17.4M → 3.5M）
+与轮 3（4.8M → 0.9M）。轮 1 的 38 次自渲染 + 49 次图片读 + 111 次内联脚本另有约 **16M** 的
+"留存成本"（内容加进上下文后被后续每个请求重付），去掉后约 67M。
+**最大的杠杆是"校准阶段就挡掉全 deck 返工"（CD-9 的校准一条），而不是重置实例。**
+
+上一轮的结论不需要留在上下文里：把它以 **报告路径 + 本轮 blocker 清单** 传进去，
+builder 自己会读。`next --json` 的 `builder_instance_reuse` 会在检出跨轮实例时报出
+实例 id 与它覆盖的轮次。
+
+**可验证**：`builder_instance_reuse` 缺失；各 builder 实例的 `peak_ctx` ≤200k，
+`total` ≤8M。
+
+## CD-11 时间预算 = 回合数 × 往返延迟：并行分片与合并调用
+
+**墙钟与门无关。** 实测 2026-09-18 全会话：5 道 QA 门 4 次共 17.3 秒、18 次 build 33.1 秒、
+12 次 plan 19.9 秒、4 次 render 58.2 秒、4 次 repair 4.3 秒、17 次 gates orchestrator 17.5 秒
+——**管道脚本合计 150 秒 = 147 分钟 pipeline 的 1.7%**。其余 100% 是 **519 个模型回合**
+（中位 10 秒、均值 18.9 秒、p90 31 秒）。
+
+而实测每个回合只带 **0.91~1.05 个工具调用**——发一个、等结果、再发下一个。所以：
+
+- **20 分钟的预算 = 60~116 个回合**（按均值/中位延迟）。0.14.2 用了 ~490 个。
+- 两条杠杆：**合并调用**（同回合内发多个独立调用，回合数 ÷3）与**并行分片**
+  （页面工作拆给多个隔离 builder，构建阶段墙钟 ÷N）。二者都不碰任何一道门。
+
+**并行分片**：`next --json` 在 `initial` / `repair` 给出 `builder_shards` 时，在**同一条消息里
+spawn 全部 shard**（各自不传 `name`、只做自己的 slide ids、只写自己的
+`speaker-notes-shard-<N>.md`）。分片由管线按页号轮转计算，**天然互斥且页数均衡**；
+`build` 把碎片拼成 `speaker-notes.md`。少于 `parallel_builder_min_pages`（默认 4）页不拆。
+**没有页号的 deck 级 blocker 不分片**——那说明整 deck 在范围内。
+
+**不要用并行换质量**：分片只改变谁在何时写哪个文件，不改判定。评审、QA、delivery 全部照旧。
+
+**可验证**：`session_cost.py` 的 `tool_calls_per_turn` ≥2（当前 0.95）；
+`turns` 与 `turns_under_20min` 对照时间目标；单轮 builder `turns` ≤ 页数 × 8。
 
 ## 条款索引
 
@@ -244,6 +304,8 @@ planned number 付完了 render + 一整轮 critic 才在 QA 暴露）。
 | CD-7 | 中间步骤回显完整工具输出 |
 | CD-8 | 1M 窗口被当成可以不压缩；峰值涨到 45 万 |
 | CD-9 | 禁止读图导致模型不看 wireframe/渲染；或串行读同一 hash |
+| CD-10 | 一个 builder 实例扛 3 轮，常驻 ctx 涨到 699k，占该次会话 75.8% 的成本 |
+| CD-11 | 147 分钟里门只占 150 秒（1.7%），其余全是 519 个「一个工具调用一个回合」的往返 |
 
 ## 与其它 references 的关系
 

@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -77,6 +78,13 @@ MAX_REPAIRS_HARD_CAP = max(MAX_REPAIRS, int(CONTRACT.get("max_repairs_hard_cap")
 # 没做对"——这类问题走 builder 改页 + 重建，不消耗 repair 预算（省掉的是 render 和一整
 # 轮 critic + QA）；连续失败超过这个轮数说明盲修在进行，剩余问题转正式 QA 流程计费。
 MAX_PRE_QA_REBUILDS = max(1, int(CONTRACT.get("max_pre_qa_rebuilds") or 2))
+# 并行 builder：墙钟 ≈ 回合数 × 每个回合的往返延迟（2026-09-18 实测：519 个回合里每个
+# 只带 ~1.0 个工具调用，门本身只花 150 秒 = 全程的 1.7%）。既然串行是墙钟的唯一来源，
+# 把页面拆给几个隔离 builder 同时做就是唯一不依赖模型改行为的墙钟杠杆——每个 builder
+# 有独立的上下文与回合序列，13 页拆 3 份就把构建阶段的墙钟压到约 1/3，且不损失任何门。
+# 少于这个页数时不拆：一个 builder 更快也更省（启动与读取的开销不划算）。
+PARALLEL_MIN_PAGES = max(2, int(CONTRACT.get("parallel_builder_min_pages") or 4))
+MAX_PARALLEL_BUILDERS = max(1, int(CONTRACT.get("max_parallel_builders") or 3))
 QA_ORDER = tuple(CONTRACT.get("qa_order") or ("package", "rendered", "actual_content", "quality", "delivery"))
 # QA 门分两类，这个区分决定了循环能不能提前停。
 #
@@ -95,6 +103,12 @@ QA_BLOCKING_SEVERITIES = ("critical", "major")
 GATE_HISTORY_NAME = "gate-history.json"
 BUILD_FROM = {"planned", "producing"}
 QA_FROM = {"producing", "qa"}
+# A builder that looks at the rendered artifact after building will always find one more
+# adjustment. Refusing the rebuild strands it: 2026-09-18 live, an entire repair round existed
+# only to carry two pages' tweaks into the pptx ("第 3 轮：把 p6/p8 排版微调带入产物"), because
+# the edits were made after the round's single allowed build. One carry-over rebuild per round
+# closes that gap without opening an unbounded edit->build loop that would sidestep the budget.
+MAX_CARRYOVER_BUILDS = 1
 
 
 def sha256_file(path: Path) -> str:
@@ -434,7 +448,7 @@ def build_qa_stages(
 
 
 def pre_qa_stages(manifest: dict[str, Any], work_dir: Path) -> list[Stage]:
-    """The two deterministic gates, with their own pre-QA report paths.
+    """The deterministic gates that need no critic, with their own pre-QA report paths.
 
     Reports go to pre-qa-*.json so they can be handed to the builder without
     being confused with (or silently overwritten by) the authoritative QA run
@@ -443,6 +457,7 @@ def pre_qa_stages(manifest: dict[str, Any], work_dir: Path) -> list[Stage]:
     inputs = manifest.get("inputs") or {}
     pptx = str(((manifest.get("build") or {}).get("pptx") or {}).get("path") or "")
     spec = str((inputs.get("slide_spec") or {}).get("path") or "")
+    lock = str((inputs.get("spec_lock") or {}).get("path") or "")
     if not pptx:
         return []
     stages = [
@@ -460,6 +475,21 @@ def pre_qa_stages(manifest: dict[str, Any], work_dir: Path) -> list[Stage]:
                 [sys.executable, str(HERE / "pptx_actual_content_check.py"), pptx, spec,
                  "--output", str(work_dir / "pre-qa-actual-content.json")],
                 work_dir / "pre-qa-actual-content.json", "actual_content",
+            )
+        )
+    if spec and lock:
+        # Evidence closure, note timing and the spec lock are pure PPTX + spec reads — the
+        # same pass the quality gate runs, minus everything that needs the critic. Without
+        # this stage build #1 reports "0 blockers" and the deck goes to render + a full
+        # critic pass before QA reveals deterministic misses (2026-09-18 live: 48 blockers
+        # after a green pre-QA).
+        stages.append(
+            Stage(
+                "quality-deterministic",
+                [sys.executable, str(HERE / "pptx_quality_gate_v071.py"),
+                 "--pptx", pptx, "--slide-spec", spec, "--spec-lock", lock,
+                 "--output", str(work_dir / "pre-qa-quality.json")],
+                work_dir / "pre-qa-quality.json", "quality",
             )
         )
     return stages
@@ -512,6 +542,97 @@ def pre_qa_failed_current(manifest: dict[str, Any]) -> bool:
     if pre_qa.get("ok") is not False:
         return False
     return int(pre_qa.get("rounds") or 0) < MAX_PRE_QA_REBUILDS
+
+
+CALIBRATION_DIR_NAME = "calibration"
+CALIBRATION_MANIFEST_NAME = "calibration-manifest.json"
+CALIBRATION_REVIEW_NAME = "calibration-visual-review.json"
+
+
+def calibration_review(work_dir: Path) -> dict[str, Any]:
+    """Status of the INDEPENDENT calibration review (SKILL.md step 8).
+
+    Calibration exists to catch a systemic visual choice before it is copied onto
+    every page. It cannot do that while the reviewer is the session that made the
+    choice: 2026-09-18 live, the main session reviewed its own calibration PNGs,
+    accepted them, and the independent critic then rejected the pattern applied to
+    all 13 built pages — 76.4M tokens (58.8% of that session) for a rework that a
+    3-page review would have caught for 1.4M.
+
+    Only applies once calibration evidence exists, so a work-dir that never ran
+    calibration is not retroactively blocked by this contract.
+    """
+    target = work_dir / CALIBRATION_DIR_NAME
+    manifest_path = target / CALIBRATION_MANIFEST_NAME
+    review_path = target / CALIBRATION_REVIEW_NAME
+    status: dict[str, Any] = {
+        "required": False,
+        "present": False,
+        "ok": False,
+        "blockers": None,
+        "slides": [],
+        "path": str(review_path),
+        "reason": "",
+    }
+    if not manifest_path.is_file():
+        return status
+    try:
+        calibration = load_json(manifest_path)
+    except Exception as exc:  # pragma: no cover - corrupt evidence
+        status["required"] = True
+        status["reason"] = f"calibration manifest is unreadable: {exc}"
+        return status
+
+    status["required"] = True
+    slides = [int(value) for value in calibration.get("slides") or [] if isinstance(value, int)]
+    status["slides"] = slides
+    expected_pptx = str((calibration.get("pptx") or {}).get("sha256") or "")
+
+    if not review_path.is_file():
+        status["reason"] = (
+            "no independent calibration review on disk; the main session's own read of the "
+            "calibration PNGs is not a substitute (it is the session that chose the treatment)"
+        )
+        return status
+    status["present"] = True
+    try:
+        review = load_json(review_path)
+    except Exception as exc:
+        status["reason"] = f"calibration review is unreadable: {exc}"
+        return status
+
+    if not expected_pptx or review.get("pptx_sha256") != expected_pptx:
+        status["reason"] = "calibration review is not bound to the current calibration render"
+        return status
+
+    reviewed = {
+        int(item["slide"])
+        for item in review.get("slides") or []
+        if isinstance(item, dict) and isinstance(item.get("slide"), int)
+    }
+    if reviewed != set(slides):
+        status["reason"] = (
+            f"calibration review covers slides {sorted(reviewed)} but the calibrated pages are {sorted(slides)}"
+        )
+        return status
+
+    blocking: list[str] = []
+    for item in review.get("slides") or []:
+        if not isinstance(item, dict):
+            continue
+        slide_no = int(item.get("slide") or 0)
+        if str(item.get("ai_template_feel") or "none").strip().lower() == "major":
+            blocking.append(f"slide {slide_no}: ai_template_feel=major")
+        for finding in item.get("issues") or []:
+            if not isinstance(finding, dict):
+                continue
+            if normalise_severity(review, finding) in QA_BLOCKING_SEVERITIES:
+                blocking.append(f"slide {slide_no}: {finding.get('code') or 'visual_finding'}")
+    status["blockers"] = len(blocking)
+    status["ok"] = not blocking
+    if blocking:
+        status["reason"] = "calibration review still reports systemic findings: " + "; ".join(blocking[:6])
+    return status
 
 
 def normalise_severity(report: dict[str, Any], issue: dict[str, Any]) -> str:
@@ -808,8 +929,16 @@ def cmd_build(args: argparse.Namespace) -> int:
     state = str(manifest.get("state"))
     build_info = manifest.setdefault("build", {})
     pre_qa_fix = pre_qa_failed_current(manifest)
-    if state == "producing" and not build_info.get("pending_repair") and not pre_qa_fix:
-        raise RefusedError("repeat build refused; run repair after QA before rebuilding")
+    declared_round = bool(build_info.get("pending_repair")) or pre_qa_fix
+    if state == "producing" and not declared_round:
+        # A rebuild whose generator actually changed is a CARRY-OVER build (the builder edited
+        # pages after the round's build), not a repeat build; one is allowed per round so the
+        # edits land in the artifact instead of waiting for a whole extra round. The
+        # pending_repair path below still needs an explicit repair after QA.
+        carried = int(build_info.get("carryover_builds") or 0)
+        if carried >= MAX_CARRYOVER_BUILDS:
+            raise RefusedError("repeat build refused; run repair after QA before rebuilding")
+        build_info["carryover_pending"] = True
 
     inputs = manifest.get("inputs") or {}
     lock = Path(str((inputs.get("spec_lock") or {}).get("path") or ""))
@@ -826,6 +955,16 @@ def cmd_build(args: argparse.Namespace) -> int:
 
     editing = manifest.get("mode") == "edit_ooxml"
     entry = work_dir / "ooxml" if editing else (args.entry or work_dir / "deck.js").resolve()
+    if not editing and state == "planned":
+        # Authorise the full production build only on an independently reviewed
+        # calibration; the doc-only version of this rule was already in SKILL.md
+        # and was not followed in the 2026-09-18 live session.
+        review = calibration_review(work_dir)
+        if review["required"] and not review["ok"]:
+            raise RefusedError(
+                "full build refused: " + (review["reason"] or "calibration review is not green")
+                + f". Run `next --json`; the review is written to {review['path']}"
+            )
     if editing:
         bindings = [bind(path) for path in sorted(entry.rglob("*")) if path.is_file()]
         if not bindings:
@@ -846,6 +985,11 @@ def cmd_build(args: argparse.Namespace) -> int:
             "rebuild refused: the generator did not change since the build that failed "
             "(repair or pre-QA fix must edit the reported pages)"
         )
+    if build_info.pop("carryover_pending", False) and previous and previous == fingerprint:
+        raise RefusedError(
+            "carry-over build refused: no page module changed since the last build, so there is "
+            "nothing the previous build is missing"
+        )
 
     pptx = work_dir / args.output_name
     if pptx.resolve().parent != work_dir or (manifest.get("source") and pptx.resolve() == Path(manifest["source"]["path"])):
@@ -861,11 +1005,23 @@ def cmd_build(args: argparse.Namespace) -> int:
         detail = (built.stderr or built.stdout or "").strip()
         raise RefusedError(f"build failed (exit {built.returncode}): {detail[:600]}")
 
+    # Parallel builders each own a slice of the deck, so none of them can write the single
+    # readable notes file without dropping the others' text. Assemble it here instead.
+    note_fragments = merge_speaker_note_shards(work_dir)
+
+    declared_round_now = bool(build_info.get("pending_repair")) or pre_qa_fix
+    carried_fingerprint = str(build_info.get("generator_fingerprint") or "")
     build_info.update({
         "entry": str(entry), "pptx": bind(pptx), "generator_files": bindings,
         "generator_fingerprint": fingerprint,
         "build_count": int(build_info.get("build_count") or 0) + 1,
         "pending_repair": False,
+        # Counting carry-over builds separately keeps "how many rounds did we spend" honest
+        # while letting the leftover edits reach the artifact.
+        "carryover_builds": (
+            0 if declared_round_now
+            else int(build_info.get("carryover_builds") or 0) + (1 if carried_fingerprint else 0)
+        ),
     })
     stale_moved = archive_stale_render(work_dir, manifest)
     if stale_moved:
@@ -888,6 +1044,10 @@ def cmd_build(args: argparse.Namespace) -> int:
         f"- generator files: {len(build_info.get('generator_files') or [])}",
         f"- previous render evidence archived: {len(stale_moved)}",
     ]
+    if note_fragments:
+        summary_lines.append(
+            f"- speaker notes assembled from {len(note_fragments)} shard fragment(s) into speaker-notes.md"
+        )
     if pre_qa["ok"]:
         summary_lines.append(
             "- pre-QA (deterministic gates): green — next: `ppt_pipeline.py render`, "
@@ -1134,7 +1294,19 @@ def cmd_qa(args: argparse.Namespace) -> int:
     # only moved blockers around. `next` reports the trend so "keep going or stop" is a
     # reading, not another question to the user.
     rounds = [item for item in (gate_history.get("_rounds") or []) if isinstance(item, dict)]
-    rounds.append({"round": len(rounds) + 1, "blockers": blockers, "failed": failed_stages})
+    # `codes` is what lets the next round tell "the repair is converging" from "this group
+    # has not moved and no page edit ever will move it" — the 2026-09-18 session ran three
+    # repair rounds against 16 blockers that were identical in every round because the gate
+    # matched claim text against a bibliography. Counts alone cannot show that.
+    codes = Counter(
+        str(item.get("code") or "issue")
+        for item in problems
+        if not item.get("derived") and item["severity"] in QA_BLOCKING_SEVERITIES
+    )
+    rounds.append({
+        "round": len(rounds) + 1, "blockers": blockers, "failed": failed_stages,
+        "codes": dict(sorted(codes.items())),
+    })
     gate_history["_rounds"] = rounds[-8:]
     qa_report = {
         "ok": blockers == 0, "pipeline_version": MANIFEST_VERSION,
@@ -1242,6 +1414,19 @@ def cmd_repair(args: argparse.Namespace) -> int:
                 f"(contract max_repairs_hard_cap). Deliver what is on disk as `incomplete` instead."
             )
         convergence = repair_convergence(work_dir) or {}
+        suspect = convergence.get("suspect_gate_defect") or {}
+        share = suspect.get("share_of_current")
+        if isinstance(share, (int, float)) and share >= 0.8:
+            codes = ", ".join(f"{code} x{count}" for code, count in (suspect.get("codes") or {}).items())
+            raise RefusedError(
+                f"repair budget extension refused: {suspect.get('blockers')} of {blockers} blockers "
+                f"({share:.0%}) are identical in two consecutive rounds ({codes or 'see gate-history.json'}). "
+                "More rounds cannot move a group that no previous round moved — this is a gate-side "
+                "candidate, not page work. Check it once against the artifact, then either it is a real "
+                "defect with a page-level fix (name it in --extend-reason) or it is a false positive to "
+                "record as a known gate limitation and deliver around. "
+                f"{suspect.get('advice') or ''}"
+            )
         build_info.setdefault("repair_budget_grants", []).append(
             {
                 "rounds": int(args.extend),
@@ -1249,6 +1434,7 @@ def cmd_repair(args: argparse.Namespace) -> int:
                 "trend": convergence.get("trend"),
                 "blockers_at_grant": blockers,
                 "repairs_used": repairs,
+                "suspect_gate_defect": suspect or None,
             }
         )
         print(
@@ -1263,6 +1449,7 @@ def cmd_repair(args: argparse.Namespace) -> int:
         )
     build_info["repair_count"] = repairs + 1
     build_info["pending_repair"] = True
+    build_info["carryover_builds"] = 0
     build_info.setdefault("repair_reasons", []).append(args.reason)
     before = str(manifest.get("state"))
     manifest["state"] = "producing"
@@ -1392,6 +1579,180 @@ def gate_regressions(
     return problems, history
 
 
+def page_files_by_slide(work_dir: Path) -> dict[int, str]:
+    """slide id -> page module filename, read from the scaffolded layout."""
+    pages = work_dir / "pages"
+    result: dict[int, str] = {}
+    for path in _scaffold.listed_page_files(pages):
+        match = _scaffold.PAGE_NAME_RE.match(path.name)
+        if match:
+            result[int(match.group(1))] = path.name
+    return result
+
+
+def remaining_scaffold_slides(work_dir: Path) -> list[int]:
+    """Slides whose page module still carries the stub marker (never implemented)."""
+    pages = work_dir / "pages"
+    by_name = {path.name: path for path in _scaffold.listed_page_files(pages)}
+    stubs = set(_scaffold.scaffolded_pages(list(by_name.values())))
+    result: list[int] = []
+    for name, path in by_name.items():
+        if name not in stubs:
+            continue
+        match = _scaffold.PAGE_NAME_RE.match(path.name)
+        if match:
+            result.append(int(match.group(1)))
+    return sorted(result)
+
+
+def slides_named_in_reports(work_dir: Path, names: tuple[str, ...]) -> list[int]:
+    """Slide numbers carried by the current blocker reports.
+
+    Reports without slide numbers (a deck-level finding) contribute nothing: a shard plan
+    built from "unknown pages" would send builders at the wrong targets, so the caller
+    falls back to a single builder that reads the reports itself.
+    """
+    found: set[int] = set()
+    for name in names:
+        path = work_dir / name
+        if not path.is_file():
+            continue
+        try:
+            report = load_json(path)
+        except Exception:
+            continue
+        for item in (report.get("problems") or []) + (report.get("issues") or []):
+            if not isinstance(item, dict):
+                continue
+            slide = item.get("slide")
+            if isinstance(slide, int) and not isinstance(slide, bool) and slide > 0:
+                found.add(slide)
+    return sorted(found)
+
+
+def builder_shards(slides: list[int], work_dir: Path) -> dict[str, Any] | None:
+    """Split the target pages across isolated builder instances (wall clock only).
+
+    Wall clock is turns x per-turn latency, and nothing about the gate set changes that:
+    2026-09-18 measured every gate in the suite at 150s total (1.7% of the run) while the
+    critical path was 519 model round-trips. Independent builders hold independent
+    contexts and turn sequences, so sharding divides the build phase's wall clock without
+    touching a single gate. Shards are disjoint by construction (round-robin over the
+    sorted slide list), which is also what keeps two builders off the same page module.
+    """
+    targets = sorted({int(slide) for slide in slides if int(slide) > 0})
+    if len(targets) < PARALLEL_MIN_PAGES or MAX_PARALLEL_BUILDERS < 2:
+        return None
+    by_slide = page_files_by_slide(work_dir)
+    known = [slide for slide in targets if slide in by_slide]
+    if len(known) < PARALLEL_MIN_PAGES:
+        return None
+    shard_count = min(MAX_PARALLEL_BUILDERS, len(known))
+    shards: list[dict[str, Any]] = [{"shard": index + 1, "slides": [], "pages": []} for index in range(shard_count)]
+    for position, slide in enumerate(known):
+        shard = shards[position % shard_count]
+        shard["slides"].append(slide)
+        shard["pages"].append(by_slide[slide])
+    return {
+        "parallel": shard_count,
+        "slides": known,
+        "shards": shards,
+        "spawn": (
+            f"spawn all {shard_count} shards in ONE message so they run concurrently, each without a "
+            "`name`, each with its own slide ids and its own speaker-notes fragment "
+            "(speaker-notes-shard-<N>.md). Never give one builder another shard's slides."
+        ),
+        "why": (
+            "wall clock is turns x round-trip latency and every gate in the suite costs ~2.5s, so the "
+            "only lever that does not touch a gate is running the page work concurrently"
+        ),
+    }
+
+
+def merge_speaker_note_shards(work_dir: Path) -> list[str]:
+    """Concatenate per-shard notes fragments into speaker-notes.md in page order.
+
+    Parallel builders cannot each write speaker-notes.md without losing the others' text,
+    so each shard writes its own fragment and the pipeline assembles the readable copy.
+    A single-builder run produces no fragments and nothing changes.
+    """
+    fragments = sorted(work_dir.glob("speaker-notes-shard-*.md"))
+    if not fragments:
+        return []
+    parts: list[str] = []
+    for path in fragments:
+        text = path.read_text(encoding="utf-8").strip()
+        if text:
+            parts.append(text)
+    if not parts:
+        return []
+    target = work_dir / "speaker-notes.md"
+    target.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
+    return [str(path) for path in fragments]
+
+
+def builder_instance_reuse(work_dir: Path, manifest: dict[str, Any]) -> dict[str, Any] | None:
+    """Whether ONE builder instance served more than one repair round.
+
+    Measured cost of a never-reset instance (2026-09-18 live): context grew 8.7K -> 699K
+    across three rounds, 212 of its 261 requests ran at >=200K, and at the end three
+    trivial requests cost 2.1M tokens. Measured counterfactual: resetting per round alone
+    takes that instance from 98.7M to 80.9M — round 1 grows to 606K inside itself, which a
+    reset cannot fix; the larger saving is not letting a full-deck rework happen at all.
+
+    The pipeline sees rounds; the hook sees instance identity (`.guard/builder-*.json`).
+    Cross-referencing them is what turns "spawn a fresh builder each round" from prose
+    the main session may skip into a number it can read.
+    """
+    guard = work_dir.parent / ".guard"
+    if not guard.is_dir():
+        return None
+    rounds = [
+        entry
+        for entry in (manifest.get("history") or [])
+        if isinstance(entry, dict) and entry.get("command") == "repair" and entry.get("at")
+    ]
+    if len(rounds) < 2:
+        return None
+    round_times = sorted(str(entry["at"]) for entry in rounds)
+
+    reused: list[dict[str, Any]] = []
+    for path in sorted(guard.glob("builder-*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        if data.get("work_ids") and work_dir.name not in data["work_ids"]:
+            continue
+        first = str(data.get("first_write_at") or "")
+        last = str(data.get("last_write_at") or "")
+        if not first or not last:
+            continue
+        spanned = [stamp for stamp in round_times if first <= stamp <= last]
+        if len(spanned) >= 2:
+            reused.append({
+                "agent_id": data.get("agent_id"),
+                "writes": data.get("writes"),
+                "first_write_at": first,
+                "last_write_at": last,
+                "repair_rounds_spanned": len(spanned),
+            })
+    if not reused:
+        return None
+    return {
+        "instances": reused,
+        "advice": (
+            "one builder instance served several repair rounds, so every request in the later "
+            "rounds paid for the context the earlier ones left behind. Spawn a NEW "
+            "student-presentation-suite:presentation-builder for each repair round (do not "
+            "SendMessage the previous one) and pass it the QA report paths plus a one-line "
+            "summary — it re-reads what it needs."
+        ),
+    }
+
+
 def repair_convergence(work_dir: Path) -> dict[str, Any] | None:
     """Whether the repair rounds are converging, read from the QA round history.
 
@@ -1430,13 +1791,43 @@ def repair_convergence(work_dir: Path) -> dict[str, Any] | None:
             "the last round ADDED blockers: recover the regression first; granting more rounds "
             "on the same approach only moves the cost"
         )
-    return {
+    result: dict[str, Any] = {
         "rounds": rounds,
         "previous_blockers": previous,
         "current_blockers": current,
         "trend": trend,
         "advice": advice,
     }
+
+    # A blocker group that is byte-identical in two consecutive rounds while everything else
+    # moved is evidence about the GATE, not about the pages. 2026-09-18 live: 16
+    # `missing_final_reference` blockers were identical in all four QA rounds (the gate matched
+    # each evidence entry's claim text against a bibliography that lists sources), so `complete`
+    # was unreachable by construction. The trend stayed "improving" — 48/34/23/17 — and the run
+    # spent the whole repair budget plus 5.4M tokens of forensics on a fixed offset, then asked
+    # the user a question it could have answered itself. Naming the group converts that into a
+    # reading the main session can act on: exclude it, repair the rest, and say so in the
+    # delivery note.
+    previous_codes = {str(k): int(v) for k, v in (rounds[-2].get("codes") or {}).items()}
+    current_codes = {str(k): int(v) for k, v in (rounds[-1].get("codes") or {}).items()}
+    frozen = {code: count for code, count in current_codes.items() if previous_codes.get(code) == count}
+    frozen_total = sum(frozen.values())
+    if previous_codes and frozen_total >= max(3, int(0.2 * current)):
+        result["suspect_gate_defect"] = {
+            "codes": dict(sorted(frozen.items())),
+            "blockers": frozen_total,
+            "share_of_current": round(frozen_total / current, 3) if current else None,
+            "advice": (
+                "these blockers are identical in two consecutive rounds while the rest of the "
+                "list moved: repair rounds cannot change them, so they are a gate-side candidate "
+                "rather than page work. Check them against the artifact once — if the deck already "
+                "satisfies the stated contract, the check is wrong. Either way stop spending repair "
+                "rounds on this group: exclude it, repair the remaining blockers, and record it as a "
+                "known gate limitation in the delivery note. Do not ask the user to choose a "
+                "delivery strategy for it — the data already answers what to do."
+            ),
+        }
+    return result
 
 
 def _research_budget(work_dir: Path) -> dict[str, Any] | None:
@@ -1536,6 +1927,9 @@ def cmd_next(args: argparse.Namespace) -> int:
         convergence = repair_convergence(work_dir)
         if convergence:
             payload["repair_convergence"] = convergence
+        instance_reuse = builder_instance_reuse(work_dir, manifest)
+        if instance_reuse:
+            payload["builder_instance_reuse"] = instance_reuse
         if state == "planned":
             if manifest.get("mode") == "edit_ooxml":
                 payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
@@ -1566,17 +1960,58 @@ def cmd_next(args: argparse.Namespace) -> int:
                         f"--slides {slide_args} --json"
                     )
                     payload["notes"] = (
-                        "calibration pages exist but no preview render: run calibration_preview.py, then Read the "
-                        "preview PNGs in ONE parallel round and judge them against Art Direction."
+                        "calibration pages exist but no preview render: run calibration_preview.py, then hand "
+                        "the preview to the independent visual-critic (step 8) — do NOT accept the visual "
+                        "system on the main session's own reading of the PNGs. `next --json` after the render "
+                        "names the exact critic spawn and its review path."
                     )
                 else:
-                    payload["agent"] = "student-presentation-suite:presentation-builder"
-                    payload["notes"] = (
-                        "calibration preview is on disk. If Major/Critical issues remain: respawn the builder "
-                        "mode=calibration for only those pages, then rerun calibration_preview.py. If the visual "
-                        "system is accepted: spawn the same builder mode=initial to implement every remaining "
-                        "scaffold page (calibrated pages are preserved); run build only after BUILDER_DONE."
-                    )
+                    review = calibration_review(work_dir)
+                    if not review["ok"]:
+                        payload["agent"] = "student-presentation-suite:visual-critic"
+                        payload["calibration"] = {
+                            "slides": review["slides"],
+                            "pptx": str(work_dir / CALIBRATION_DIR_NAME / "calibration.pptx"),
+                            "render": [
+                                str(path)
+                                for path in sorted((work_dir / CALIBRATION_DIR_NAME / "render").glob("calibration-*.png"))
+                            ],
+                            "manifest": str(work_dir / CALIBRATION_DIR_NAME / CALIBRATION_MANIFEST_NAME),
+                            "review_output": review["path"],
+                            "status": review["reason"],
+                        }
+                        payload["notes"] = (
+                            "calibration preview is on disk and has NO independent review yet. Spawn "
+                            "student-presentation-suite:visual-critic (no `name`) against the calibration "
+                            "pptx and its 2-3 page renders, writing the review to the path above. Scope it "
+                            "to what would spread to the whole deck: repeated structure across DIFFERENT "
+                            "page roles, Art Direction conformance, and whether the page roles stay "
+                            "visually distinct. The main session's own read of these PNGs is NOT the "
+                            "review — it is the session that chose the treatment, so it cannot see that "
+                            "its own pattern repeats (2026-09-18 live: 12 pages were built on a pattern "
+                            "the independent critic then rejected wholesale)."
+                        )
+                        if review["present"]:
+                            payload["notes"] += (
+                                f" The last review reported: {review['reason']}. Respawn builder "
+                                "mode=calibration for only those pages, then rerun calibration_preview.py."
+                            )
+                    else:
+                        payload["agent"] = "student-presentation-suite:presentation-builder"
+                        payload["notes"] = (
+                            "calibration is independently reviewed and green. Spawn the same builder "
+                            "mode=initial to implement every remaining scaffold page (calibrated pages are "
+                            "preserved); run build only after BUILDER_DONE."
+                        )
+                        remaining = remaining_scaffold_slides(work_dir)
+                        shards = builder_shards(remaining, work_dir)
+                        if shards:
+                            payload["builder_shards"] = shards
+                            payload["notes"] += (
+                                f" {len(remaining)} pages remain: spawn all {shards['parallel']} shards in "
+                                "ONE message (see builder_shards) so the page work runs concurrently — "
+                                "sharding changes no gate, only the wall clock."
+                            )
         elif state == "producing":
             if pre_qa_failed_current(manifest):
                 # Deterministic misses are fixed BEFORE any render or critic cost:
@@ -1603,6 +2038,12 @@ def cmd_next(args: argparse.Namespace) -> int:
                     "(this path consumes NO repair round while the state stays producing). "
                     "Do not render and do not spawn the critic on this build."
                 )
+                fixable = slides_named_in_reports(
+                    work_dir, ("pre-qa-quality.json", "pre-qa-actual-content.json", "pre-qa-rendered.json")
+                )
+                shards = builder_shards(fixable, work_dir)
+                if shards:
+                    payload["builder_shards"] = shards
             elif render_is_current(manifest):
                 render = manifest.get("render") or {}
                 contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
@@ -1644,6 +2085,19 @@ def cmd_next(args: argparse.Namespace) -> int:
                     f'{python} "{pipeline}" repair --work-dir "{work_dir}" --reason "<summary>"'
                 )
                 payload["notes"] = "fix every blocker page in one parallel Edit round, then build + qa"
+                blocker_slides = slides_named_in_reports(
+                    work_dir, ("pipeline-qa.json", "pre-qa-quality.json", "pre-qa-actual-content.json",
+                               "pre-qa-rendered.json")
+                )
+                shards = builder_shards(blocker_slides, work_dir)
+                if shards:
+                    payload["builder_shards"] = shards
+                    payload["notes"] += (
+                        f" {len(blocker_slides)} blocker pages span {shards['parallel']} shards: after "
+                        "`repair`, spawn one builder per shard in ONE message (see builder_shards). "
+                        "Deck-level blockers without a slide number mean the whole deck is in scope — "
+                        "use ONE builder reading the reports."
+                    )
         elif state == "complete":
             payload["next_command"] = "(done)"
             payload["notes"] = "do not re-inject /sp-deck"

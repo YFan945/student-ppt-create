@@ -248,6 +248,38 @@ def source_index(pack: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
+def source_ledger(pack: dict[str, Any]) -> list[dict[str, Any]]:
+    """The bibliography the reference area renders, as spec-shaped records.
+
+    The reference-area gate cannot use `evidence_ledger.title` as a marker: that
+    field is a claim/value/quote by construction (see build_ledger), so matching it
+    against a bibliography fails for every entry whose text is not also its
+    source's title. 2026-09-18 live: 16 of 42 used entries were permanently
+    unmatched that way, which pinned QA above zero and made `complete`
+    unreachable. Carrying the sources in the spec keeps the records the builder
+    renders and the records the gate checks as one set.
+    """
+    by_id = {str(source.get("id")): source for source in pack_validator.items(pack, "sources")}
+    records: list[dict[str, Any]] = []
+    for source_id, source in sorted(by_id.items()):
+        title = " ".join(str(source.get("title") or "").split())
+        if not title:
+            continue
+        record: dict[str, Any] = {"id": source_id, "title": title}
+        if source.get("publisher"):
+            record["publisher"] = str(source["publisher"])
+        year = source.get("year")
+        if isinstance(year, int) and not isinstance(year, bool):
+            record["year"] = year
+        url = locator_of(source)
+        if url and url != "(no locator)":
+            record["url"] = url
+        if source.get("tier"):
+            record["tier"] = str(source["tier"])
+        records.append(record)
+    return records
+
+
 def compile_pack(
     pack: dict[str, Any],
     spec: dict[str, Any] | None,
@@ -257,6 +289,7 @@ def compile_pack(
     unresolved: list[str] = []
     if spec is not None:
         compiled_spec, unresolved = compile_slide_spec(spec, ref_map, ledger)
+        compiled_spec["source_ledger"] = source_ledger(pack)
 
     report: dict[str, Any] = {
         "schema_version": "1.0",

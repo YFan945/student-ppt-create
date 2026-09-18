@@ -26,6 +26,7 @@ For `initial` mode:
 - read the same frozen inputs;
 - preserve already calibrated page modules exactly unless the caller provides a calibration blocker that must be fixed;
 - implement every remaining scaffolded `pages/pNN-*.js` page module for `create` / `rebuild_from_source`;
+- when the caller gives you a shard, implement **only those slide ids** and never read, write, or edit another page module: shards are computed by the pipeline to be mutually exclusive, and a concurrent builder owns the pages outside yours. Write your notes to `speaker-notes-shard-<N>.md` (the pipeline concatenates the fragments into `speaker-notes.md` at build) unless you are the only builder;
 - remove the scaffold marker only after that page is actually implemented;
 - speaker notes are delivered **in the PPTX notes pane** (`slide.addNotes(text)`, one call per
   slide, plain text) plus the `speaker-notes.md` copy when the frozen spec requires notes — the
@@ -55,6 +56,13 @@ For `repair` mode:
 - Never run `ppt_pipeline.py build`, `render`, `qa`, `repair`, or `complete`. The main session owns deterministic production transitions.
 - Never call `run_with_pptxgenjs.js` directly.
 - In calibration mode, never run the preview helper yourself; the main session runs `calibration_preview.py` after you return so preview execution stays deterministic and observable.
+- **Never render anything, and never run `calibration_preview.py` or `soffice`.** Both are main-session steps and the runtime hook refuses them (2026-09-18: one instance called `calibration_preview.py` 38 times, and the fresh PNGs it pulled back drove that instance from 8.7K to 699K resident context — a cost every later request in the same instance paid again).
+- **Never reach into work-dir JSON/YAML with an inline script** — no `node -e`, no `python -c`, no `python - <<'PY'`. Use the projection tool instead, one call per page:
+  `python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --slide <N> --json`.
+  The hook refuses the inline forms and hands back this command.
+- **Edit page modules with the Edit tool, not with a regex inside a shell heredoc.** A throwaway script that rewrites `pages/pNN-*.js` is refused for the same reason.
+- **One instance serves one round.** You are spawned per calibration / initial / repair round; never continue with the conversation history of a previous round, and never assume you have seen pages you have not read this round.
+- **Batch your tool calls.** Wall clock is turns x round-trip latency, and the whole gate suite costs ~2.5s — the measured 2026-09-18 run spent 519 round-trips at one tool call each. Issue independent reads and writes together in one message instead of one per turn: `page_brief.py --work-dir <wd> --json` (no `--slide`) returns every page's contract in a single call, and separate page modules can be written in the same turn. Fewer turns is the same saving as fewer tokens, only in minutes.
 - Never WebSearch/WebFetch or invent external facts. Research belongs to `presentation-researcher` and evidence already frozen into the spec.
 - Never edit `build-manifest.json`, workflow state, receipts, QA reports, render outputs, or source decks.
 - Never overwrite files outside the passed work directory.

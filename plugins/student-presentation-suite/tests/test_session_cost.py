@@ -31,19 +31,22 @@ def tool_use(uid: str, name: str, target: str) -> dict:
     return {"type": "tool_use", "id": uid, "name": name, "input": {"file_path": target}}
 
 
-def assistant(step: int, context: int, content: list[dict]) -> dict:
+def assistant(step: int, context: int, content: list[dict], message_id: str | None = None) -> dict:
+    message: dict = {
+        "usage": {
+            "input_tokens": 1_000,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": context - 1_000,
+            "output_tokens": 100,
+        },
+        "content": content,
+    }
+    if message_id:
+        message["id"] = message_id
     return {
         "type": "assistant",
         "timestamp": (T0 + timedelta(seconds=step * 4)).isoformat(),
-        "message": {
-            "usage": {
-                "input_tokens": 1_000,
-                "cache_creation_input_tokens": 0,
-                "cache_read_input_tokens": context - 1_000,
-                "output_tokens": 100,
-            },
-            "content": content,
-        },
+        "message": message,
     }
 
 
@@ -146,6 +149,81 @@ class SessionCostTests(unittest.TestCase):
         code, stdout = self.invoke(["--sessions-root", self._tmp.name, "--last", "1"])
         self.assertEqual(0, code)
         self.assertIn("requests: **3**", stdout)
+
+    def test_streaming_partials_of_one_call_count_as_one_turn(self) -> None:
+        """Claude Code writes one API call as several rows; only the last carries the prompt.
+
+        2026-09-18: reading the first row instead reported a subagent as 480 requests where
+        261 were sent, and inflated every per-turn figure derived from it by ~1.8x.
+        """
+        path = Path(self._tmp.name) / "partials.jsonl"
+        records = [
+            assistant(0, 68_666, [{"type": "thinking", "thinking": "x" * 40}], "msg_one"),
+            assistant(1, 699_497, [tool_use("t1", "Bash", DECK)], "msg_one"),
+        ]
+        with path.open("w", encoding="utf-8") as stream:
+            for record in records:
+                stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        summary = SESSION_COST.profile(SESSION_COST.read_records(path))
+        self.assertEqual(1, summary["turns"], "one API call, one turn")
+        self.assertEqual(699_497, summary["context"]["peak"])
+        self.assertEqual(699_497 + 100, summary["tokens"]["total"])
+
+    def test_turn_economy_is_reported(self) -> None:
+        """Wall clock is turns x round-trip latency, so this is the time-budget metric."""
+        self.assertEqual(3, self.summary["turns"])
+        self.assertEqual(1.0, self.summary["tool_calls_per_turn"])
+        self.assertIn("median", self.summary["turn_seconds"])
+        self.assertIsNotNone(self.summary["turns_under_20min"]["at_median"])
+
+    def test_batching_is_visible_in_the_per_turn_ratio(self) -> None:
+        path = Path(self._tmp.name) / "batched.jsonl"
+        records = [
+            assistant(0, 10_000, [tool_use("b1", "Read", DECK), tool_use("b2", "Read", DECK),
+                                  tool_use("b3", "Read", DECK)], "msg_batch"),
+        ]
+        with path.open("w", encoding="utf-8") as stream:
+            for record in records:
+                stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        summary = SESSION_COST.profile(SESSION_COST.read_records(path))
+        self.assertEqual(3.0, summary["tool_calls_per_turn"])
+
+    def test_a_slow_batching_session_is_flagged(self) -> None:
+        """A 3-turn fixture is not worth flagging; a real run is."""
+        path = Path(self._tmp.name) / "many-turns.jsonl"
+        with path.open("w", encoding="utf-8") as stream:
+            for step in range(45):
+                stream.write(
+                    json.dumps(
+                        assistant(step, 60_000, [tool_use(f"c{step}", "Read", DECK)], f"msg_{step}"),
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+        summary = SESSION_COST.profile(SESSION_COST.read_records(path))
+        self.assertEqual(45, summary["turns"])
+        self.assertEqual(1.0, summary["tool_calls_per_turn"])
+        notes = " ".join(SESSION_COST.warnings(summary))
+        self.assertIn("回合经济", notes)
+
+    def test_a_batching_session_is_not_flagged(self) -> None:
+        path = Path(self._tmp.name) / "many-batched.jsonl"
+        with path.open("w", encoding="utf-8") as stream:
+            for step in range(45):
+                stream.write(
+                    json.dumps(
+                        assistant(step, 60_000, [
+                            tool_use(f"d{step}a", "Read", DECK),
+                            tool_use(f"d{step}b", "Read", DECK),
+                            tool_use(f"d{step}c", "Read", DECK),
+                        ], f"msg_b{step}"),
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+        summary = SESSION_COST.profile(SESSION_COST.read_records(path))
+        self.assertEqual(3.0, summary["tool_calls_per_turn"])
+        self.assertNotIn("回合经济", " ".join(SESSION_COST.warnings(summary)))
 
     def test_triplicate_assistant_records_count_as_one_request(self) -> None:
         path = Path(self._tmp.name) / "triple.jsonl"

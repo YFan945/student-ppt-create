@@ -215,6 +215,131 @@ class GenerationCoreV071Tests(unittest.TestCase):
         )
         self.assertTrue(result["ok"], result["issues"])
 
+    def test_reference_area_matches_the_sources_not_the_evidence_claims(self) -> None:
+        """The bibliography lists SOURCES; an evidence title is a claim/value/quote.
+
+        2026-09-18 live: `evidence_ledger.title` is what the claim says, so matching it against
+        the reference band failed for 16 of 42 used entries no matter what the pages said, and
+        `complete` was unreachable by construction.
+        """
+        spec = {
+            "meta": {"citation_style": "classroom"},
+            "evidence_ledger": [
+                {
+                    "id": "E01",
+                    "title": "中国官方承诺2030年前碳达峰、2060年前碳中和，非化石能源消费比重达到25%",
+                    "source_type": "other",
+                    "locator": "https://www.gov.cn/zhengce/2021-10/24/content_5644613.htm",
+                    "source_ids": ["S01"],
+                    "author": "中共中央、国务院",
+                    "date": "2021",
+                    "confidence": "high",
+                    "used_on_slides": [2],
+                }
+            ],
+            "source_ledger": [
+                {
+                    "id": "S01",
+                    "title": "中共中央 国务院关于完整准确全面贯彻新发展理念做好碳达峰碳中和工作的意见",
+                    "publisher": "中共中央、国务院",
+                    "year": 2021,
+                }
+            ],
+            "slides": [
+                {"id": 1, "title": "Cover"},
+                {"id": 2, "title": "Policy", "evidence_refs": ["E01"]},
+                {"id": 3, "title": "References", "kind": "references"},
+            ],
+        }
+        reference = "S01 中共中央 国务院关于完整准确全面贯彻新发展理念做好碳达峰碳中和工作的意见"
+        result = self.quality.check_evidence(spec, ["Cover", "Policy", reference])
+        self.assertTrue(result["ok"], result["issues"])
+
+    def test_a_source_missing_from_the_reference_area_still_blocks(self) -> None:
+        """Resolving to sources must not turn the check into a pass-everything gate."""
+        spec = {
+            "meta": {"citation_style": "classroom"},
+            "evidence_ledger": [
+                {
+                    "id": "E01",
+                    "title": "Wind capacity grew 47.3% year on year",
+                    "source_type": "other",
+                    "locator": "https://example.org/a",
+                    "source_ids": ["S01", "S02"],
+                    "confidence": "high",
+                    "used_on_slides": [2],
+                }
+            ],
+            "source_ledger": [
+                {"id": "S01", "title": "2025 全球海上风电报告", "publisher": "GWEC", "year": 2025},
+                {"id": "S02", "title": "中国光伏行业协会年度报告", "publisher": "CPIA", "year": 2025},
+            ],
+            "slides": [
+                {"id": 1, "title": "Cover"},
+                {"id": 2, "title": "Wind", "evidence_refs": ["E01"]},
+                {"id": 3, "title": "References", "kind": "references"},
+            ],
+        }
+        # The band lists S01 only; S02 is cited by the used evidence but never rendered.
+        result = self.quality.check_evidence(spec, ["Cover", "Wind", "S01 2025 全球海上风电报告"])
+        self.assertFalse(result["ok"])
+        self.assertIn("missing_final_reference", {item["code"] for item in result["issues"]})
+
+    def test_a_cited_source_absent_from_the_ledger_blocks(self) -> None:
+        """An unresolvable id must not be dropped — that is how a deck cites a phantom source."""
+        spec = {
+            "meta": {"citation_style": "classroom"},
+            "evidence_ledger": [
+                {
+                    "id": "E01",
+                    "title": "Wind capacity grew 47.3% year on year",
+                    "source_type": "other",
+                    "locator": "https://example.org/a",
+                    "source_ids": ["S01", "S02"],
+                    "confidence": "high",
+                    "used_on_slides": [2],
+                }
+            ],
+            "source_ledger": [
+                {"id": "S02", "title": "2025 全球海上风电报告", "publisher": "GWEC", "year": 2025},
+            ],
+            "slides": [
+                {"id": 1, "title": "Cover"},
+                {"id": 2, "title": "Wind", "evidence_refs": ["E01"]},
+                {"id": 3, "title": "References", "kind": "references"},
+            ],
+        }
+        result = self.quality.check_evidence(spec, ["Cover", "Wind", "S02 2025 全球海上风电报告"])
+        self.assertFalse(result["ok"])
+        self.assertIn("unresolved_source_ref", {item["code"] for item in result["issues"]})
+
+    def test_specs_without_a_source_ledger_keep_the_entry_level_check(self) -> None:
+        """Older compiled specs must not silently pass every deck."""
+        spec = {
+            "meta": {"citation_style": "classroom"},
+            "evidence_ledger": [
+                {
+                    "id": "paper-a",
+                    "title": "SelfCheckGPT: Zero-Resource Black-Box Hallucination Detection",
+                    "source_type": "paper",
+                    "locator": "EMNLP 2023",
+                    "author": "Manakul et al.",
+                    "date": "2023",
+                    "source_ids": ["S01"],
+                    "confidence": "high",
+                    "used_on_slides": [2],
+                }
+            ],
+            "slides": [
+                {"id": 1, "title": "Cover"},
+                {"id": 2, "title": "Detection", "evidence_refs": ["paper-a"]},
+                {"id": 3, "title": "References", "kind": "references"},
+            ],
+        }
+        result = self.quality.check_evidence(spec, ["Cover", "Detection", "Conclusion only"])
+        self.assertFalse(result["ok"])
+        self.assertIn("missing_final_reference", {item["code"] for item in result["issues"]})
+
     def test_timing_estimator_blocks_deck_overrun(self) -> None:
         spec = {
             "meta": {"duration_min": 1, "include_speaker_notes": True},

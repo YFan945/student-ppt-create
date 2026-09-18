@@ -87,14 +87,45 @@ def block_text(block: Any) -> str:
 
 
 def collapse_duplicate_requests(requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Merge 2–3 assistant snapshots that Claude Code writes for one API call.
+    """One row per API call: within a message id, keep the row reporting the FULL prompt.
 
-    Copies share a timestamp (or land within 2s) and identical usage. Counting
-    each copy inflated session_cost reports by ~2× on DeepSeek Flash runs.
+    Claude Code writes one assistant message as several transcript rows (streaming
+    partials, one per content block). The early rows report an intermediate context;
+    only the completed row carries the real prompt — measured 2026-09-18:
+
+        ctx=68,666  out=0     stop=None      [thinking]
+        ctx=699,497 out=1,633 stop=end_turn  [text]      <- the same API call
+
+    Grouping by message id and keeping the max-context row reproduces the real prompt
+    (independently checked: that conversation's text sizes to ~718K by hand). The old
+    rule — merge consecutive rows with *identical* usage inside 2s — left the differing
+    partials in place, so a subagent read as 480 requests where 261 were sent, and every
+    per-turn figure derived from it was wrong by ~1.8x.
+
+    Rows without a message id keep the older identical-usage rule, so transcripts that
+    carry no ids stay countable instead of being reported as one request per content block.
     """
-    collapsed: list[dict[str, Any]] = []
+    slots: list[dict[str, Any]] = []
+    by_id: dict[str, dict[str, Any]] = {}
     for item in requests:
-        if collapsed:
+        key = str(item.get("message_id") or "")
+        if not key:
+            slots.append(dict(item, copies=1))
+            continue
+        current = by_id.get(key)
+        if current is None:
+            merged = dict(item, copies=1)
+            by_id[key] = merged
+            slots.append(merged)
+        elif item["context"] >= current["context"]:
+            current.update(item)
+            current["copies"] = int(current.get("copies") or 1) + 1
+        else:
+            current["copies"] = int(current.get("copies") or 1) + 1
+
+    collapsed: list[dict[str, Any]] = []
+    for item in slots:
+        if collapsed and not item.get("message_id"):
             prev = collapsed[-1]
             gap = 999.0
             if item["ts"] and prev["ts"]:
@@ -108,10 +139,9 @@ def collapse_duplicate_requests(requests: list[dict[str, Any]]) -> list[dict[str
             )
             if gap <= 2.0 and same:
                 prev["copies"] = int(prev.get("copies") or 1) + 1
+                prev["tool_calls"] = int(prev.get("tool_calls") or 0) + int(item.get("tool_calls") or 0)
                 continue
-        row = dict(item)
-        row["copies"] = 1
-        collapsed.append(row)
+        collapsed.append(item)
     return collapsed
 
 
@@ -140,6 +170,7 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
                 requests.append(
                     {
                         "ts": stamp,
+                        "message_id": message.get("id"),
                         "context": (usage.get("input_tokens") or 0)
                         + (usage.get("cache_creation_input_tokens") or 0)
                         + (usage.get("cache_read_input_tokens") or 0),
@@ -147,6 +178,10 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
                         "cache_write": usage.get("cache_creation_input_tokens") or 0,
                         "cache_read": usage.get("cache_read_input_tokens") or 0,
                         "output": usage.get("output_tokens") or 0,
+                        "tool_calls": sum(
+                            1 for block in (message.get("content") or [])
+                            if isinstance(block, dict) and block.get("type") == "tool_use"
+                        ),
                     }
                 )
             for block in message.get("content") or []:
@@ -204,6 +239,13 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
     # otherwise a single stall inflates every request in the report.
     stamps = [item["ts"] for item in requests if item["ts"]]
     work_span = (stamps[-1] - stamps[0]).total_seconds() if len(stamps) >= 2 else None
+    # Gap between consecutive turns, ignoring the long stalls: a turn ON the critical path
+    # is what a time budget has to pay for, and a multi-hour wait for a user answer is not.
+    gaps = []
+    for index in range(1, len(stamps)):
+        gap = (stamps[index] - stamps[index - 1]).total_seconds()
+        if 0 < gap < 300:
+            gaps.append(gap)
 
     buckets: Counter[str] = Counter()
     for value in contexts:
@@ -255,6 +297,26 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
             "heavy_requests": sum(1 for value in contexts if value >= HEAVY_CONTEXT),
         },
         "per_request_sec": round(work_span / len(requests), 2) if (work_span and requests) else None,
+        # Turn economy: wall clock is turns x round-trip latency, and the gates themselves
+        # cost seconds (2026-09-18: 150s across the whole suite = 1.7% of a 147-min run).
+        # So the number that predicts whether a deck fits a time budget is turns and how
+        # many tool calls each turn carries — 1.0/turn means the model waits for every call.
+        "turns": len(requests),
+        "tool_calls_per_turn": (
+            round(sum(item.get("tool_calls") or 0 for item in requests) / len(requests), 2)
+            if requests else None
+        ),
+        "turn_seconds": {
+            "median": (
+                sorted(gaps)[len(gaps) // 2] if gaps else None
+            ),
+            "p90": (sorted(gaps)[min(len(gaps) - 1, int(len(gaps) * 0.9))] if gaps else None),
+            "mean": (round(sum(gaps) / len(gaps), 1) if gaps else None),
+        },
+        "turns_under_20min": {
+            "at_median": (round(1200 / sorted(gaps)[len(gaps) // 2]) if gaps else None),
+            "at_mean": (round(1200 / (sum(gaps) / len(gaps))) if gaps else None),
+        },
         "assistant_text_chars": text_chars,
         "assistant_thinking_chars": thinking_chars,
         "context_curve": [
@@ -301,6 +363,13 @@ def warnings(summary: dict[str, Any]) -> list[str]:
             f"空转 {idle / 60:.1f} 分钟，占墙钟 {idle / span * 100:.0f}%（长于工作时长的一半）；"
             "排查中断点：余额/限流报错、等待用户确认、子代理未回收"
         )
+    per_turn = summary.get("tool_calls_per_turn")
+    if per_turn is not None and per_turn < 1.6 and (summary.get("turns") or 0) >= 40:
+        notes.append(
+            f"回合经济：每回合只有 {per_turn} 个工具调用（CD-1 要求合并调用）。门本身只花秒级，"
+            "墙钟几乎全部来自「发一个、等 10~20 秒、再发下一个」——把独立调用合并进同一回合，"
+            "或把页面拆给并行 builder，是唯一不碰门的时间杠杆"
+        )
     return notes
 
 
@@ -328,6 +397,16 @@ def render_markdown(summary: dict[str, Any], source: Path) -> str:
         f"output {tokens['output']:,})",
         f"- 乘法模型：{summary['requests']} 请求 × {context['average']:,} ≈ "
         f"{summary['requests'] * context['average']:,} token",
+        "",
+        "## Turn economy (墙钟 = 回合数 × 往返延迟；门本身只花秒级)",
+        f"- turns: **{summary.get('turns')}** | tool calls per turn: "
+        f"**{summary.get('tool_calls_per_turn')}** "
+        + ("（≈1.0 表示每个工具调用都单独等一个往返——这是墙钟的主要来源）"
+           if (summary.get("tool_calls_per_turn") or 0) < 1.6 else ""),
+        f"- per-turn seconds: median {summary['turn_seconds']['median']} / "
+        f"p90 {summary['turn_seconds']['p90']} / mean {summary['turn_seconds']['mean']}",
+        f"- 20 分钟预算可容纳的回合数：中位延迟下 **{summary['turns_under_20min']['at_median']}** 回合、"
+        f"均值延迟下 {summary['turns_under_20min']['at_mean']} 回合",
         "",
         "## Context buckets",
     ]

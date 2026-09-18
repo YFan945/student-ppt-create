@@ -224,9 +224,35 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 走返工边，不要手工 `workflow_guard.py transition` 推进 `producing` / `complete`。
 最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重跑最终门禁”；
 仍有 blocker 则交付 `incomplete`。确定性缺陷在更早处拦截：`build` 打包后立即本地
-跑 `rendered` + `actual-content` 两道确定性门，不绿则 `render` 拒绝、`next` 指向免
-repair 轮的 builder 改页重建——critic 从不评审注定返工的 deck。QA 通过后 `complete`
-使用 `ppt_pipeline.py complete --work-dir <wd>`。CI 继续渲染完整场景矩阵，但不会提交生成产物。
+跑 `rendered` + `actual-content` 以及 `quality` 门的确定性部分（evidence/timing/lock），
+不绿则 `render` 拒绝、`next` 指向免 repair 轮的 builder 改页重建——critic 从不评审
+注定返工的 deck。QA 通过后 `complete` 使用 `ppt_pipeline.py complete --work-dir <wd>`。
+CI 继续渲染完整场景矩阵，但不会提交生成产物。
+
+**校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与
+Art Direction 的作者，看不见自己选的视觉语言在每页重复，所以它读预览 PNG 不算评审；
+在 `calibration/calibration-visual-review.json` 存在、绑定当前校准 PPTX、且无
+critical/major 之前，正式 `build` 会被机械拒绝。
+
+**每轮 repair 都 spawn 一个新的 builder 实例**，不要继续上一个：一个扛了多轮的实例
+常驻上下文涨到 699K，96% 的成本花在 200K 以上；`next --json` 检出跨轮实例时会报
+`builder_instance_reuse`。builder 在 build 之后又改了页时，`build` 允许一次补差量重建，
+免得为一处微调单开一轮。隔离 builder 也**不做渲染**：`calibration_preview.py` 与所有
+render 属于主会话，`builder_guard.py` 同时拒绝渲染命令，以及"用内联脚本读 work-dir
+JSON / 改页面模块"的各种写法。
+
+**墙钟 = 回合数 × 往返延迟，而门不占时间**：全套门在一次 147 分钟的运行里实测只有
+**150 秒（1.7%）**，其余是 **519 个模型回合**、每个回合只带一个工具调用。`next --json`
+给出 `builder_shards` 时，主会话**在同一条消息里 spawn 全部 shard** 让页面工作并发——
+分片天然互斥，每个只写自己的 `speaker-notes-shard-<N>.md`（`build` 会拼成
+`speaker-notes.md`），任何一道门都没有改动。`session_cost.py` 现在输出 `turns`、
+`tool_calls_per_turn` 与 `turns_under_20min`，让时间预算可以对着数据判断；它的请求计数
+也改为"每个 API 调用一行"（按 message id 取最大 ctx）——旧规则把一个子代理读成 480 个
+请求，实际只发了 261 个。
+
+`repair_convergence` 在"某组 blocker 连续两轮逐字相同、其余在动"时报
+`suspect_gate_defect`：这组不是页面能修的，对着产物核对一次后，要么给出页面级修法，
+要么记为已知门限；当它占 blocker 多数时提额会被拒绝。
 
 会话中断（CLI 在管线子代理仍在运行时被关闭）后重开项目，跑同一条
 `ppt_pipeline.py next --work-dir <wd> --json` 即可：包括校准在内的每一步都从盘上

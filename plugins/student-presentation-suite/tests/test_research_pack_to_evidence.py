@@ -98,6 +98,24 @@ class ResearchPackToEvidenceTests(unittest.TestCase):
         self.assertEqual("S02", entry["primary_source_id"])
         self.assertEqual("arXiv:2601.00001", entry["locator"])
 
+    def test_compiled_spec_carries_the_source_ledger_the_reference_area_renders(self) -> None:
+        """The gate must check the records the bibliography shows, not the claim text.
+
+        2026-09-18 live: `evidence_ledger.title` is a claim (build_ledger truncates
+        `finding.claim`), so the reference-area check failed for 16 of 42 used entries and
+        `complete` was unreachable no matter what the pages said.
+        """
+        draft = {"slides": [{"id": 1, "evidence_refs": ["F01"]}]}
+        _report, compiled = self.compiled(base_pack(), draft)
+        self.assertIsNotNone(compiled)
+        ledger = {entry["id"]: entry for entry in compiled["source_ledger"]}
+        self.assertEqual(["S01", "S02"], [entry["id"] for entry in compiled["source_ledger"]])
+        self.assertEqual("Hallucination Benchmark", ledger["S02"]["title"])
+        self.assertEqual(2026, ledger["S02"]["year"])
+        self.assertEqual("arXiv:2601.00001", ledger["S02"]["url"])
+        self.assertEqual("S", ledger["S02"]["tier"])
+        self.assertEqual("CVPR", ledger["S01"]["publisher"])
+
     def test_quote_becomes_evidence(self) -> None:
         pack = base_pack()
         pack["quotes"] = [{"id": "Q01", "text": "Hallucination remains a deployment risk.", "source_id": "S01"}]

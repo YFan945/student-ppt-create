@@ -274,10 +274,45 @@ spec/composer/generator and rebuild the complete candidate; a remaining QA block
 is fixed via
 `skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>` instead
 of resetting the whole pipeline. Deterministic misses are caught even earlier:
-right after packing, `build` runs the `rendered` + `actual-content` gates locally
-(they read the PPTX itself and need no critic); while they fail, `render` is
-refused and `next` routes to a budget-free builder fix-and-rebuild — the critic
-never reviews a doomed deck.
+right after packing, `build` runs the `rendered` + `actual-content` gates plus the
+quality gate's deterministic half (evidence closure, note timing, spec lock)
+locally — they read the PPTX and the spec and need no critic; while they fail,
+`render` is refused and `next` routes to a budget-free builder fix-and-rebuild —
+the critic never reviews a doomed deck.
+
+Calibration is reviewed by the independent `visual-critic`, not by the main
+session. The main session authors the Slide Spec and the Art Direction, so it
+cannot see that its own treatment repeats on every page; its own reading of the
+preview PNGs is therefore not the review, and production `build` is refused until
+`calibration/calibration-visual-review.json` exists, is bound to the current
+calibration PPTX, and carries no critical/major finding.
+
+Each repair round spawns a **new** builder instance instead of continuing the
+previous one: a builder instance that served several rounds reached 699K resident
+context, and 96% of its cost was spent above 200K. `next --json` reports
+`builder_instance_reuse` when one instance spans several rounds. If the builder
+edited pages after the round's build, `build` allows one carry-over rebuild so
+those edits reach the PPTX instead of consuming an extra round. The isolated
+builder also never renders — `calibration_preview.py` and every render belong to
+the main session, and `builder_guard.py` refuses both the render commands and the
+inline-script forms of reading work-dir JSON or rewriting page modules.
+
+Wall clock is turns × round-trip latency, and the gates are not what costs it:
+the whole suite measured **150 seconds** across a 147-minute run (1.7%), against
+**519 model round-trips** at one tool call each. When `next --json` supplies
+`builder_shards`, the main session spawns ALL shards in one message so the page
+work runs concurrently — shards are mutually exclusive by construction, each
+writes its own `speaker-notes-shard-<N>.md` (build assembles them), and no gate
+changes. `session_cost.py` reports `turns`, `tool_calls_per_turn` and
+`turns_under_20min` so a run's time budget can be judged from data; its request
+count now keeps one row per API call (by message id, max context) — the older
+rule read a subagent as 480 requests where 261 were sent.
+
+`repair_convergence` reports `suspect_gate_defect` when a blocker group is
+byte-identical across two consecutive rounds while the rest of the list moved:
+that group is not page work, so the run checks it once against the artifact and
+either names a page-level fix or records it as a known gate limitation. Budget
+extensions are refused while such a group accounts for most of the blocker list.
 
 If a session is interrupted (the CLI is closed while a pipeline agent is still
 running), reopen the project and run the same `ppt_pipeline.py next --work-dir

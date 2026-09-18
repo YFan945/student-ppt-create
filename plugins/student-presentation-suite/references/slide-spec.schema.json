@@ -170,6 +170,23 @@
         }
       }
     },
+    "source_ledger": {
+      "type": "array",
+      "description": "The bibliography the final reference area renders, written by research_pack_to_evidence.py from the Research Pack. evidence_ledger.title is a claim/value/quote, never a source title, so this is the only field the reference-area check may match against — injection source and validation source must be the same records.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "title"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^S[0-9]{2,}$" },
+          "title": { "type": "string", "minLength": 1 },
+          "publisher": { "type": "string" },
+          "year": { "type": "integer" },
+          "url": { "type": "string" },
+          "tier": { "enum": ["S", "A", "B", "C", "D"] }
+        }
+      }
+    },
     "revision": {
       "type": "object",
       "additionalProperties": false,

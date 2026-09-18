@@ -36,7 +36,12 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 你是本 deck 的隔离页面实现者。本轮为 <calibration|initial|repair>。
 
 - work-dir（绝对路径，唯一工作区）：<absolute work-dir>
-- 目标页：<slide ids（calibration/repair）｜"全部剩余 scaffold 页"（initial）>
+- 目标页：<slide ids（calibration/repair）｜shard 的 slide ids（initial 分片）｜"全部剩余 scaffold 页"（initial 未分片）>
+- **本实例只做上面这些 slide ids**：绝不读、写、改别人的 `pages/pNN-*.js`。分片由管线按页号
+  轮转计算、天然互斥；越界改页会覆盖另一个并发 builder 的成果，而那是无法回滚的。
+- **讲稿写到 `<work-dir>/speaker-notes-shard-<N>.md`（N = 你的 shard 号），不要写 speaker-notes.md**
+  ——那是并行时唯一不会互相覆盖的写法，`build` 会按页序拼成最终文件（PPTX 备注区仍由你自己
+  通过 `slide.addNotes` 写入，每次一页）。未分片时照旧写 `speaker-notes.md`。
 - **先用本页简报拿全部上下文**（一次调用代替逐字段挖 JSON——2026-09-17 live 一轮 repair
   为此跑了 19~46 条内联脚本、每条约 150K 常驻上下文）：
   `python "<CLAUDE_PLUGIN_ROOT>/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --slide <N> --json`
@@ -65,12 +70,21 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   `visual_regression`（2026-09-17 live：第 5 轮"提分"把页面改坏，第 6 轮花 40M token 只用来回退，
   净收益为零）。提升结构张力可以，但不要把已经过关的页当成试验田。
 - 保留 scaffold COPY 字面量（page_copy_fidelity 逐字校验）；不得引入 spec 之外的新数字。
+- **不要在本轮跑 build / render / calibration_preview.py / soffice**——它们属于主会话，hook
+  会拒绝。2026-09-18 live：一个 builder 实例自己调了 38 次 calibration_preview.py，每轮重渲染
+  又把新 PNG 读回来，把该实例的常驻上下文从 8.7K 推到 699K，而同一实例后续每个请求都要重付
+  这份上下文。要反馈就回报 BUILDER_DONE，主会话渲染后把报告路径给你。
+- **改页用 Edit 工具，不要用 shell 里的正则脚本改 `pages/pNN-*.js`**；也不要用内联脚本
+  （`node -e` / `python -c` / `python - <<'PY'`）去挖 work-dir 的 JSON/YAML——hook 会拒绝。
+  要上下文就用 `page_brief.py`，一次给全。
 - 不要运行 ppt_pipeline.py build/render/qa、不要跑 run_with_pptxgenjs.js
   （临时验证只能在系统临时目录，不得在 work-dir 产正式 pptx）。
 - 不改 slide-spec-compiled.yaml、art-direction.yaml、build-manifest.json、visual-review.json。
 - 本轮任务细节：<报告路径 + 一句话摘要；报告可能是 pre-qa-actual-content.json /
-  pre-qa-rendered.json（确定性预检，此路径不消耗 repair 轮、critic 尚未运行）或
-  pipeline-qa.json（正式 QA blocker）。请自行读报告原文，不要依赖转述>。
+  pre-qa-rendered.json / pre-qa-quality.json（确定性预检，此路径不消耗 repair 轮、critic
+  尚未运行）或 pipeline-qa.json（正式 QA blocker）。请自行读报告原文，不要依赖转述>。
+- **本轮只服务这一轮**：不要接受"继续同一个实例"的延续指令，也不要假设自己见过上一轮的页面；
+  带着上一轮的历史只会让本轮每个请求都更贵。
 - 完成后只回契约信封：BUILDER_DONE / BUILDER_BLOCKED（字段以你的 agent 契约为准）。
 ```
 
@@ -97,6 +111,34 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - 每条 issue 必须有 code（小写英文，短横线或下划线皆可）与 severity。
 - 只写复核报告，不生成或修复任何页面/PPTX。
 - 完成后只回：报告路径 + blocker 计数。
+```
+
+## critic（calibration 评审，同一 agent，不同范围）
+
+校准稿只有 2–3 页，问的不是"这一页好不好看"，而是"这套视觉系统铺到 13 页会怎样"。
+2026-09-18 live：主会话自己看了校准图并接受，独立 critic 在全量建完后判定"每页都是同一个
+带边框通栏面板"，要求全 deck 重做——76.4M token（该次会话的 58.8%），而这次评审只要 1.4M。
+
+```text
+你是这次校准预览的独立视觉复核者。只评审已实现的 <N> 页校准稿，不猜未实现的页面。
+
+- work-dir（绝对路径）：<absolute work-dir>
+- 校准 PPTX：<work-dir>/calibration/calibration.pptx（绑定其 SHA256）
+- 校准页图：<calibration/render/ 下 2–3 张 PNG 的绝对路径>
+- 报告形状的唯一来源：<CLAUDE_PLUGIN_ROOT>/references/visual-review.schema.json；
+  写到 <work-dir>/calibration/calibration-visual-review.json，`slides` 恰好覆盖
+  <calibration slide ids>（不是 1..N），`pptx_sha256` 用 calibration.pptx 的哈希。
+- 判断准绳：<work-dir>/art-direction.yaml。
+- **只判会扩散到全 deck 的形态**，逐条回答：
+  1. 这几页是不同的页型（封面 / 高密度数据页 / 代表性图文页）——它们是否被套上了**同一个**
+     结构或同一个容器样式？页型之间还看得出区别吗？
+  2. 这套 surface / 边框 / 分栏 / 图元语言，复制到全部页之后会变成"每页一个样"吗？
+  3. 是否与 Art Direction 的角色色、留白节奏、明暗交替一致？有无超出调色板角色的色值？
+  4. 页型角色的层级是否成立（封面不像内容页、数据页的读数装置先于正文被读到）？
+- 细则打磨（字号层级微调、单页构图留白）**不在本次范围**——留给最终 critic，不要在这里
+  判 Major。本次给 Major/Critical 的每一条都必须是"铺开到全 deck 会重复出现"的形态。
+- 每条 issue 必须有 code 与 severity；只写报告，不生成或修复任何页面/PPTX。
+- 完成后只回：报告路径 + blocker 计数（口径 = critical + major）。
 ```
 
 ## 所有模板共用的禁止事项

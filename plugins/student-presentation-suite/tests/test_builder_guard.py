@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 import unittest
@@ -93,6 +94,77 @@ class BuilderGuardTests(unittest.TestCase):
     def test_parent_session_inline_node_is_not_policed(self) -> None:
         command = "node -e \"console.log(require('./build-manifest.json').state)\""
         self.assertEqual(0, guard.handle(self.shell_event(command)))
+
+    def test_the_heredoc_form_of_the_same_digging_is_also_refused(self) -> None:
+        """2026-09-18: after `node -e` was refused the builder switched to `python - <<'PY'`
+        and did it 111 times, using the projection tool it was pointed at only 5 times."""
+        heredoc = (
+            "cd \"$WD\" && python - <<'PY'\n"
+            "import json, io\n"
+            "d = json.load(io.open('build-manifest.json', encoding='utf-8'))\n"
+            "print(d.keys())\n"
+            "PY"
+        )
+        event = self.shell_event(heredoc, agent_type=guard.BUILDER, agent_id="builder-child")
+        self.assertEqual(2, guard.handle(event))
+
+    def test_python_c_over_work_dir_json_is_refused(self) -> None:
+        command = (
+            "cd \"$WD\" && python -c \"import json;q=json.load(open('qa-quality.json'));"
+            "print(json.dumps(q['counts']))\""
+        )
+        event = self.shell_event(command, agent_type=guard.BUILDER, agent_id="builder-child")
+        self.assertEqual(2, guard.handle(event))
+
+    def test_rewriting_page_modules_from_a_heredoc_is_refused(self) -> None:
+        heredoc = (
+            "python - <<'PY'\n"
+            "import io\n"
+            "p = 'pages/p07-s07.js'\n"
+            "s = io.open(p, encoding='utf-8').read().replace('0.30', '0.42')\n"
+            "io.open(p, 'w', encoding='utf-8').write(s)\n"
+            "PY"
+        )
+        event = self.shell_event(heredoc, agent_type=guard.BUILDER, agent_id="builder-child")
+        self.assertEqual(2, guard.handle(event))
+
+    def test_rendering_and_the_calibration_preview_belong_to_the_main_session(self) -> None:
+        """2026-09-18: the builder called calibration_preview.py 38 times in its own context."""
+        for command in (
+            "python \"$CLAUDE_PLUGIN_ROOT/skills/sp-deck/scripts/calibration_preview.py\""
+            " --work-dir \"$WD\" --slides 1 5 7 --json",
+            "python \"$CLAUDE_PLUGIN_ROOT/scripts/pptx_tool.py\" render \"$WD/deck.pptx\""
+            " --output-dir \"$WD/render\"",
+            "soffice --headless --convert-to pdf deck.pptx",
+        ):
+            with self.subTest(command=command[:60]):
+                event = self.shell_event(command, agent_type=guard.BUILDER, agent_id="builder-child")
+                self.assertEqual(2, guard.handle(event))
+
+    def test_measuring_rendered_pixels_is_still_allowed(self) -> None:
+        """Refusing every heredoc would take away the geometry check the builder needs."""
+        for command in (
+            "python - <<'PY'\nfrom PIL import Image\nprint(Image.open('render/slide-07.png').size)\nPY",
+            "python -c \"from PIL import Image; print(Image.open('a.png').size)\"",
+            "python - <<'PY'\nimport io\nprint(len(io.open('deck.js', encoding='utf-8').read()))\nPY",
+        ):
+            with self.subTest(command=command[:50]):
+                event = self.shell_event(command, agent_type=guard.BUILDER, agent_id="builder-child")
+                self.assertEqual(0, guard.handle(event))
+
+    def test_builder_page_writes_record_the_instance_window(self) -> None:
+        """The pipeline cross-references this with the repair rounds to detect a reused
+        instance — the largest measured cost driver."""
+        event = self.event("Edit", agent_type=guard.BUILDER, agent_id="builder-child")
+        self.assertEqual(0, guard.handle(event))
+        records = list((self.project / "outputs/.pptx-work/.guard").glob("builder-*.json"))
+        self.assertEqual(1, len(records), records)
+        data = json.loads(records[0].read_text(encoding="utf-8"))
+        self.assertEqual("builder-child", data["agent_id"])
+        self.assertEqual(1, data["writes"])
+        self.assertEqual(["demo"], data["work_ids"])
+        guard.handle(event)
+        self.assertEqual(2, json.loads(records[0].read_text(encoding="utf-8"))["writes"])
 
 
 if __name__ == "__main__":

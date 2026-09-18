@@ -23,6 +23,8 @@
   "max_repairs": 3,
   "max_repairs_hard_cap": 6,
   "max_pre_qa_rebuilds": 2,
+  "max_parallel_builders": 3,
+  "parallel_builder_min_pages": 4,
   "intake_confirmation_required": true,
   "repeat_policy": {
     "build_requires_changed_generator_after_repair": true,
@@ -35,7 +37,11 @@
     "page_generation_requires_isolated_builder": true,
     "high_leverage_calibration_before_full_generation": true,
     "build_runs_deterministic_pre_qa_gates": true,
-    "pre_qa_rebuilds_consume_no_repair_round": true
+    "pre_qa_rebuilds_consume_no_repair_round": true,
+    "calibration_requires_independent_review": true,
+    "one_builder_instance_per_round": true,
+    "one_carryover_build_per_round": true,
+    "parallel_builder_shards_allowed": true
   },
   "production_modes": [
     "create",
@@ -53,13 +59,14 @@
     ],
     "build": [
       "create/rebuild_from_source: first select 2-3 high-leverage slides from Art Direction and spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=calibration plus those slide ids.",
-      "After BUILDER_DONE(calibration), the MAIN session runs calibration_preview.py --work-dir <wd> --slides <ids> --json; read the resulting 2-3 preview PNGs in one parallel round. If a material visual blocker exists, respawn the builder in calibration mode for only those pages and rerun the preview helper.",
-      "Once the calibration pages establish an acceptable visual system, spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=initial. It preserves calibrated pages and implements every remaining scaffold page plus speaker notes.",
+      "After BUILDER_DONE(calibration), the MAIN session runs calibration_preview.py --work-dir <wd> --slides <ids> --json. The MAIN session's own reading of those PNGs is NOT the review: it wrote the spec and the Art Direction, so it cannot see that its own treatment repeats on every page. Spawn student-presentation-suite:visual-critic WITHOUT a name against calibration.pptx and its renders, writing calibration/calibration-visual-review.json bound to the calibration PPTX hash; scope it to what would spread to the whole deck. `next --json` names the exact spawn and the report path, and production build is refused until that review is green.",
+      "Once the calibration pages establish an acceptable visual system, spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=initial. It preserves calibrated pages and implements every remaining scaffold page plus speaker notes. Wall clock is turns x per-turn latency and the whole gate suite costs ~2.5s, so when `next --json` supplies builder_shards, spawn ALL shards in ONE message so the page work runs concurrently: each shard takes its own disjoint slide ids, writes its own speaker-notes-shard-<N>.md, and never touches another shard's pages. Sharding changes no gate — build assembles the fragments into speaker-notes.md.",
       "The main session must not implement or read page modules itself and must not receive page source back from the builder; calibration is a temporary preview only and does not mutate production manifest/build state.",
       "After BUILDER_DONE(initial), run the normal exploration gates and pipeline build --entry deck.js. Production build still refuses any remaining scaffold page.",
       "edit_ooxml remains pipeline-owned: edit ooxml/ only, keep source unchanged, write change-summary.md, build without --entry.",
       "Rebuild requires source-analysis.md.",
-      "After packing, build runs the deterministic pre-QA gates (rendered + actual-content) locally — they read the PPTX itself and need no critic. On failure, fix the reported pages through the isolated builder and rebuild: that path consumes NO repair round while the state stays producing, bounded by max_pre_qa_rebuilds identical-failure rounds. Render and the critic only ever see a deterministically green deck."
+      "After packing, build runs the deterministic pre-QA gates (rendered + actual-content + the quality gate's deterministic half: evidence closure, note timing, spec lock) locally — they read the PPTX and the spec and need no critic. On failure, fix the reported pages through the isolated builder and rebuild: that path consumes NO repair round while the state stays producing, bounded by max_pre_qa_rebuilds identical-failure rounds. Render and the critic only ever see a deterministically green deck.",
+      "The isolated builder never builds, renders, or runs calibration_preview.py; the hook refuses all of them. If it edited pages after the round's build, build allows ONE carry-over rebuild (build.carryover_builds) so those edits reach the artifact instead of consuming a whole extra round."
     ],
     "render": [
       "Render the current built PPTX. Changed page/contact hashes invalidate the cache.",
@@ -76,9 +83,10 @@
       "Pre-QA deterministic misses are handled under the build stage contract (builder fix + rebuild, no repair round); this budget counts full QA rounds only.",
       "After ppt_pipeline.py repair records the blocker set, spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=repair and a concise blocker summary; the main session must not edit page modules itself.",
       "Hand the builder the pipeline-qa.json path: it already carries every failed content gate (failed_stages / blockers_by_gate), so one round fixes them all. Do not fix one gate per round.",
-      "Fix all blocker pages together, then build, render, isolated critique and QA.",
+      "Fix all blocker pages together, then build, render, isolated critique and QA. When `next --json` supplies builder_shards for the blocker set, spawn one builder per shard in ONE message after `repair`; deck-level blockers without a slide number mean the whole deck is in scope and take a single builder that reads the reports itself.",
+      "Spawn a NEW builder for every repair round; never SendMessage the previous instance. A builder instance that served three rounds reached 699K resident context, and 212 of its 261 requests ran at >=200K (96.1% of that instance's cost). Measured counterfactual: resetting per round alone takes that instance from 98.7M to 80.9M, because round 1 grows to 606K inside itself — the larger saving comes from not letting a full-deck rework happen at all (see the calibration review). `next --json` reports builder_instance_reuse when the guard's instance ledger shows one instance spanning several rounds.",
       "Never mark major/critical resolved without before/after evidence.",
-      "Resuming after the QA DAG: `next --json` carries repair_convergence (per-round blocker counts and the trend). improving justifies another round, flat means change the approach, worse means recover the gate or page the last round broke before anything else. Read it instead of asking the user whether to continue.",
+      "Resuming after the QA DAG: `next --json` carries repair_convergence (per-round blocker counts and the trend). improving justifies another round, flat means change the approach, worse means recover the gate or page the last round broke before anything else. Read it instead of asking the user whether to continue. When it reports suspect_gate_defect — a blocker group byte-identical in two consecutive rounds while the rest moved — that group is not page work: check it once against the artifact, then either name a page-level fix in --extend-reason or record it as a known gate limitation and repair the rest. Budget extensions are refused while such a group accounts for most of the blocker list.",
       "Raising the budget is `repair --extend N --extend-reason <round-over-round blocker diff>`; the grant is recorded in build-manifest.json (base + granted + hard cap) instead of editing this file inside the installed plugin — plugins are reinstalled, and a contract edit is neither durable nor auditable. Repeating the same approach with a bigger budget is not a repair strategy: on 2026-09-17 three extra rounds cost roughly 3x and one of them existed only to undo its predecessor."
     ],
     "complete": [
