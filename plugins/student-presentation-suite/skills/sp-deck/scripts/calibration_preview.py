@@ -185,10 +185,16 @@ def main() -> int:
     args = parse_args()
     slides = list(dict.fromkeys(args.slides or []))
     if not slides:
-        art = args.art_direction or args.work_dir / "art-direction.yaml"
-        if not art.is_file():
-            raise SystemExit("calibration_preview: pass --slides or provide art-direction.yaml")
-        slides = high_leverage_slides(art)
+        # No explicit sample: use the same archetype-coverage default as the
+        # calibration packet (Batch 4.1), falling back to art-direction leverage.
+        from calibration_archetypes import default_calibration_slides
+
+        slides = default_calibration_slides(args.work_dir)
+        if not slides:
+            art = args.art_direction or args.work_dir / "art-direction.yaml"
+            if not art.is_file():
+                raise SystemExit("calibration_preview: pass --slides or provide art-direction.yaml")
+            slides = high_leverage_slides(art)
     try:
         result = build_preview(args.work_dir, slides[:3])
     except (OSError, ValueError, RuntimeError) as exc:

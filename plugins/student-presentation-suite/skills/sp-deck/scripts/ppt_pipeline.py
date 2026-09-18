@@ -2016,7 +2016,9 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     payload["agent"] = "student-presentation-suite:presentation-builder"
                     payload["builder_mode"] = "calibration"
                     payload["notes"] = (
-                        "pick 2-3 high-leverage slides (cover + dense/data page + representative visual page) and "
+                        "pick 2-3 slides covering DISTINCT visual archetypes (cover + data/comparison + a "
+                        "different grammar — the packet's default set is chosen for archetype coverage, not "
+                        "page position) and "
                         "spawn student-presentation-suite:presentation-builder mode=calibration with the absolute "
                         "work-dir and those slide ids (no `name`). It implements only those pages; the rest stay "
                         "scaffolded so an early full build stays impossible. The MAIN session never edits "

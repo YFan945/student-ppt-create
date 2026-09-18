@@ -49,6 +49,7 @@
     "one_carryover_build_per_round": true,
     "parallel_builder_shards_allowed": true
   },
+  "calibration_sample_selection": "archetype_coverage_with_leverage_priority",
   "production_modes": [
     "create",
     "edit_ooxml",

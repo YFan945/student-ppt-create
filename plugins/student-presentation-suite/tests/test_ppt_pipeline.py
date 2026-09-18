@@ -1351,12 +1351,15 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.assertEqual("calibration.json", Path(payload["builder_packet"]["packet"]).name)
         self.assertTrue(all(item.get("requirements") for item in packet["slides"]))
 
-    def test_next_survives_a_missing_art_direction_without_a_packet(self) -> None:
-        """Packet generation must never break the dispatch answer."""
+    def test_next_survives_a_missing_art_direction_with_a_spec_driven_packet(self) -> None:
+        """Packet generation must never break the dispatch answer — and under
+        archetype coverage (Batch 4.1) a missing art-direction no longer prevents
+        a default sample: the spec alone drives it."""
         self.files = self.write_inputs()
         self.plan(self.files)
         payload = self.next_dispatch_payload()
-        self.assertNotIn("builder_packet", payload)
+        self.assertIn("builder_packet", payload)
+        self.assertEqual([1], payload["builder_packet"]["slides"])
         self.assertEqual("student-presentation-suite:presentation-builder", payload.get("agent"))
 
     def test_initial_packets_are_prepared_per_shard_for_a_large_deck(self) -> None:

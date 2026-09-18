@@ -197,6 +197,8 @@ Do not generate eight individually acceptable pages that all have the same visua
 
 Before writing the final deck, mark 3–5 slides in `high_leverage_slides`. Typical choices are cover, first problem/hook, central mechanism/framework, strongest evidence/result and conclusion/closing. Every entry needs a valid Slide Spec `slide` number and a concrete `reason`.
 
+The calibration sample itself is no longer this list truncated (v0.15 Batch 4.1): `calibration_archetypes.py` classifies every spec slide into an archetype from `kind` / `visual.layout_family` / documented `layout` keywords and picks the sample maximising DISTINCT archetypes, with your flagged pages winning group seats and filling the rest. So mark the pages whose failure would cost the most — the coverage algorithm guarantees the sample still spans different visual grammars.
+
 These pages must go through v0.8 multi-candidate composition. This list is also consumed by `pptx_visual_generation_gate_v08.py`; therefore it is production evidence, not informal notes. Ordinary lower-risk slides may use one composition after reference retrieval.
 
 ## Asset budget

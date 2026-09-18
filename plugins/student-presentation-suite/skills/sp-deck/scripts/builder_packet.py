@@ -38,6 +38,7 @@ if str(HERE) not in sys.path:
 
 import generator_scaffold as _scaffold  # noqa: E402
 import pptx_actual_content_check as actual_check  # noqa: E402
+from calibration_archetypes import archetype_of  # noqa: E402
 from page_brief import (  # noqa: E402
     deck_state,
     evidence_for_slide,
@@ -88,12 +89,17 @@ MAX_PARALLEL_BUILDERS = max(1, _contract_int("max_parallel_builders", 3))
 
 
 def default_calibration_slides(work_dir: Path, limit: int = 3) -> list[int]:
-    """High-leverage slides are the deterministic calibration default.
+    """Deterministic calibration default: maximum distinct archetypes (Batch 4.1).
 
-    The main session may still pick its own set; `next --json` names the override
-    command when it hands over the packet.
+    The sample is chosen to cover different visual grammars (cover / data /
+    comparison / process …) rather than the first three high-leverage positions;
+    high-leverage slides still win ties and fill the sample. The main session may
+    still pick its own set; `next --json` names the override command when it hands
+    over the packet.
     """
-    return high_leverage(work_dir)[:limit]
+    from calibration_archetypes import default_calibration_slides as coverage_default
+
+    return coverage_default(work_dir, limit)
 
 
 def remaining_scaffold_slides(work_dir: Path) -> list[int]:
@@ -193,6 +199,7 @@ def build_packet(
         if number not in targets:
             continue
         entry: dict[str, Any] = dict(item)
+        entry["archetype"] = archetype_of(item)
         entry["page_module"] = modules.get(number)
         entry["high_leverage"] = number in leverage
         entry["requirements"] = actual_check.planned_requirements(item)
