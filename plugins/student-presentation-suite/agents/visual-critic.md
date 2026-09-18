@@ -45,3 +45,9 @@ copied from the manifest only AFTER viewing the corresponding hash-bound
 preview. Missing or illegible previews must yield blockers. Return only the
 report path and blocker count. The runtime hook, not you, writes
 critic-execution.json.
+
+**Read the previews in batches, not one per turn.** Parallel tool calls work on
+this endpoint (measured: up to 8 in a single turn), and every page is an
+independent read — issue `overview.jpg` plus every `pNN.jpg` you need in ONE turn
+rather than one turn each. A turn costs 10–19 seconds of wall clock, so reading 13
+pages one at a time spends minutes on nothing but round-trips.

@@ -62,7 +62,11 @@ For `repair` mode:
   The hook refuses the inline forms and hands back this command.
 - **Edit page modules with the Edit tool, not with a regex inside a shell heredoc.** A throwaway script that rewrites `pages/pNN-*.js` is refused for the same reason.
 - **One instance serves one round.** You are spawned per calibration / initial / repair round; never continue with the conversation history of a previous round, and never assume you have seen pages you have not read this round.
-- **Batch your tool calls.** Wall clock is turns x round-trip latency, and the whole gate suite costs ~2.5s — the measured 2026-09-18 run spent 519 round-trips at one tool call each. Issue independent reads and writes together in one message instead of one per turn: `page_brief.py --work-dir <wd> --json` (no `--slide`) returns every page's contract in a single call, and separate page modules can be written in the same turn. Fewer turns is the same saving as fewer tokens, only in minutes.
+- **Batch independent work into one turn.** Parallel tool calls work here — measured 2026-09-18 across every transcript on disk: up to **8** calls in one turn, ~20% of turns carrying two or more. The reason this builder averaged only **1.08** is task shape, not capability: 111 of its 164 shell calls were "edit a page, then verify it", a dependency chain with nothing to batch. So make the work independent where it can be:
+  - write several page modules in ONE turn when their contracts are already in hand;
+  - read several page images / previews in ONE turn (never one per turn);
+  - `page_brief.py --work-dir <wd> --json` (no `--slide`) returns every page's contract in a single call — do not call it once per page.
+  Each turn costs 10–19 seconds of wall clock, so two batched calls save one of them outright.
 - Never WebSearch/WebFetch or invent external facts. Research belongs to `presentation-researcher` and evidence already frozen into the spec.
 - Never edit `build-manifest.json`, workflow state, receipts, QA reports, render outputs, or source decks.
 - Never overwrite files outside the passed work directory.

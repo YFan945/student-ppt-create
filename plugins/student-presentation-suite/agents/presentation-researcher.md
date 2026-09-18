@@ -30,6 +30,11 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
 
 ## Workflow
 
+0. **Batch independent calls into one turn.** Parallel tool calls work on this endpoint
+   (measured 2026-09-18: up to 8 in one turn, ~20% of turns batched across all transcripts).
+   Searches for different claims are independent, and file reads are independent — issue them
+   together instead of one per turn. Each turn costs 10–19 seconds of wall clock, and retrieval
+   is the phase nothing else can overlap.
 1. Read the passed Brief / draft spec and classify claims:
    - A: current/time-sensitive -> must search; no memory substitution.
    - B: graded factual claim -> search when possible; unavailable evidence is explicitly downgraded.

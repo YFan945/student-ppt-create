@@ -118,9 +118,14 @@ def collapse_duplicate_requests(requests: list[dict[str, Any]]) -> list[dict[str
             by_id[key] = merged
             slots.append(merged)
         elif item["context"] >= current["context"]:
+            carried = list(current.get("tool_ids") or [])
             current.update(item)
+            # Merge, never replace: the rows of one message carry DISJOINT content blocks, so
+            # replacing here is what made a batching session look like one call per turn.
+            current["tool_ids"] = list(dict.fromkeys([*carried, *(item.get("tool_ids") or [])]))
             current["copies"] = int(current.get("copies") or 1) + 1
         else:
+            current["tool_ids"] = list(dict.fromkeys([*(current.get("tool_ids") or []), *(item.get("tool_ids") or [])]))
             current["copies"] = int(current.get("copies") or 1) + 1
 
     collapsed: list[dict[str, Any]] = []
@@ -139,7 +144,7 @@ def collapse_duplicate_requests(requests: list[dict[str, Any]]) -> list[dict[str
             )
             if gap <= 2.0 and same:
                 prev["copies"] = int(prev.get("copies") or 1) + 1
-                prev["tool_calls"] = int(prev.get("tool_calls") or 0) + int(item.get("tool_calls") or 0)
+                prev["tool_ids"] = list(dict.fromkeys([*(prev.get("tool_ids") or []), *(item.get("tool_ids") or [])]))
                 continue
         collapsed.append(item)
     return collapsed
@@ -178,10 +183,17 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
                         "cache_write": usage.get("cache_creation_input_tokens") or 0,
                         "cache_read": usage.get("cache_read_input_tokens") or 0,
                         "output": usage.get("output_tokens") or 0,
-                        "tool_calls": sum(
-                            1 for block in (message.get("content") or [])
+                        # Tool calls are counted as the UNION per message id, not per row:
+                        # Claude Code splits one message's content blocks across rows, so a
+                        # per-row count caps at 1 and reports a batching-capable session as
+                        # "one call per turn" (measured 2026-09-18: per-row said max 1, the
+                        # union said max 8 with 19.8% of turns batched).
+                        "tool_ids": [
+                            str(block.get("id") or f"{block.get('name')}:{index}")
+                            for index, block in enumerate(message.get("content") or [])
                             if isinstance(block, dict) and block.get("type") == "tool_use"
-                        ),
+                        ],
+                        "tool_calls": 0,
                     }
                 )
             for block in message.get("content") or []:
@@ -228,6 +240,11 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     requests = collapse_duplicate_requests(requests)
     contexts = [item["context"] for item in requests]
+    # One turn's tool calls = the union of every block row of that message id.
+    for item in requests:
+        item["tool_calls"] = len(set(item.get("tool_ids") or []))
+    batch_sizes = [item["tool_calls"] for item in requests]
+    batched_turns = sum(1 for value in batch_sizes if value >= 2)
     fresh = sum(item["fresh"] for item in requests)
     cache_write = sum(item["cache_write"] for item in requests)
     cache_read = sum(item["cache_read"] for item in requests)
@@ -303,9 +320,13 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
         # many tool calls each turn carries — 1.0/turn means the model waits for every call.
         "turns": len(requests),
         "tool_calls_per_turn": (
-            round(sum(item.get("tool_calls") or 0 for item in requests) / len(requests), 2)
-            if requests else None
+            round(sum(batch_sizes) / len(batch_sizes), 2) if batch_sizes else None
         ),
+        "batched_turns": batched_turns,
+        "batched_turn_share": (
+            round(batched_turns / len(batch_sizes), 3) if batch_sizes else None
+        ),
+        "largest_batch": max(batch_sizes, default=0),
         "turn_seconds": {
             "median": (
                 sorted(gaps)[len(gaps) // 2] if gaps else None
@@ -364,12 +385,20 @@ def warnings(summary: dict[str, Any]) -> list[str]:
             "排查中断点：余额/限流报错、等待用户确认、子代理未回收"
         )
     per_turn = summary.get("tool_calls_per_turn")
+    largest = summary.get("largest_batch") or 0
     if per_turn is not None and per_turn < 1.6 and (summary.get("turns") or 0) >= 40:
-        notes.append(
-            f"回合经济：每回合只有 {per_turn} 个工具调用（CD-1 要求合并调用）。门本身只花秒级，"
-            "墙钟几乎全部来自「发一个、等 10~20 秒、再发下一个」——把独立调用合并进同一回合，"
-            "或把页面拆给并行 builder，是唯一不碰门的时间杠杆"
-        )
+        if largest >= 2:
+            notes.append(
+                f"回合经济：平均 {per_turn} 个调用/回合，但单回合出现过 {largest} 个——"
+                "说明批处理可用，只是任务形态把调用串成了依赖链（改一次→验一次）。"
+                "把互相独立的动作（多页写入、多张图读取）放进同一回合，或把页面拆给并行 builder"
+            )
+        else:
+            notes.append(
+                f"回合经济：每回合只有 {per_turn} 个调用且从未出现过并行调用。逐回合等一个往返"
+                "是墙钟的全部来源——先确认并行调用这条路是否被 prompt 关掉了（本仓库 2026-09-18 "
+                "实测：精简体 system prompt 不含并行指令），再考虑把工作拆给并行 builder"
+            )
     return notes
 
 
@@ -400,9 +429,12 @@ def render_markdown(summary: dict[str, Any], source: Path) -> str:
         "",
         "## Turn economy (墙钟 = 回合数 × 往返延迟；门本身只花秒级)",
         f"- turns: **{summary.get('turns')}** | tool calls per turn: "
-        f"**{summary.get('tool_calls_per_turn')}** "
-        + ("（≈1.0 表示每个工具调用都单独等一个往返——这是墙钟的主要来源）"
-           if (summary.get("tool_calls_per_turn") or 0) < 1.6 else ""),
+        f"**{summary.get('tool_calls_per_turn')}** | batched turns: "
+        f"{summary.get('batched_turns')} ({float(summary.get('batched_turn_share') or 0) * 100:.1f}%)"
+        f" | largest batch: {summary.get('largest_batch')}",
+        f"- 批处理可用性：单回合曾出现 {summary.get('largest_batch')} 个调用，"
+        "所以「一个调用一个回合」是任务形态（串行依赖）造成的，不是能力上限；"
+        "把独立工作（多页写入、多张图读取）放在同一回合即可减少回合数",
         f"- per-turn seconds: median {summary['turn_seconds']['median']} / "
         f"p90 {summary['turn_seconds']['p90']} / mean {summary['turn_seconds']['mean']}",
         f"- 20 分钟预算可容纳的回合数：中位延迟下 **{summary['turns_under_20min']['at_median']}** 回合、"

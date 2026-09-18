@@ -2,6 +2,41 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.14.5 — 2026-09-18
+
+来源：owner 要求调研"批处理在 Claude Code + deepseek-v4.1-flash 下能不能运行"。
+结论是**能**，但要先纠正一个测量假象，并说明为什么此前的 builder 用不上它。
+
+### 测量修正：批处理可用，之前测错了
+
+- 早期分析按"单行内最多的 tool_use 数"统计，得出"1767 个回合里单回合最多 1 个调用"。
+  这是假象：Claude Code 把一条 assistant 消息的 content blocks **拆成多行**，逐行数永远得 1。
+  按 `tool_use.id` 对同一 message 取并集后：**单回合最多 8 个调用、19.8% 的回合带 ≥2 个、
+  整体 1.21 个/回合**。
+- 同样修正 `session_cost.py`：它的 `tool_calls_per_turn` 因此前按行累加而恒等于 1.0 附近。
+  现在按 message 取并集，并新增 `batched_turns` / `batched_turn_share` / `largest_batch`；
+  实测与手工核对一致（0.14.2 主会话 0.95、builder 1.08、0.13.4 主会话 1.07）。
+
+### 为什么 0.14.2 的 builder 只有 1.08
+
+不是能力上限，是**任务形态**：它 164 次 shell 调用里 111 次是"改一页→验一页"，
+依赖链上没有可并行的对象。对照组是 0.13.4 的某个 builder 实例：**1.50 个/回合、51.3% 的
+回合在批处理**——同一端点、同一模型。
+
+### 为什么并行指令一直没生效
+
+- CLI 自带 `# Using your tools`（含 "Maximize use of parallel tool calls"），
+  但这条端点收到的是**精简版 system prompt**：实测 5.9K 字符 / 10 段，
+  `Using your tools` 段**不在其中**（全部 38 份 transcript、每个会话与子 agent 均无）。
+  幸存的只有一句陈述性弱提示："Independent tool calls can run in parallel in one response."
+- 而**插件自己的指令面确实进 prompt**：22 份快照含 agent 定义正文。
+  因此并行/批处理的要求写进三个 agent 定义（builder / critic / researcher）：
+  明确"批处理可用（实测单回合最多 8 个）"、给出可批处理的具体对象
+  （多页写入同一回合、多张图读取同一回合、`page_brief.py --json` 不带 `--slide` 一次拿全），
+  并说明"一个调用一个回合是任务形态造成的，不是上限"。
+- CD-11 同步改写：附上本篇的对照表与"端点收到精简 prompt"的事实，
+  今后不再把批处理当成"需要模型配合的愿望"。
+
 ## 0.14.4 — 2026-09-18
 
 来源：owner 提出"我想要一项 ppt 任务能在 20 分钟内解决"。实测把这个目标拆成了可算的数：

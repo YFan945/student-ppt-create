@@ -169,6 +169,28 @@ class SessionCostTests(unittest.TestCase):
         self.assertEqual(699_497, summary["context"]["peak"])
         self.assertEqual(699_497 + 100, summary["tokens"]["total"])
 
+    def test_parallel_calls_split_across_rows_still_count_as_one_batch(self) -> None:
+        """A batching session must not be reported as "one call per turn".
+
+        The rows of one message carry DISJOINT content blocks, so summing per row caps at 1:
+        an earlier version reported max 1 call/turn where the transcript actually contained
+        batches of up to 8, which would have sent a time-budget decision the wrong way.
+        """
+        path = Path(self._tmp.name) / "batched-rows.jsonl"
+        records = [
+            assistant(0, 50_000, [tool_use("p1", "Read", DECK)], "msg_b"),
+            assistant(1, 50_100, [tool_use("p2", "Read", DECK)], "msg_b"),
+            assistant(2, 50_200, [tool_use("p3", "Read", DECK)], "msg_b"),
+        ]
+        with path.open("w", encoding="utf-8") as stream:
+            for record in records:
+                stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        summary = SESSION_COST.profile(SESSION_COST.read_records(path))
+        self.assertEqual(1, summary["turns"])
+        self.assertEqual(3.0, summary["tool_calls_per_turn"])
+        self.assertEqual(3, summary["largest_batch"])
+        self.assertEqual(1, summary["batched_turns"])
+
     def test_turn_economy_is_reported(self) -> None:
         """Wall clock is turns x round-trip latency, so this is the time-budget metric."""
         self.assertEqual(3, self.summary["turns"])
