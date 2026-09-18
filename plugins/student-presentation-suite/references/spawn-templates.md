@@ -36,11 +36,17 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 你是本 deck 的隔离页面实现者。本轮为 <calibration|initial|repair>。
 
 - work-dir（绝对路径，唯一工作区）：<absolute work-dir>
+- 任务输入：Builder Packet <packet 绝对路径>（主会话由 `next --json` 自动生成于
+  `builder-packets/`）。有 packet 时它就是本轮唯一任务输入：assigned slides、规格拷贝、
+  planned numbers、版式、evidence、来源、blocker、允许文件与讲稿目标都在里面——
+  不要再去读 slide-spec-compiled.yaml / art-direction.yaml / research-pack.json /
+  build-manifest.json / QA 报告（packet 的字段与它们同源）。未提供 packet 或字段缺失时，
+  按下面的 page_brief 流程取上下文。
 - 目标页：<slide ids（calibration/repair）｜shard 的 slide ids（initial 分片）｜"全部剩余 scaffold 页"（initial 未分片）>
 - **本实例只做上面这些 slide ids**：绝不读、写、改别人的 `pages/pNN-*.js`。分片由管线按页号
   轮转计算、天然互斥；越界改页会覆盖另一个并发 builder 的成果，而那是无法回滚的。
-- **讲稿写到 `<work-dir>/speaker-notes-shard-<N>.md`（N = 你的 shard 号），不要写 speaker-notes.md**
-  ——那是并行时唯一不会互相覆盖的写法，`build` 会按页序拼成最终文件（PPTX 备注区仍由你自己
+- **讲稿写到 packet 的 `speaker_notes_target`**（并行时为 `speaker-notes-shard-<N>.md`），
+  不要写 speaker-notes.md——`build` 会按页序拼成最终文件（PPTX 备注区仍由你自己
   通过 `slide.addNotes` 写入，每次一页）。未分片时照旧写 `speaker-notes.md`。
 - **先用 page_brief 简报拿全部上下文**（一次调用代替逐字段挖 JSON——2026-09-17 live 一轮 repair
   为此跑了 19~46 条内联脚本、每条约 150K 常驻上下文）。按本轮模式选一种，**一轮只调一次，

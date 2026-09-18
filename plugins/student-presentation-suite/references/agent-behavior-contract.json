@@ -23,6 +23,12 @@
     "inline_script_over_work_artifacts": false,
     "builder_instance_reuse": false,
     "read_other_shard_page_modules": false,
+    "packet": {
+      "generator": "skills/sp-deck/scripts/builder_packet.py",
+      "packet_dir": "builder-packets/",
+      "packet_is_complete_task_input": true,
+      "reread_inputs_covered_by_packet": false
+    },
     "edit_scope": {
       "initial": "assigned_pages",
       "calibration": "assigned_pages",

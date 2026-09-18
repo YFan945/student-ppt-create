@@ -2,6 +2,45 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — v0.15 Pipeline Simplification（Batch 2：Builder Packet）
+
+上下文从「隔离但重复读取」升级为「隔离 + 最小任务包」：并行 builder 不再各自重读
+同一份 Slide Spec / Art Direction / 研究包 / QA 报告，改由管线在派发前投影出每个
+实例的唯一任务输入。与 Batch 0/1 一起攒着随 0.15.0 发布。
+
+### Builder Packet 生成器
+
+- 新增 `skills/sp-deck/scripts/builder_packet.py`：为每个 builder 实例生成
+  `builder-packets/<mode>[-shard NN].json`，内容包括 assigned slides（冻结 spec 拷贝、
+  planned requirements、evidence、来源）、完整 Art Direction 投影、允许文件清单、
+  讲稿目标文件、禁止动作清单。
+- 每页 requirements 与 actual-content 门同源（复用 `planned_requirements()`），
+  packet 告诉 builder 的与门要判的字节一致。
+- initial 模式默认取全部剩余 scaffold 页；calibration 默认取 high-leverage 前三页；
+  repair 从指定 QA / pre-QA 报告派生 blocker 页并附带 deck 级 blocker、
+  `must_not_regress`（来自 `visual-score-history.json` 的上一轮分数）。
+- 分片规则与管线 `builder_shards` 一致（轮转分配、互斥、阈值相同），每分片一个 packet。
+
+### 派发集成与指令投影
+
+- `ppt_pipeline.py next --json` 在四个 builder 派发点（calibration / initial 分片 /
+  pre-QA 修复 / 正式 QA 修复）自动生成 packet，并在 `builder_packet` /
+  `builder_packets` 字段带回路径；packet 生成失败不影响派发应答本身。
+- `agents/presentation-builder.md` 新增 Builder Packet 契约段：有 packet 时它就是
+  本轮唯一任务输入，禁止重读 packet 已投影的冻结输入；缺字段时回退 page_brief 流程。
+- `spawn-templates.md` builder 固定段同步：任务输入改为 packet 路径。
+- `agent-behavior-contract.json` 新增 packet 小节（packet_is_complete_task_input、
+  reread_inputs_covered_by_packet=false）。
+- `production_entry_guard.py` 允许面加入 packet 生成器（与 page_brief 同理：
+  指令要求的命令不能被守卫拦死）。
+
+### 测试
+
+- 新增 `tests/test_builder_packet.py`（11 用例）：calibration 默认集、initial 单包与
+  分片互斥、repair blocker 投影与 must_not_regress、CLI、错误路径。
+- `test_ppt_pipeline.py` 新增派发层用例（3 个）：next 应答带 calibration packet、
+  无 art-direction 时派发不受影响、9 页 deck 按 shard 生成 packet 且恰好覆盖每页一次。
+
 ## 0.14.6 — 2026-09-18
 
 v0.15 Pipeline Simplification 系列的第一批（Batch 0 代码部分 + Batch 1）：规则机器化 →

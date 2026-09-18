@@ -41,6 +41,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+import builder_packet as _packet  # noqa: E402
 import generator_scaffold as _scaffold  # noqa: E402
 
 ROOT = HERE.parents[2]
@@ -1952,6 +1953,25 @@ def cmd_next(args: argparse.Namespace) -> int:
                         "scaffolded so an early full build stays impossible. The MAIN session never edits "
                         "pages/pNN-*.js itself. After BUILDER_DONE run calibration_preview.py."
                     )
+                    # Builder Packet (v0.15 Batch 2): project the calibration default
+                    # set so the builder gets one task input instead of re-reading
+                    # spec + art direction + research pack itself.
+                    try:
+                        cal_slides = _packet.default_calibration_slides(work_dir)
+                        if cal_slides:
+                            cal_path, _ = _packet.write_packet(work_dir, "calibration", cal_slides)
+                            payload["builder_packet"] = {
+                                "mode": "calibration",
+                                "slides": cal_slides,
+                                "packet": str(cal_path),
+                            }
+                            payload["notes"] += (
+                                f" A packet projecting the default calibration set ({', '.join(map(str, cal_slides))}) "
+                                f"is at {cal_path} — pass it as the builder's task input. To pick different slides, "
+                                "rerun builder_packet.py --mode calibration --slides <ids> first."
+                            )
+                    except Exception:
+                        pass  # packet generation must never break the dispatch answer
                 elif not calibration_rendered:
                     slides = load_json(calibration_manifest).get("slides") or []
                     slide_args = " ".join(str(slide) for slide in slides)
@@ -2012,6 +2032,20 @@ def cmd_next(args: argparse.Namespace) -> int:
                                 "ONE message (see builder_shards) so the page work runs concurrently — "
                                 "sharding changes no gate, only the wall clock."
                             )
+                        # Builder Packet (v0.15 Batch 2): one packet per instance, projected
+                        # from the frozen inputs so builders stop re-reading them.
+                        try:
+                            packets = _packet.prepare_packets(work_dir, "initial", remaining)
+                            if packets:
+                                payload["builder_packets"] = packets
+                                payload["notes"] += (
+                                    " One packet per instance is generated under builder-packets/ "
+                                    "(builder_packets field) — pass each builder its packet path as the "
+                                    "task input; the packet projects slides, style, evidence and allowed "
+                                    "files, so builders must not re-read the frozen inputs."
+                                )
+                        except Exception:
+                            pass  # packet generation must never break the dispatch answer
         elif state == "producing":
             if pre_qa_failed_current(manifest):
                 # Deterministic misses are fixed BEFORE any render or critic cost:
@@ -2044,6 +2078,26 @@ def cmd_next(args: argparse.Namespace) -> int:
                 shards = builder_shards(fixable, work_dir)
                 if shards:
                     payload["builder_shards"] = shards
+                # Builder Packet (v0.15 Batch 2): repair packet per instance, blockers
+                # projected from the pre-QA reports instead of the builder re-reading them.
+                try:
+                    pre_qa_reports = [
+                        name
+                        for name in ("pre-qa-actual-content.json", "pre-qa-rendered.json", "pre-qa-quality.json")
+                        if (work_dir / name).is_file()
+                    ]
+                    packets = _packet.prepare_packets(
+                        work_dir, "repair", fixable or None, pre_qa_reports
+                    ) if fixable else []
+                    if packets:
+                        payload["builder_packets"] = packets
+                        payload["notes"] += (
+                            " Repair packets with the projected blockers are generated under "
+                            "builder-packets/ (builder_packets field) — pass each builder its packet "
+                            "path; it must not re-read the reports the packet covers."
+                        )
+                except Exception:
+                    pass  # packet generation must never break the dispatch answer
             elif render_is_current(manifest):
                 render = manifest.get("render") or {}
                 contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
@@ -2098,6 +2152,22 @@ def cmd_next(args: argparse.Namespace) -> int:
                         "Deck-level blockers without a slide number mean the whole deck is in scope — "
                         "use ONE builder reading the reports."
                     )
+                # Builder Packet (v0.15 Batch 2): full-QA repair packets projected from
+                # pipeline-qa.json, generated once the repair is recorded.
+                try:
+                    if blocker_slides and (work_dir / "pipeline-qa.json").is_file():
+                        packets = _packet.prepare_packets(
+                            work_dir, "repair", blocker_slides, ["pipeline-qa.json"]
+                        )
+                        if packets:
+                            payload["builder_packets"] = packets
+                            payload["notes"] += (
+                                " Repair packets with the projected blockers are generated under "
+                                "builder-packets/ (builder_packets field) — spawn each builder with "
+                                "its packet path as the task input."
+                            )
+                except Exception:
+                    pass  # packet generation must never break the dispatch answer
         elif state == "complete":
             payload["next_command"] = "(done)"
             payload["notes"] = "do not re-inject /sp-deck"

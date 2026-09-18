@@ -1,0 +1,347 @@
+#!/usr/bin/env python3
+"""Generate the Builder Packet: the isolated builder's complete task input.
+
+Batch 2 of the v0.15 pipeline-simplification series (context projection). Today a
+spawned builder re-reads the same frozen inputs its siblings read — manifest, Slide
+Spec, Art Direction, page briefs, QA reports — so three parallel builders pay for
+three copies of one context. This module projects exactly the slice one builder
+instance needs into a single JSON file:
+
+    builder-packets/calibration.json
+    builder-packets/initial-shard-01.json
+    builder-packets/repair-shard-02.json
+
+The builder's entry contract (agents/presentation-builder.md) becomes: the packet
+path is the task input; everything it covers — assigned slides, style, evidence,
+sources, blockers, allowed files, forbidden actions — must not be re-read from the
+work directory. `next --json` generates the packets automatically when it routes to
+a builder spawn; this CLI also runs standalone for a calibration slide override.
+
+The projection is derived from the same sources the gates judge:
+- per-slide requirements come from `pptx_actual_content_check.planned_requirements()`
+  (byte-identical to what the actual-content gate compares against);
+- evidence/sources come from the frozen spec ledger and research pack;
+- repair blockers come from the QA / pre-QA reports on disk;
+- `must_not_regress` comes from `visual-score-history.json` (the R3 regression rail).
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import generator_scaffold as _scaffold  # noqa: E402
+import pptx_actual_content_check as actual_check  # noqa: E402
+from page_brief import (  # noqa: E402
+    deck_state,
+    evidence_for_slide,
+    find_spec,
+    high_leverage,
+    load_optional,
+    load_structured,
+    page_modules,
+    slide_number,
+    sources_by_id,
+)
+
+PACKET_DIR_NAME = "builder-packets"
+SCORE_HISTORY_NAME = "visual-score-history.json"
+PARALLEL_MIN_PAGES = 4
+MAX_PARALLEL_BUILDERS = 3
+FORBIDDEN_ACTIONS = [
+    "build",
+    "render",
+    "qa",
+    "research",
+    "calibration_preview",
+    "soffice",
+]
+NO_REREAD = (
+    "this packet is the complete task input for its assigned slides: do not re-read "
+    "slide-spec-compiled.yaml, art-direction.yaml, research-pack.json, build-manifest.json "
+    "or the QA reports it projects — every field below is byte-derived from those sources"
+)
+
+
+def default_calibration_slides(work_dir: Path, limit: int = 3) -> list[int]:
+    """High-leverage slides are the deterministic calibration default.
+
+    The main session may still pick its own set; `next --json` names the override
+    command when it hands over the packet.
+    """
+    return high_leverage(work_dir)[:limit]
+
+
+def remaining_scaffold_slides(work_dir: Path) -> list[int]:
+    """Slides whose page module still carries the stub marker (never implemented)."""
+    pages = work_dir / "pages"
+    by_name = {path.name: path for path in _scaffold.listed_page_files(pages)}
+    stubs = set(_scaffold.scaffolded_pages(list(by_name.values())))
+    result: list[int] = []
+    for name in sorted(stubs):
+        match = _scaffold.PAGE_NAME_RE.match(name)
+        if match:
+            result.append(int(match.group(1)))
+    return sorted(result)
+
+
+def split_shards(slides: list[int], work_dir: Path) -> list[dict[str, Any]]:
+    """Round-robin disjoint shards over the sorted slide list (mirrors the pipeline)."""
+    targets = sorted({int(slide) for slide in slides if int(slide) > 0})
+    by_slide = page_modules(work_dir)
+    known = [slide for slide in targets if slide in by_slide]
+    if len(known) < PARALLEL_MIN_PAGES or MAX_PARALLEL_BUILDERS < 2:
+        return []
+    shard_count = min(MAX_PARALLEL_BUILDERS, len(known))
+    shards: list[list[int]] = [[] for _ in range(shard_count)]
+    for position, slide in enumerate(known):
+        shards[position % shard_count].append(slide)
+    return [{"shard": index + 1, "slides": slides_} for index, slides_ in enumerate(shards)]
+
+
+def score_history(work_dir: Path) -> dict[str, dict[str, Any]]:
+    loaded = load_optional(work_dir / SCORE_HISTORY_NAME)
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def report_slide_blockers(report: dict[str, Any], slide: int) -> list[dict[str, Any]]:
+    out = []
+    for item in (report.get("problems") or []) + (report.get("issues") or []):
+        if isinstance(item, dict) and item.get("slide") == slide:
+            out.append(
+                {
+                    "gate": item.get("gate"),
+                    "code": item.get("code"),
+                    "severity": item.get("severity"),
+                    "message": str(item.get("message") or "")[:300],
+                }
+            )
+    return out
+
+
+def build_packet(
+    work_dir: Path,
+    mode: str,
+    slides: list[int] | None = None,
+    shard: int | None = None,
+    qa_reports: list[Path] | None = None,
+) -> dict[str, Any]:
+    """Project one builder instance's complete task input. Raises SystemExit on
+    missing spec or unknown slides, exactly like `page_brief.py`."""
+    if mode not in {"calibration", "initial", "repair"}:
+        raise SystemExit(f"mode must be calibration|initial|repair, got: {mode}")
+    spec_path = find_spec(work_dir)
+    if spec_path is None:
+        raise SystemExit(f"No Slide Spec found in {work_dir}")
+    spec = load_structured(spec_path)
+    if not isinstance(spec, dict):
+        raise SystemExit(f"Slide Spec root must be an object: {spec_path}")
+
+    if slides is None:
+        if mode == "initial":
+            slides = remaining_scaffold_slides(work_dir)
+        elif mode == "calibration":
+            slides = default_calibration_slides(work_dir)
+        else:
+            raise SystemExit("repair packets need explicit slides (or a qa-report to derive them)")
+    targets = sorted({int(slide) for slide in (slides or []) if int(slide) > 0})
+    if not targets:
+        raise SystemExit("no assigned slides: nothing to project")
+
+    modules = page_modules(work_dir)
+    deck = deck_state(work_dir)
+    leverage = high_leverage(work_dir)
+    sources = sources_by_id(load_optional(work_dir / "research-pack.json"))
+    spec_slides = [item for item in (spec.get("slides") or []) if isinstance(item, dict)]
+
+    reports: list[dict[str, Any]] = []
+    loaded_reports: list[dict[str, Any]] = []
+    for path in qa_reports or []:
+        report = load_optional(work_dir / str(path)) if not Path(path).is_absolute() else load_optional(Path(path))
+        if isinstance(report, dict):
+            loaded_reports.append(report)
+            reports.append(str((work_dir / str(path)).resolve()))
+
+    history = score_history(work_dir) if mode == "repair" else {}
+    details: list[dict[str, Any]] = []
+    for item in spec_slides:
+        number = slide_number(item, len(details) + 1)
+        if number not in targets:
+            continue
+        entry: dict[str, Any] = dict(item)
+        entry["page_module"] = modules.get(number)
+        entry["high_leverage"] = number in leverage
+        entry["requirements"] = actual_check.planned_requirements(item)
+        entry["evidence"] = evidence_for_slide(spec, item, number)
+        cited: list[dict[str, Any]] = []
+        for evidence_entry in entry["evidence"]:
+            for source_id in evidence_entry["source_ids"]:
+                if source_id in sources and sources[source_id] not in cited:
+                    cited.append(sources[source_id])
+        entry["sources"] = cited
+        entry["blockers"] = [
+            blocker for report in loaded_reports for blocker in report_slide_blockers(report, number)
+        ]
+        if not loaded_reports:
+            entry["blockers"] = [
+                problem for problem in deck.get("problems", []) if problem.get("slide") == number
+            ]
+        if history.get(str(number)):
+            entry["must_not_regress"] = history[str(number)]
+        details.append(entry)
+
+    known_slides = {slide_number(item, index + 1) for index, item in enumerate(spec_slides)}
+    missing = [slide for slide in targets if slide not in known_slides]
+    if missing:
+        raise SystemExit(f"Slides {missing} are not in the plan ({spec_path.name})")
+
+    notes_target = f"speaker-notes-shard-{shard}.md" if shard else "speaker-notes.md"
+    allowed_files = [modules[slide] for slide in targets if slide in modules] or [
+        "pages/pNN-*.js"
+    ]
+    allowed_files.append(notes_target)
+
+    packet: dict[str, Any] = {
+        "schema_version": "1.0",
+        "mode": mode,
+        "work_dir": str(work_dir),
+        "shard": shard,
+        "assigned_slides": targets,
+        "speaker_notes_target": notes_target,
+        "art_direction": load_optional(work_dir / "art-direction.yaml"),
+        "art_direction_path": str((work_dir / "art-direction.yaml").resolve()),
+        "slides": details,
+        "allowed_files": allowed_files,
+        "forbidden_actions": FORBIDDEN_ACTIONS,
+        "do_not_reread": NO_REREAD,
+    }
+    if mode == "repair":
+        packet["reports"] = reports
+        deck_level = [
+            {
+                "gate": item.get("gate"),
+                "code": item.get("code"),
+                "severity": item.get("severity"),
+                "message": str(item.get("message") or "")[:300],
+            }
+            for report in loaded_reports
+            for item in (report.get("problems") or []) + (report.get("issues") or [])
+            if isinstance(item, dict) and item.get("slide") is None
+        ]
+        packet["deck_blockers"] = deck_level
+        packet["must_not_regress_note"] = (
+            "pages that already passed review must not drop 1.5+ points; the QA gate "
+            "compares this round's per-slide scores against visual-score-history.json"
+        )
+    return packet
+
+
+def packet_name(mode: str, shard: int | None) -> str:
+    return f"{mode}-shard-{shard:02d}.json" if shard else f"{mode}.json"
+
+
+def write_packet(
+    work_dir: Path,
+    mode: str,
+    slides: list[int] | None = None,
+    shard: int | None = None,
+    qa_reports: list[Path] | None = None,
+) -> tuple[Path, dict[str, Any]]:
+    """Generate and write one packet; returns (path, packet)."""
+    packet = build_packet(work_dir, mode, slides, shard, qa_reports)
+    out_dir = work_dir / PACKET_DIR_NAME
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / packet_name(mode, shard)
+    path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path, packet
+
+
+def prepare_packets(
+    work_dir: Path,
+    mode: str,
+    slides: list[int] | None = None,
+    qa_reports: list[Path] | None = None,
+) -> list[dict[str, Any]]:
+    """Generate one packet per builder instance for a spawn, disjoint by shard.
+
+    Returns the descriptor list `next --json` embeds; an empty slide list yields []."""
+    if mode == "initial" and slides is None:
+        slides = remaining_scaffold_slides(work_dir)
+    targets = [int(slide) for slide in (slides or [])]
+    if not targets:
+        return []
+    shards = split_shards(targets, work_dir) if mode != "calibration" else []
+    out: list[dict[str, Any]] = []
+    if shards:
+        for shard in shards:
+            path, packet = write_packet(work_dir, mode, shard["slides"], shard["shard"], qa_reports)
+            out.append(
+                {
+                    "shard": shard["shard"],
+                    "slides": packet["assigned_slides"],
+                    "speaker_notes_target": packet["speaker_notes_target"],
+                    "packet": str(path),
+                }
+            )
+    else:
+        path, packet = write_packet(work_dir, mode, targets, None, qa_reports)
+        out.append(
+            {
+                "shard": None,
+                "slides": packet["assigned_slides"],
+                "speaker_notes_target": packet["speaker_notes_target"],
+                "packet": str(path),
+            }
+        )
+    return out
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate a Builder Packet (one builder's complete task input)")
+    parser.add_argument("--work-dir", type=Path, required=True)
+    parser.add_argument("--mode", choices=["calibration", "initial", "repair"], required=True)
+    parser.add_argument("--slides", type=int, nargs="+", help="assigned slides; defaults depend on mode")
+    parser.add_argument("--shard", type=int, help="shard number for the speaker-notes fragment name")
+    parser.add_argument(
+        "--qa-report",
+        action="append",
+        default=[],
+        help="QA / pre-QA report (relative to work-dir or absolute); repair blockers come from here",
+    )
+    parser.add_argument("--json", action="store_true", help="print the generated packet descriptor")
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    work_dir = args.work_dir.resolve()
+    if not work_dir.is_dir():
+        raise SystemExit(f"Work directory does not exist: {work_dir}")
+    path, packet = write_packet(work_dir, args.mode, args.slides, args.shard, args.qa_report)
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "packet": str(path),
+                    "mode": packet["mode"],
+                    "shard": packet["shard"],
+                    "slides": packet["assigned_slides"],
+                    "speaker_notes_target": packet["speaker_notes_target"],
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
+    else:
+        print(f"packet: {path} (mode={packet['mode']} slides={packet['assigned_slides']})")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

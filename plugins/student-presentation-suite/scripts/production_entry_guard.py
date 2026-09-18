@@ -29,6 +29,11 @@ PUBLIC_DECK_ENTRYPOINTS = frozenset(
         # to. Leaving it off this list re-created the 0.13.4 failure — the command
         # the instructions mandate being refused by the guard that polices it.
         "page_brief.py",
+        # builder_packet.py: generates the Builder Packet (v0.15 Batch 2). The
+        # pipeline generates packets inside `next`; the CLI form exists for a
+        # calibration slide override, and refusing it would recreate the same
+        # mandated-command-refused-by-guard dead end as page_brief.py above.
+        "builder_packet.py",
         # run_gates.py is the canonical gate orchestrator (run_gates.sh only locates
         # an interpreter); on hosts where `sh` resolves to WSL, the .sh wrapper cannot
         # open a `C:/...` path and exits 127, so the python form must stay runnable.

@@ -478,7 +478,7 @@ class PreQaGateTests(PipelineTestCase):
         with self.assertRaises(pp.RefusedError):
             pp.cmd_render(ns("render", self.work, cols=3, prefix="slide"))
 
-    def next_payload(self) -> dict:
+    def next_dispatch_payload(self) -> dict:
         buffer = io.StringIO()
         with redirect_stdout(buffer):
             rc = pp.main(["next", "--work-dir", str(self.work), "--json"])
@@ -487,7 +487,7 @@ class PreQaGateTests(PipelineTestCase):
 
     def test_next_routes_pre_qa_failure_to_builder_not_critic(self) -> None:
         self.assertEqual(self.build(self.failing_runner()), 0)
-        payload = self.next_payload()
+        payload = self.next_dispatch_payload()
         self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
         self.assertFalse(payload["pre_qa"]["ok"])
         self.assertEqual(1, payload["pre_qa"]["rounds"])
@@ -504,7 +504,7 @@ class PreQaGateTests(PipelineTestCase):
             self.assertEqual(self.build(runner), 0)
             self.edit_page()
         self.assertEqual(pp.MAX_PRE_QA_REBUILDS, self.manifest()["pre_qa"]["rounds"])
-        payload = self.next_payload()
+        payload = self.next_dispatch_payload()
         self.assertNotIn("agent", payload, "capped rounds must stop the free-fix routing")
         self.assertIn("render", payload["next_command"])
 
@@ -728,7 +728,7 @@ class BuildTests(PipelineTestCase):
             pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.work / "deck.js")]), 0
         )
 
-    def next_payload(self) -> dict:
+    def next_dispatch_payload(self) -> dict:
         buffer = io.StringIO()
         with redirect_stdout(buffer):
             rc = pp.main(["next", "--work-dir", str(self.work), "--json"])
@@ -738,7 +738,7 @@ class BuildTests(PipelineTestCase):
     def test_next_after_plan_dispatches_to_calibration_builder(self) -> None:
         """Fresh planned create-mode work must spawn the builder, not edit pages directly."""
         self.plan(self.files)
-        payload = self.next_payload()
+        payload = self.next_dispatch_payload()
         self.assertEqual("planned", payload["state"])
         self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
         self.assertNotIn("build", payload["next_command"])
@@ -753,7 +753,7 @@ class BuildTests(PipelineTestCase):
         (calibration / "calibration-manifest.json").write_text(
             json.dumps({"version": "1.0", "slides": [1, 6, 7]}), encoding="utf-8"
         )
-        payload = self.next_payload()
+        payload = self.next_dispatch_payload()
         self.assertIn("calibration_preview.py", payload["next_command"])
         self.assertIn("--slides 1 6 7", payload["next_command"])
 
@@ -794,7 +794,7 @@ class BuildTests(PipelineTestCase):
         """
         self.plan(self.files)
         self.calibration_with_render()
-        payload = self.next_payload()
+        payload = self.next_dispatch_payload()
         self.assertEqual("student-presentation-suite:visual-critic", payload["agent"])
         self.assertNotIn("build", payload["next_command"])
         self.assertIn("no independent calibration review on disk", payload["calibration"]["status"])
@@ -806,7 +806,7 @@ class BuildTests(PipelineTestCase):
         self.plan(self.files)
         calibration = self.calibration_with_render()
         self.write_calibration_review(calibration)
-        payload = self.next_payload()
+        payload = self.next_dispatch_payload()
         self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
         self.assertIn("mode=initial", payload["notes"])
 
@@ -823,7 +823,7 @@ class BuildTests(PipelineTestCase):
                 {"slide": 7, "visual_structure": "compare", "issues": []},
             ],
         )
-        payload = self.next_payload()
+        payload = self.next_dispatch_payload()
         self.assertEqual("student-presentation-suite:visual-critic", payload["agent"])
         self.assertIn("repetitive_structure_run", payload["calibration"]["status"])
 
@@ -1294,6 +1294,84 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.assertEqual([], slides)
         self.assertIsNone(pp.builder_shards(slides, self.work))
 
+
+
+
+
+    """`next --json` must hand the builder's packet over with the spawn it names.
+
+    v0.15 Batch 2: the packet is the builder's complete task input; if dispatch
+    routes to a builder spawn but emits no packet, the main session falls back to
+    the old re-read-everything flow and the projection is dead code.
+    """
+
+    def write_rich_spec(self, count: int) -> None:
+        slides = [
+            {
+                "id": n,
+                "title": f"Slide {n}",
+                "claim": f"Claim {n}",
+                "layout": "cover" if n == 1 else "content",
+                "content": [],
+                "slide_copy": [f"Copy {n}"],
+            }
+            for n in range(1, count + 1)
+        ]
+        self.files["spec"].write_text(
+            json.dumps({"meta": {"slide_count": count, "topic": "test"}, "slides": slides}),
+            encoding="utf-8",
+        )
+
+    def write_art(self, leverage: list[int]) -> None:
+        self.files["art"].write_text(
+            "high_leverage_slides: [" + ", ".join(str(n) for n in leverage) + "]\n",
+            encoding="utf-8",
+        )
+
+    def next_dispatch_payload(self) -> dict:
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = pp.main(["next", "--work-dir", str(self.work), "--json"])
+        self.assertEqual(rc, 0)
+        return json.loads(buffer.getvalue())
+
+    def test_next_emits_a_calibration_packet_for_the_default_set(self) -> None:
+        self.files = self.write_inputs()
+        self.write_rich_spec(9)
+        self.write_art([1, 3, 4])
+        self.plan(self.files)
+        payload = self.next_dispatch_payload()
+        self.assertIn("builder_packet", payload)
+        self.assertEqual("calibration", payload["builder_packet"]["mode"])
+        self.assertEqual([1, 3, 4], payload["builder_packet"]["slides"])
+        packet = json.loads(
+            Path(payload["builder_packet"]["packet"]).read_text(encoding="utf-8")
+        )
+        self.assertEqual([1, 3, 4], packet["assigned_slides"])
+        self.assertEqual("calibration.json", Path(payload["builder_packet"]["packet"]).name)
+        self.assertTrue(all(item.get("requirements") for item in packet["slides"]))
+
+    def test_next_survives_a_missing_art_direction_without_a_packet(self) -> None:
+        """Packet generation must never break the dispatch answer."""
+        self.files = self.write_inputs()
+        self.plan(self.files)
+        payload = self.next_dispatch_payload()
+        self.assertNotIn("builder_packet", payload)
+        self.assertEqual("student-presentation-suite:presentation-builder", payload.get("agent"))
+
+    def test_initial_packets_are_prepared_per_shard_for_a_large_deck(self) -> None:
+        self.files = self.write_inputs()
+        self.write_rich_spec(9)
+        self.write_art([1, 3, 4])
+        self.plan(self.files)
+        packets = pp._packet.prepare_packets(self.work, "initial")
+        self.assertEqual(pp.MAX_PARALLEL_BUILDERS, len(packets))
+        assigned: list[int] = []
+        for descriptor in packets:
+            packet = json.loads(Path(descriptor["packet"]).read_text(encoding="utf-8"))
+            assigned.extend(packet["assigned_slides"])
+        self.assertEqual(sorted(assigned), list(range(1, 10)), "every page exactly once")
+
     def test_slide_level_blockers_are_sharded(self) -> None:
         self.write_spec(9)
         self.plan(self.files)
@@ -1358,7 +1436,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
             }),
             encoding="utf-8",
         )
-        payload = self.next_payload()
+        payload = self.next_dispatch_payload()
         self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
         self.assertIn("mode=initial", payload["notes"])
         self.assertIn("builder_shards", payload)
