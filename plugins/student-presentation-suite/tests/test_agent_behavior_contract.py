@@ -125,6 +125,18 @@ class PageBriefStrategyProjectionTests(unittest.TestCase):
         self.assertIn("--slides <ids>", text, "calibration/repair need the target-pages form")
         self.assertIn("--work-dir <wd> --json", text, "initial needs the whole-deck form")
 
+    def test_packet_and_legacy_reading_are_conditional_not_contradictory(self) -> None:
+        """Batch 2.1: the packet section says 'do not re-read the frozen inputs'
+        while the Scope used to say 'read the frozen inputs' unconditionally —
+        the same contradiction shape as the page_brief conflict. The Scope steps
+        must be explicitly fallback-only."""
+        text = BUILDER_MD.read_text(encoding="utf-8")
+        self.assertIn("Conditional on the task input", text)
+        self.assertGreaterEqual(text.count("fallback-only"), 4,
+            "every unconditional 'read the frozen inputs' step must be marked fallback-only")
+        # The repair report read is projected into repair packets too.
+        self.assertIn("its `slides[].blockers` / `deck_blockers` ARE the report projection", text)
+
     def test_spawn_templates_project_the_same_strategy(self) -> None:
         text = TEMPLATES_MD.read_text(encoding="utf-8")
         blocks = re.split(r"^## ", text, flags=re.M)

@@ -1372,6 +1372,49 @@ class ParallelBuilderShardTests(PipelineTestCase):
             assigned.extend(packet["assigned_slides"])
         self.assertEqual(sorted(assigned), list(range(1, 10)), "every page exactly once")
 
+    def test_shard_policy_is_owned_by_the_contract_not_the_packet_module(self) -> None:
+        """Batch 2.1: a second hardcoded copy of the shard numbers would let the
+        pipeline's shards and the packet's shards silently diverge."""
+        self.assertEqual(pp.PARALLEL_MIN_PAGES, pp._packet.PARALLEL_MIN_PAGES)
+        self.assertEqual(pp.MAX_PARALLEL_BUILDERS, pp._packet.MAX_PARALLEL_BUILDERS)
+        contract = pp.CONTRACT
+        self.assertEqual(
+            max(2, int(contract["parallel_builder_min_pages"])),
+            pp._packet.PARALLEL_MIN_PAGES,
+        )
+
+    def test_packet_generation_failure_is_observable_not_silent(self) -> None:
+        """Dispatch survives a packet failure, but the payload must say the builder
+        fell back to the legacy full-read path — otherwise the cost optimization
+        quietly turns off and no benchmark can tell."""
+        self.files = self.write_inputs()
+        self.write_rich_spec(9)
+        self.write_art([1, 3, 4])
+        self.plan(self.files)
+        with patch.object(pp._packet, "write_packet", side_effect=RuntimeError("schema drift")):
+            payload = self.next_dispatch_payload()
+        self.assertEqual("failed", payload.get("builder_packet_status"))
+        self.assertIn("schema drift", payload.get("builder_packet_error") or "")
+        self.assertNotIn("builder_packet", payload)
+        log = json.loads(
+            (self.work / "builder-packets" / "fallbacks.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(1, len(log))
+        self.assertEqual("calibration", log[0]["mode"])
+        # The count in every later payload reflects the log.
+        payload = self.next_dispatch_payload()
+        self.assertEqual(1, payload["packet_fallback_count"])
+
+    def test_next_reports_zero_packet_fallbacks_when_green(self) -> None:
+        self.files = self.write_inputs()
+        self.write_rich_spec(9)
+        self.write_art([1, 3, 4])
+        self.plan(self.files)
+        payload = self.next_dispatch_payload()
+        self.assertIn("builder_packet", payload)
+        self.assertEqual(0, payload["packet_fallback_count"])
+        self.assertNotIn("builder_packet_status", payload)
+
     def test_slide_level_blockers_are_sharded(self) -> None:
         self.write_spec(9)
         self.plan(self.files)

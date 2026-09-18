@@ -46,11 +46,40 @@ class PipelineReportTests(unittest.TestCase):
 
     def test_collect_reads_counts_and_minutes(self) -> None:
         self.write_manifest("deck-a")
-        rows = [br.collect(json.loads(p.read_text(encoding="utf-8"))) for p in sorted(self.root.glob("*/build-manifest.json"))]
+        rows = [br.collect(json.loads(p.read_text(encoding="utf-8")), p.parent) for p in sorted(self.root.glob("*/build-manifest.json"))]
         self.assertEqual(rows[0]["builds"], 2)
         self.assertEqual(rows[0]["repairs"], 1)
         self.assertEqual(rows[0]["minutes"], 17.5)
         self.assertTrue(rows[0]["qa_ok"])
+        self.assertEqual(rows[0]["packet_fallbacks"], 0)
+
+    def test_packet_fallbacks_are_counted_per_work_dir(self) -> None:
+        """Each fallback entry = one builder that silently gave back Batch 2's
+        savings; the report must surface that instead of hiding it."""
+        self.write_manifest("deck-a")
+        self.write_manifest("deck-b")
+        fallbacks = self.root / "deck-b" / "builder-packets"
+        fallbacks.mkdir()
+        (fallbacks / "fallbacks.json").write_text(
+            json.dumps([
+                {"at": "2026-09-18T12:00:00+00:00", "mode": "initial", "error": "schema drift"},
+                {"at": "2026-09-18T12:01:00+00:00", "mode": "repair", "error": "bad spec"},
+            ]),
+            encoding="utf-8",
+        )
+        rows = {row["work_id"]: row for row in (
+            br.collect(json.loads(p.read_text(encoding="utf-8")), p.parent)
+            for p in sorted(self.root.glob("*/build-manifest.json"))
+        )}
+        self.assertEqual(0, rows["deck-a"]["packet_fallbacks"])
+        self.assertEqual(2, rows["deck-b"]["packet_fallbacks"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = br.main(["--work-root", str(self.root), "--json"])
+        self.assertEqual(rc, 0)
+        payload = json.loads(buffer.getvalue())
+        by_id = {row["work_id"]: row["packet_fallbacks"] for row in payload}
+        self.assertEqual(2, by_id["deck-b"])
 
     def test_render_totals_all_decks(self) -> None:
         self.write_manifest("deck-a")

@@ -17,6 +17,21 @@ from pathlib import Path
 from typing import Any
 
 MANIFEST_NAME = "build-manifest.json"
+PACKET_FALLBACKS_NAME = "builder-packets/fallbacks.json"
+
+
+def packet_fallback_count(work_dir: Path) -> int:
+    """How many packet generations failed for this deck.
+
+    Each entry is a builder that fell back to the legacy full-read context path —
+    the Batch 2 projection's savings quietly gave back. Visible per next --json
+    payload too; aggregated here so a report shows it without hunting work dirs.
+    """
+    try:
+        value = json.loads((work_dir / PACKET_FALLBACKS_NAME).read_text(encoding="utf-8"))
+        return len(value) if isinstance(value, list) else 0
+    except (OSError, json.JSONDecodeError):
+        return 0
 
 
 def default_work_root() -> Path:
@@ -34,7 +49,7 @@ def parse_time(value: Any) -> datetime | None:
         return None
 
 
-def collect(manifest: dict[str, Any]) -> dict[str, Any]:
+def collect(manifest: dict[str, Any], work_dir: Path | None = None) -> dict[str, Any]:
     build = manifest.get("build") or {}
     render = manifest.get("render") or {}
     qa = manifest.get("qa") or {}
@@ -68,6 +83,7 @@ def collect(manifest: dict[str, Any]) -> dict[str, Any]:
         "qa_stage_ms": int(sum(int(v or 0) for v in stage_cost.values())),
         "blockers": int(qa.get("blockers") or 0),
         "qa_ok": bool(qa.get("ok")),
+        "packet_fallbacks": packet_fallback_count(work_dir) if work_dir else 0,
         "minutes": round(minutes, 1) if minutes is not None else None,
     }
 
@@ -80,7 +96,7 @@ def render_table(rows: list[dict[str, Any]]) -> str:
     """
     header = (
         f"{'work_id':<24} {'state':<9} {'build':>5} {'repair':>6} {'render':>6} "
-        f"{'r_reuse':>7} {'qa':>3} {'q_reuse':>7} {'qa_s':>7} {'block':>5} {'min':>6}"
+        f"{'r_reuse':>7} {'qa':>3} {'q_reuse':>7} {'qa_s':>7} {'block':>5} {'pk_fb':>5} {'min':>6}"
     )
     lines = [header, "-" * len(header)]
     for row in rows:
@@ -89,7 +105,7 @@ def render_table(rows: list[dict[str, Any]]) -> str:
             f"{str(row['work_id']):<24} {str(row['state']):<9} {row['builds']:>5} "
             f"{row['repairs']:>6} {row['render_events']:>6} {row['render_reused']:>7} "
             f"{row['qa_events']:>3} {row['qa_reused']:>7} "
-            f"{row['qa_stage_ms'] / 1000:>7.2f} {row['blockers']:>5} {minutes:>6}"
+            f"{row['qa_stage_ms'] / 1000:>7.2f} {row['blockers']:>5} {row['packet_fallbacks']:>5} {minutes:>6}"
         )
     if rows:
         lines.append("-" * len(header))
@@ -99,7 +115,7 @@ def render_table(rows: list[dict[str, Any]]) -> str:
             f"{sum(r['render_events'] for r in rows):>6} {sum(r['render_reused'] for r in rows):>7} "
             f"{sum(r['qa_events'] for r in rows):>3} {sum(r['qa_reused'] for r in rows):>7} "
             f"{sum(r['qa_stage_ms'] for r in rows) / 1000:>7.2f} "
-            f"{sum(r['blockers'] for r in rows):>5}"
+            f"{sum(r['blockers'] for r in rows):>5} {sum(r['packet_fallbacks'] for r in rows):>5}"
         )
     return "\n".join(lines) + "\n"
 
@@ -121,7 +137,7 @@ def main(argv: list[str] | None = None) -> int:
         except (OSError, json.JSONDecodeError):
             continue
         if isinstance(value, dict):
-            rows.append(collect(value))
+            rows.append(collect(value, path.parent))
     if args.json:
         print(json.dumps(rows, ensure_ascii=False, indent=2))
     else:

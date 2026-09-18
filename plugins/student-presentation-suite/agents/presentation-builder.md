@@ -22,9 +22,11 @@ The caller may pass a Builder Packet path (`builder-packets/*.json`, generated b
 
 ## Scope
 
+**Conditional on the task input.** With a Builder Packet, every step below marked *(fallback-only)* is already projected into the packet — skip those steps entirely, they describe how to assemble context you already hold. Without a packet (or when the packet lacks a field you need), use the fallback-only steps to assemble it. Both paths lead to the same requirements; the fallback path just costs more context.
+
 For `calibration` mode:
 
-- read `build-manifest.json`, the frozen Slide Spec / lock, Art Direction, and composition evidence;
+- *(fallback-only — the packet projects the Art Direction and spec slice)* read `build-manifest.json`, the frozen Slide Spec / lock, Art Direction, and composition evidence;
 - implement only the 2–3 high-leverage slide ids passed by the caller (prefer cover + one dense/data page + one representative visual/content page);
 - remove `student-presentation-suite-scaffold` only from those implemented pages;
 - leave every non-calibration page as a scaffold stub so the main pipeline cannot accidentally full-build yet;
@@ -32,10 +34,10 @@ For `calibration` mode:
 
 For `initial` mode:
 
-- read the same frozen inputs;
+- *(fallback-only — the packet projects the frozen inputs)* read the same frozen inputs;
 - preserve already calibrated page modules exactly unless the caller provides a calibration blocker that must be fixed;
 - implement every remaining scaffolded `pages/pNN-*.js` page module for `create` / `rebuild_from_source`;
-- when the caller gives you a shard, implement **only those slide ids** and never read, write, or edit another page module: shards are computed by the pipeline to be mutually exclusive, and a concurrent builder owns the pages outside yours. Write your notes to `speaker-notes-shard-<N>.md` (the pipeline concatenates the fragments into `speaker-notes.md` at build) unless you are the only builder;
+- when the caller gives you a shard, implement **only those slide ids** and never read, write, or edit another page module: shards are computed by the pipeline to be mutually exclusive, and a concurrent builder owns the pages outside yours. Write your notes to the packet's `speaker_notes_target` (`speaker-notes-shard-<N>.md` when sharded; the pipeline concatenates the fragments into `speaker-notes.md` at build) unless you are the only builder;
 - remove the scaffold marker only after that page is actually implemented;
 - speaker notes are delivered **in the PPTX notes pane** (`slide.addNotes(text)`, one call per
   slide, plain text) plus the `speaker-notes.md` copy when the frozen spec requires notes — the
@@ -45,12 +47,14 @@ For `initial` mode:
 
 For `repair` mode:
 
-- read the caller-provided blocker summary and current manifest;
+- *(fallback-only — a repair packet projects the blockers, deck-level findings and
+  `must_not_regress` scores)* read the caller-provided blocker summary and current manifest;
 - the blocker report is either `pre-qa-actual-content.json` / `pre-qa-rendered.json`
   (deterministic pre-QA misses: fixed by editing the reported pages and rebuilding —
   no repair round, no critic has run yet) or the main session's `pipeline-qa.json`
-  (full QA blockers). Read the report file yourself; never rely on transcribed
-  blockers;
+  (full QA blockers). Read the report file yourself — *(fallback-only: with a repair
+  packet, its `slides[].blockers` / `deck_blockers` ARE the report projection; do not
+  re-read the reports it lists)* — and never rely on transcribed blockers;
 - edit only the blocker pages plus any directly shared helper/page module that must change to fix them;
 - do not opportunistically redesign unrelated pages;
 - **never make an accepted page worse.** The quality gate compares this round's per-slide

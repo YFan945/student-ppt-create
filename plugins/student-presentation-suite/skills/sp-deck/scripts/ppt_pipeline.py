@@ -1879,6 +1879,42 @@ def _research_budget(work_dir: Path) -> dict[str, Any] | None:
     }
 
 
+def packet_fallbacks(work_dir: Path) -> list[dict[str, Any]]:
+    """Packet-generation failures recorded for this work dir (observability log)."""
+    path = work_dir / _packet.PACKET_DIR_NAME / "fallbacks.json"
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        return value if isinstance(value, list) else []
+    except (OSError, json.JSONDecodeError):
+        return []
+
+
+def record_packet_fallback(work_dir: Path, mode: str, error: str) -> int:
+    log = packet_fallbacks(work_dir)
+    log.append({"at": datetime.now(UTC).isoformat(), "mode": mode, "error": str(error)[:300]})
+    path = work_dir / _packet.PACKET_DIR_NAME / "fallbacks.json"
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(log, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass  # the fallback log must never break dispatch either
+    return len(log)
+
+
+def observe_packet_failure(work_dir: Path, payload: dict[str, Any], mode: str, exc: Exception) -> None:
+    """Packet generation failed: dispatch continues, but NOT silently.
+
+    "never breaks dispatch" must not mean "the cost optimization quietly turned
+    off and nobody can tell" — the failure is reported in the payload and appended
+    to builder-packets/fallbacks.json so a benchmark can see a builder fell back
+    to the legacy full-read path.
+    """
+    count = record_packet_fallback(work_dir, mode, str(exc))
+    payload["builder_packet_status"] = "failed"
+    payload["builder_packet_error"] = str(exc)[:300]
+    payload["packet_fallback_count"] = count
+
+
 def cmd_next(args: argparse.Namespace) -> int:
     """Tell the model what to read and which command to run. CD-1/CD-3/CD-4/CD-9."""
     work_dir = args.work_dir
@@ -1970,8 +2006,8 @@ def cmd_next(args: argparse.Namespace) -> int:
                                 f"is at {cal_path} — pass it as the builder's task input. To pick different slides, "
                                 "rerun builder_packet.py --mode calibration --slides <ids> first."
                             )
-                    except Exception:
-                        pass  # packet generation must never break the dispatch answer
+                    except Exception as exc:
+                        observe_packet_failure(work_dir, payload, "calibration", exc)
                 elif not calibration_rendered:
                     slides = load_json(calibration_manifest).get("slides") or []
                     slide_args = " ".join(str(slide) for slide in slides)
@@ -2044,8 +2080,8 @@ def cmd_next(args: argparse.Namespace) -> int:
                                     "task input; the packet projects slides, style, evidence and allowed "
                                     "files, so builders must not re-read the frozen inputs."
                                 )
-                        except Exception:
-                            pass  # packet generation must never break the dispatch answer
+                        except Exception as exc:
+                            observe_packet_failure(work_dir, payload, "initial", exc)
         elif state == "producing":
             if pre_qa_failed_current(manifest):
                 # Deterministic misses are fixed BEFORE any render or critic cost:
@@ -2096,8 +2132,8 @@ def cmd_next(args: argparse.Namespace) -> int:
                             "builder-packets/ (builder_packets field) — pass each builder its packet "
                             "path; it must not re-read the reports the packet covers."
                         )
-                except Exception:
-                    pass  # packet generation must never break the dispatch answer
+                except Exception as exc:
+                    observe_packet_failure(work_dir, payload, "repair", exc)
             elif render_is_current(manifest):
                 render = manifest.get("render") or {}
                 contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
@@ -2166,8 +2202,8 @@ def cmd_next(args: argparse.Namespace) -> int:
                                 "builder-packets/ (builder_packets field) — spawn each builder with "
                                 "its packet path as the task input."
                             )
-                except Exception:
-                    pass  # packet generation must never break the dispatch answer
+                except Exception as exc:
+                    observe_packet_failure(work_dir, payload, "repair", exc)
         elif state == "complete":
             payload["next_command"] = "(done)"
             payload["notes"] = "do not re-inject /sp-deck"
@@ -2195,6 +2231,10 @@ def cmd_next(args: argparse.Namespace) -> int:
     # 提额是数据决定的事，不是问用户的事：budget 与 trend 一起给出，主会话据此决定续轮、
     # 换做法还是交付 incomplete。`--extend` 把决定写进 manifest，不需要改插件契约文件。
     payload["repair_budget"] = repair_budget(manifest)
+    # Batch 2.1 observability: a benchmark can read how many packet generations
+    # failed for this work dir (each one is a builder that fell back to the legacy
+    # full-read context path and quietly gave back Batch 2's savings).
+    payload["packet_fallback_count"] = len(packet_fallbacks(work_dir))
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0

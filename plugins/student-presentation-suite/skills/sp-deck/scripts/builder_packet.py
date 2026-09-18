@@ -52,8 +52,6 @@ from page_brief import (  # noqa: E402
 
 PACKET_DIR_NAME = "builder-packets"
 SCORE_HISTORY_NAME = "visual-score-history.json"
-PARALLEL_MIN_PAGES = 4
-MAX_PARALLEL_BUILDERS = 3
 FORBIDDEN_ACTIONS = [
     "build",
     "render",
@@ -67,6 +65,26 @@ NO_REREAD = (
     "slide-spec-compiled.yaml, art-direction.yaml, research-pack.json, build-manifest.json "
     "or the QA reports it projects — every field below is byte-derived from those sources"
 )
+
+# Shard policy has ONE owner: references/pipeline-contract.json. This module must not
+# keep its own copy of the numbers — when the contract changes, the pipeline's
+# `builder_shards` and this generator's `split_shards` must move together, or the
+# packet shards and the spawn shards silently diverge. Same clamping as ppt_pipeline.
+_CONTRACT_PATH = HERE.parents[2] / "references" / "pipeline-contract.json"
+
+
+def _contract_int(key: str, default: int) -> int:
+    try:
+        value = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
+        if isinstance(value, dict) and value.get(key) is not None:
+            return int(value[key])
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return default
+
+
+PARALLEL_MIN_PAGES = max(2, _contract_int("parallel_builder_min_pages", 4))
+MAX_PARALLEL_BUILDERS = max(1, _contract_int("max_parallel_builders", 3))
 
 
 def default_calibration_slides(work_dir: Path, limit: int = 3) -> list[int]:

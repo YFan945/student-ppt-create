@@ -2,6 +2,40 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — v0.15 Pipeline Simplification（Batch 2.1：Packet 收尾）
+
+Owner 复核 Batch 2 后指出的三处收尾，全部落地：
+
+### packet 与 legacy 读取指令彻底解冲突
+
+- `agents/presentation-builder.md` 的 Scope 段改为**条件式**：新增总则
+  "Conditional on the task input"，calibration / initial / repair 各自的
+  「读 build-manifest / 冻结 Spec / 报告」步骤全部标注 *(fallback-only)*；
+  repair 的「自己读报告」明确标注 packet 的 blockers 投影即为报告内容，有 packet 不得重读。
+  消除了「packet 说别读、Scope 说要读」的新冲突（与 page_brief 冲突同形）。
+
+### shard policy 单一事实源
+
+- `builder_packet.py` 不再自带分片常量副本，改为与 `ppt_pipeline.py` 相同的方式读取
+  `references/pipeline-contract.json`（含相同的钳制规则）。契约改动时管线的
+  `builder_shards` 与 packet 的 `split_shards` 必然同步，不会再出现两套分组。
+- 新测试钉住：packet 模块常量 == 管线常量 == 契约值。
+
+### packet 回退可观测
+
+- packet 生成失败仍不破坏派发（builder 回退 legacy 全量读取路径），但**不再静默**：
+  `next --json` 返回 `builder_packet_status: "failed"` 与 `builder_packet_error`，
+  失败事件追加到 `builder-packets/fallbacks.json`，且每个 next 应答都携带
+  `packet_fallback_count`。
+- `pipeline_report.py` 新增 `packet_fallbacks` 列：按 work-dir 聚合回退次数，
+  报告能直接看到「本轮有几个 builder 退回了 legacy 上下文路径」。
+
+### 测试
+
+- `test_ppt_pipeline.py` 新增 3 用例（契约一致性、失败可观测、绿路径计数）；
+  `test_agent_behavior_contract.py` 新增 1 用例（fallback-only 条件式投影）；
+  `test_pipeline_report.py` 新增 1 用例（回退计数聚合）。
+
 ## Unreleased — v0.15 Pipeline Simplification（Batch 2：Builder Packet）
 
 上下文从「隔离但重复读取」升级为「隔离 + 最小任务包」：并行 builder 不再各自重读
