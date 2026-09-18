@@ -50,6 +50,7 @@
     "parallel_builder_shards_allowed": true
   },
   "calibration_sample_selection": "archetype_coverage_with_leverage_priority",
+  "deck_rhythm_plan": "archetype_families_with_background_rhythm",
   "production_modes": [
     "create",
     "edit_ooxml",

@@ -814,6 +814,17 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "slides": scaffold_info["slides"],
         "pages": scaffold_info["pages"],
     }
+    # Batch 4.3: plan the deck rhythm (tone per page from the Art Direction's
+    # background_rhythm, composition family per archetype) once, at freeze time,
+    # so builders see it instead of deciding page tone independently at build time.
+    try:
+        from deck_rhythm import ensure_rhythm
+
+        rhythm_path = ensure_rhythm(work_dir)
+    except Exception:
+        rhythm_path = None  # rhythm planning is a projection, never a plan blocker
+    if rhythm_path is not None:
+        fresh["deck_rhythm"] = bind(rhythm_path)
     summary = write_stage_summary(
         work_dir,
         "planned",
@@ -822,6 +833,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
             f"- art-direction: `{art}`",
             f"- pages scaffolded: {scaffold_info['slides']} → `pages/`",
             f"- composition dir: `{work_dir / 'composition'}`",
+            *([f"- deck rhythm planned: `{rhythm_path}`"] if rhythm_path else []),
             "- next: fill `pages/pNN-*.js` (parallel Edit), then `ppt_pipeline.py build`",
             "- do not re-read the Slide Spec or Art Direction unless the hash changed",
         ],

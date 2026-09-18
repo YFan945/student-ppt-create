@@ -128,7 +128,11 @@ Every deck needs a dominance model. One background/color family should carry rou
 
 The selected style ships **two** palettes: the light `palette` and the matching `dark_palette`.
 `background_rhythm` only selects between them — `mode: dark` / `mode: accent` mean "render this
-page with the style's dark palette", not "invent a dark colour that looks nice".
+page with the style's dark palette", not "invent a dark colour that looks nice". Since v0.15
+Batch 4.3 this section is consumed mechanically: `deck_rhythm.py` joins it with the spec's
+per-slide roles into `deck-rhythm.json` at plan time (tone + composition family per page, plus
+run-of-three warnings), and builder packets project each assigned page's planned rhythm —
+builders alternate deliberately instead of deciding page tone independently.
 
 - The two palettes share one hue family and are contrast-checked, so cover, section and closing
   pages belong to the same colour scheme as the content pages.

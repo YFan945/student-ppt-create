@@ -183,6 +183,12 @@ def build_packet(
     leverage = high_leverage(work_dir)
     sources = sources_by_id(load_optional(work_dir / "research-pack.json"))
     spec_slides = [item for item in (spec.get("slides") or []) if isinstance(item, dict)]
+    # Batch 4.3: the planned rhythm (tone + composition family + neighbours) rides
+    # into every packet so builders alternate deliberately instead of by accident.
+    from deck_rhythm import page_rhythm, rhythm_warnings
+
+    rhythm_by_slide = page_rhythm(work_dir)
+    warnings = rhythm_warnings(work_dir)
 
     reports: list[dict[str, Any]] = []
     loaded_reports: list[dict[str, Any]] = []
@@ -200,6 +206,8 @@ def build_packet(
             continue
         entry: dict[str, Any] = dict(item)
         entry["archetype"] = archetype_of(item)
+        if rhythm_by_slide.get(number):
+            entry["rhythm"] = rhythm_by_slide[number]
         entry["page_module"] = modules.get(number)
         entry["high_leverage"] = number in leverage
         entry["requirements"] = actual_check.planned_requirements(item)
@@ -246,6 +254,8 @@ def build_packet(
         "forbidden_actions": FORBIDDEN_ACTIONS,
         "do_not_reread": NO_REREAD,
     }
+    if warnings:
+        packet["rhythm_warnings"] = warnings
     if mode == "repair":
         packet["reports"] = reports
         deck_level = [
