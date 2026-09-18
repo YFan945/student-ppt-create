@@ -1719,6 +1719,32 @@ class AdvanceTests(PipelineTestCase):
         self.assertIn("complete", entries[0]["actions"])
         self.assertFalse(entries[0]["step_cap"])
 
+    def test_initial_packet_embeds_the_calibration_style_contract(self) -> None:
+        """Batch 4.2: once calibration is green, the initial builder's packet carries
+        the style contract — the visual reference system — instead of the builder
+        inferring style from calibration page JS it must not read."""
+        self.write_rich_spec(6)
+        self.write_art([1])
+        self.plan(self.files)
+        self.green_calibration_review([1])
+        packet = pp._packet.build_packet(self.work, "initial")
+        style = packet.get("calibration_style")
+        self.assertIsInstance(style, dict)
+        self.assertEqual("green", style["status"])
+        self.assertEqual([1], style["calibration_slides"])
+        self.assertIn("calibration_style_note", packet)
+        self.assertIn("do NOT read calibration page modules", packet["calibration_style_note"])
+        # the contract file is on disk where `next`/advance and a rerun can find it
+        self.assertTrue((self.work / "calibration-style-contract.json").is_file())
+
+    def test_initial_packet_without_green_calibration_has_no_style_contract(self) -> None:
+        self.write_rich_spec(6)
+        self.write_art([1])
+        self.plan(self.files)
+        packet = pp._packet.build_packet(self.work, "initial")
+        self.assertNotIn("calibration_style", packet)
+        self.assertNotIn("calibration_style_note", packet)
+
 
 if __name__ == "__main__":
     unittest.main()

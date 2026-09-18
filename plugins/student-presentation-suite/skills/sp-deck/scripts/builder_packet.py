@@ -264,6 +264,28 @@ def build_packet(
             "pages that already passed review must not drop 1.5+ points; the QA gate "
             "compares this round's per-slide scores against visual-score-history.json"
         )
+    if mode in {"initial", "repair"}:
+        # Batch 4.2: the established visual system travels as one compact contract,
+        # not as calibration page JS (which builders must not read) and not as a
+        # second read of the full Art Direction.
+        from calibration_review import calibration_review
+        from style_contract import STYLE_CONTRACT_NAME, ensure_style_contract
+
+        review = calibration_review(work_dir)
+        contract_path = ensure_style_contract(work_dir, review)
+        if contract_path is not None:
+            packet["calibration_style"] = load_optional(contract_path)
+            packet["calibration_style_path"] = str(contract_path)
+            packet["calibration_style_note"] = (
+                f"this contract IS the visual reference system (generated from the green "
+                f"calibration review + Art Direction, see {STYLE_CONTRACT_NAME} derived_from): "
+                "follow it for every page; do NOT read calibration page modules to infer style"
+            )
+        elif review.get("required"):
+            packet["calibration_style_note"] = (
+                f"calibration exists but its review is not green ({review.get('reason')}); "
+                "follow the Art Direction sections in this packet only"
+            )
     return packet
 
 

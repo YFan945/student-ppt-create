@@ -101,7 +101,6 @@ QA_HARD_STOP_STAGES = ("package", "rendered")
 # delivery 只是把上游报告的结论汇总成一个交付状态；上游已经失败时它的失败没有增量信息，
 # 记为派生（保留在报告里，但不计入 blocker），否则 repair 会被指向一个没有独立问题的地方。
 QA_DERIVED_AFTER_UPSTREAM_FAILURE = ("delivery",)
-QA_BLOCKING_SEVERITIES = ("critical", "major")
 GATE_HISTORY_NAME = "gate-history.json"
 BUILD_FROM = {"planned", "producing"}
 QA_FROM = {"producing", "qa"}
@@ -571,104 +570,15 @@ def generator_changed_since_build(manifest: dict[str, Any]) -> bool:
     return fingerprint != previous
 
 
-CALIBRATION_DIR_NAME = "calibration"
-CALIBRATION_MANIFEST_NAME = "calibration-manifest.json"
-CALIBRATION_REVIEW_NAME = "calibration-visual-review.json"
-
-
-def calibration_review(work_dir: Path) -> dict[str, Any]:
-    """Status of the INDEPENDENT calibration review (SKILL.md step 8).
-
-    Calibration exists to catch a systemic visual choice before it is copied onto
-    every page. It cannot do that while the reviewer is the session that made the
-    choice: 2026-09-18 live, the main session reviewed its own calibration PNGs,
-    accepted them, and the independent critic then rejected the pattern applied to
-    all 13 built pages — 76.4M tokens (58.8% of that session) for a rework that a
-    3-page review would have caught for 1.4M.
-
-    Only applies once calibration evidence exists, so a work-dir that never ran
-    calibration is not retroactively blocked by this contract.
-    """
-    target = work_dir / CALIBRATION_DIR_NAME
-    manifest_path = target / CALIBRATION_MANIFEST_NAME
-    review_path = target / CALIBRATION_REVIEW_NAME
-    status: dict[str, Any] = {
-        "required": False,
-        "present": False,
-        "ok": False,
-        "blockers": None,
-        "slides": [],
-        "path": str(review_path),
-        "reason": "",
-    }
-    if not manifest_path.is_file():
-        return status
-    try:
-        calibration = load_json(manifest_path)
-    except Exception as exc:  # pragma: no cover - corrupt evidence
-        status["required"] = True
-        status["reason"] = f"calibration manifest is unreadable: {exc}"
-        return status
-
-    status["required"] = True
-    slides = [int(value) for value in calibration.get("slides") or [] if isinstance(value, int)]
-    status["slides"] = slides
-    expected_pptx = str((calibration.get("pptx") or {}).get("sha256") or "")
-
-    if not review_path.is_file():
-        status["reason"] = (
-            "no independent calibration review on disk; the main session's own read of the "
-            "calibration PNGs is not a substitute (it is the session that chose the treatment)"
-        )
-        return status
-    status["present"] = True
-    try:
-        review = load_json(review_path)
-    except Exception as exc:
-        status["reason"] = f"calibration review is unreadable: {exc}"
-        return status
-
-    if not expected_pptx or review.get("pptx_sha256") != expected_pptx:
-        status["reason"] = "calibration review is not bound to the current calibration render"
-        return status
-
-    reviewed = {
-        int(item["slide"])
-        for item in review.get("slides") or []
-        if isinstance(item, dict) and isinstance(item.get("slide"), int)
-    }
-    if reviewed != set(slides):
-        status["reason"] = (
-            f"calibration review covers slides {sorted(reviewed)} but the calibrated pages are {sorted(slides)}"
-        )
-        return status
-
-    blocking: list[str] = []
-    for item in review.get("slides") or []:
-        if not isinstance(item, dict):
-            continue
-        slide_no = int(item.get("slide") or 0)
-        if str(item.get("ai_template_feel") or "none").strip().lower() == "major":
-            blocking.append(f"slide {slide_no}: ai_template_feel=major")
-        for finding in item.get("issues") or []:
-            if not isinstance(finding, dict):
-                continue
-            if normalise_severity(review, finding) in QA_BLOCKING_SEVERITIES:
-                blocking.append(f"slide {slide_no}: {finding.get('code') or 'visual_finding'}")
-    status["blockers"] = len(blocking)
-    status["ok"] = not blocking
-    if blocking:
-        status["reason"] = "calibration review still reports systemic findings: " + "; ".join(blocking[:6])
-    return status
-
-
-def normalise_severity(report: dict[str, Any], issue: dict[str, Any]) -> str:
-    severity = str(issue.get("severity") or "").lower()
-    if severity in {"critical", "major", "blocker"}:
-        return "critical" if severity == "critical" else "major"
-    if severity == "minor":
-        return "minor"
-    return "major" if not report.get("ok", True) else "minor"
+# Calibration review logic moved to calibration_review.py (Batch 4.2) so the
+# style-contract generator can reuse the same green check without a cycle.
+from calibration_review import (  # noqa: E402
+    CALIBRATION_DIR_NAME,
+    CALIBRATION_MANIFEST_NAME,
+    QA_BLOCKING_SEVERITIES,
+    calibration_review,
+    normalise_severity,
+)
 
 
 def collect(stage: Stage) -> tuple[bool, list[dict[str, Any]], dict[str, Any]]:

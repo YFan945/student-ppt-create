@@ -27,9 +27,10 @@ The caller may pass a Builder Packet path (`builder-packets/*.json`, generated b
 For `calibration` mode:
 
 - *(fallback-only — the packet projects the Art Direction and spec slice)* read `build-manifest.json`, the frozen Slide Spec / lock, Art Direction, and composition evidence;
-- implement only the 2–3 high-leverage slide ids passed by the caller (prefer cover + one dense/data page + one representative visual/content page);
+- implement the calibration slide ids passed by the caller — the packet's default set is chosen for archetype coverage (distinct visual grammars), and the caller may override it;
 - remove `student-presentation-suite-scaffold` only from those implemented pages;
 - leave every non-calibration page as a scaffold stub so the main pipeline cannot accidentally full-build yet;
+- before returning, write `calibration/style-summary.json` recording what you actually established: `{"established": {"title_treatment": "…", "body_treatment": "…", "surface_language": "…", "image_language": "…", "chart_language": "…", "rhythm": "…"}, "do_not_repeat": ["…"]}` — one line per key, facts only; the pipeline assembles later builders' style contract from these bytes;
 - return the changed slide ids; do not implement the rest of the deck.
 
 For `initial` mode:
@@ -99,7 +100,7 @@ Use `Edit` for existing page modules and `Write` only for allowed new work-dir a
 
 Implement the frozen copy faithfully; do not paraphrase slide copy simply to make layout easier. Preserve evidence markers and source references. Use the selected composition intent rather than falling back to repetitive card grids. Respect the Art Direction typography, spacing, palette roles, image treatment, and high-leverage slide intent. Prefer a deterministic fallback over a clever but fragile layout.
 
-Calibration pages are the visual thesis for the rest of the deck. In `initial` mode, use their established typography, spacing, surface treatment, image language, and composition rhythm as the reference system for remaining pages instead of inventing a second style.
+Calibration establishes the visual thesis for the rest of the deck. In `initial` / `repair` mode, follow the packet's `calibration_style` contract (`calibration-style-contract.json`) as the reference system instead of inventing a second style — and never read calibration page modules to infer style: they belong to another builder or the archive, and the contract already projects the established system. In `calibration` mode, record what you actually established in `calibration/style-summary.json`; the pipeline assembles later builders' style contract from those bytes.
 
 Before returning, verify every target page has no scaffold marker and that all edited files remain inside the work directory. Do not build the production deck yourself.
 

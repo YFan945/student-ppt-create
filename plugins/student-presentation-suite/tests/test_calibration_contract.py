@@ -55,7 +55,12 @@ class CalibrationContractTests(unittest.TestCase):
         self.assertIn("`calibration`, `initial`, or `repair`", builder)
         self.assertIn("leave every non-calibration page as a scaffold stub", builder)
         self.assertIn("preserve already calibrated page modules", builder)
-        self.assertIn("Calibration pages are the visual thesis", builder)
+        # Batch 4.2: the established visual system travels as the calibration_style
+        # contract, and the calibration builder records it in style-summary.json.
+        self.assertIn("Calibration establishes the visual thesis", builder)
+        self.assertIn("calibration_style", builder)
+        self.assertIn("calibration/style-summary.json", builder)
+        self.assertIn("never read calibration page modules to infer style", builder)
 
     def test_preview_helper_is_not_a_production_pipeline_transition(self) -> None:
         helper = self.read("skills/sp-deck/scripts/calibration_preview.py")

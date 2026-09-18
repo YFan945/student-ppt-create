@@ -43,6 +43,15 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   build-manifest.json / pipeline-qa.json / pre-qa 报告（packet 的字段与它们同源）。
   未提供 packet 或字段缺失时，按下面的 page_brief 流程取上下文。
 - 目标页：<slide ids（calibration/repair）｜shard 的 slide ids（initial 分片）｜"全部剩余 scaffold 页"（initial 未分片）>
+- **视觉体系只认 packet 的 `calibration_style` 契约**（calibration-style-contract.json——管线由
+  green 校准评审 + Art Direction 确定性装配）：逐条跟随其 style / treatment / anti_repetition，
+  **绝不读 calibration 页面 JS 去自行归纳风格**（那些页属于别的 builder 或已归档，读了既越界
+  又得不到正确答案）。仅当 packet 没有 `calibration_style`（校准未 green 或不存在）才以 packet
+  内 Art Direction 投影为准。
+- `calibration` 轮收尾前，把本轮真正确立的处理方式写入 `<work-dir>/calibration/style-summary.json`：
+  `{"established": {"title_treatment": "…", "body_treatment": "…", "surface_language": "…",
+  "image_language": "…", "chart_language": "…", "rhythm": "…"}, "do_not_repeat": ["…"]}`，
+  每项一句话、只写已确立的事实——管线把它的字节原样装进后续 builder 的风格契约。
 - **本实例只做上面这些 slide ids**：绝不读、写、改别人的 `pages/pNN-*.js`。分片由管线按页号
   轮转计算、天然互斥；越界改页会覆盖另一个并发 builder 的成果，而那是无法回滚的。
 - **讲稿写到 packet 的 `speaker_notes_target`**（并行时为 `speaker-notes-shard-<N>.md`），
