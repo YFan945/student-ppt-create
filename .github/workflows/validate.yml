@@ -8,7 +8,43 @@ on:
   pull_request:
     branches: [main]
 
+# Consecutive pushes to the same branch supersede each other's validation run
+# (e.g. a batch series landing one commit at a time): only the newest run needs
+# to finish, so cancel the superseded ones instead of paying for all of them.
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  lint:
+    # Lint is platform- and interpreter-independent: run it ONCE instead of in
+    # all four runtime matrix cells.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: "plugins/student-presentation-suite/requirements*.txt"
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: plugins/student-presentation-suite/package-lock.json
+      - name: Install lint dependencies
+        run: |
+          python -m pip install ruff==0.16.7
+          npm --prefix plugins/student-presentation-suite ci
+      - name: Lint Python (ruff)
+        run: |
+          ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/skills/ plugins/student-presentation-suite/tests/
+      - name: Lint JavaScript (eslint + prettier)
+        run: |
+          npx --prefix plugins/student-presentation-suite eslint plugins/student-presentation-suite/scripts/*.js
+          npx --prefix plugins/student-presentation-suite prettier --check plugins/student-presentation-suite/scripts/*.js
+
   runtime:
     strategy:
       fail-fast: false
@@ -16,6 +52,7 @@ jobs:
         os: [ubuntu-latest, windows-latest]
         python: ["3.11", "3.12"]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     env:
       PYTHONUTF8: "1"
     steps:
@@ -23,9 +60,13 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: "plugins/student-presentation-suite/requirements*.txt"
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: plugins/student-presentation-suite/package-lock.json
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
@@ -35,8 +76,6 @@ jobs:
           python -m pip install -r plugins/student-presentation-suite/requirements.txt -c plugins/student-presentation-suite/requirements-lock.txt
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt -c plugins/student-presentation-suite/requirements-lock.txt
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m pip install ruff==0.16.7
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           npm --prefix plugins/student-presentation-suite ci
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -48,20 +87,19 @@ jobs:
           TEMP: ${{ runner.temp }}
           TMP: ${{ runner.temp }}
         run: |
-          python -m json.tool plugins/student-presentation-suite/references/slide-spec.schema.json | Out-Null
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m json.tool plugins/student-presentation-suite/references/presentation-brief.schema.json | Out-Null
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m json.tool plugins/student-presentation-suite/references/image-sources.schema.json | Out-Null
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m json.tool plugins/student-presentation-suite/references/asset-manifest.schema.json | Out-Null
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m json.tool plugins/student-presentation-suite/references/research-pack.schema.json | Out-Null
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m json.tool plugins/student-presentation-suite/references/evidence-map.schema.json | Out-Null
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m json.tool plugins/student-presentation-suite/references/visual-review.schema.json | Out-Null
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $schemas = @(
+            "slide-spec.schema.json",
+            "presentation-brief.schema.json",
+            "image-sources.schema.json",
+            "asset-manifest.schema.json",
+            "research-pack.schema.json",
+            "evidence-map.schema.json",
+            "visual-review.schema.json"
+          )
+          foreach ($schema in $schemas) {
+            python -m json.tool "plugins/student-presentation-suite/references/$schema" | Out-Null
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
           python -m unittest discover -s plugins/student-presentation-suite/tests
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js --probe
@@ -72,28 +110,22 @@ jobs:
         env:
           PYTHONIOENCODING: "utf-8"
         run: python plugins/student-presentation-suite/scripts/smoke_pptx.py --skip-render --json
-      - name: Lint Python (ruff)
-        shell: pwsh
-        run: |
-          ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/skills/ plugins/student-presentation-suite/tests/
-      - name: Lint JavaScript (eslint + prettier)
-        shell: pwsh
-        run: |
-          npx --prefix plugins/student-presentation-suite eslint plugins/student-presentation-suite/scripts/*.js
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npx --prefix plugins/student-presentation-suite prettier --check plugins/student-presentation-suite/scripts/*.js
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   release-checks:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: "plugins/student-presentation-suite/requirements*.txt"
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: plugins/student-presentation-suite/package-lock.json
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
@@ -129,11 +161,14 @@ jobs:
 
   claude-manifest:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: plugins/student-presentation-suite/package-lock.json
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code@2.1.272
       - name: Strict Claude validation
@@ -143,14 +178,19 @@ jobs:
 
   render-matrix:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: "plugins/student-presentation-suite/requirements*.txt"
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: plugins/student-presentation-suite/package-lock.json
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
@@ -173,14 +213,19 @@ jobs:
 
   security-scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: "plugins/student-presentation-suite/requirements*.txt"
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
+          cache: npm
+          cache-dependency-path: plugins/student-presentation-suite/package-lock.json
       - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "8.0.x"
@@ -202,8 +247,9 @@ jobs:
 
   release-ready:
     if: always()
-    needs: [runtime, release-checks, claude-manifest, render-matrix, security-scan]
+    needs: [lint, runtime, release-checks, claude-manifest, render-matrix, security-scan]
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - name: Require every validation job to pass
         env:

@@ -2,6 +2,22 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — CI 流程精简与提速
+
+测试套件经全量盘点确认无冗余（64 文件 / 761 测试：跨文件重复断言仅 2 处同句；守卫类 8 个
+文件各管一层契约；v07/v071/v08 三代均为版本分发的活目标），未做删除。CI 侧消除真实冗余：
+
+- **lint 提升为独立 job**：ruff / eslint / prettier 与平台、解释器版本无关，不再在
+  2 OS × 2 Python 的四个 runtime 矩阵单元里重复跑 4 次；新 `lint` job 并入
+  `release-ready` 聚合。
+- **并发取消**：新增 `concurrency` 组（按 ref 分组、取消被取代的运行）——连续推送
+  （如按 batch 逐个落地提交）时只有最新一次跑完整验证。
+- **pip / npm 依赖缓存**：所有 job 的 setup-python / setup-node 开启缓存（以
+  requirements*.txt / package-lock.json 为 key），削减每个 job 全新安装的分钟级开销。
+- **job 超时上限**：每个 job 加 `timeout-minutes`，防悬挂占用流水线。
+- schema 语法检查从 7 行重复改为循环；dotnet 保留在 runtime / release-checks /
+  render-matrix / security-scan（OpenXML validator 运行时构建与 NuGet audit 都真实用到）。
+
 ## Unreleased — v0.15 Pipeline Simplification（Batch 4：Calibration / 视觉系统重构）
 
 这批的重点不是更严格，而是更聪明地校准：校准样本按视觉语法覆盖选取、确立的视觉体系以
