@@ -2,6 +2,29 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — v0.15 Batch 5：QA / Gate 整合（registry + 单一构造器）
+
+按「行为不变、增量拆、兼容层保留」的原则执行。探查确认：delivery 三代（v07/v071/v08）是
+分层导入而非复制，`quality_gate.py` / `delivery_check.py` 已是稳定分发 CLI——计划担心的
+「多代复制」大多已被 P1-4 消化。真实剩余重复是**gate 调用知识的双份维护**：
+`build_qa_stages()` 与 `pre_qa_stages()` 各自手写一遍同一组 gate 的 argv 构造。
+
+- **Gate Registry 入契约**：`pipeline-contract.json` 新增 `qa_gates`——每个 gate 的
+  `script` / `phase`（post_build / post_critic / final）/ `requires`（输入）/ `dependencies`
+  （依赖的上游 gate 报告）/ `critic` / `pre_build`（是否属于 build 内确定性 pre-QA 子集）/
+  `artifact`，与 `qa_order` 同序；另加 `gate_implementations` 钉死 canonical 实现与稳定
+  分发 CLI 及 v0.16 前的兼容策略。
+- **单一 stage 构造器**：ppt_pipeline 新增 `_gate_stage()`——QA 与 pre-QA 共用同一份
+  gate argv 构造，只差报告前缀与 critic 输入；`pre_qa_stages` 不再复制 quality/rendered/
+  actual-content 的参数知识，quality 的 deterministic half（无 `--visual-report`）由同一
+  构造器表达。今后改 gate 参数只改一处。
+- **一致性测试**：registry 顺序 == `qa_order`、每个脚本真实存在、artifact 命名一致、
+  dependencies 均在 registry 内、pre-build 子集恰为 rendered + actual_content + quality、
+  QA 与 pre-QA 共享同一构造器（无 critic 时 full QA 退化为同一组确定性 gate）。
+- **明确不做**（遵循计划）：断言级 QA 缓存收益不及 Batch 2/3，不提前做；v071 深拆到
+  `quality/` 包与 Batch 6 管线模块化合并考虑，避免行为未稳定时先行重构。
+- 测试 786 → 788。
+
 ## Unreleased — v0.15 Batch 1–4 Closure（集成断点收口）
 
 对 Batch 1–4 做跨模块交叉审计后发现：主体功能全部落地、测试全绿，但存在 9 处现有测试

@@ -26,6 +26,93 @@
     "quality",
     "delivery"
   ],
+  "qa_gates": {
+    "package": {
+      "script": "pptx_tool.py validate",
+      "phase": "post_build",
+      "requires": [
+        "pptx"
+      ],
+      "dependencies": [],
+      "critic": false,
+      "pre_build": false,
+      "artifact": "package"
+    },
+    "rendered": {
+      "script": "pptx_rendered_check.py",
+      "phase": "post_build",
+      "requires": [
+        "pptx"
+      ],
+      "dependencies": [],
+      "critic": false,
+      "pre_build": true,
+      "artifact": "rendered"
+    },
+    "actual_content": {
+      "script": "pptx_actual_content_check.py",
+      "phase": "post_build",
+      "requires": [
+        "pptx",
+        "slide_spec"
+      ],
+      "dependencies": [],
+      "critic": false,
+      "pre_build": true,
+      "artifact": "actual_content"
+    },
+    "quality": {
+      "script": "pptx_quality_gate_v071.py",
+      "phase": "post_critic",
+      "requires": [
+        "pptx",
+        "slide_spec",
+        "spec_lock",
+        "visual_review"
+      ],
+      "dependencies": [
+        "package",
+        "actual_content"
+      ],
+      "critic": true,
+      "pre_build": true,
+      "note": "pre_build runs the deterministic half (same script, no --visual-report) as quality-deterministic",
+      "artifact": "quality"
+    },
+    "delivery": {
+      "script": "pptx_delivery_check_v08.py",
+      "phase": "final",
+      "requires": [
+        "pptx",
+        "slide_spec",
+        "spec_lock",
+        "art_direction",
+        "visual_generation_report",
+        "slide_spec_report",
+        "visual_review"
+      ],
+      "dependencies": [
+        "package",
+        "actual_content",
+        "quality"
+      ],
+      "critic": true,
+      "pre_build": false,
+      "artifact": "delivery"
+    }
+  },
+  "gate_implementations": {
+    "canonical": {
+      "quality": "pptx_quality_gate_v071.py",
+      "visual_generation": "pptx_visual_generation_gate_v08.py",
+      "delivery": "pptx_delivery_check_v08.py"
+    },
+    "stable_cli": {
+      "quality": "quality_gate.py",
+      "delivery": "delivery_check.py"
+    },
+    "compat_policy": "v-numbered modules stay canonical; quality_gate.py / delivery_check.py are the stable dispatch surfaces; legacy v07 delivery remains importable until v0.16"
+  },
   "max_repairs": 3,
   "max_repairs_hard_cap": 6,
   "max_pre_qa_rebuilds": 2,

@@ -47,6 +47,72 @@ class PipelineContractTests(unittest.TestCase):
         )
         self.assertEqual(len(self.contract["qa_order"]), len(set(self.contract["qa_order"])))
 
+    def test_qa_gate_registry_matches_the_pipeline(self) -> None:
+        """Batch 5: the contract's qa_gates registry is the machine truth for the
+        QA DAG — its order, scripts, report keys and dependency edges must match
+        the runtime, and every gate script must exist."""
+        registry = self.contract["qa_gates"]
+        self.assertEqual(list(registry), self.contract["qa_order"])
+        script_roots = (ROOT / "skills" / "sp-deck" / "scripts", ROOT / "scripts")
+        for name, entry in registry.items():
+            with self.subTest(gate=name):
+                self.assertIn("script", entry)
+                script = entry["script"].split()[0]
+                self.assertTrue(any((root / script).is_file() for root in script_roots), script)
+                self.assertIn(entry["artifact"], (name, name.replace("_", "-")))
+                for dependency in entry["dependencies"]:
+                    self.assertIn(dependency, registry)
+                self.assertIn(entry["phase"], {"post_build", "post_critic", "final"})
+        # pre-build (deterministic) subset: exactly what the build's pre-QA runs
+        self.assertEqual(
+            ["rendered", "actual_content", "quality"],
+            [name for name, entry in registry.items() if entry["pre_build"]],
+        )
+        # the quality gate is the only pre-build gate that has a critic half
+        self.assertTrue(registry["quality"]["critic"])
+        self.assertFalse(registry["rendered"]["critic"])
+
+    def test_pre_qa_and_qa_stages_share_one_builder(self) -> None:
+        """One gate argv builder: QA and pre-QA must construct the same gate the
+        same way, differing only in report prefix and the critic's visual report."""
+        pp = self.pipeline
+        manifest = {
+            "inputs": {
+                "slide_spec": {"path": "/tmp/spec.json"},
+                "spec_lock": {"path": "/tmp/lock.json"},
+            },
+            "build": {"pptx": {"path": "/tmp/deck.pptx"}},
+        }
+        stages = pp.pre_qa_stages(manifest, self.tmp_dir())
+        self.assertEqual(
+            ["rendered", "actual-content", "quality-deterministic"], [s.name for s in stages]
+        )
+        self.assertEqual(["rendered", "actual_content", "quality"], [s.artifact for s in stages])
+        for stage in stages:
+            # the quality stage keeps report name pre-qa-quality.json even though
+            # its deterministic variant is named quality-deterministic
+            report_name = stage.name.replace("-deterministic", "")
+            self.assertTrue(
+                str(stage.report).replace(chr(92), "/").endswith(f"pre-qa-{report_name}.json")
+            )
+        # the deterministic quality stage must NOT receive a visual report
+        self.assertNotIn("--visual-report", stages[-1].argv)
+        full = pp.build_qa_stages(
+            {**manifest},
+            self.tmp_dir(),
+            visual_review=None,
+        )
+        # without a critic review, full QA degrades to the same deterministic gates
+        self.assertEqual(["package", "rendered", "actual-content"], [s.name for s in full])
+
+    def tmp_dir(self) -> Path:
+        import tempfile
+
+        if not hasattr(self, "_stage_dir"):
+            self._stage_dir = tempfile.TemporaryDirectory()
+            self.addCleanup(self._stage_dir.cleanup)
+        return Path(self._stage_dir.name)
+
     def test_repeat_policy_is_fail_closed(self) -> None:
         policy = self.contract["repeat_policy"]
         self.assertIs(policy["build_requires_changed_generator_after_repair"], True)

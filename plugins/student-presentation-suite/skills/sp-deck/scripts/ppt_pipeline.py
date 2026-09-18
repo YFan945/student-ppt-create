@@ -366,64 +366,67 @@ class Stage:
     issues_key: str = "issues"
 
 
-def build_qa_stages(
-    manifest: dict[str, Any],
+def _gate_inputs(manifest: dict[str, Any]) -> dict[str, str]:
+    """The gate input map shared by the QA and pre-QA stage builders."""
+    inputs = manifest.get("inputs") or {}
+    build = manifest.get("build") or {}
+    return {
+        "pptx": str((build.get("pptx") or {}).get("path") or ""),
+        "slide_spec": str((inputs.get("slide_spec") or {}).get("path") or ""),
+        "spec_lock": str((inputs.get("spec_lock") or {}).get("path") or ""),
+        "art_direction": str((inputs.get("art_direction") or {}).get("path") or ""),
+        "visual_generation_report": str((inputs.get("visual_generation_report") or {}).get("path") or ""),
+        "slide_spec_report": str((inputs.get("slide_spec_report") or {}).get("path") or ""),
+    }
+
+
+def _gate_stage(
+    name: str,
     work_dir: Path,
+    report_prefix: str,
+    gate_inputs: dict[str, str],
     *,
-    visual_review: Path | None,
+    visual_review: Path | None = None,
     notes: Path | None = None,
     previews: list[Path] | None = None,
     allow_missing_preview: bool = False,
-) -> list[Stage]:
-    inputs = manifest.get("inputs") or {}
-    build = manifest.get("build") or {}
-    pptx = str((build.get("pptx") or {}).get("path") or "")
-    spec = str((inputs.get("slide_spec") or {}).get("path") or "")
-    lock = str((inputs.get("spec_lock") or {}).get("path") or "")
-    art = str((inputs.get("art_direction") or {}).get("path") or "")
-    vgr = str((inputs.get("visual_generation_report") or {}).get("path") or "")
-    spec_report = str((inputs.get("slide_spec_report") or {}).get("path") or "")
+) -> Stage:
+    """Build ONE gate stage from ONE place (Batch 5 gate registry).
+
+    `references/pipeline-contract.json#qa_gates` documents each gate's script,
+    phase, requirements and dependencies; this function is the single execution
+    of that registry — the QA run and the pre-QA subset share it, so an argument
+    change can never be applied to one run and forgotten in the other.
+    """
+    registry = CONTRACT.get("qa_gates") or {}
+    entry = registry.get(name) or {}
+    artifact = str(entry.get("artifact") or name)
+    stage_name = name.replace("_", "-")
+    report = work_dir / f"{report_prefix}-{stage_name}.json"
 
     def gate(script: str, *args: str) -> list[str]:
         return [sys.executable, str(HERE / script), *args]
 
-    candidates: dict[str, Stage] = {
-        "package": Stage(
-            "package",
-            [sys.executable, str(PPTX_TOOL), "validate", pptx, "--output", str(work_dir / "qa-package.json")],
-            work_dir / "qa-package.json", "package",
-        ),
-        "rendered": Stage(
-            "rendered",
-            gate("pptx_rendered_check.py", "--pptx", pptx, "--output", str(work_dir / "qa-rendered.json")),
-            work_dir / "qa-rendered.json", "rendered",
-        ),
-    }
-    if spec:
-        candidates["actual_content"] = Stage(
-            "actual-content",
-            gate("pptx_actual_content_check.py", pptx, spec, "--output", str(work_dir / "qa-actual-content.json")),
-            work_dir / "qa-actual-content.json", "actual_content",
-        )
-    if spec and lock and visual_review:
-        candidates["quality"] = Stage(
-            "quality",
-            gate(
-                "pptx_quality_gate_v071.py", "--pptx", pptx, "--slide-spec", spec,
-                "--spec-lock", lock, "--visual-report", str(visual_review),
-                "--output", str(work_dir / "qa-quality.json"),
-            ),
-            work_dir / "qa-quality.json", "quality",
-        )
+    pptx = gate_inputs.get("pptx") or ""
+    spec = gate_inputs.get("slide_spec") or ""
+    lock = gate_inputs.get("spec_lock") or ""
+    art = gate_inputs.get("art_direction") or ""
+    vgr = gate_inputs.get("visual_generation_report") or ""
+    spec_report = gate_inputs.get("slide_spec_report") or ""
 
-    required = {
-        "pptx": pptx, "slide-spec": spec, "spec-lock": lock, "art-direction": art,
-        "visual-generation-report": vgr, "slide-spec-report": spec_report,
-        "visual-review": str(visual_review or ""),
-    }
-    if not [name for name, value in required.items() if not value] and {
-        "package", "actual_content", "quality"
-    } <= set(candidates):
+    if name == "package":
+        argv = [sys.executable, str(PPTX_TOOL), "validate", pptx, "--output", str(report)]
+    elif name == "rendered":
+        argv = gate("pptx_rendered_check.py", "--pptx", pptx, "--output", str(report))
+    elif name == "actual_content":
+        argv = gate("pptx_actual_content_check.py", pptx, spec, "--output", str(report))
+    elif name == "quality":
+        # `visual_review` decides full (post-critic) vs deterministic (pre-build) half.
+        argv = gate("pptx_quality_gate_v071.py", "--pptx", pptx, "--slide-spec", spec,
+                    "--spec-lock", lock, "--output", str(report))
+        if visual_review:
+            argv += ["--visual-report", str(visual_review)]
+    elif name == "delivery":
         argv = gate(
             "pptx_delivery_check_v08.py",
             "--pptx", pptx, "--slide-spec", spec, "--spec-lock", lock,
@@ -433,7 +436,7 @@ def build_qa_stages(
             "--slide-spec-report", spec_report,
             "--actual-content-report", str(work_dir / "qa-actual-content.json"),
             "--visual-reviewed", "--visual-review-report", str(visual_review),
-            "--output", str(work_dir / "qa-delivery.json"),
+            "--output", str(report),
         )
         if notes:
             argv += ["--notes", str(notes)]
@@ -441,8 +444,50 @@ def build_qa_stages(
             argv += ["--preview", str(preview)]
         if allow_missing_preview:
             argv.append("--allow-missing-preview")
-        candidates["delivery"] = Stage(
-            "delivery", argv, work_dir / "qa-delivery.json", "delivery"
+    else:  # pragma: no cover - registry and this switch must move together
+        raise RefusedError(f"gate {name} has no stage builder (update _gate_stage + qa_gates)")
+    return Stage(stage_name, argv, report, artifact)
+
+
+def build_qa_stages(
+    manifest: dict[str, Any],
+    work_dir: Path,
+    *,
+    visual_review: Path | None,
+    notes: Path | None = None,
+    previews: list[Path] | None = None,
+    allow_missing_preview: bool = False,
+) -> list[Stage]:
+    gate_inputs = _gate_inputs(manifest)
+    pptx = gate_inputs["pptx"]
+    spec = gate_inputs["slide_spec"]
+    lock = gate_inputs["spec_lock"]
+    art = gate_inputs["art_direction"]
+    vgr = gate_inputs["visual_generation_report"]
+    spec_report = gate_inputs["slide_spec_report"]
+
+    candidates: dict[str, Stage] = {
+        "package": _gate_stage("package", work_dir, "qa", gate_inputs),
+        "rendered": _gate_stage("rendered", work_dir, "qa", gate_inputs),
+    }
+    if spec:
+        candidates["actual_content"] = _gate_stage("actual_content", work_dir, "qa", gate_inputs)
+    if spec and lock and visual_review:
+        candidates["quality"] = _gate_stage(
+            "quality", work_dir, "qa", gate_inputs, visual_review=visual_review,
+        )
+
+    required = {
+        "pptx": pptx, "slide-spec": spec, "spec-lock": lock, "art-direction": art,
+        "visual-generation-report": vgr, "slide-spec-report": spec_report,
+        "visual-review": str(visual_review or ""),
+    }
+    dependencies = {"package", "actual_content", "quality"}
+    if not [name for name, value in required.items() if not value] and dependencies <= set(candidates):
+        candidates["delivery"] = _gate_stage(
+            "delivery", work_dir, "qa", gate_inputs,
+            visual_review=visual_review, notes=notes, previews=previews,
+            allow_missing_preview=allow_missing_preview,
         )
 
     return [candidates[name] for name in QA_ORDER if name in candidates]
@@ -453,46 +498,24 @@ def pre_qa_stages(manifest: dict[str, Any], work_dir: Path) -> list[Stage]:
 
     Reports go to pre-qa-*.json so they can be handed to the builder without
     being confused with (or silently overwritten by) the authoritative QA run
-    that re-executes the same checks later.
+    that re-executes the same checks later. Stage construction goes through the
+    SAME `_gate_stage` builder as the full QA run — only the report prefix and
+    the critic inputs differ.
     """
-    inputs = manifest.get("inputs") or {}
-    pptx = str(((manifest.get("build") or {}).get("pptx") or {}).get("path") or "")
-    spec = str((inputs.get("slide_spec") or {}).get("path") or "")
-    lock = str((inputs.get("spec_lock") or {}).get("path") or "")
-    if not pptx:
+    gate_inputs = _gate_inputs(manifest)
+    if not gate_inputs["pptx"]:
         return []
-    stages = [
-        Stage(
-            "rendered",
-            [sys.executable, str(HERE / "pptx_rendered_check.py"), "--pptx", pptx,
-             "--output", str(work_dir / "pre-qa-rendered.json")],
-            work_dir / "pre-qa-rendered.json", "rendered",
-        )
-    ]
-    if spec:
-        stages.append(
-            Stage(
-                "actual-content",
-                [sys.executable, str(HERE / "pptx_actual_content_check.py"), pptx, spec,
-                 "--output", str(work_dir / "pre-qa-actual-content.json")],
-                work_dir / "pre-qa-actual-content.json", "actual_content",
-            )
-        )
-    if spec and lock:
+    stages = [_gate_stage("rendered", work_dir, "pre-qa", gate_inputs)]
+    if gate_inputs["slide_spec"]:
+        stages.append(_gate_stage("actual_content", work_dir, "pre-qa", gate_inputs))
+    if gate_inputs["slide_spec"] and gate_inputs["spec_lock"]:
         # Evidence closure, note timing and the spec lock are pure PPTX + spec reads — the
         # same pass the quality gate runs, minus everything that needs the critic. Without
         # this stage build #1 reports "0 blockers" and the deck goes to render + a full
         # critic pass before QA reveals deterministic misses (2026-09-18 live: 48 blockers
         # after a green pre-QA).
-        stages.append(
-            Stage(
-                "quality-deterministic",
-                [sys.executable, str(HERE / "pptx_quality_gate_v071.py"),
-                 "--pptx", pptx, "--slide-spec", spec, "--spec-lock", lock,
-                 "--output", str(work_dir / "pre-qa-quality.json")],
-                work_dir / "pre-qa-quality.json", "quality",
-            )
-        )
+        stage = _gate_stage("quality", work_dir, "pre-qa", gate_inputs)
+        stages.append(Stage("quality-deterministic", stage.argv, stage.report, stage.artifact))
     return stages
 
 
