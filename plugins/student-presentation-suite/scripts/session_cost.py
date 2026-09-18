@@ -41,7 +41,10 @@ DEFAULT_CURVE_POINTS = 12
 # A "deterministic round-trip" is a model turn whose every tool call merely drives a
 # deterministic pipeline command — state polling, gates, build, render, preview. These
 # are the rounds `ppt_pipeline.py advance` (Batch 3) is meant to absorb without the
-# model seeing results and issuing the next command by hand.
+# model seeing results and issuing the next command by hand. Cross-check (Batch 3.1):
+# pipeline_report.py's advance_collapsed (ledger actions − advance calls) should track
+# the drop in these transcript-level rounds between the baseline and post-advance runs;
+# the advance call itself still counts as one deterministic round here, by design.
 DETERMINISTIC_COMMAND = re.compile(
     r"(ppt_pipeline\.py|run_gates\.(?:py|sh)|calibration_preview\.py)\b"
 )

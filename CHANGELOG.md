@@ -2,6 +2,56 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — v0.15 Pipeline Simplification（Batch 3.1：advance 正确性 + 可观测性）
+
+把 Batch 3 留下的最后一个「模型手动 build」机械回合消掉，并给 advance 装上可量化的
+收益仪表。`next` 仍是调试/巡检入口，advance 仍是正常生产入口，仍不 spawn 任何 agent。
+
+### build 纳入 advance（核心）
+
+- **首次 build 自动化**：calibration 独立评审 green 且 scaffold 页面全部实现
+  （`remaining_scaffold_slides` 为空，即「initial builders 已完成」的确定性信号）时，
+  dispatch 直接给出 build 命令，advance 执行后继续 render → critic 边界，一次调用
+  折叠 build、render 两个回合。
+- **repair / pre-QA 修复后的 rebuild 自动化**：新增 `generator_changed_since_build()`
+  守卫——generator fingerprint 相对上次 build 有变化（即 repair builder 已回来改了页面）
+  时 advance 自动 rebuild；fingerprint 未变化时边界仍是 repair builder。此前 builder
+  返回后 advance 只会再次要求 spawn repair builder（旧 render 误导 + 错过 rebuild 时机）。
+- **`pending_repair` 派发下沉到 `build_next_payload`**：`next` 调试视图与 advance 共用
+  同一份「repair 已登记且未动手 → repair builder；已动手（fingerprint 变化）→ rebuild」
+  逻辑，advance 删除特判分支。agent 边界的 `builder_mode` / `builder_packets` 提升到
+  advance 结果顶层（`mode` / `packets`），与 repair 边界同形。
+- **edit_ooxml 首次 build 是明确例外**：编辑意图应用前 auto-build 会把未改动的源 deck
+  打包直送 complete——advance 以 `needs_user`（原因注明 edit_ooxml）停下，而不是执行。
+- `cmd_build` 把 `generator_args` 记入 manifest，advance 重放 build 时复用原入口文件
+  （`build.entry`）与原输出名（`build.pptx.path`），不再假设默认值。
+
+### advance ledger（收益可量化）
+
+- 每次 advance 调用写入 manifest history（`command: "advance"`，含 `status` / `actions` /
+  `step_cap`），`pipeline_report.py` 据此汇总：`advance_calls`、`advance_actions`、
+  `advance_collapsed`（= actions − calls，单个 action 的调用不虚报节省）、
+  `advance_agent_boundaries` / `advance_user_boundaries` / `advance_refusals` /
+  `advance_step_cap_hits`；表格新增 `adv` / `col` 列，完整口径在 `--json`。
+- `session_cost.py` 口径注释对齐：transcript 级 deterministic rounds 的下降应与
+  `advance_collapsed` 互认，advance 调用本身仍计为一轮 deterministic round。
+- 由此 Batch 3 的 KPI（deterministic agent round-trips ↓ ≥70%）第一次可以对着 Batch 0
+  baseline 直接实测，而不是靠推测。
+
+### 顺带修复
+
+- 修复 Batch 3 遗留的**边界误标签**：builder 返回后 dispatch 的 build 命令在 advance 中
+  不可路由，曾以 `needs_user` + "unroutable deterministic command" 返回——build 是确定性
+  动作，现在被正确路由执行。
+
+### 测试
+
+- `AdvanceTests` 8 → 12：全页面实现后 advance 自动 build+render → critic、repair builder
+  改动 generator 后 advance 自动 rebuild+render → critic（且 pending_repair 清除）、
+  edit_ooxml 首次 build → needs_user、advance 调用入 ledger。
+- `test_pipeline_report.py` 新增 ledger 汇总用例（collapsed 口径含「零动作调用不虚报、
+  不为负」的断言）。全套 730 → 735。
+
 ## Unreleased — v0.15 Pipeline Simplification（Batch 3：`ppt_pipeline advance`）
 
 时间优化的核心批次：把「跑一步 → 看结果 → 再发下一步」的确定性回合交给管线本身。

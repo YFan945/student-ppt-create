@@ -64,6 +64,12 @@ def collect(manifest: dict[str, Any], work_dir: Path | None = None) -> dict[str,
     qa_calls = [h for h in history if h.get("command") == "qa"]
     render_reused = sum(1 for h in render_calls if h.get("reused"))
     qa_reused = sum(1 for h in qa_calls if h.get("reused"))
+    # Advance ledger (Batch 3.1): one history entry per `advance` call with the
+    # deterministic actions it executed. Each action used to be its own model
+    # round-trip ("run command → read result → issue next command"), so the
+    # collapsed count is actions minus the calls that carried them.
+    advance = [h for h in history if h.get("command") == "advance"]
+    advance_actions = sum(len(h.get("actions") or []) for h in advance)
     return {
         "work_id": manifest.get("work_id"),
         "manifest_version": manifest.get("manifest_version"),
@@ -84,6 +90,15 @@ def collect(manifest: dict[str, Any], work_dir: Path | None = None) -> dict[str,
         "blockers": int(qa.get("blockers") or 0),
         "qa_ok": bool(qa.get("ok")),
         "packet_fallbacks": packet_fallback_count(work_dir) if work_dir else 0,
+        "advance_calls": len(advance),
+        "advance_actions": advance_actions,
+        "advance_collapsed": max(0, advance_actions - len(advance)),
+        "advance_agent_boundaries": sum(1 for h in advance if h.get("status") == "needs_agent"),
+        "advance_user_boundaries": sum(
+            1 for h in advance if h.get("status") == "needs_user" and not h.get("step_cap")
+        ),
+        "advance_refusals": sum(1 for h in advance if h.get("status") == "refused"),
+        "advance_step_cap_hits": sum(1 for h in advance if h.get("step_cap")),
         "minutes": round(minutes, 1) if minutes is not None else None,
     }
 
@@ -92,11 +107,13 @@ def render_table(rows: list[dict[str, Any]]) -> str:
     """`render` / `qa` count real executions; `r_reuse` / `q_reuse` are cache hits.
 
     Without the reuse columns the report can only show what was spent, not what
-    the mechanical gates actually avoided.
+    the mechanical gates actually avoided. `adv` / `col` are the Batch 3 ledger:
+    advance calls and the deterministic round-trips they collapsed (actions minus
+    calls); the full boundary/refusal/step-cap breakdown is in the --json rows.
     """
     header = (
         f"{'work_id':<24} {'state':<9} {'build':>5} {'repair':>6} {'render':>6} "
-        f"{'r_reuse':>7} {'qa':>3} {'q_reuse':>7} {'qa_s':>7} {'block':>5} {'pk_fb':>5} {'min':>6}"
+        f"{'r_reuse':>7} {'qa':>3} {'q_reuse':>7} {'qa_s':>7} {'block':>5} {'pk_fb':>5} {'adv':>4} {'col':>4} {'min':>6}"
     )
     lines = [header, "-" * len(header)]
     for row in rows:
@@ -105,7 +122,8 @@ def render_table(rows: list[dict[str, Any]]) -> str:
             f"{str(row['work_id']):<24} {str(row['state']):<9} {row['builds']:>5} "
             f"{row['repairs']:>6} {row['render_events']:>6} {row['render_reused']:>7} "
             f"{row['qa_events']:>3} {row['qa_reused']:>7} "
-            f"{row['qa_stage_ms'] / 1000:>7.2f} {row['blockers']:>5} {row['packet_fallbacks']:>5} {minutes:>6}"
+            f"{row['qa_stage_ms'] / 1000:>7.2f} {row['blockers']:>5} {row['packet_fallbacks']:>5} "
+            f"{row['advance_calls']:>4} {row['advance_collapsed']:>4} {minutes:>6}"
         )
     if rows:
         lines.append("-" * len(header))
@@ -115,7 +133,8 @@ def render_table(rows: list[dict[str, Any]]) -> str:
             f"{sum(r['render_events'] for r in rows):>6} {sum(r['render_reused'] for r in rows):>7} "
             f"{sum(r['qa_events'] for r in rows):>3} {sum(r['qa_reused'] for r in rows):>7} "
             f"{sum(r['qa_stage_ms'] for r in rows) / 1000:>7.2f} "
-            f"{sum(r['blockers'] for r in rows):>5} {sum(r['packet_fallbacks'] for r in rows):>5}"
+            f"{sum(r['blockers'] for r in rows):>5} {sum(r['packet_fallbacks'] for r in rows):>5} "
+            f"{sum(r['advance_calls'] for r in rows):>4} {sum(r['advance_collapsed'] for r in rows):>4}"
         )
     return "\n".join(lines) + "\n"
 

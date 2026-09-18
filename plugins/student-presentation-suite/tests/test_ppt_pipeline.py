@@ -1640,6 +1640,82 @@ class AdvanceTests(PipelineTestCase):
         self.assertEqual([], result["actions"])
         self.assertEqual("repair", result["mode"])
 
+    def green_calibration_review(self, slides: list[int]) -> None:
+        """Independent calibration evidence that satisfies calibration_review()."""
+        calibration = self.work / "calibration"
+        calibration.mkdir(exist_ok=True)
+        pptx_sha = "calibration-pptx-sha"
+        (calibration / "calibration-manifest.json").write_text(
+            json.dumps({"slides": slides, "pptx": {"sha256": pptx_sha}}), encoding="utf-8"
+        )
+        render_dir = calibration / "render"
+        render_dir.mkdir(parents=True, exist_ok=True)
+        for number in slides:
+            (render_dir / f"calibration-{number}.png").write_bytes(b"PNG")
+        (calibration / "calibration-visual-review.json").write_text(
+            json.dumps({"pptx_sha256": pptx_sha, "slides": [{"slide": n} for n in slides]}),
+            encoding="utf-8",
+        )
+
+    def test_advance_builds_then_renders_once_all_pages_are_implemented(self) -> None:
+        """Batch 3.1: the first build is deterministic too. With calibration green and
+        no scaffold stubs left, advance runs build AND render before the critic
+        boundary instead of handing a raw build command back to the model."""
+        self.write_rich_spec(3)
+        self.write_art([1])
+        self.plan(self.files)
+        self.green_calibration_review([1])
+        self.entry()  # strips the stub markers: the initial builders are done
+        self.use_fake_runtime()
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual(["build", "render"], result["actions"])
+        self.assertEqual(pp.CRITIC_AGENT, result["dispatch"]["agent"])
+
+    def test_advance_rebuilds_when_the_repair_builder_changed_the_generator(self) -> None:
+        """After the repair builder edits pages the fingerprint moves: advance must
+        rebuild and render in ONE call instead of asking the model to run build by
+        hand between two advance calls. An unchanged fingerprint keeps the repair
+        builder boundary (tested above)."""
+        self.state_qa(ok=False)
+        self.advance()  # records the repair and stops at the repair builder
+        entry = self.entry()
+        entry.write_text(entry.read_text(encoding="utf-8") + "// repair edits landed\n", encoding="utf-8")
+        self.use_fake_runtime()
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual(["build", "render"], result["actions"])
+        self.assertEqual(pp.CRITIC_AGENT, result["dispatch"]["agent"])
+        manifest = self.manifest()
+        self.assertFalse(manifest["build"]["pending_repair"])
+
+    def test_edit_mode_first_build_needs_the_user_not_a_silent_auto_build(self) -> None:
+        """An edit-mode build before the main session applied the edit intent would
+        package the unchanged source deck — that is the one build advance must not
+        decide by itself, so it stops with a named reason instead of running it."""
+        self.write_rich_spec(3)
+        self.plan(self.files)
+        manifest = self.manifest()
+        manifest["mode"] = "edit_ooxml"
+        pp.save_manifest(self.work, manifest)
+        result = self.advance()
+        self.assertEqual("needs_user", result["status"])
+        self.assertIn("edit_ooxml", result["reason"])
+        self.assertEqual([], result["actions"])
+        self.assertNotIn("agent", result.get("dispatch", {}))
+
+    def test_advance_calls_are_ledgered_for_the_report(self) -> None:
+        """Batch 3.1 observability: every advance call lands in the manifest history
+        so pipeline_report.py can report collapsed round-trips without transcripts."""
+        self.state_qa(ok=True)
+        result = self.advance()
+        self.assertEqual("complete", result["status"])
+        entries = [h for h in self.manifest()["history"] if h.get("command") == "advance"]
+        self.assertEqual(1, len(entries))
+        self.assertEqual("complete", entries[0]["status"])
+        self.assertIn("complete", entries[0]["actions"])
+        self.assertFalse(entries[0]["step_cap"])
+
 
 if __name__ == "__main__":
     unittest.main()

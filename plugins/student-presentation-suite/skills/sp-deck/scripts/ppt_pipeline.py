@@ -546,6 +546,31 @@ def pre_qa_failed_current(manifest: dict[str, Any]) -> bool:
     return int(pre_qa.get("rounds") or 0) < MAX_PRE_QA_REBUILDS
 
 
+def generator_changed_since_build(manifest: dict[str, Any]) -> bool:
+    """Whether the generator files changed since the last recorded build.
+
+    This is the deterministic "the builder came back and edited pages" signal: a
+    rebuild is only meaningful once the fingerprint moves, and `cmd_build` refuses
+    the no-op rebuild itself. With no recorded build there is nothing to compare
+    against, so the answer is False — a first build must be dispatched through its
+    own stage (calibration green + no scaffold stubs), never inferred from here.
+    Edit-mode decks hash their OOXML tree, not a generator entry, so they never
+    report a change here; their rebuild stays a main-session decision.
+    """
+    build_info = manifest.get("build") or {}
+    previous = str(build_info.get("generator_fingerprint") or "")
+    if not previous:
+        return False
+    entry = Path(str(build_info.get("entry") or ""))
+    if not entry.is_file():
+        return False
+    try:
+        fingerprint, _ = generator_fingerprint(entry)
+    except Exception:
+        return False
+    return fingerprint != previous
+
+
 CALIBRATION_DIR_NAME = "calibration"
 CALIBRATION_MANIFEST_NAME = "calibration-manifest.json"
 CALIBRATION_REVIEW_NAME = "calibration-visual-review.json"
@@ -1016,6 +1041,9 @@ def cmd_build(args: argparse.Namespace) -> int:
     build_info.update({
         "entry": str(entry), "pptx": bind(pptx), "generator_files": bindings,
         "generator_fingerprint": fingerprint,
+        # advance replays builds deterministically (Batch 3.1) and needs the original
+        # invocation, not just its outcome.
+        "generator_args": list(args.generator_args),
         "build_count": int(build_info.get("build_count") or 0) + 1,
         "pending_repair": False,
         # Counting carry-over builds separately keeps "how many rounds did we spend" honest
@@ -2058,38 +2086,60 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                                 "mode=calibration for only those pages, then rerun calibration_preview.py."
                             )
                     else:
-                        payload["agent"] = "student-presentation-suite:presentation-builder"
-                        payload["builder_mode"] = "initial"
-                        payload["notes"] = (
-                            "calibration is independently reviewed and green. Spawn the same builder "
-                            "mode=initial to implement every remaining scaffold page (calibrated pages are "
-                            "preserved); run build only after BUILDER_DONE."
-                        )
                         remaining = remaining_scaffold_slides(work_dir)
-                        shards = builder_shards(remaining, work_dir)
-                        if shards:
-                            payload["builder_shards"] = shards
-                            payload["notes"] += (
-                                f" {len(remaining)} pages remain: spawn all {shards['parallel']} shards in "
-                                "ONE message (see builder_shards) so the page work runs concurrently — "
-                                "sharding changes no gate, only the wall clock."
+                        if not remaining:
+                            # Every scaffold page is implemented (no stub markers left): the
+                            # initial builders are done, so the next step is the first full
+                            # build — a deterministic step `advance` executes itself.
+                            payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
+                            payload["notes"] = (
+                                "calibration is independently reviewed and green and every scaffold "
+                                "page is implemented: run build (advance executes it), then pre-QA → "
+                                "render → critic follow automatically."
                             )
-                        # Builder Packet (v0.15 Batch 2): one packet per instance, projected
-                        # from the frozen inputs so builders stop re-reading them.
-                        try:
-                            packets = _packet.prepare_packets(work_dir, "initial", remaining)
-                            if packets:
-                                payload["builder_packets"] = packets
+                        else:
+                            payload["agent"] = "student-presentation-suite:presentation-builder"
+                            payload["builder_mode"] = "initial"
+                            payload["notes"] = (
+                                "calibration is independently reviewed and green. Spawn the same builder "
+                                "mode=initial to implement every remaining scaffold page (calibrated pages are "
+                                "preserved); run build only after BUILDER_DONE."
+                            )
+                            shards = builder_shards(remaining, work_dir)
+                            if shards:
+                                payload["builder_shards"] = shards
                                 payload["notes"] += (
-                                    " One packet per instance is generated under builder-packets/ "
-                                    "(builder_packets field) — pass each builder its packet path as the "
-                                    "task input; the packet projects slides, style, evidence and allowed "
-                                    "files, so builders must not re-read the frozen inputs."
+                                    f" {len(remaining)} pages remain: spawn all {shards['parallel']} shards in "
+                                    "ONE message (see builder_shards) so the page work runs concurrently — "
+                                    "sharding changes no gate, only the wall clock."
                                 )
-                        except Exception as exc:
-                            observe_packet_failure(work_dir, payload, "initial", exc)
+                            # Builder Packet (v0.15 Batch 2): one packet per instance, projected
+                            # from the frozen inputs so builders stop re-reading them.
+                            try:
+                                packets = _packet.prepare_packets(work_dir, "initial", remaining)
+                                if packets:
+                                    payload["builder_packets"] = packets
+                                    payload["notes"] += (
+                                        " One packet per instance is generated under builder-packets/ "
+                                        "(builder_packets field) — pass each builder its packet path as the "
+                                        "task input; the packet projects slides, style, evidence and allowed "
+                                        "files, so builders must not re-read the frozen inputs."
+                                    )
+                            except Exception as exc:
+                                observe_packet_failure(work_dir, payload, "initial", exc)
         elif state == "producing":
-            if pre_qa_failed_current(manifest):
+            pending_repair = bool((manifest.get("build") or {}).get("pending_repair"))
+            if (pending_repair or pre_qa_failed_current(manifest)) and generator_changed_since_build(manifest):
+                # The repair / pre-QA-fix builder came back and edited pages — the
+                # fingerprint moved. The next step is the rebuild that lands those edits,
+                # which is deterministic: advance runs it and continues into render → critic
+                # in the same call instead of costing the model an extra round-trip.
+                payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
+                payload["notes"] = (
+                    "the generator changed since the last build (repair/pre-QA fix edits landed): "
+                    "rebuild first so the QA evidence matches the deck about to be reviewed"
+                )
+            elif pre_qa_failed_current(manifest):
                 # Deterministic misses are fixed BEFORE any render or critic cost:
                 # the builder edits the reported pages and the deck is rebuilt —
                 # no repair round, no critic pass on a doomed deck.
@@ -2139,6 +2189,30 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             "builder-packets/ (builder_packets field) — pass each builder its packet "
                             "path; it must not re-read the reports the packet covers."
                         )
+                except Exception as exc:
+                    observe_packet_failure(work_dir, payload, "repair", exc)
+            elif pending_repair:
+                # A recorded repair with an UNCHANGED generator means the repair builder
+                # has not edited yet. The boundary is the repair builder, not the critic:
+                # the render evidence is still technically current, but the deck is about
+                # to change, so reviewing the old render would waste a critic pass.
+                payload["agent"] = "student-presentation-suite:presentation-builder"
+                payload["builder_mode"] = "repair"
+                payload["notes"] = "repair is recorded; fix the blocker pages, then build → render → qa"
+                try:
+                    blocker_slides = slides_named_in_reports(
+                        work_dir,
+                        ("pipeline-qa.json", "pre-qa-quality.json", "pre-qa-actual-content.json", "pre-qa-rendered.json"),
+                    )
+                    if blocker_slides and (work_dir / "pipeline-qa.json").is_file():
+                        packets = _packet.prepare_packets(work_dir, "repair", blocker_slides, ["pipeline-qa.json"])
+                        if packets:
+                            payload["builder_packets"] = packets
+                            payload["notes"] += (
+                                " Repair packets with the projected blockers are generated under "
+                                "builder-packets/ (builder_packets field) — pass each builder its packet "
+                                "path; it must not re-read the reports the packet covers."
+                            )
                 except Exception as exc:
                     observe_packet_failure(work_dir, payload, "repair", exc)
             elif render_is_current(manifest):
@@ -2303,40 +2377,42 @@ def cmd_advance(args: argparse.Namespace) -> int:
     The model used to drive mechanical transitions by hand — run the calibration
     preview, then read the output, then run render, then read again, then record
     the repair, then spawn. Each of those is a full model round-trip that adds no
-    intelligence. `advance` performs the deterministic transitions itself and
-    stops only where judgement is actually required:
+    intelligence. `advance` performs the deterministic transitions itself —
+    including the builds (first production build once calibration is green and no
+    scaffold stubs remain; rebuild once a repair/pre-QA-fix builder's edits moved
+    the generator fingerprint) — and stops only where judgement is required:
 
     - ``needs_agent`` — spawn a builder (packet paths included) or the
       independent critic; the main session spawns, advance never does;
-    - ``needs_user`` — intake confirmation or inputs only the user can supply;
+    - ``needs_user`` — intake confirmation, user-provided inputs, or the
+      edit-mode OOXML edits that only the main session can apply;
     - ``complete`` — the deck is delivered.
 
     ``next`` stays as the debug/introspection view of the same dispatch. A step
     cap bounds the loop; a refusal surfaces as ``status: refused`` with the
-    error instead of guessing past it.
+    error instead of guessing past it. Every call is recorded in the manifest
+    history so `pipeline_report.py` can report how many round-trips collapsed.
     """
     work_dir = args.work_dir.resolve()
     actions: list[str] = []
     result: dict[str, Any] = {}
+    step_cap_hit = False
+    start_state = str((load_manifest(work_dir) or {}).get("state") or "(absent)")
     try:
         for _ in range(MAX_ADVANCE_STEPS):
             payload = build_next_payload(work_dir)
             state = str(payload.get("state") or "(absent)")
             manifest = load_manifest(work_dir)
-            # A pending repair overrides whatever the plain producing dispatch says:
-            # after `repair` the render evidence is still current, so the plain
-            # dispatch would route to the critic — but the deck is about to change.
-            # The correct boundary is the repair builder.
-            if state == "producing" and bool((manifest.get("build") or {}).get("pending_repair")):
-                result = {
-                    "status": "needs_agent", "actions": actions,
-                    "agent": BUILDER_AGENT, "mode": "repair",
-                    "packets": _advance_repair_packets(work_dir),
-                    "reason": "pending repair: fix the QA blocker pages, then build → render → qa",
-                }
-                break
             if payload.get("agent"):
                 result = {"status": "needs_agent", "actions": actions, "dispatch": payload}
+                # Hoist the spawn fields so every builder/critic boundary has the same
+                # shape the repair boundary always had (agent / mode / packets).
+                if payload.get("builder_mode"):
+                    result["mode"] = payload["builder_mode"]
+                if payload.get("builder_packets"):
+                    result["packets"] = payload["builder_packets"]
+                elif payload.get("builder_packet"):
+                    result["packet"] = payload["builder_packet"]
                 break
             command = str(payload.get("next_command") or "")
             bordered = f" {command} "
@@ -2350,6 +2426,27 @@ def cmd_advance(args: argparse.Namespace) -> int:
             if state == "complete":
                 result = {"status": "complete", "actions": actions, "dispatch": payload}
                 break
+            if " build " in bordered:
+                if state == "planned" and str((manifest or {}).get("mode") or "") == "edit_ooxml":
+                    # An edit-mode first build before the main session applied the edit
+                    # intent would package the unchanged source deck and sail straight
+                    # to complete — the edit is the one input advance cannot infer.
+                    result = {
+                        "status": "needs_user", "actions": actions,
+                        "reason": "edit_ooxml: apply the edit intent to ooxml/ in the main session, then run advance",
+                        "dispatch": payload,
+                    }
+                    break
+                build_info = (manifest or {}).get("build") or {}
+                recorded_entry = Path(str(build_info.get("entry") or "")) if build_info.get("entry") else None
+                recorded_pptx = str(((build_info.get("pptx") or {}).get("path")) or "")
+                output_name = Path(recorded_pptx).name if recorded_pptx else "deck.pptx"
+                _run_quietly(cmd_build, argparse.Namespace(
+                    work_dir=work_dir, entry=recorded_entry, output_name=output_name,
+                    generator_args=list(build_info.get("generator_args") or []),
+                ))
+                actions.append("build")
+                continue
             if "calibration_preview.py" in command:
                 ids: list[str] = []
                 if "--slides" in command:
@@ -2395,6 +2492,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
             }
             break
         else:
+            step_cap_hit = True
             result = {
                 "status": "needs_user", "actions": actions,
                 "reason": f"step cap {MAX_ADVANCE_STEPS} reached without an agent boundary; inspect with next --json",
@@ -2402,6 +2500,19 @@ def cmd_advance(args: argparse.Namespace) -> int:
     except RefusedError as exc:
         result = {"status": "refused", "actions": actions, "error": str(exc)[:300]}
     result["packet_fallback_count"] = len(packet_fallbacks(work_dir))
+    try:
+        manifest = load_manifest(work_dir)
+        if manifest is not None:
+            # The advance ledger (Batch 3.1): one history entry per call, so
+            # pipeline_report.py can report collapsed round-trips without parsing
+            # session transcripts.
+            record(
+                manifest, "advance", start_state, str(manifest.get("state") or "?"),
+                status=result["status"], actions=list(actions), step_cap=step_cap_hit,
+            )
+            save_manifest(work_dir, manifest)
+    except Exception as exc:  # the ledger must never turn a finished advance into a failure
+        result["ledger_error"] = str(exc)[:160]
     if getattr(args, "json", False):
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:

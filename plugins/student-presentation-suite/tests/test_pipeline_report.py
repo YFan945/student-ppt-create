@@ -53,6 +53,57 @@ class PipelineReportTests(unittest.TestCase):
         self.assertTrue(rows[0]["qa_ok"])
         self.assertEqual(rows[0]["packet_fallbacks"], 0)
 
+    def test_advance_ledger_collapses_into_roundtrip_metrics(self) -> None:
+        """Batch 3.1: each advance history entry carries the deterministic actions it
+        executed. collapsed = actions − calls is the round-trip count the model no
+        longer pays; boundaries/refusals/step-caps are reported separately."""
+        self.write_manifest(
+            "deck-a",
+            history=[
+                {"command": "plan", "at": "2026-09-15T10:00:00+08:00"},
+                {"command": "advance", "status": "needs_agent", "actions": ["build", "render"], "step_cap": False},
+                {"command": "advance", "status": "complete", "actions": ["complete"], "step_cap": False},
+                {"command": "complete", "at": "2026-09-15T10:17:30+08:00"},
+            ],
+        )
+        self.write_manifest(
+            "deck-b",
+            history=[
+                {"command": "plan", "at": "2026-09-15T10:00:00+08:00"},
+                {"command": "advance", "status": "needs_user", "actions": [], "step_cap": False},
+                {"command": "advance", "status": "needs_user", "actions": [], "step_cap": True},
+                {"command": "advance", "status": "refused", "actions": [], "step_cap": False},
+                {"command": "complete", "at": "2026-09-15T10:17:30+08:00"},
+            ],
+        )
+        rows = {row["work_id"]: row for row in (
+            br.collect(json.loads(p.read_text(encoding="utf-8")), p.parent)
+            for p in sorted(self.root.glob("*/build-manifest.json"))
+        )}
+        a, b = rows["deck-a"], rows["deck-b"]
+        self.assertEqual(2, a["advance_calls"])
+        self.assertEqual(3, a["advance_actions"])
+        # The build+render call would have cost the model two hand-driven rounds; one
+        # advance call replaces both, so collapsed = actions − calls = 1. A call that
+        # runs a single action saves nothing, and the metric must not flatter itself.
+        self.assertEqual(1, a["advance_collapsed"])
+        self.assertEqual(1, a["advance_agent_boundaries"])
+        self.assertEqual(0, a["advance_user_boundaries"])
+        self.assertEqual(0, a["advance_refusals"])
+        self.assertEqual(0, a["advance_step_cap_hits"])
+        # Zero-action boundary calls collapse nothing and never go negative.
+        self.assertEqual(3, b["advance_calls"])
+        self.assertEqual(0, b["advance_collapsed"])
+        self.assertEqual(1, b["advance_user_boundaries"])
+        self.assertEqual(1, b["advance_step_cap_hits"])
+        self.assertEqual(1, b["advance_refusals"])
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = br.main(["--work-root", str(self.root)])
+        self.assertEqual(rc, 0)
+        self.assertIn("adv", buffer.getvalue())
+        self.assertIn("col", buffer.getvalue())
+
     def test_packet_fallbacks_are_counted_per_work_dir(self) -> None:
         """Each fallback entry = one builder that silently gave back Batch 2's
         savings; the report must surface that instead of hiding it."""
