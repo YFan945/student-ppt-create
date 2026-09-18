@@ -2,6 +2,61 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — v0.15 Pipeline Simplification（Batch 4：Calibration / 视觉系统重构）
+
+这批的重点不是更严格，而是更聪明地校准：校准样本按视觉语法覆盖选取、确立的视觉体系以
+契约形式投影给每个 builder、页面节奏在 plan 时成文、美学评分与硬门禁解耦。
+四个子批各自独立提交（4.1 `f2b7512`、4.2 `e1dd6dd`、4.3 `cadb2c1`、4.4）。
+
+### Batch 4.1 — archetype coverage 选页
+
+- 新增 `calibration_archetypes.py`：从 spec 已冻结字段（`kind` / `visual.layout_family` /
+  文档化 `layout` 关键词）确定性分类每页 archetype（hero/section/narrative/comparison/data/
+  process/diagram/image-led/quote/reference/closing），不新增 spec 字段、不引入模型判断。
+- 校准默认样本改为「最大 DISTINCT archetype 覆盖」：leverage 页认领所属组的代表席位、
+  非 narrative 语法组优先、leverage 与页序填充——替换「`high_leverage_slides` 截前三个」的
+  旧规则（三个同语法页不再可能占满样本）。
+- `builder_packet` / `calibration_preview` / spawn 提示共用同一函数，packet 每页携带
+  `archetype`；缺失 art-direction 不再抑制默认样本（spec 即可驱动）。
+- `pipeline-contract.json` 新增 `calibration_sample_selection`；`pptx-art-direction.md`
+  同步说明。
+
+### Batch 4.2 — calibration style contract
+
+- `calibration_review.py`：`calibration_review` / `normalise_severity` / 阻塞 severity 词表
+  从 ppt_pipeline 平移为独立模块（单一所有者，消除循环依赖）。
+- 新增 `style_contract.py`：独立校准评审 green 后，确定性装配
+  `calibration-style-contract.json`——Art Direction 的 style 节逐字投影、校准页及其
+  archetype、calibration builder 写下的 `calibration/style-summary.json`（可选）、策略持有的
+  anti-repetition 种子清单 + Art Direction `avoid`、全部来源的 sha256 溯源。
+- initial/repair Builder Packet 自动嵌入 `calibration_style` 契约（附「不得读 calibration
+  页面 JS 归纳风格」注记）——解决「不能读其他 shard 页面却要学习 calibration」的旧矛盾。
+- builder agent + spawn 模板同步：calibration 轮收尾写 style-summary；initial/repair 只认
+  契约。契约测试更新到新表述。
+
+### Batch 4.3 — deck rhythm plan
+
+- 新增 `deck_rhythm.py`：plan 时从两个冻结输入装配 `deck-rhythm.json`——每页 tone
+  （Art Direction `background_rhythm` 按 slide role 映射，显式条目优先于默认）与 composition
+  family 字母（archetype 首现分配）；连续 3 页同 family 在生成时即告警。
+- plan 命令写入并绑定进 manifest；Builder Packet 每页携带 `rhythm`（含相邻页 family/tone）
+  与 packet 级 `rhythm_warnings`——builder 主动错开，而不是在 repair 轮被发现重复。
+- 观察层硬门禁不变（critic 的 `repetitive_structure_run`）；`pptx-art-direction.md` 说明
+  消费方式；`pipeline-contract.json` 新增 `deck_rhythm_plan`。
+
+### Batch 4.4 — hard gate 与 advisory score 解耦
+
+- 质量门评分阈值拆为两层：`hierarchy` / `focal_point` 低于下限仍是 major（页面结构性
+  损坏）；`composition` / `visual_interest` / `whitespace` 低于下限与全 deck 平均低于目标
+  改为 **advisory**——记录在 `qa-quality.json` 的 issues 里、单独计 `advisory_count`，
+  不再机械阻塞交付。具体缺陷（overflow/collision/palette violation/content mismatch…）
+  作为 critic findings 按原 severity 照常阻塞。
+- `normalise_severity`（pipeline 与 run_gates 两处）映射 advisory → minor，
+  pipeline-qa 聚合口径不变。
+- `pipeline-contract.json` 新增 `visual_score_policy`；spawn 模板 critic 段与
+  `pptx-visual-critic.md` 同步新口径。
+- 测试 752 → 761。
+
 ## Unreleased — v0.15 Pipeline Simplification（Batch 3.1：advance 正确性 + 可观测性）
 
 把 Batch 3 留下的最后一个「模型手动 build」机械回合消掉，并给 advance 装上可量化的

@@ -163,6 +163,82 @@ class GenerationCoreV071Tests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertIn("visual_score_low", {item["code"] for item in result["issues"]})
 
+    def test_aesthetic_scores_below_floor_are_advisory_not_blocking(self) -> None:
+        """Batch 4.4: composition / visual_interest / whitespace below the floor and
+        a low deck average are recorded as advisory — visible, counted, and never a
+        mechanical delivery failure on their own."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            pptx.write_bytes(b"pptx")
+            report = root / "visual.json"
+            report.write_text(
+                json.dumps(
+                    {
+                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                        "slides": [
+                            {
+                                "slide": 1,
+                                "visual_structure": "statement",
+                                "scores": {
+                                    "hierarchy": 8,
+                                    "focal_point": 8,
+                                    "composition": 4,
+                                    "visual_interest": 4,
+                                    "whitespace": 4,
+                                },
+                                "ai_template_feel": "none",
+                                "issues": [],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = self.quality.validate_visual_report(report, pptx, 1, high_score=True)
+            codes = {item["code"] for item in result["issues"]}
+            self.assertIn("visual_score_low", codes)
+            self.assertIn("visual_average_low", codes)
+            self.assertTrue(result["ok"])  # advisory only — nothing blocks
+            self.assertEqual(4, result["advisory_count"])  # 3 low dims + average
+            advisory = {item["code"] for item in result["issues"] if item["severity"] == "advisory"}
+            self.assertEqual({"visual_score_low", "visual_average_low"}, advisory)
+
+    def test_structural_scores_below_floor_still_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            pptx.write_bytes(b"pptx")
+            report = root / "visual.json"
+            report.write_text(
+                json.dumps(
+                    {
+                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                        "slides": [
+                            {
+                                "slide": 1,
+                                "visual_structure": "statement",
+                                "scores": {
+                                    "hierarchy": 4,
+                                    "focal_point": 8,
+                                    "composition": 8,
+                                    "visual_interest": 8,
+                                    "whitespace": 8,
+                                },
+                                "ai_template_feel": "none",
+                                "issues": [],
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            result = self.quality.validate_visual_report(report, pptx, 1, high_score=False)
+            self.assertFalse(result["ok"])
+            low = [item for item in result["issues"] if item["code"] == "visual_score_low"]
+            self.assertEqual(["major"], [item["severity"] for item in low])
+            self.assertEqual(0, result["advisory_count"])
+
     def test_evidence_closure_blocks_missing_final_reference(self) -> None:
         spec = {
             "meta": {"citation_style": "classroom"},

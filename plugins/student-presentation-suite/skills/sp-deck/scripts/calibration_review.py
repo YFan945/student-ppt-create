@@ -33,6 +33,10 @@ QA_BLOCKING_SEVERITIES = ("critical", "major")
 
 def normalise_severity(report: dict[str, Any], issue: dict[str, Any]) -> str:
     severity = str(issue.get("severity") or "").lower()
+    if severity == "advisory":
+        # Batch 4.4: aesthetic score findings ride in the quality gate's issues list
+        # as non-blocking; they aggregate under minor in pipeline-qa.json.
+        return "minor"
     if severity in {"critical", "major", "blocker"}:
         return "critical" if severity == "critical" else "major"
     if severity == "minor":

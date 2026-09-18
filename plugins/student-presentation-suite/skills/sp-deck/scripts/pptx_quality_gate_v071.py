@@ -33,6 +33,14 @@ import pptx_actual_content_check as actual_check  # noqa: E402
 import slide_spec_guard as spec_guard  # noqa: E402
 
 SCORE_FIELDS = ("hierarchy", "focal_point", "composition", "visual_interest", "whitespace")
+# Batch 4.4: structural dimensions below the floor mean the page is broken (unreadable
+# hierarchy, no focal point) and stay hard blockers; the aesthetic dimensions below the
+# floor (and the deck average) are ADVISORY — recorded, counted, never a mechanical
+# delivery failure on their own. Specific defects (overflow, collision, palette
+# violation, content mismatch…) arrive as critic findings with their own severity and
+# block exactly as before.
+STRUCTURAL_SCORE_FIELDS = ("hierarchy", "focal_point")
+ADVISORY_SCORE_FIELDS = tuple(field for field in SCORE_FIELDS if field not in STRUCTURAL_SCORE_FIELDS)
 REPETITIVE_STRUCTURES = {
     "equal-cards",
     "card-grid",
@@ -41,6 +49,7 @@ REPETITIVE_STRUCTURES = {
     "plain-list",
 }
 BLOCKING_SEVERITIES = {"critical", "major"}
+ADVISORY_SEVERITY = "advisory"
 
 
 def sha256_file(path: Path) -> str:
@@ -235,7 +244,8 @@ def validate_visual_report(
             score_values.append(score)
             minimum = 6.0 if high_score else 5.0
             if score < minimum:
-                issues.append(issue("major", "visual_score_low", f"Slide {slide_no} {field} score {score:g} is below the quality floor {minimum:g}.", slide=slide_no, field=field, score=score))
+                severity = "major" if field in STRUCTURAL_SCORE_FIELDS else ADVISORY_SEVERITY
+                issues.append(issue(severity, "visual_score_low", f"Slide {slide_no} {field} score {score:g} is below the quality floor {minimum:g}.", slide=slide_no, field=field, score=score))
 
         ai_feel = str(item.get("ai_template_feel") or "none").strip().lower()
         if ai_feel == "major":
@@ -318,9 +328,10 @@ def validate_visual_report(
     average_score = sum(score_values) / len(score_values) if score_values else 0.0
     target_average = 7.0 if high_score else 6.0
     if score_values and average_score < target_average:
-        issues.append(issue("major", "visual_average_low", f"Average visual score {average_score:.2f} is below {target_average:.1f}."))
+        issues.append(issue(ADVISORY_SEVERITY, "visual_average_low", f"Average visual score {average_score:.2f} is below {target_average:.1f}."))
 
     blockers = [item for item in issues if item["severity"] in BLOCKING_SEVERITIES]
+    advisories = [item for item in issues if item["severity"] == ADVISORY_SEVERITY]
     # blocker = critical + major everywhere in this suite; a report that calls itself clean
     # while carrying majors is how the caller ends up believing a blocked deck is deliverable
     # (2026-09-17 live: "the independent critic judged it deliverable" sat next to a gate
@@ -343,6 +354,7 @@ def validate_visual_report(
         "average_score": round(average_score, 3),
         "distinct_visual_structures": sorted(distinct),
         "issues": issues,
+        "advisory_count": len(advisories),
         "blocker_count": len(blockers),
     }
 

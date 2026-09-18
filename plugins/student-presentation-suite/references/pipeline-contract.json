@@ -51,6 +51,19 @@
   },
   "calibration_sample_selection": "archetype_coverage_with_leverage_priority",
   "deck_rhythm_plan": "archetype_families_with_background_rhythm",
+  "visual_score_policy": {
+    "structural_hard_floor": [
+      "hierarchy",
+      "focal_point"
+    ],
+    "advisory_only": [
+      "composition",
+      "visual_interest",
+      "whitespace"
+    ],
+    "deck_average": "advisory",
+    "note": "advisory findings are recorded and counted, never a mechanical delivery failure on their own"
+  },
   "production_modes": [
     "create",
     "edit_ooxml",

@@ -97,7 +97,11 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 - `whitespace`：留白是否服务层级，而不是拥挤或“空但没设计”；
 - `art_direction_alignment`：页面/整套是否真正执行确认后的 type scale、image treatment、chart/component language、motif 和 background rhythm。
 
-High-score 默认每项不低于 6、整套平均不低于 7。低于阈值属于 Major，需要 repair。若 `art_direction_alignment < 6`，即使页面本身不难看，也要检查是否 style seed/art direction 在生产时被丢失。
+High-score 默认每项不低于 6、整套平均不低于 7。Batch 4.4 起，`hierarchy` / `focal_point`
+低于阈值属于 Major（页面结构性损坏，需要 repair）；`composition` / `visual_interest` /
+`whitespace` 低于阈值与平均分不达标属于 **advisory**——照实写进报告、由管线计数，但不机械
+阻塞交付。若 `art_direction_alignment < 6`，即使页面本身不难看，也要检查是否 style seed/art
+direction 在生产时被丢失。
 
 ## visual_structure vocabulary
 

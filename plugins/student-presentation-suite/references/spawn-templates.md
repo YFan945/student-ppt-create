@@ -126,8 +126,10 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   先读它，再写 <work-dir>/visual-review.json，绑定当前 SHA256，
   slides 数组恰好覆盖 1..<page_count> 每一页。
 - 判断准绳：<work-dir>/art-direction.yaml；高杠杆页：<ids>。
-- 评分诚实：任一维度低于 6 或全 deck 平均低于 7 会判 blocker；按真实判断给分——
-  不要为过门抬分，也不要因数字超限默认有罪。
+- 评分诚实：`hierarchy` / `focal_point` 低于质量下限（high-score 6、其余 5）是 blocker；
+  `composition` / `visual_interest` / `whitespace` 低于下限与全 deck 平均低于目标值是
+  **advisory**——照实记录在报告里，不阻塞交付（管线 `visual_score_policy`）。按真实判断给分
+  ——不要为过门抬分，也不要因数字超限默认有罪。
 - **blocker 口径 = critical + major**（质量门 `BLOCKING_SEVERITIES` 同口径）：回报计数
   与报告 `blocker_count` 都用这个定义。2026-09-17 live：critic 按自己的习惯回报"blocker 0
   / major 8"，主会话读成"独立复核判定可交付"，而门同一份报告算出 23 个 blocker。

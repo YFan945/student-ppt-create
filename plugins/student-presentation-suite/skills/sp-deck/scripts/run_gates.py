@@ -177,6 +177,9 @@ def collect_candidates(args: argparse.Namespace, gates: dict[str, Any], problems
 def _qa_severity(report: dict[str, Any], issue: dict[str, Any]) -> str:
     """QA gates are not consistent about severity labels; normalise them."""
     severity = str(issue.get("severity") or "").lower()
+    if severity == "advisory":
+        # Batch 4.4: the quality gate's aesthetic-score findings never block.
+        return "minor"
     if severity in {"critical", "major", "blocker"}:
         return "critical" if severity == "critical" else "major"
     if severity == "minor":
