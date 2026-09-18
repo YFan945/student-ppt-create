@@ -2,6 +2,21 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — v0.15 Pipeline Simplification（Batch 2.2：page_brief 归零）
+
+Owner 细读发现的最后一条指令歧义：builder.md 顶部说「packet 是 complete task input，
+不要重读投影输入」，Hard boundaries 却仍无条件要求每轮调一次 page_brief——有 packet 的
+builder 会白付一个上下文往返。修法与 Batch 2.1 同形（条件化）：
+
+- `presentation-builder.md` Hard boundaries 的投影工具条目改为**条件式**：有有效 packet
+  时完全不调 page_brief；无 packet 或字段缺失时才按模式调一次（且绝不与 packet 叠用）。
+  批处理条目里的 page_brief 示例同步标注 fallback-only。
+- `spawn-templates.md` builder 固定段同步：「先用 page_brief」改为「仅在未提供 packet 时」，
+  并明确「已拿到 packet 就不要再调 page_brief」。
+- `agent-behavior-contract.json` 的 `page_brief_calls_per_round` 从单一数字改为
+  `{"with_packet": 0, "legacy_fallback_max": 1}`——packet 在手时该调用必须为零。
+- 契约测试新增一条钉住上述三方一致（contract 数字 + 两份 prose 文件的条件式措辞）。
+
 ## Unreleased — v0.15 Pipeline Simplification（Batch 2.1：Packet 收尾）
 
 Owner 复核 Batch 2 后指出的三处收尾，全部落地：

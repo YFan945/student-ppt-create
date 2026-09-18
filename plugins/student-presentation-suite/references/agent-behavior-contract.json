@@ -14,7 +14,10 @@
       "target_pages": "page_brief.py --work-dir <wd> --slides <ids> --json",
       "single_page_debug": "page_brief.py --work-dir <wd> --slide <N> --json"
     },
-    "page_brief_calls_per_round": 1,
+    "page_brief_calls_per_round": {
+      "with_packet": 0,
+      "legacy_fallback_max": 1
+    },
     "production_build_allowed": false,
     "render_allowed": false,
     "calibration_preview_allowed": false,

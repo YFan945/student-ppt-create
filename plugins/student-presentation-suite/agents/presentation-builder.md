@@ -70,16 +70,18 @@ For `repair` mode:
 - Never call `run_with_pptxgenjs.js` directly.
 - In calibration mode, never run the preview helper yourself; the main session runs `calibration_preview.py` after you return so preview execution stays deterministic and observable.
 - **Never render anything, and never run `calibration_preview.py` or `soffice`.** Both are main-session steps and the runtime hook refuses them (2026-09-18: one instance called `calibration_preview.py` 38 times, and the fresh PNGs it pulled back drove that instance from 8.7K to 699K resident context — a cost every later request in the same instance paid again).
-- **Never reach into work-dir JSON/YAML with an inline script** — no `node -e`, no `python -c`, no `python - <<'PY'`. Use the projection tool instead, **one call per round, selected by mode** (`agent-behavior-contract.json#presentation_builder.page_brief_strategy`):
-  - `initial`: `python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --json` — the whole deck in one call;
-  - `calibration` / `repair`: `python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --slides <ids> --json` — only your assigned/blocker pages, still one call.
-  Never call the projection tool once per page. The hook refuses the inline forms and hands back these commands.
+- **Never reach into work-dir JSON/YAML with an inline script** — no `node -e`, no `python -c`, no `python - <<'PY'`. **Conditional on the task input, same rule as Scope:**
+  - **With a valid Builder Packet: do not call `page_brief.py` at all.** The packet already projects everything the projection tool would answer (`page_brief_calls_per_round.with_packet = 0` in the contract); calling it too is one wasted context round-trip per round.
+  - **Without a packet (or when it lacks a required field): use the projection tool once per round, selected by mode** (`agent-behavior-contract.json#presentation_builder.page_brief_strategy`):
+    - `initial`: `python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --json` — the whole deck in one call;
+    - `calibration` / `repair`: `python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --slides <ids> --json` — only your assigned/blocker pages, still one call.
+  Never call the projection tool once per page, and never combine it with a packet. The hook refuses the inline forms and hands back these commands.
 - **Edit page modules with the Edit tool, not with a regex inside a shell heredoc.** A throwaway script that rewrites `pages/pNN-*.js` is refused for the same reason.
 - **One instance serves one round.** You are spawned per calibration / initial / repair round; never continue with the conversation history of a previous round, and never assume you have seen pages you have not read this round.
 - **Batch independent work into one turn.** Parallel tool calls work here — measured 2026-09-18 across every transcript on disk: up to **8** calls in one turn, ~20% of turns carrying two or more. The reason this builder averaged only **1.08** is task shape, not capability: 111 of its 164 shell calls were "edit a page, then verify it", a dependency chain with nothing to batch. So make the work independent where it can be:
   - write several page modules in ONE turn when their contracts are already in hand;
   - read several page images / previews in ONE turn (never one per turn);
-  - `page_brief.py --work-dir <wd> --json` (no `--slide`) returns every page's contract in a single call — do not call it once per page.
+  - `page_brief.py --work-dir <wd> --json` (no `--slide`) returns every page's contract in a single call — do not call it once per page. Fallback-only: with a Builder Packet, skip this call entirely.
   Each turn costs 10–19 seconds of wall clock, so two batched calls save one of them outright.
 - Never WebSearch/WebFetch or invent external facts. Research belongs to `presentation-researcher` and evidence already frozen into the spec.
 - Never edit `build-manifest.json`, workflow state, receipts, QA reports, render outputs, or source decks.

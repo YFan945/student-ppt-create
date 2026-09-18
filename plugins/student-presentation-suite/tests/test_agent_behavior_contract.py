@@ -146,6 +146,26 @@ class PageBriefStrategyProjectionTests(unittest.TestCase):
         self.assertIn("绝不逐页调用", builder_block)
         self.assertIn("--work-dir <wd> --json", builder_block)
 
+    def test_page_brief_is_fallback_only_when_a_packet_is_present(self) -> None:
+        """Batch 2.2: 'packet = complete task input' while Hard boundaries still
+        mandated one page_brief call per round was the same contradiction shape
+        again — the model would pay one extra context round-trip per round."""
+        builder = load_contract()["presentation_builder"]
+        self.assertEqual(
+            0, builder["page_brief_calls_per_round"]["with_packet"],
+            "a packet projects everything page_brief would answer; the call must be zero",
+        )
+        self.assertEqual(
+            1, builder["page_brief_calls_per_round"]["legacy_fallback_max"],
+            "the legacy fallback path stays one call per round",
+        )
+        text = BUILDER_MD.read_text(encoding="utf-8")
+        self.assertIn("do not call `page_brief.py` at all", text)
+        self.assertIn("never combine it with a packet", text)
+        templates = TEMPLATES_MD.read_text(encoding="utf-8")
+        self.assertIn("仅在未提供 packet 时", templates)
+        self.assertIn("不要再调 page_brief.py", templates)
+
     def test_guard_refusals_cite_the_contract_not_their_own_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             project = Path(tmp)
