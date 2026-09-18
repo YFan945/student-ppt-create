@@ -2,6 +2,60 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — v0.15 Batch 1–4 Closure（集成断点收口）
+
+对 Batch 1–4 做跨模块交叉审计后发现：主体功能全部落地、测试全绿，但存在 9 处现有测试
+未覆盖的集成断点。本批次全部收口，测试 761 → 786。
+
+### P0 — 运行时缺口
+
+- **advance QA→repair 统一 boundary**：删除 `_advance_repair_packets()` 的静默
+  `except → return []`（Batch 2.1 的「fallback 必须可观测」在 advance 的 repair 路径复发）。
+  repair 登记后循环继续，boundary 由 `build_next_payload` 的 pending_repair 分支统一产生
+  ——repair_budget / contract / builder_shards / packet fallback 可观测性全部随行；builder
+  边界 hoist 补齐 `agent` 字段，`packets` 恒为 list。
+- **Packet 边界运行时执行**：`prepare_packets` / 校准单 packet 生成时写
+  `builder-packets/active-round.json`；`builder_guard` 对 builder 的 Read/Edit/Write 实施
+  两条硬边界——(1) 契约 `no_reread_files` 清单（从 agent-behavior-contract.json 读取，单一
+  所有者）内的冻结输入拒绝重读；(2) 页面模块按 shard 隔离：实例首次访问页面时绑定到包含
+  该页的 packet（`.guard/packet-binding-<agent>.json`），此后只允许本 shard 的页，任何 active
+  packet 之外的页直接拒绝。无 active round（fallback 路径）不启用 enforcement，且
+  `observe_packet_failure` 会清除 active round，fallback 保持可用。
+- **style-summary 机械闭环**：calibration packet 的 `allowed_files` 加入
+  `calibration/style-summary.json`、预建 `calibration/` 目录、packet 内给出 shape 说明；
+  `calibration_review()` 把「summary 存在且内容可用」升级为 green 的硬组成部分——评审绿但
+  缺 summary 不再放行 build。
+- **style contract provenance 补全**：`derived_from` 加入 `style_summary_sha256` 与
+  `slide_spec_sha256`，契约全部输入均可溯源。
+
+### P1 — 闭环补齐
+
+- **packet 内 AD 去重**：initial/repair packet 在嵌入 green `calibration_style` 后，不再
+  重复携带完整 Art Direction——只保留操作性剩余节（asset_plan、high_leverage 等），style
+  节以契约为准；无契约（calibration 轮 / fallback）保持完整 AD。
+- **rhythm 失败可观测**：plan 时 rhythm 异常不再被静默吞掉，manifest 记录
+  `deck_rhythm: {status: ok|failed|skipped, error}`，stage summary 显示失败原因，
+  `pipeline_report.py` 新增 `deck_rhythm_failed`。
+- **多页 blocker 支持**：`slides_named_in_reports` 与 packet 的 blocker 投影同时识别
+  `slide`（单页）与 `slides: [4,5,6]`（`repetitive_structure_pair/run` 的 run 形态），run
+  按页展开进 repair packet 并保留 `slides` 原字段。
+- **4.1 契约漂移修正**：SKILL.md 第 7 步与流程图、`pipeline-contract.stage_contracts.build`
+  全部切到 archetype coverage 措辞；新增回归测试钉住（SKILL + machine contract + 不允许旧
+  措辞回潮）。
+
+### P2 — 单一事实源推进与语义澄清
+
+- `builder_guard.page_brief_hint()` 的命令模板改为从契约 `page_brief_command` 读取（连同
+  no_reread 清单，guard 不再自持第二份政策）。
+- `pptx-qa.md` 同步 4.4 的 advisory 语义；spawn 模板 critic 段明确「critic 只写
+  critical/major/minor，不得发明 severity: advisory（advisory 由质量门派生）」。
+
+### 测试
+
+- 761 → 786：advance repair 边界统一 + packet 失败可观测（2）、packet 运行时执行（6）、
+  style-summary 不变量与 provenance（2）、AD 瘦身（1）、rhythm 失败（1）、多页 blocker（1）、
+  4.1 漂移回归（1）等。
+
 ## Unreleased — CI 流程精简与提速
 
 测试套件经全量盘点确认无冗余（64 文件 / 761 测试：跨文件重复断言仅 2 处同句；守卫类 8 个

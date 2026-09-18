@@ -99,6 +99,9 @@ def collect(manifest: dict[str, Any], work_dir: Path | None = None) -> dict[str,
         ),
         "advance_refusals": sum(1 for h in advance if h.get("status") == "refused"),
         "advance_step_cap_hits": sum(1 for h in advance if h.get("step_cap")),
+        # Batch 1-4 closure: rhythm planning failures must be visible in the report,
+        # not silently absorbed at plan time.
+        "deck_rhythm_failed": (manifest.get("deck_rhythm") or {}).get("status") == "failed",
         "minutes": round(minutes, 1) if minutes is not None else None,
     }
 

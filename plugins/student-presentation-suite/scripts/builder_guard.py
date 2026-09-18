@@ -24,6 +24,15 @@ Three boundaries, one owner:
    inside its own context and pulls fresh PNGs back in — one instance grew 8.7K → 699K
    resident that way (2026-09-18). It returns `BUILDER_DONE`; the main session renders
    and hands back the report.
+
+4. **Packet scope (runtime, not prose).** When the spawn round generated Builder Packets
+   (`builder-packets/active-round.json`), a builder may not re-read the frozen inputs the
+   contract lists under `packet.no_reread_files`, and its page-module access is confined to
+   its own shard's assigned slides (bound to the packet on first page access). This is the
+   enforcement half of `reread_inputs_covered_by_packet: false` and
+   `read_other_shard_page_modules: false` — the reason Batch 2's context savings cannot be
+   quietly given back by a model that re-reads what the packet already projected. No active
+   round (fallback path) means no enforcement, and the fallback stays observable.
 """
 from __future__ import annotations
 
@@ -150,15 +159,143 @@ def contract_ref() -> str:
     return str(plugin_root() / "references" / "agent-behavior-contract.json")
 
 
+def _contract_packet_policy() -> dict:
+    """The contract's packet section — the policy source the guard enforces."""
+    try:
+        contract = json.loads(Path(contract_ref()).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    packet = (contract.get("presentation_builder") or {}).get("packet") or {}
+    return packet if isinstance(packet, dict) else {}
+
+
+def _active_round(work_dir: Path) -> dict | None:
+    """The spawn round's packet bindings (written by builder_packet.record_active_round)."""
+    try:
+        data = json.loads((work_dir / "builder-packets" / "active-round.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    packets = data.get("packets")
+    return data if isinstance(data, dict) and isinstance(packets, list) and packets else None
+
+
+def _norm(name: str) -> str:
+    return name.lower().replace("_", "-")
+
+
+def _matches_no_reread(path: Path) -> bool:
+    name = _norm(path.name)
+    return any(_norm(fragment) in name for fragment in _contract_packet_policy().get("no_reread_files") or [])
+
+
+def _page_number(path: Path) -> int | None:
+    match = re.search(r"p(\d+)-", path.name.lower())
+    return int(match.group(1)) if match else None
+
+
+def _guard_store(project: Path) -> Path:
+    return project / "outputs" / ".pptx-work" / ".guard"
+
+
+def _binding_path(project: Path, agent_id: str) -> Path:
+    key = re.sub(r"[^A-Za-z0-9_-]", "_", str(agent_id))[:60]
+    return _guard_store(project) / f"packet-binding-{key}.json"
+
+
+def _enforce_packet_scope(event: dict, path: Path, work_dir: Path) -> str | None:
+    """Runtime packet boundary for the isolated builder; None means allowed.
+
+    With an active packet round the contract stops being prose:
+
+    - `no_reread_files` (agent-behavior-contract.json#presentation_builder.packet)
+      may not be Read/Edited — the packet already projects those bytes;
+    - page modules may only be used inside the shard this instance was assigned:
+      the instance binds to a packet on its first page-module access, and every
+      later access is checked against that packet's assigned slides. Pages outside
+      every active packet (other shards, completed pages) are refused outright.
+
+    No active round means the fallback path is in play and enforcement is off —
+    the round's cost is still observable via builder-packets/fallbacks.json.
+    """
+    active = _active_round(work_dir)
+    if active is None:
+        return None
+    event_agent = str(event.get("agent_id"))
+    if _matches_no_reread(path):
+        return (
+            "builder_guard: refused — this file is projected into your Builder Packet "
+            f"({contract_ref()}#presentation_builder.packet.no_reread_files). Re-reading it "
+            "pays the packet's context a second time. The packet's bytes are derived from "
+            "the same sources; use the packet."
+        )
+    page = _page_number(path)
+    if page is None:
+        return None
+    binding_path = _binding_path(_project(event), event_agent)
+    binding = None
+    try:
+        loaded = json.loads(binding_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict) and loaded.get("work_id") == work_dir.name:
+            binding = loaded
+    except (OSError, json.JSONDecodeError):
+        binding = None
+    packets = [item for item in active.get("packets") or [] if isinstance(item, dict)]
+    if binding is None:
+        for item in packets:
+            if page in (item.get("assigned_slides") or []):
+                binding = {
+                    "work_id": work_dir.name,
+                    "packet": item.get("packet"),
+                    "allowed_slides": item.get("assigned_slides"),
+                }
+                try:
+                    _guard_store(_project(event)).mkdir(parents=True, exist_ok=True)
+                    binding_path.write_text(
+                        json.dumps(binding, ensure_ascii=False) + "\n", encoding="utf-8"
+                    )
+                except OSError:
+                    pass  # enforcement bookkeeping must not take the work down
+                return None
+        return (
+            f"builder_guard: refused — pages/p{page:02d}-* is not in any active Builder Packet "
+            f"for this round ({contract_ref()}#presentation_builder.read_other_shard_page_modules "
+            "= false). Your packet's allowed_files lists your scope; other pages belong to "
+            "another builder or to an already completed round."
+        )
+    if page not in (binding.get("allowed_slides") or []):
+        return (
+            f"builder_guard: refused — this instance is bound to packet "
+            f"{binding.get('packet')} (slides {binding.get('allowed_slides')}); "
+            f"pages/p{page:02d}-* is outside it "
+            f"({contract_ref()}#presentation_builder.read_other_shard_page_modules = false). "
+            "If your task genuinely needs different pages, return BUILDER_BLOCKED and let the "
+            "main session re-shard."
+        )
+    return None
+
+
 def page_brief_hint() -> str:
-    """Runnable projection commands, one per mode (contract: page_brief_strategy)."""
+    """Runnable projection commands, one per mode (contract: page_brief_command).
+
+    The templates come from the behavior contract itself — the guard must not
+    grow a second copy of a command the contract already owns.
+    """
     brief = plugin_root() / "skills" / "sp-deck" / "scripts" / "page_brief.py"
-    return (
-        f'  python "{brief}" --work-dir <absolute work-dir> --json'
-        "   (initial: whole deck in one call)\n"
-        f'  python "{brief}" --work-dir <absolute work-dir> --slides <ids> --json'
-        "   (calibration/repair: target pages in one call)"
-    )
+    presentation_builder = {}
+    try:
+        contract = json.loads(Path(contract_ref()).read_text(encoding="utf-8"))
+        presentation_builder = contract.get("presentation_builder") or {}
+    except (OSError, json.JSONDecodeError):
+        pass
+    commands = presentation_builder.get("page_brief_command") or {}
+    lines = []
+    for key, label in (
+        ("whole_deck", "initial: whole deck in one call"),
+        ("target_pages", "calibration/repair: target pages in one call"),
+    ):
+        template = str(commands.get(key) or "page_brief.py --work-dir <wd> --json")
+        lines.append(f'  python "{brief}" {template.replace("page_brief.py ", "")}   ({label})')
+    return "\n".join(lines)
 
 
 def handle(event: dict) -> int:
@@ -212,11 +349,30 @@ def handle(event: dict) -> int:
     if not path.is_absolute():
         path = Path(event.get("cwd") or project) / path
     if not _is_page_module(path, project):
+        # Builders with an active packet are still scope-checked on non-page files:
+        # no_reread artifacts (spec/AD/manifest/QA projections) may not be re-read.
+        if event.get("agent_type") == BUILDER and event.get("agent_id"):
+            try:
+                rel = path.resolve().relative_to(project / "outputs" / ".pptx-work")
+                if rel.parts:
+                    work_dir = project / "outputs" / ".pptx-work" / rel.parts[0]
+                    refusal = _enforce_packet_scope(event, path, work_dir)
+                    if refusal:
+                        print(refusal, file=sys.stderr)
+                        return 2
+            except (OSError, ValueError):
+                pass
         return 0
     if event.get("agent_type") == BUILDER and event.get("agent_id"):
         try:
             rel = path.resolve().relative_to(project / "outputs" / ".pptx-work")
-            _record_instance(project, str(event["agent_id"]), rel.parts[0] if rel.parts else "")
+            if rel.parts:
+                work_dir = project / "outputs" / ".pptx-work" / rel.parts[0]
+                refusal = _enforce_packet_scope(event, path, work_dir)
+                if refusal:
+                    print(refusal, file=sys.stderr)
+                    return 2
+                _record_instance(project, str(event["agent_id"]), rel.parts[0])
         except (OSError, ValueError):
             pass
         return 0

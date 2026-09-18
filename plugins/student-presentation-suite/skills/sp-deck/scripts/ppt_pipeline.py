@@ -821,10 +821,16 @@ def cmd_plan(args: argparse.Namespace) -> int:
         from deck_rhythm import ensure_rhythm
 
         rhythm_path = ensure_rhythm(work_dir)
-    except Exception:
-        rhythm_path = None  # rhythm planning is a projection, never a plan blocker
-    if rhythm_path is not None:
-        fresh["deck_rhythm"] = bind(rhythm_path)
+    except Exception as exc:
+        # A rhythm regression must be VISIBLE: plan still succeeds, but the
+        # manifest records the failure so a benchmark can see Batch 4.3 was off.
+        rhythm_path = None
+        fresh["deck_rhythm"] = {"status": "failed", "error": str(exc)[:300]}
+    else:
+        if rhythm_path is not None:
+            fresh["deck_rhythm"] = {"status": "ok", **bind(rhythm_path)}
+        else:
+            fresh["deck_rhythm"] = {"status": "skipped", "reason": "no readable Slide Spec"}
     summary = write_stage_summary(
         work_dir,
         "planned",
@@ -834,6 +840,11 @@ def cmd_plan(args: argparse.Namespace) -> int:
             f"- pages scaffolded: {scaffold_info['slides']} → `pages/`",
             f"- composition dir: `{work_dir / 'composition'}`",
             *([f"- deck rhythm planned: `{rhythm_path}`"] if rhythm_path else []),
+            *(
+                [f"- deck rhythm FAILED: {fresh['deck_rhythm'].get('error', '')[:160]}"]
+                if fresh["deck_rhythm"].get("status") == "failed"
+                else []
+            ),
             "- next: fill `pages/pNN-*.js` (parallel Edit), then `ppt_pipeline.py build`",
             "- do not re-read the Slide Spec or Art Direction unless the hash changed",
         ],
@@ -1576,9 +1587,16 @@ def slides_named_in_reports(work_dir: Path, names: tuple[str, ...]) -> list[int]
         for item in (report.get("problems") or []) + (report.get("issues") or []):
             if not isinstance(item, dict):
                 continue
+            # Blockers name pages either singly (`slide`) or as a run
+            # (`slides: [4, 5, 6]` — e.g. repetitive_structure_pair/run).
             slide = item.get("slide")
             if isinstance(slide, int) and not isinstance(slide, bool) and slide > 0:
                 found.add(slide)
+            group = item.get("slides")
+            if isinstance(group, list):
+                for value in group:
+                    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+                        found.add(value)
     return sorted(found)
 
 
@@ -1861,6 +1879,9 @@ def observe_packet_failure(work_dir: Path, payload: dict[str, Any], mode: str, e
     to the legacy full-read path.
     """
     count = record_packet_fallback(work_dir, mode, str(exc))
+    # The packet round failed, so any builder spawned on the fallback path runs
+    # WITHOUT packet enforcement — clear it, the fallback must stay usable.
+    _packet.clear_active_round(work_dir)
     payload["builder_packet_status"] = "failed"
     payload["builder_packet_error"] = str(exc)[:300]
     payload["packet_fallback_count"] = count
@@ -1958,6 +1979,11 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                                 "slides": cal_slides,
                                 "packet": str(cal_path),
                             }
+                            _packet.record_active_round(
+                                work_dir,
+                                "calibration",
+                                [{"packet": str(cal_path), "slides": list(cal_slides)}],
+                            )
                             payload["notes"] += (
                                 f" A packet projecting the default calibration set ({', '.join(map(str, cal_slides))}) "
                                 f"is at {cal_path} — pass it as the builder's task input. To pick different slides, "
@@ -2272,19 +2298,6 @@ BUILDER_AGENT = "student-presentation-suite:presentation-builder"
 CRITIC_AGENT = "student-presentation-suite:visual-critic"
 
 
-def _advance_repair_packets(work_dir: Path) -> list[dict[str, Any]]:
-    """Repair packets projected from whatever QA reports exist (Batch 2 packets)."""
-    names = ("pipeline-qa.json", "pre-qa-quality.json", "pre-qa-actual-content.json", "pre-qa-rendered.json")
-    blocker_slides = slides_named_in_reports(work_dir, names)
-    if not blocker_slides:
-        return []
-    reports = [name for name in names if (work_dir / name).is_file()]
-    try:
-        return _packet.prepare_packets(work_dir, "repair", blocker_slides, reports)
-    except Exception:
-        return []  # packet fallback is observable in the payload, never fatal
-
-
 def _run_quietly(func, ns: argparse.Namespace) -> int:
     """Execute one deterministic step with its human log lines on stderr.
 
@@ -2329,13 +2342,13 @@ def cmd_advance(args: argparse.Namespace) -> int:
             manifest = load_manifest(work_dir)
             if payload.get("agent"):
                 result = {"status": "needs_agent", "actions": actions, "dispatch": payload}
-                # Hoist the spawn fields so every builder/critic boundary has the same
-                # shape the repair boundary always had (agent / mode / packets).
+                # Hoist the spawn fields so every builder/critic boundary answers the
+                # same shape (agent / mode / packets) on top of the full dispatch.
+                result["agent"] = payload["agent"]
                 if payload.get("builder_mode"):
                     result["mode"] = payload["builder_mode"]
-                if payload.get("builder_packets"):
-                    result["packets"] = payload["builder_packets"]
-                elif payload.get("builder_packet"):
+                result["packets"] = payload.get("builder_packets") or []
+                if not result["packets"] and payload.get("builder_packet"):
                     result["packet"] = payload["builder_packet"]
                 break
             command = str(payload.get("next_command") or "")
@@ -2393,18 +2406,17 @@ def cmd_advance(args: argparse.Namespace) -> int:
                 actions.append("render")
                 continue
             if " repair " in bordered:
-                packets = _advance_repair_packets(work_dir)
                 _run_quietly(cmd_repair, argparse.Namespace(
                     work_dir=work_dir, reason="advance: recorded QA blockers",
                     extend=0, extend_reason=None, force=False,
                 ))
                 actions.append("repair")
-                result = {
-                    "status": "needs_agent", "actions": actions,
-                    "agent": BUILDER_AGENT, "mode": "repair", "packets": packets,
-                    "reason": "repair recorded; fix the blocker pages, then build → render → qa",
-                }
-                break
+                # The repair builder boundary comes from build_next_payload itself
+                # (producing + pending_repair): ONE dispatch resolver, ONE boundary
+                # schema — repair_budget, builder_shards, packets and the fallback
+                # observability all ride along instead of a hand-built envelope that
+                # silently dropped packet failures.
+                continue
             if " complete " in bordered:
                 _run_quietly(cmd_complete, argparse.Namespace(work_dir=work_dir))
                 actions.append("complete")

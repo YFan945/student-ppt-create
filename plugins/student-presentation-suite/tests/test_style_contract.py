@@ -18,6 +18,12 @@ sc = importlib.util.module_from_spec(_SPEC)
 sys.modules.setdefault("style_contract", sc)
 _SPEC.loader.exec_module(sc)
 
+_CR = ROOT / "skills" / "sp-deck" / "scripts" / "calibration_review.py"
+_SPEC2 = importlib.util.spec_from_file_location("calibration_review_sc", _CR)
+cr = importlib.util.module_from_spec(_SPEC2)
+sys.modules.setdefault("calibration_review_sc", cr)
+_SPEC2.loader.exec_module(cr)
+
 
 def slide(number: int, **fields: object) -> dict[str, object]:
     return {"id": number, "title": f"Slide {number}", **fields}
@@ -39,6 +45,21 @@ class StyleContractTests(unittest.TestCase):
         )
         (self.work / "calibration" / "calibration-visual-review.json").write_text(
             json.dumps({"pptx_sha256": pptx_sha, "slides": [{"slide": n} for n in slides]}),
+            encoding="utf-8",
+        )
+        self.write_summary()
+
+    def write_summary(self) -> None:
+        (self.work / "calibration" / "style-summary.json").write_text(
+            json.dumps(
+                {
+                    "established": {
+                        "title_treatment": "34pt left-aligned with a hairline under-rule",
+                        "rhythm": "dense pages alternate with sparse statement pages",
+                    },
+                    "do_not_repeat": ["no equal-card grids as a default mapping"],
+                }
+            ),
             encoding="utf-8",
         )
 
@@ -63,6 +84,23 @@ class StyleContractTests(unittest.TestCase):
 
     def test_no_calibration_returns_none(self) -> None:
         self.assertIsNone(sc.build_style_contract(self.work))
+
+    def test_green_review_without_style_summary_is_not_green(self) -> None:
+        """Closure invariant: without the calibration builder's style summary the
+        review is NOT green, so the established treatment cannot silently fail to
+        propagate — the build gate refuses until it exists with usable content."""
+        self.green_calibration([1])
+        self.write_spec([slide(1, kind="cover")])
+        (self.work / "calibration" / "style-summary.json").unlink()
+        review = cr.calibration_review(self.work)
+        self.assertFalse(review["ok"])
+        self.assertIn("style-summary", review["reason"])
+        self.assertIsNone(sc.build_style_contract(self.work))
+        # an empty-shaped summary is equally unusable
+        (self.work / "calibration" / "style-summary.json").write_text(
+            json.dumps({"established": {}, "do_not_repeat": []}), encoding="utf-8"
+        )
+        self.assertFalse(cr.calibration_review(self.work)["ok"])
 
     def test_calibration_without_green_review_returns_none(self) -> None:
         (self.work / "calibration").mkdir()

@@ -263,6 +263,27 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("`presentation-intake.md` owns clarification", shared)
         self.assertNotIn("## Confirmed Constraints", shared)
 
+    def test_calibration_selection_is_archetype_coverage_everywhere(self) -> None:
+        """Closure regression: Batch 4.1 changed the calibration sample policy from
+        "art-direction high-leverage" to archetype coverage. The runtime moved, the
+        machine contract moved — the SKILL workflow text must move with them, or
+        the drift Batch 1 exists to kill comes straight back."""
+        import json as _json
+
+        skill = self.read("skills/sp-deck/SKILL.md")
+        self.assertIn("archetype coverage", skill)
+        self.assertNotIn("优先覆盖封面 + 高密度/数据页 + 代表性图文页", skill)
+        contract = _json.loads(
+            (ROOT / "references" / "pipeline-contract.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            "archetype_coverage_with_leverage_priority",
+            contract.get("calibration_sample_selection"),
+        )
+        build_rules = contract["stage_contracts"]["build"][0]
+        self.assertIn("ARCHETYPE COVERAGE", build_rules)
+        self.assertNotIn("high-leverage slides from Art Direction", build_rules)
+
     def test_style_selection_contract(self) -> None:
         menu = self.read("skills/sp-deck/references/visual-style-menu.md")
         styles = sorted(

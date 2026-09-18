@@ -31,14 +31,18 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from calibration_archetypes import archetype_of  # noqa: E402
-from calibration_review import calibration_review  # noqa: E402
+from calibration_review import (  # noqa: E402
+    STYLE_SUMMARY_KEYS,
+    calibration_review,
+)
 from page_brief import find_spec, load_optional, load_structured  # noqa: E402
 
 STYLE_CONTRACT_NAME = "calibration-style-contract.json"
 STYLE_SUMMARY_NAME = "calibration/style-summary.json"
 
 # Art Direction sections that carry the visual system, projected verbatim.
-_STYLE_SECTIONS = (
+# Public alias: builder_packet slims the packet's AD copy by exactly these keys.
+STYLE_SECTIONS = _STYLE_SECTIONS = (
     "concept",
     "style_seed",
     "grammar",
@@ -63,16 +67,6 @@ ANTI_REPETITION_SEED = [
     "one focal point per page; do not add competing emphasis blocks",
 ]
 
-TREATMENT_KEYS = (
-    "title_treatment",
-    "body_treatment",
-    "surface_language",
-    "image_language",
-    "chart_language",
-    "rhythm",
-)
-
-
 def _sha256(path: Path) -> str | None:
     if not path.is_file():
         return None
@@ -84,12 +78,16 @@ def _sha256(path: Path) -> str | None:
 
 
 def style_summary(work_dir: Path) -> dict[str, Any] | None:
-    """The calibration builder's own record of what it established (optional)."""
+    """The calibration builder's record of what it established.
+
+    A green review REQUIRES a valid summary (calibration_review.style_summary_valid),
+    so under normal operation this is always present when the contract is built.
+    """
     loaded = load_optional(work_dir / STYLE_SUMMARY_NAME)
     if not isinstance(loaded, dict):
         return None
     established = loaded.get("established") if isinstance(loaded.get("established"), dict) else {}
-    treatment = {key: str(established[key]) for key in TREATMENT_KEYS if established.get(key)}
+    treatment = {key: str(established[key]) for key in STYLE_SUMMARY_KEYS if established.get(key)}
     do_not_repeat = [str(item) for item in loaded.get("do_not_repeat") or [] if str(item).strip()]
     if not treatment and not do_not_repeat:
         return None
@@ -140,12 +138,14 @@ def build_style_contract(work_dir: Path, review: dict[str, Any] | None = None) -
         "anti_repetition": anti_repetition,
         "derived_from": {
             "art_direction_sha256": _sha256(work_dir / "art-direction.yaml"),
+            "slide_spec_sha256": _sha256(spec_path) if spec_path else None,
             "calibration_manifest_sha256": _sha256(
                 work_dir / "calibration" / "calibration-manifest.json"
             ),
             "calibration_review_sha256": _sha256(
                 work_dir / "calibration" / "calibration-visual-review.json"
             ),
+            "style_summary_sha256": _sha256(work_dir / "calibration" / "style-summary.json"),
         },
     }
 

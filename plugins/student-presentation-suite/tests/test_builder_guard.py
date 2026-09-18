@@ -167,5 +167,64 @@ class BuilderGuardTests(unittest.TestCase):
         self.assertEqual(2, json.loads(records[0].read_text(encoding="utf-8"))["writes"])
 
 
+
+
+class BuilderPacketScopeTests(BuilderGuardTests):
+    """Batch 1-4 closure: the packet boundary is enforced with model tools, not
+    just prose. An active packet round (builder-packets/active-round.json) bans
+    re-reading the frozen inputs it projects and confines page access to the
+    instance's own shard."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.art = self.project / "outputs/.pptx-work/demo/art-direction.yaml"
+        self.art.write_text("style_seed: x\n", encoding="utf-8")
+        self.other_page = self.project / "outputs/.pptx-work/demo/pages/p02-plain.js"
+        self.other_page.write_text("// other shard", encoding="utf-8")
+        packets = {"packets": [
+            {"packet": "builder-packets/initial-shard-01.json", "assigned_slides": [1, 4, 7]},
+            {"packet": "builder-packets/initial-shard-02.json", "assigned_slides": [2, 5, 8]},
+        ]}
+        active = self.project / "outputs/.pptx-work/demo/builder-packets"
+        active.mkdir(parents=True)
+        (active / "active-round.json").write_text(json.dumps(packets), encoding="utf-8")
+
+    def builder_event(self, path: Path, tool: str = "Read") -> dict:
+        event = self.event(tool)
+        event["tool_input"] = {"file_path": str(path)}
+        event["agent_type"] = guard.BUILDER
+        event["agent_id"] = "builder-shard-1"
+        return event
+
+    def test_no_reread_artifact_is_refused_for_a_packed_builder(self) -> None:
+        self.assertEqual(2, guard.handle(self.builder_event(self.art, "Read")))
+
+    def test_main_session_still_reads_the_same_artifact(self) -> None:
+        event = self.event("Read")
+        event["tool_input"] = {"file_path": str(self.art)}
+        self.assertEqual(0, guard.handle(event))
+
+    def test_first_page_access_binds_the_instance_to_its_shard(self) -> None:
+        self.assertEqual(0, guard.handle(self.builder_event(self.page, "Edit")))
+        binding = json.loads(
+            (self.project / "outputs/.pptx-work/.guard/packet-binding-builder-shard-1.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual([1, 4, 7], binding["allowed_slides"])
+
+    def test_other_shard_page_is_refused_after_binding(self) -> None:
+        self.assertEqual(0, guard.handle(self.builder_event(self.page)))
+        self.assertEqual(2, guard.handle(self.builder_event(self.other_page)))
+
+    def test_page_outside_every_packet_is_refused_on_first_access(self) -> None:
+        orphan = self.project / "outputs/.pptx-work/demo/pages/p11-extra.js"
+        orphan.write_text("// nobody assigned", encoding="utf-8")
+        self.assertEqual(2, guard.handle(self.builder_event(orphan)))
+
+    def test_without_an_active_round_the_fallback_path_stays_open(self) -> None:
+        (self.project / "outputs/.pptx-work/demo/builder-packets/active-round.json").unlink()
+        self.assertEqual(0, guard.handle(self.builder_event(self.art, "Read")))
+        self.assertEqual(0, guard.handle(self.builder_event(self.other_page)))
+
+
 if __name__ == "__main__":
     unittest.main()

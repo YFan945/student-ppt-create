@@ -784,6 +784,19 @@ class BuildTests(PipelineTestCase):
             ),
             encoding="utf-8",
         )
+        # Green requires the calibration builder's style summary (Batch 1-4 closure).
+        (calibration / "style-summary.json").write_text(
+            json.dumps(
+                {
+                    "established": {
+                        "title_treatment": "34pt left-aligned, hairline under-rule",
+                        "rhythm": "dense pages alternate with sparse statements",
+                    },
+                    "do_not_repeat": ["no equal-card grids as a default mapping"],
+                }
+            ),
+            encoding="utf-8",
+        )
         return review
 
     def test_next_with_calibration_render_dispatches_the_independent_review(self) -> None:
@@ -1280,6 +1293,32 @@ class ParallelBuilderShardTests(PipelineTestCase):
                     f"{page} does not belong to slide {slide}",
                 )
 
+    def test_multi_slide_blocker_runs_name_their_pages(self) -> None:
+        """Closure: `repetitive_structure_pair/run` findings name a RUN of pages
+        (`slides: [4, 5, 6]`), not one slide. They must project into repair
+        packets page-by-page instead of collapsing into a deck-level blocker
+        whose projection loses the specific pages."""
+        self.write_spec(9)
+        self.plan(self.files)
+        (self.work / "pipeline-qa.json").write_text(
+            json.dumps({"problems": [
+                {
+                    "gate": "quality", "severity": "major",
+                    "code": "repetitive_structure_run", "message": "three equal-card pages",
+                    "slides": [4, 5, 6],
+                },
+            ]}),
+            encoding="utf-8",
+        )
+        slides = pp.slides_named_in_reports(self.work, ("pipeline-qa.json",))
+        self.assertEqual([4, 5, 6], slides)
+        packet = pp._packet.build_packet(self.work, "repair", slides, qa_reports=["pipeline-qa.json"])
+        blockers = {blocker["code"] for s in packet["slides"] for blocker in s["blockers"]}
+        self.assertIn("repetitive_structure_run", blockers)
+        # every page of the run carries the same span in its projection
+        run = [blocker["slides"] for s in packet["slides"] for blocker in s["blockers"] if "slides" in blocker]
+        self.assertEqual([[4, 5, 6]] * 3, run)
+
     def test_deck_level_blockers_yield_no_shard_plan(self) -> None:
         """A blocker without a slide number is deck-wide; sharding would aim builders wrong."""
         self.write_spec(9)
@@ -1324,6 +1363,8 @@ class ParallelBuilderShardTests(PipelineTestCase):
 
     def write_art(self, leverage: list[int]) -> None:
         self.files["art"].write_text(
+            "typography:" + "\n"
+            + "  body_pt: 19" + "\n"
             "high_leverage_slides: [" + ", ".join(str(n) for n in leverage) + "]\n",
             encoding="utf-8",
         )
@@ -1460,6 +1501,36 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.assertEqual([], pp.merge_speaker_note_shards(self.work))
         self.assertFalse((self.work / "speaker-notes.md").exists())
 
+    def test_plan_records_deck_rhythm_failure_instead_of_hiding_it(self) -> None:
+        """Closure: a deck-rhythm regression is recorded in the manifest as
+        status=failed (and reported), never silently absorbed — otherwise pages
+        repeat and nobody can tell whether rhythm planning even ran."""
+        self.write_rich_spec(6)
+        self.write_art([1])
+
+        def broken(work_dir: object) -> object:
+            raise RuntimeError("rhythm regression")
+
+        from unittest.mock import patch as _patch
+
+        import deck_rhythm
+
+        plan_args = [
+            "plan", "--work-dir", str(self.work),
+            "--workflow-state", str(self.workflow_state),
+            "--slide-spec", str(self.files["spec"]),
+            "--validation-report", str(self.files["spec_report"]),
+            "--art-direction", str(self.files["art"]),
+            "--visual-generation-report", str(self.files["vgr"]),
+        ]
+        pp._runner = FakeRunner(self.work)
+        with _patch.object(deck_rhythm, "ensure_rhythm", broken):
+            rc = pp.main(plan_args)
+        self.assertEqual(rc, 0)
+        rhythm = self.manifest()["deck_rhythm"]
+        self.assertEqual("failed", rhythm["status"])
+        self.assertIn("rhythm regression", rhythm["error"])
+
     def test_next_offers_shards_for_the_full_build(self) -> None:
         """The plan must reach the main session, or the gain never happens."""
         self.write_spec(9)
@@ -1479,6 +1550,14 @@ class ParallelBuilderShardTests(PipelineTestCase):
                     {"slide": 5, "visual_structure": "chart", "issues": []},
                     {"slide": 9, "visual_structure": "compare", "issues": []},
                 ],
+            }),
+            encoding="utf-8",
+        )
+        # Green requires the calibration builder's style summary (closure invariant).
+        (calibration / "style-summary.json").write_text(
+            json.dumps({
+                "established": {"title_treatment": "left-aligned 34pt, hairline rule"},
+                "do_not_repeat": ["no equal-card grids as a default mapping"],
             }),
             encoding="utf-8",
         )
@@ -1518,6 +1597,8 @@ class AdvanceTests(PipelineTestCase):
 
     def write_art(self, leverage: list[int]) -> None:
         self.files["art"].write_text(
+            "typography:" + "\n"
+            + "  body_pt: 19" + "\n"
             "high_leverage_slides: [" + ", ".join(str(n) for n in leverage) + "]\n",
             encoding="utf-8",
         )
@@ -1643,6 +1724,53 @@ class AdvanceTests(PipelineTestCase):
         self.assertEqual([], result["actions"])
         self.assertEqual("repair", result["mode"])
 
+    def test_repair_boundary_is_the_unified_dispatch_envelope(self) -> None:
+        """The QA→repair boundary must be the SAME dispatch payload `next` answers
+        with — repair_budget, contract, builder_shards ride along — not a hand-built
+        envelope that bypasses the dispatch resolver."""
+        self.state_qa(ok=False)
+        (self.work / "pipeline-qa.json").write_text(
+            json.dumps({"ok": False, "problems": [
+                {"gate": "quality", "severity": "major", "code": "overflow", "slide": 1, "message": "x"},
+            ]}),
+            encoding="utf-8",
+        )
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual("repair", result["mode"])
+        dispatch = result["dispatch"]
+        self.assertIn("repair_budget", dispatch)
+        self.assertIn("contract", dispatch)
+        self.assertIn("notes", dispatch)
+
+    def test_advance_surfaces_packet_generation_failure_instead_of_silently_dropping(self) -> None:
+        """Batch 2.1's rule — a packet fallback is observable, never silent — must
+        also hold on advance's repair path. A packet generator crash has to land in
+        builder-packets/fallbacks.json AND in the result's packet_fallback_count."""
+        self.state_qa(ok=False)
+        (self.work / "pipeline-qa.json").write_text(
+            json.dumps({"ok": False, "problems": [
+                {"gate": "quality", "severity": "major", "code": "overflow", "slide": 2, "message": "x"},
+            ]}),
+            encoding="utf-8",
+        )
+
+        def broken_prepare(*args: object, **kwargs: object) -> list:
+            raise RuntimeError("schema drift")
+
+        original = pp._packet.prepare_packets
+        pp._packet.prepare_packets = broken_prepare
+        try:
+            result = self.advance()
+        finally:
+            pp._packet.prepare_packets = original
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual("repair", result["mode"])
+        self.assertEqual([], result["packets"])
+        self.assertGreaterEqual(result["packet_fallback_count"], 1)
+        fallbacks = json.loads((self.work / "builder-packets" / "fallbacks.json").read_text(encoding="utf-8"))
+        self.assertTrue(fallbacks)
+
     def green_calibration_review(self, slides: list[int]) -> None:
         """Independent calibration evidence that satisfies calibration_review()."""
         calibration = self.work / "calibration"
@@ -1657,6 +1785,19 @@ class AdvanceTests(PipelineTestCase):
             (render_dir / f"calibration-{number}.png").write_bytes(b"PNG")
         (calibration / "calibration-visual-review.json").write_text(
             json.dumps({"pptx_sha256": pptx_sha, "slides": [{"slide": n} for n in slides]}),
+            encoding="utf-8",
+        )
+        # Green now REQUIRES the calibration builder's style summary (closure).
+        (calibration / "style-summary.json").write_text(
+            json.dumps(
+                {
+                    "established": {
+                        "title_treatment": "34pt left-aligned, hairline under-rule",
+                        "rhythm": "dense evidence pages alternate with sparse statements",
+                    },
+                    "do_not_repeat": ["no equal-card grids as a default mapping"],
+                }
+            ),
             encoding="utf-8",
         )
 
@@ -1736,6 +1877,18 @@ class AdvanceTests(PipelineTestCase):
         self.assertIn("do NOT read calibration page modules", packet["calibration_style_note"])
         # the contract file is on disk where `next`/advance and a rerun can find it
         self.assertTrue((self.work / "calibration-style-contract.json").is_file())
+        # context minimisation: the AD style sections are NOT duplicated per shard
+        self.assertNotIn("typography", packet["art_direction"])
+        self.assertIn("art_direction_note", packet)
+
+    def test_calibration_packet_keeps_the_full_art_direction(self) -> None:
+        self.write_rich_spec(6)
+        self.write_art([1])
+        self.plan(self.files)
+        packet = pp._packet.build_packet(self.work, "calibration")
+        self.assertIn("typography", packet["art_direction"])  # full AD until green
+        self.assertIn("style_summary_schema", packet)
+        self.assertIn("calibration/style-summary.json", packet["allowed_files"])
 
     def test_initial_packet_without_green_calibration_has_no_style_contract(self) -> None:
         self.write_rich_spec(6)

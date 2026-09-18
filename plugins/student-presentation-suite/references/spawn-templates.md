@@ -129,7 +129,8 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - 评分诚实：`hierarchy` / `focal_point` 低于质量下限（high-score 6、其余 5）是 blocker；
   `composition` / `visual_interest` / `whitespace` 低于下限与全 deck 平均低于目标值是
   **advisory**——照实记录在报告里，不阻塞交付（管线 `visual_score_policy`）。按真实判断给分
-  ——不要为过门抬分，也不要因数字超限默认有罪。
+  ——不要为过门抬分，也不要因数字超限默认有罪。**critic 永远只写 critical / major / minor 的
+  finding，不要发明 `severity: advisory`**——advisory 是质量门根据分数派生的，不是 critic 写的。
 - **blocker 口径 = critical + major**（质量门 `BLOCKING_SEVERITIES` 同口径）：回报计数
   与报告 `blocker_count` 都用这个定义。2026-09-17 live：critic 按自己的习惯回报"blocker 0
   / major 8"，主会话读成"独立复核判定可交付"，而门同一份报告算出 23 个 blocker。

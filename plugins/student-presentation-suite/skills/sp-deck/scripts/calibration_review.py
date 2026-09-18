@@ -27,6 +27,17 @@ if str(HERE) not in sys.path:
 CALIBRATION_DIR_NAME = "calibration"
 CALIBRATION_MANIFEST_NAME = "calibration-manifest.json"
 CALIBRATION_REVIEW_NAME = "calibration-visual-review.json"
+STYLE_SUMMARY_NAME = "style-summary.json"
+
+# The treatment keys the calibration builder records about what it established.
+STYLE_SUMMARY_KEYS = (
+    "title_treatment",
+    "body_treatment",
+    "surface_language",
+    "image_language",
+    "chart_language",
+    "rhythm",
+)
 
 QA_BLOCKING_SEVERITIES = ("critical", "major")
 
@@ -49,6 +60,43 @@ def _read_object(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"expected object: {path}")
     return value
+
+
+def style_summary_valid(work_dir: Path) -> tuple[bool, str]:
+    """Whether calibration/style-summary.json exists with a usable shape.
+
+    The calibration builder records what it actually established (one line per
+    treatment key, plus do_not_repeat). Without those bytes, later builders can
+    only inherit the Art Direction — the calibration's own treatment would not be
+    mechanically passed on — so a green review REQUIRES a valid summary.
+    """
+    path = work_dir / CALIBRATION_DIR_NAME / STYLE_SUMMARY_NAME
+    if not path.is_file():
+        return False, (
+            f"calibration/{STYLE_SUMMARY_NAME} is missing: the calibration builder must record "
+            "what it established (established with one line per "
+            f"{', '.join(STYLE_SUMMARY_KEYS)}, plus do_not_repeat) so the visual system is "
+            "mechanically passed to later builders"
+        )
+    try:
+        summary = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return False, f"calibration/{STYLE_SUMMARY_NAME} is unreadable: {exc}"
+    if not isinstance(summary, dict):
+        return False, f"calibration/{STYLE_SUMMARY_NAME} must be an object"
+    established = summary.get("established")
+    has_treatment = (
+        isinstance(established, dict)
+        and any(str(established.get(key) or "").strip() for key in STYLE_SUMMARY_KEYS)
+    )
+    do_not_repeat = summary.get("do_not_repeat")
+    has_avoid = isinstance(do_not_repeat, list) and any(str(item).strip() for item in do_not_repeat)
+    if not (has_treatment or has_avoid):
+        return False, (
+            f"calibration/{STYLE_SUMMARY_NAME} carries no usable content: expected "
+            "established.<key> lines or a do_not_repeat list"
+        )
+    return True, ""
 
 
 def calibration_review(work_dir: Path) -> dict[str, Any]:
@@ -127,4 +175,13 @@ def calibration_review(work_dir: Path) -> dict[str, Any]:
     status["ok"] = not blocking
     if blocking:
         status["reason"] = "calibration review still reports systemic findings: " + "; ".join(blocking[:6])
+        return status
+    # Hard invariant (Batch 1-4 closure): green ALSO requires the calibration
+    # builder's style summary, so the established visual system is guaranteed to
+    # reach later builders via the style contract instead of only the Art Direction.
+    ok, reason = style_summary_valid(work_dir)
+    if not ok:
+        status["blockers"] = len(blocking) + 1
+        status["ok"] = False
+        status["reason"] = reason
     return status

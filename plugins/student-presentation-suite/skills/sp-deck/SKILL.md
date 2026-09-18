@@ -59,7 +59,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" status --w
 4. **Art Direction**：**先读 `references/design-tokens.json`，再呈现具体样式选项或做任何颜色/视觉承诺**——选项只能引用 token 名；6 角色位之外的配色语义（如"暖色琥珀当第二主角"）禁止承诺（2026-09-17 live：承诺"光伏配琥珀"后才发现调色板契约禁色族外颜色，被迫中途换风格并重绑确认哈希）。visual style 只作为 seed，形成 `art-direction.yaml` 与 3–5 个 high-leverage slides。
 5. **Plan**：`<wd>` 必须为项目 `outputs/.pptx-work/<work-id>`；`edit_ooxml` 自动解包到 `ooxml/`，不生成 JS；`rebuild_from_source` 须先写 `source-analysis.md`。`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证 Production Summary、copy-fit、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/` 并建立 `build-manifest.json`。
 6. **Reference + Composition**：high-leverage 页保存 reference selection、2–3 个 silhouette candidates 与 wireframe 选择证据；普通页保留明确 composition intent。
-7. **Calibration Build**：仅 `create` / `rebuild_from_source`。从 Art Direction 的 high-leverage slides 选 **2–3 张**，优先覆盖封面 + 高密度/数据页 + 代表性图文页。主会话 spawn `student-presentation-suite:presentation-builder`，不传 `name`，传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder **只实现这些页面**，其余页面保持 scaffold，主流程此时故意不能正式 build。
+7. **Calibration Build**：仅 `create` / `rebuild_from_source`。校准样本按 **archetype coverage** 选取（`calibration_archetypes.py` 从 spec 的 kind / layout_family / layout 关键词确定性分类，覆盖最多不同视觉语法的 2–3 张；high-leverage 页优先认领组席位；packet 已含默认集，可用 `builder_packet.py --mode calibration --slides <ids>` 覆盖）。主会话 spawn `student-presentation-suite:presentation-builder`，不传 `name`，传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder **只实现这些页面**，其余页面保持 scaffold，主流程此时故意不能正式 build。
 8. **Calibration Preview**：收到 `BUILDER_DONE(mode=calibration)` 后，由主会话运行确定性 helper，而不是让 builder 自己 build：
 
 ```bash
@@ -107,7 +107,7 @@ Windows 下优先用这个 python 形式；`run_gates.sh` 只是定位解释器�
 Production Summary confirmation
 → isolated research / compiled Slide Spec / Art Direction
 → ppt_pipeline plan
-→ isolated builder(calibration: 2–3 high-leverage pages)
+→ isolated builder(calibration: archetype-coverage sample)
 → deterministic calibration preview + independent visual-critic review（全绿才放行正式 build）
 → isolated builder(initial: remaining pages, preserving calibration)
 → exploration gates → production build（确定性预检：rendered + actual-content + quality 确定性部分）

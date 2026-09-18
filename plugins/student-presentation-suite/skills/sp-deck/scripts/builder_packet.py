@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,7 @@ if str(HERE) not in sys.path:
 import generator_scaffold as _scaffold  # noqa: E402
 import pptx_actual_content_check as actual_check  # noqa: E402
 from calibration_archetypes import archetype_of  # noqa: E402
+from calibration_review import STYLE_SUMMARY_KEYS  # noqa: E402
 from page_brief import (  # noqa: E402
     deck_state,
     evidence_for_slide,
@@ -52,6 +54,7 @@ from page_brief import (  # noqa: E402
 )
 
 PACKET_DIR_NAME = "builder-packets"
+ACTIVE_ROUND_NAME = "active-round.json"
 SCORE_HISTORY_NAME = "visual-score-history.json"
 FORBIDDEN_ACTIONS = [
     "build",
@@ -137,13 +140,19 @@ def score_history(work_dir: Path) -> dict[str, dict[str, Any]]:
 def report_slide_blockers(report: dict[str, Any], slide: int) -> list[dict[str, Any]]:
     out = []
     for item in (report.get("problems") or []) + (report.get("issues") or []):
-        if isinstance(item, dict) and item.get("slide") == slide:
+        if not isinstance(item, dict):
+            continue
+        run = item.get("slides") if isinstance(item.get("slides"), list) else []
+        # Match single-slide findings and multi-slide runs (repetitive_structure_*),
+        # and keep the run list in the projection so the builder sees the span.
+        if item.get("slide") == slide or slide in run:
             out.append(
                 {
                     "gate": item.get("gate"),
                     "code": item.get("code"),
                     "severity": item.get("severity"),
                     "message": str(item.get("message") or "")[:300],
+                    **({"slides": [int(v) for v in run if isinstance(v, int)]} if run else {}),
                 }
             )
     return out
@@ -239,6 +248,11 @@ def build_packet(
         "pages/pNN-*.js"
     ]
     allowed_files.append(notes_target)
+    if mode == "calibration":
+        # The style summary is a REQUIRED calibration deliverable (a green review
+        # refuses without it), so the packet must both allow and teach it.
+        (work_dir / "calibration").mkdir(exist_ok=True)
+        allowed_files.append("calibration/style-summary.json")
 
     packet: dict[str, Any] = {
         "schema_version": "1.0",
@@ -247,7 +261,6 @@ def build_packet(
         "shard": shard,
         "assigned_slides": targets,
         "speaker_notes_target": notes_target,
-        "art_direction": load_optional(work_dir / "art-direction.yaml"),
         "art_direction_path": str((work_dir / "art-direction.yaml").resolve()),
         "slides": details,
         "allowed_files": allowed_files,
@@ -256,6 +269,17 @@ def build_packet(
     }
     if warnings:
         packet["rhythm_warnings"] = warnings
+    if mode == "calibration":
+        packet["style_summary_schema"] = {
+            "file": "calibration/style-summary.json",
+            "shape": {
+                "established": {
+                    key: "one factual line about what this calibration established"
+                    for key in STYLE_SUMMARY_KEYS
+                },
+                "do_not_repeat": ["systemic pattern the remaining pages must avoid"],
+            },
+        }
     if mode == "repair":
         packet["reports"] = reports
         deck_level = [
@@ -296,7 +320,71 @@ def build_packet(
                 f"calibration exists but its review is not green ({review.get('reason')}); "
                 "follow the Art Direction sections in this packet only"
             )
+    # Context minimisation (Batch 1-4 closure): with a green style contract the
+    # packet embeds it INSTEAD of the AD's style sections — a full Art Direction
+    # copy per shard is exactly the duplicated context Batch 2 removed. Without
+    # a contract (calibration round or fallback) the full AD stays.
+    full_ad = load_optional(work_dir / "art-direction.yaml")
+    if isinstance(packet.get("calibration_style"), dict) and isinstance(full_ad, dict):
+        from style_contract import STYLE_SECTIONS
+
+        packet["art_direction"] = {
+            key: value for key, value in full_ad.items() if key not in STYLE_SECTIONS
+        }
+        packet["art_direction_note"] = (
+            "the AD style sections are projected in calibration_style; this slice "
+            "carries only the operational remainder (asset_plan, high_leverage, ...)"
+        )
+    else:
+        packet["art_direction"] = full_ad
     return packet
+
+
+def record_active_round(work_dir: Path, mode: str, packets: list[dict[str, Any]]) -> None:
+    """Publish this spawn round's packet bindings for runtime enforcement.
+
+    builder_guard.py reads builder-packets/active-round.json to enforce the
+    behavior contract WITH model tools, not just prose: a builder with an active
+    packet may not re-read the frozen inputs the packet projects, and may only
+    touch the page modules its shard was assigned. An empty packet list (the
+    legacy fallback path) clears the file — fallback stays usable, and its cost
+    stays observable via fallbacks.json.
+    """
+    out_dir = work_dir / PACKET_DIR_NAME
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / ACTIVE_ROUND_NAME
+    if not packets:
+        path.unlink(missing_ok=True)
+        return
+    path.write_text(
+        json.dumps(
+            {
+                "at": datetime.now(UTC).isoformat(),
+                "mode": mode,
+                "packets": [
+                    {
+                        "packet": str(item["packet"]),
+                        "assigned_slides": item["slides"],
+                        "speaker_notes_target": item.get("speaker_notes_target"),
+                    }
+                    for item in packets
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+
+def clear_active_round(work_dir: Path) -> None:
+    (work_dir / PACKET_DIR_NAME / ACTIVE_ROUND_NAME).unlink(missing_ok=True)
+
+
+def active_round(work_dir: Path) -> dict[str, Any] | None:
+    loaded = load_optional(work_dir / PACKET_DIR_NAME / ACTIVE_ROUND_NAME)
+    return loaded if isinstance(loaded, dict) and loaded.get("packets") else None
 
 
 def packet_name(mode: str, shard: int | None) -> str:
@@ -356,6 +444,7 @@ def prepare_packets(
                 "packet": str(path),
             }
         )
+    record_active_round(work_dir, mode, out)
     return out
 
 
