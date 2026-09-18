@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 from collections import Counter
 from datetime import datetime
@@ -36,6 +37,22 @@ DEFAULT_ROOT = CONFIG_DIR / "projects"
 CONTEXT_BUCKETS = ((40_000, "<40K"), (80_000, "40-80K"), (120_000, "80-120K"), (160_000, "120-160K"), (200_000, "160-200K"))
 HEAVY_CONTEXT = 200_000
 DEFAULT_CURVE_POINTS = 12
+# Batch 0 metrics (v0.15 pipeline-simplification baseline).
+# A "deterministic round-trip" is a model turn whose every tool call merely drives a
+# deterministic pipeline command — state polling, gates, build, render, preview. These
+# are the rounds `ppt_pipeline.py advance` (Batch 3) is meant to absorb without the
+# model seeing results and issuing the next command by hand.
+DETERMINISTIC_COMMAND = re.compile(
+    r"(ppt_pipeline\.py|run_gates\.(?:py|sh)|calibration_preview\.py)\b"
+)
+# Shared-context artifacts whose repeated reads measure duplication across builders
+# and rounds (Batch 2's Builder Packet targets exactly this).
+SHARED_ARTIFACT = re.compile(
+    r"(slide-spec-compiled|art-direction|build-manifest|research-pack|pipeline-qa|gates-report)",
+    re.I,
+)
+PAGE_BRIEF_WD = re.compile(r"--work-dir[ =]+[\"']?([^\"'\s]+)", re.I)
+BYTES_PER_TOKEN_ESTIMATE = 4
 
 
 def parse_timestamp(value: Any) -> datetime | None:
@@ -207,7 +224,7 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
                     name = str(block.get("name") or "?")
                     payload = json.dumps(block.get("input") or {}, ensure_ascii=False)
                     tool_calls[name] += 1
-                    tools[str(block.get("id"))] = {
+                    entry = {
                         "name": name,
                         "in_bytes": len(payload.encode("utf-8")),
                         "out_bytes": 0,
@@ -215,6 +232,12 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
                         "start": stamp,
                         "preview": payload[:120].replace("\n", " "),
                     }
+                    # Batch 0 metrics need the raw invocation, not the truncated preview.
+                    if name == "Bash":
+                        entry["cmd"] = str((block.get("input") or {}).get("command") or "")
+                    elif name == "Read":
+                        entry["path"] = str((block.get("input") or {}).get("file_path") or "")
+                    tools[str(block.get("id"))] = entry
                     # Only whole-file Writes count against CD-2; precise Edits are
                     # the behaviour CD-2 asks for, so they are reported separately.
                     if name in {"Write", "Edit"}:
@@ -290,6 +313,44 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
         slot["out_bytes"] += entry["out_bytes"]
         slot["sec"] += entry["sec"] or 0.0
 
+    # --- Batch 0 metrics -----------------------------------------------------
+    # Turns spent purely driving deterministic pipeline commands: the exact
+    # population `ppt_pipeline.py advance` (Batch 3) should absorb.
+    deterministic_roundtrips = 0
+    for item in requests:
+        call_ids = set(item.get("tool_ids") or [])
+        entries = [tools[tid] for tid in call_ids if tid in tools]
+        if entries and all(
+            entry["name"] == "Bash"
+            and entry.get("cmd")
+            and DETERMINISTIC_COMMAND.search(entry["cmd"])
+            for entry in entries
+        ):
+            deterministic_roundtrips += 1
+    # Repeated reads of shared context artifacts (spec / art direction / manifest /
+    # QA / research pack / page_brief per work-dir). Duplication beyond the first
+    # read is estimated from tool-result bytes; ~4 bytes per token.
+    shared_reads: dict[str, dict[str, int]] = {}
+    for entry in tools.values():
+        key = None
+        if entry["name"] == "Read":
+            text = str(entry.get("path") or "").replace("\\", "/")
+            if SHARED_ARTIFACT.search(text):
+                key = "read:" + text.lower()
+        elif entry["name"] == "Bash" and "page_brief.py" in str(entry.get("cmd") or ""):
+            match = PAGE_BRIEF_WD.search(str(entry.get("cmd") or ""))
+            if match:
+                key = "page_brief:" + match.group(1).replace("\\", "/").lower()
+        if key:
+            slot = shared_reads.setdefault(key, {"bytes": 0, "reads": 0})
+            slot["bytes"] += entry["out_bytes"]
+            slot["reads"] += 1
+    duplicated_reads = {key: slot for key, slot in shared_reads.items() if slot["reads"] > 1}
+    duplication_bytes = sum(
+        slot["bytes"] * (slot["reads"] - 1) / slot["reads"]
+        for slot in duplicated_reads.values()
+    )
+
     return {
         "started_at": first_ts.isoformat() if first_ts else None,
         "ended_at": last_ts.isoformat() if last_ts else None,
@@ -337,6 +398,18 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
         "turns_under_20min": {
             "at_median": (round(1200 / sorted(gaps)[len(gaps) // 2]) if gaps else None),
             "at_mean": (round(1200 / (sum(gaps) / len(gaps))) if gaps else None),
+        },
+        # Batch 0 baseline metrics (v0.15 targets: deterministic round-trips ↓70%,
+        # shared-context duplication ↓ via Builder Packet). Duplication token count is
+        # an ESTIMATE from tool-result bytes at ~4 bytes/token, not a transcript token count.
+        "deterministic_agent_roundtrips": deterministic_roundtrips,
+        "deterministic_roundtrip_share": (
+            round(deterministic_roundtrips / len(requests), 3) if requests else None
+        ),
+        "shared_context_duplication_tokens": round(duplication_bytes / BYTES_PER_TOKEN_ESTIMATE),
+        "shared_context_duplication_reads": {
+            key: slot["reads"]
+            for key, slot in sorted(duplicated_reads.items(), key=lambda item: -item[1]["reads"])
         },
         "assistant_text_chars": text_chars,
         "assistant_thinking_chars": thinking_chars,
@@ -440,8 +513,20 @@ def render_markdown(summary: dict[str, Any], source: Path) -> str:
         f"- 20 分钟预算可容纳的回合数：中位延迟下 **{summary['turns_under_20min']['at_median']}** 回合、"
         f"均值延迟下 {summary['turns_under_20min']['at_mean']} 回合",
         "",
-        "## Context buckets",
+        "## Batch 0 baseline metrics (v0.15 简化系列)",
+        f"- deterministic agent round-trips: **{summary.get('deterministic_agent_roundtrips')}** / "
+        f"{summary.get('turns')} turns"
+        "（全部工具调用都只是驱动 ppt_pipeline / run_gates / calibration_preview 的回合，"
+        "Batch 3 `advance` 的吸收目标）",
+        f"- shared-context duplication: ~**{summary.get('shared_context_duplication_tokens'):,}** tokens"
+        "（估算值，按 4 bytes/token；同一份 spec / art-direction / manifest / QA / research-pack "
+        "或同一 work-dir 的 page_brief 被重复读取的部分，Batch 2 Builder Packet 的压缩目标）",
     ]
+    duplicated_reads = summary.get("shared_context_duplication_reads") or {}
+    for key, reads in list(duplicated_reads.items())[:5]:
+        lines.append(f"  - {key} ×{reads}")
+    lines.append("")
+    lines.append("## Context buckets")
     for label in [item[1] for item in CONTEXT_BUCKETS] + ["200K+"]:
         count = context["buckets"].get(label, 0)
         if count:

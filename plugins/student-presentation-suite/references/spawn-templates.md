@@ -42,10 +42,13 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - **讲稿写到 `<work-dir>/speaker-notes-shard-<N>.md`（N = 你的 shard 号），不要写 speaker-notes.md**
   ——那是并行时唯一不会互相覆盖的写法，`build` 会按页序拼成最终文件（PPTX 备注区仍由你自己
   通过 `slide.addNotes` 写入，每次一页）。未分片时照旧写 `speaker-notes.md`。
-- **先用本页简报拿全部上下文**（一次调用代替逐字段挖 JSON——2026-09-17 live 一轮 repair
-  为此跑了 19~46 条内联脚本、每条约 150K 常驻上下文）：
-  `python "<CLAUDE_PLUGIN_ROOT>/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --slide <N> --json`
-  （`initial` 轮不带 `--slide`，一次拿到全 deck 每页的 claim / planned numbers / 本页 blocker）。
+- **先用 page_brief 简报拿全部上下文**（一次调用代替逐字段挖 JSON——2026-09-17 live 一轮 repair
+  为此跑了 19~46 条内联脚本、每条约 150K 常驻上下文）。按本轮模式选一种，**一轮只调一次，
+  绝不逐页调用**（`agent-behavior-contract.json#presentation_builder.page_brief_strategy`）：
+  `initial` 轮：`python "<CLAUDE_PLUGIN_ROOT>/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --json`
+  （一次拿到全 deck 每页的 claim / planned numbers / 本页 blocker）；
+  `calibration` / `repair` 轮：`python "<CLAUDE_PLUGIN_ROOT>/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --slides <ids> --json`
+  （只取本实例目标页，仍然一次调用）。
   它对每页输出的 claim、numbers 与 actual-content 门判定同源；来源标题来自 research-pack 原文。
   **不要用 `node -e ... require('./*.json')` 挖 work-dir 文件**——hook 会拒绝并给出该命令。
 - 先读冻结契约：<work-dir>/slide-spec-compiled.yaml 与 <work-dir>/art-direction.yaml；

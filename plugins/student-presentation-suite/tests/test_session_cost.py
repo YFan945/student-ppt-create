@@ -247,7 +247,86 @@ class SessionCostTests(unittest.TestCase):
         self.assertEqual(3.0, summary["tool_calls_per_turn"])
         self.assertNotIn("回合经济", " ".join(SESSION_COST.warnings(summary)))
 
-    def test_triplicate_assistant_records_count_as_one_request(self) -> None:
+    def test_deterministic_roundtrips_are_counted_per_turn(self) -> None:
+        """Batch 0 metric: turns whose every call just drives a deterministic pipeline
+        command are the population `ppt_pipeline.py advance` should absorb."""
+        def bash(uid: str, command: str) -> dict:
+            return {"type": "tool_use", "id": uid, "name": "Bash", "input": {"command": command}}
+
+        path = Path(self._tmp.name) / "det.jsonl"
+        records = [
+            # Turn 1: pure pipeline driving -> counts.
+            assistant(0, 50_000, [bash("d1", 'python "x/ppt_pipeline.py" next --work-dir w')], "m1"),
+            tool_result("d1", "next: spawn builder", 0),
+            # Turn 2: pipeline command mixed with a Read -> not purely deterministic.
+            assistant(1, 60_000, [
+                bash("d2", 'python "x/ppt_pipeline.py" render --work-dir w'),
+                {"type": "tool_use", "id": "d3", "name": "Read", "input": {"file_path": "w/qa.json"}},
+            ], "m2"),
+            tool_result("d2", "rendered", 1),
+            tool_result("d3", "report", 1),
+            # Turn 3: unrelated work -> does not count.
+            assistant(2, 70_000, [bash("d4", "node deck.js out.pptx")], "m3"),
+            tool_result("d4", "built", 2),
+        ]
+        with path.open("w", encoding="utf-8") as stream:
+            for record in records:
+                stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        summary = SESSION_COST.profile(SESSION_COST.read_records(path))
+        self.assertEqual(1, summary["deterministic_agent_roundtrips"])
+        self.assertAlmostEqual(1 / 3, summary["deterministic_roundtrip_share"], places=3)
+
+    def test_shared_context_duplication_counts_repeats_only(self) -> None:
+        """Batch 0 metric: re-reads of the same shared artifact are the duplication
+        the Builder Packet (Batch 2) must remove; first reads are not duplication."""
+        path = Path(self._tmp.name) / "dup.jsonl"
+        spec = "w/slide-spec-compiled.yaml"
+        records = [
+            assistant(0, 50_000, [tool_use("s1", "Read", spec)], "m1"),
+            tool_result("s1", "x" * 400, 0),  # first read: no duplication
+            assistant(1, 60_000, [tool_use("s2", "Read", spec)], "m2"),
+            tool_result("s2", "x" * 400, 1),  # same file again -> duplication
+            assistant(2, 70_000, [tool_use("s3", "Read", "w/other-file.txt")], "m3"),
+            tool_result("s3", "y" * 400, 2),  # not a shared artifact
+        ]
+        with path.open("w", encoding="utf-8") as stream:
+            for record in records:
+                stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        summary = SESSION_COST.profile(SESSION_COST.read_records(path))
+        # Two 400-byte reads of the same artifact -> 800 * (2-1)/2 = 400 bytes -> 100 tokens.
+        self.assertEqual(100, summary["shared_context_duplication_tokens"])
+        self.assertEqual(["read:" + spec.lower()], list(summary["shared_context_duplication_reads"]))
+        self.assertIn("shared_context_duplication_tokens", summary)
+
+    def test_shared_context_duplication_tracks_page_brief_work_dirs(self) -> None:
+        def bash(uid: str, command: str) -> dict:
+            return {"type": "tool_use", "id": uid, "name": "Bash", "input": {"command": command}}
+
+        path = Path(self._tmp.name) / "pb.jsonl"
+        cmd = 'python "x/page_brief.py" --work-dir W:/decks/demo --json'
+        records = [
+            assistant(0, 50_000, [bash("p1", cmd)], "m1"),
+            tool_result("p1", "x" * 200, 0),
+            assistant(1, 60_000, [bash("p2", cmd)], "m2"),
+            tool_result("p2", "x" * 200, 1),
+        ]
+        with path.open("w", encoding="utf-8") as stream:
+            for record in records:
+                stream.write(json.dumps(record, ensure_ascii=False) + "\n")
+        summary = SESSION_COST.profile(SESSION_COST.read_records(path))
+        key = next(iter(summary["shared_context_duplication_reads"]))
+        self.assertTrue(key.startswith("page_brief:w:/decks/demo"))
+        # Two 200-byte page_brief reads of one work-dir -> 400 * 1/2 = 200 bytes -> 50 tokens.
+        self.assertEqual(50, summary["shared_context_duplication_tokens"])
+
+    def test_markdown_reports_batch0_metrics(self) -> None:
+        code, stdout = self.invoke(["--session", str(self.transcript)])
+        self.assertEqual(0, code)
+        self.assertIn("## Batch 0 baseline metrics", stdout)
+        self.assertIn("deterministic agent round-trips", stdout)
+        self.assertIn("shared-context duplication", stdout)
+
+
         path = Path(self._tmp.name) / "triple.jsonl"
         stamp = T0.isoformat()
         usage = {

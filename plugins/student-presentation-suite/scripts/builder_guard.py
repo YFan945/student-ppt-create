@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Enforce the presentation-builder context boundary.
 
+Policy lives in `references/agent-behavior-contract.json` (single canonical
+machine source); this hook only enforces it. Refusal texts stay short: name the
+contract anchor, hand back the runnable redirect command, and stop — the guard
+must not grow a second natural-language policy that drifts from the contract.
+
 Three boundaries, one owner:
 
 1. **Page modules.** The deterministic pipeline scaffolds pages through subprocesses, so
@@ -8,27 +13,17 @@ Three boundaries, one owner:
    would put page source and repair diffs back into the expensive parent context; only the
    isolated presentation-builder may use those model tools on page modules.
 
-2. **Inline JSON extraction.** The builder used to answer "what does this page need and
-   what is failing on it" by hand-rolling scripts over the work directory —
-
-       node -e "const q=require('./qa-quality.json'); const s=JSON.stringify(q);
-                const idx=s.indexOf('missing_final_reference'); ..."
-
-   — 19 to 46 of them per repair round in the 2026-09-17 live session, each one a full
-   context round-trip at ~150K resident context. `page_brief.py` answers the same questions
-   in one call, so the inline form is refused and redirected rather than merely discouraged.
-   Refusing only `node -e` did not remove the behaviour: the 2026-09-18 builder switched to
-   `python - <<'PY'` heredocs — 111 of its 164 shell calls — and used the projection tool 5
-   times. The refusal therefore keys on *what the script touches* (work-dir JSON/YAML, page
+2. **Inline JSON extraction.** The builder used to hand-roll extraction scripts over the
+   work directory (19-46 per repair round in 2026-09-17, then 111 heredocs in 2026-09-18).
+   `page_brief.py` answers the same questions in one call, so the inline form is refused
+   and redirected. The refusal keys on *what the script touches* (work-dir JSON/YAML, page
    modules) rather than on one interpreter and one spelling.
 
 3. **Render ownership.** `calibration_preview.py` and every render are MAIN-session steps
-   (SKILL.md step 8: 由主会话运行确定性 helper，而不是让 builder 自己 build). The isolated
-   builder called `calibration_preview.py` **38 times** in the 2026-09-18 session; each round
-   re-rendered the pages and pulled the fresh PNGs back in, which is a large part of how one
-   instance grew from 8.7K to 699K resident context — context every later request in that
-   instance paid for again. It returns `BUILDER_DONE`; the main session renders and hands back
-   the report.
+   (`render_allowed: false` in the contract). The isolated builder calling them re-renders
+   inside its own context and pulls fresh PNGs back in — one instance grew 8.7K → 699K
+   resident that way (2026-09-18). It returns `BUILDER_DONE`; the main session renders
+   and hands back the report.
 """
 from __future__ import annotations
 
@@ -150,6 +145,22 @@ def _touches_work_artifacts(command: str) -> bool:
     return bool(WORK_ARTIFACT.search(command) and ARTIFACT_FILE.search(command))
 
 
+def contract_ref() -> str:
+    """Absolute path of the behavior contract, for refusal anchors."""
+    return str(plugin_root() / "references" / "agent-behavior-contract.json")
+
+
+def page_brief_hint() -> str:
+    """Runnable projection commands, one per mode (contract: page_brief_strategy)."""
+    brief = plugin_root() / "skills" / "sp-deck" / "scripts" / "page_brief.py"
+    return (
+        f'  python "{brief}" --work-dir <absolute work-dir> --json'
+        "   (initial: whole deck in one call)\n"
+        f'  python "{brief}" --work-dir <absolute work-dir> --slides <ids> --json'
+        "   (calibration/repair: target pages in one call)"
+    )
+
+
 def handle(event: dict) -> int:
     if event.get("hook_event_name") != "PreToolUse":
         return 0
@@ -165,13 +176,13 @@ def handle(event: dict) -> int:
 
         if RENDER_OWNED.search(command):
             print(
-                "builder_guard: rendering, building and the calibration preview belong to the "
-                "MAIN session (SKILL.md step 8). Running them here re-renders inside your own "
-                "context: the 2026-09-18 builder called calibration_preview.py 38 times, and the "
-                "fresh PNGs it pulled back drove that one instance from 8.7K to 699K resident "
-                "context — cost every later request in the same instance paid again.\n"
-                "Return BUILDER_DONE with the pages you edited. The main session runs "
-                "calibration_preview.py / render and hands you the report path.",
+                "builder_guard: refused — render/build/calibration_preview is forbidden for the "
+                "isolated builder "
+                f"({contract_ref()}#presentation_builder.render_allowed = false); "
+                "the MAIN session owns it. Running it here re-renders inside your own context "
+                "and every later request in this instance pays that context again.\n"
+                "Return BUILDER_DONE with the pages you edited; the main session renders and "
+                "hands you the report path.",
                 file=sys.stderr,
             )
             return 2
@@ -179,15 +190,14 @@ def handle(event: dict) -> int:
         if not (_runs_inline_program(command) and _touches_work_artifacts(command)):
             return 0
         print(
-            "builder_guard: reading work-dir JSON/YAML — or rewriting page modules — with an "
-            "inline script costs one full context round-trip per field. The 2026-09-17 builder "
-            "did this 19-46 times per round with `node -e`; the 2026-09-18 builder did it 111 "
-            "times with `python - <<'PY'` after `node -e` was refused. Use the projection tool "
-            "and plain edits instead:\n"
-            f'  python "{plugin_root() / "skills" / "sp-deck" / "scripts" / "page_brief.py"}" '
-            "--work-dir <absolute work-dir> --slide <N> --json\n"
-            "One call returns that page's verbatim claim, planned numbers, blockers and cited "
-            "sources. Edit page modules with the Edit tool, not with a regex in a shell heredoc.",
+            "builder_guard: refused — reading work-dir JSON/YAML, or rewriting page modules, "
+            "with an inline script is forbidden "
+            f"({contract_ref()}#presentation_builder.inline_script_over_work_artifacts = false). "
+            "Use the projection tool (one call per round, never once per page) and plain edits:\n"
+            f"{page_brief_hint()}\n"
+            "One call returns the verbatim claims, planned numbers, blockers and cited sources "
+            "for the pages in scope. Edit page modules with the Edit tool, not with a regex in "
+            "a shell heredoc.",
             file=sys.stderr,
         )
         return 2

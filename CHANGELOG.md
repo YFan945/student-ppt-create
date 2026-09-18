@@ -2,6 +2,42 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.14.6 — 2026-09-18
+
+v0.15 Pipeline Simplification 系列的第一批（Batch 0 代码部分 + Batch 1）：规则机器化 →
+上下文最小化 → 确定性自动推进。本批全部为确定性代码改动，未运行任何真实生成；
+Builder Packet / advance 等后续批次攒着随 0.15.0 发布。
+
+### Batch 1：单一 Agent 行为契约
+
+- **新增 `references/agent-behavior-contract.json`**：builder / critic / researcher 行为规则的
+  唯一机器事实源（allowed_modes、page_brief_strategy、render/qa/research 禁止、
+  builder_instance_reuse、read_other_shard_page_modules、edit_scope）。Guard 只做
+  enforcement 并引用契约锚点，不再自写第二份自然语言政策。
+- **修复 `page_brief` 指令冲突**：`agents/presentation-builder.md` 同一文件内
+  「one call per page」与「do not call it once per page」并存（2026-09-18 实测矛盾）。
+  统一为契约策略：`initial` = whole_deck 一次；`calibration` / `repair` = target_pages 一次。
+  `spawn-templates.md` builder 固定段同步投影。
+- **`page_brief.py` 新增 `--slides <ids>`**：calibration / repair 轮一次调用拿到全部目标页，
+  使 target_pages 策略可执行；输出与单页形态逐字节一致（有测试钉住）。
+- **`builder_guard.py` 拒绝消息去政策化**：改为「契约锚点 + 可运行重定向命令」，长篇
+  事故叙事移除（历史保留在本文件与 postmortem 语料中）。
+- **新增 `tests/test_agent_behavior_contract.py`（12 个用例）**：契约合法性、契约 ↔
+  pipeline-contract 一致性、guard 拒绝行为 ↔ 契约一致、prose 文件不得与契约矛盾、
+  guard 拒绝消息必须引用契约并回传可运行命令。
+
+### Batch 0（代码部分）：基线指标
+
+- **`session_cost.py` 新增两个确定性指标**（v0.15 KPI 的测量地基）：
+  - `deterministic_agent_roundtrips` / `deterministic_roundtrip_share`：整回合只驱动
+    ppt_pipeline / run_gates / calibration_preview 的模型回合数——Batch 3 `advance`
+    的吸收目标（目标 ↓70%）。
+  - `shared_context_duplication_tokens`（估算，按 4 bytes/token）：同一份 spec /
+    art-direction / manifest / QA / research-pack 或同一 work-dir 的 page_brief 被重复
+    读取的重复输入——Batch 2 Builder Packet 的压缩目标。
+- Live baseline（三组真实 deck 跑分）**未执行**：会产生真实消费，按花钱规则单独等待
+  owner 授权。
+
 ## 0.14.5 — 2026-09-18
 
 来源：owner 要求调研"批处理在 Claude Code + deepseek-v4.1-flash 下能不能运行"。

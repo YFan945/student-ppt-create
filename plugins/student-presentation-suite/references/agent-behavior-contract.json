@@ -1,0 +1,47 @@
+{
+  "contract_version": "1.0",
+  "purpose": "Single canonical machine source for agent behavior rules. Guards enforce this file; spawn templates and agent definitions project it; no prose file may state a contradicting rule. See AGENTS.md 'Documentation Ownership'.",
+  "presentation_builder": {
+    "agent": "student-presentation-suite:presentation-builder",
+    "allowed_modes": ["calibration", "initial", "repair"],
+    "page_brief_strategy": {
+      "initial": "whole_deck",
+      "calibration": "target_pages",
+      "repair": "target_pages"
+    },
+    "page_brief_command": {
+      "whole_deck": "page_brief.py --work-dir <wd> --json",
+      "target_pages": "page_brief.py --work-dir <wd> --slides <ids> --json",
+      "single_page_debug": "page_brief.py --work-dir <wd> --slide <N> --json"
+    },
+    "page_brief_calls_per_round": 1,
+    "production_build_allowed": false,
+    "render_allowed": false,
+    "calibration_preview_allowed": false,
+    "qa_allowed": false,
+    "research_allowed": false,
+    "inline_script_over_work_artifacts": false,
+    "builder_instance_reuse": false,
+    "read_other_shard_page_modules": false,
+    "edit_scope": {
+      "initial": "assigned_pages",
+      "calibration": "assigned_pages",
+      "repair": "blocker_pages_plus_direct_dependencies"
+    }
+  },
+  "visual_critic": {
+    "agent": "student-presentation-suite:visual-critic",
+    "edit_allowed": false,
+    "render_allowed": false,
+    "read_full_render_pngs": false,
+    "required_preview_mode": "batched",
+    "report_schema": "references/visual-review.schema.json",
+    "blocker_severities": ["critical", "major"]
+  },
+  "presentation_researcher": {
+    "agent": "student-presentation-suite:presentation-researcher",
+    "design_allowed": false,
+    "slide_generation_allowed": false,
+    "nested_agent_spawn": false
+  }
+}

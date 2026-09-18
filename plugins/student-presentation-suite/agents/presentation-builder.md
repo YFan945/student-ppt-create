@@ -57,9 +57,10 @@ For `repair` mode:
 - Never call `run_with_pptxgenjs.js` directly.
 - In calibration mode, never run the preview helper yourself; the main session runs `calibration_preview.py` after you return so preview execution stays deterministic and observable.
 - **Never render anything, and never run `calibration_preview.py` or `soffice`.** Both are main-session steps and the runtime hook refuses them (2026-09-18: one instance called `calibration_preview.py` 38 times, and the fresh PNGs it pulled back drove that instance from 8.7K to 699K resident context — a cost every later request in the same instance paid again).
-- **Never reach into work-dir JSON/YAML with an inline script** — no `node -e`, no `python -c`, no `python - <<'PY'`. Use the projection tool instead, one call per page:
-  `python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --slide <N> --json`.
-  The hook refuses the inline forms and hands back this command.
+- **Never reach into work-dir JSON/YAML with an inline script** — no `node -e`, no `python -c`, no `python - <<'PY'`. Use the projection tool instead, **one call per round, selected by mode** (`agent-behavior-contract.json#presentation_builder.page_brief_strategy`):
+  - `initial`: `python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --json` — the whole deck in one call;
+  - `calibration` / `repair`: `python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/page_brief.py" --work-dir <wd> --slides <ids> --json` — only your assigned/blocker pages, still one call.
+  Never call the projection tool once per page. The hook refuses the inline forms and hands back these commands.
 - **Edit page modules with the Edit tool, not with a regex inside a shell heredoc.** A throwaway script that rewrites `pages/pNN-*.js` is refused for the same reason.
 - **One instance serves one round.** You are spawned per calibration / initial / repair round; never continue with the conversation history of a previous round, and never assume you have seen pages you have not read this round.
 - **Batch independent work into one turn.** Parallel tool calls work here — measured 2026-09-18 across every transcript on disk: up to **8** calls in one turn, ~20% of turns carrying two or more. The reason this builder averaged only **1.08** is task shape, not capability: 111 of its 164 shell calls were "edit a page, then verify it", a dependency chain with nothing to batch. So make the work independent where it can be:

@@ -111,7 +111,10 @@ def _builder_allowlist() -> str:
     if select.is_file():
         parts.append(f'python "{select}" --role <role> --grammar <grammar> --visual-strategy <strategy> --output composition/<id>.json')
     if brief.is_file():
-        parts.append(f'python "{brief}" --work-dir <wd> --slide <N> --json')
+        parts.append(
+            f'python "{brief}" --work-dir <wd> --json'
+            " (whole deck, initial) or with --slides <ids> (calibration/repair target pages)"
+        )
     return "; ".join(parts) or "pptx-helpers.js --describe and visual_reference_select.py"
 
 

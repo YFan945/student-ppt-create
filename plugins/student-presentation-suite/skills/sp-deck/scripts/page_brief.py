@@ -20,7 +20,14 @@ will judge.
 
 Usage:
     page_brief.py --work-dir <wd> --json                  # whole deck: per-page requirements
+    page_brief.py --work-dir <wd> --slides 2 5 8 --json   # target pages (calibration/repair round)
     page_brief.py --work-dir <wd> --slide 7 --json        # one page: requirements + blockers + sources
+
+The strategy is pinned by references/agent-behavior-contract.json
+(#presentation_builder.page_brief_strategy): `initial` reads the whole deck once,
+`calibration` / `repair` read their target pages once. Neither mode ever calls
+this tool once per page — `--slides` exists precisely so a target-pages round
+stays a single call.
 """
 from __future__ import annotations
 
@@ -178,7 +185,42 @@ def high_leverage(work_dir: Path) -> list[int]:
     return sorted(numbers)
 
 
-def build_brief(work_dir: Path, slide: int | None) -> dict[str, Any]:
+def page_detail(
+    spec: dict[str, Any],
+    match: dict[str, Any],
+    slide: int,
+    modules: dict[int, str],
+    deck: dict[str, Any],
+    leverage: list[int],
+    sources: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Per-page projection shared by the single-page and target-pages forms."""
+    evidence = evidence_for_slide(spec, match["source"], slide)
+    cited_sources = []
+    for entry in evidence:
+        for source_id in entry["source_ids"]:
+            if source_id in sources and sources[source_id] not in cited_sources:
+                cited_sources.append(sources[source_id])
+    return {
+        "slide": slide,
+        "page_module": modules.get(slide),
+        "high_leverage": slide in leverage,
+        "on_screen": match["requirements"],
+        "evidence": evidence,
+        "sources": cited_sources,
+        "blockers": [
+            problem for problem in deck.get("problems", []) if problem.get("slide") == slide
+        ],
+    }
+
+
+def build_brief(
+    work_dir: Path,
+    slide: int | None = None,
+    slides: list[int] | None = None,
+) -> dict[str, Any]:
+    if slide is not None and slides:
+        raise SystemExit("Use --slide or --slides, not both")
     spec_path = find_spec(work_dir)
     if spec_path is None:
         raise SystemExit(f"No Slide Spec found in {work_dir}")
@@ -190,15 +232,15 @@ def build_brief(work_dir: Path, slide: int | None) -> dict[str, Any]:
     deck = deck_state(work_dir)
     leverage = high_leverage(work_dir)
     sources = sources_by_id(load_optional(work_dir / "research-pack.json"))
-    slides = [item for item in (spec.get("slides") or []) if isinstance(item, dict)]
+    spec_slides = [item for item in (spec.get("slides") or []) if isinstance(item, dict)]
 
     planned: list[dict[str, Any]] = []
-    for fallback, item in enumerate(slides, start=1):
+    for fallback, item in enumerate(spec_slides, start=1):
         number = slide_number(item, fallback)
         requirements = actual_check.planned_requirements(item)
         planned.append({"slide": number, "source": item, "requirements": requirements})
 
-    if slide is None:
+    if slide is None and not slides:
         return {
             "work_id": work_dir.name,
             "spec": spec_path.name,
@@ -222,34 +264,50 @@ def build_brief(work_dir: Path, slide: int | None) -> dict[str, Any]:
             ],
         }
 
+    if slides:
+        details = []
+        for wanted in sorted(set(slides)):
+            match = next((item for item in planned if item["slide"] == wanted), None)
+            if match is None:
+                raise SystemExit(f"Slide {wanted} is not in the plan ({spec_path.name})")
+            details.append(
+                page_detail(spec, match, wanted, modules, deck, leverage, sources)
+            )
+        return {
+            "work_id": work_dir.name,
+            "spec": spec_path.name,
+            "mode": "target_pages",
+            "target_slides": [item["slide"] for item in details],
+            "deck": {
+                "state": deck.get("state"),
+                "failed_stages": deck.get("failed_stages", []),
+                "blockers_by_gate": deck.get("blockers_by_gate", {}),
+            },
+            "on_screen_rule": ON_SCREEN_RULE,
+            "slides": details,
+        }
+
     match = next((item for item in planned if item["slide"] == slide), None)
     if match is None:
         raise SystemExit(f"Slide {slide} is not in the plan ({spec_path.name})")
-    evidence = evidence_for_slide(spec, match["source"], slide)
-    cited_sources = []
-    for entry in evidence:
-        for source_id in entry["source_ids"]:
-            if source_id in sources and sources[source_id] not in cited_sources:
-                cited_sources.append(sources[source_id])
+    detail = page_detail(spec, match, slide, modules, deck, leverage, sources)
     return {
         "work_id": work_dir.name,
         "spec": spec_path.name,
         "slide": slide,
-        "page_module": modules.get(slide),
+        "page_module": detail["page_module"],
         "deck": {
             "state": deck.get("state"),
             "failed_stages": deck.get("failed_stages", []),
             "blockers_by_gate": deck.get("blockers_by_gate", {}),
             "derived_problems": deck.get("derived_problems", []),
         },
-        "high_leverage": slide in leverage,
+        "high_leverage": detail["high_leverage"],
         "on_screen_rule": ON_SCREEN_RULE,
-        "on_screen": match["requirements"],
-        "evidence": evidence,
-        "sources": cited_sources,
-        "blockers": [
-            problem for problem in deck.get("problems", []) if problem.get("slide") == slide
-        ],
+        "on_screen": detail["on_screen"],
+        "evidence": detail["evidence"],
+        "sources": detail["sources"],
+        "blockers": detail["blockers"],
         "deck_blockers": [
             problem for problem in deck.get("problems", [])
             if problem.get("slide") is None and not problem.get("derived")
@@ -258,6 +316,31 @@ def build_brief(work_dir: Path, slide: int | None) -> dict[str, Any]:
 
 
 def print_text(brief: dict[str, Any]) -> None:
+    if brief.get("mode") == "target_pages":
+        deck = brief["deck"]
+        print(
+            f"work {brief['work_id']} — target slides {' '.join(str(n) for n in brief['target_slides'])}"
+            f" (state {deck.get('state')})"
+        )
+        for item in brief["slides"]:
+            on_screen = item["on_screen"]
+            print(f"slide {item['slide']} ({item['page_module'] or 'no module'}): {on_screen['title']}")
+            print(f"  title:   {on_screen['title']}")
+            if on_screen["claim"]:
+                print(f"  claim:   {on_screen['claim']}")
+            if on_screen["numbers"]:
+                print(f"  numbers: {' '.join(on_screen['numbers'])}")
+            for fragment in on_screen["copy_fragments"]:
+                print(f"  copy:    {fragment}")
+            for source in item["sources"]:
+                print(f"  source:  [{source['id']}] {source['title']} — {source['publisher']} {source['year']}")
+            for problem in item["blockers"]:
+                print(f"  blocker: [{problem['severity']}] {problem['gate']}/{problem['code']} — {problem['message']}")
+        failed = deck.get("failed_stages") or []
+        if failed:
+            print(f"failed gates: {', '.join(failed)}")
+        return
+
     if "slide" not in brief:
         print(f"work {brief['work_id']} — {len(brief['slides'])} slides (state {brief['deck'].get('state')})")
         for item in brief["slides"]:
@@ -299,6 +382,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Project one page's work brief from the work directory")
     parser.add_argument("--work-dir", type=Path, required=True)
     parser.add_argument("--slide", type=int, help="one-based slide number; omit for the whole deck")
+    parser.add_argument(
+        "--slides",
+        type=int,
+        nargs="+",
+        help="one-based slide numbers of one round's target pages (calibration/repair); one call",
+    )
     parser.add_argument("--json", action="store_true")
     return parser.parse_args()
 
@@ -308,7 +397,7 @@ def main() -> None:
     work_dir = args.work_dir.resolve()
     if not work_dir.is_dir():
         raise SystemExit(f"Work directory does not exist: {work_dir}")
-    brief = build_brief(work_dir, args.slide)
+    brief = build_brief(work_dir, args.slide, args.slides)
     if args.json:
         print(json.dumps(brief, ensure_ascii=False, indent=2))
     else:
