@@ -32,6 +32,7 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable
+from contextlib import redirect_stdout as _redirect_stdout
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -1915,9 +1916,12 @@ def observe_packet_failure(work_dir: Path, payload: dict[str, Any], mode: str, e
     payload["packet_fallback_count"] = count
 
 
-def cmd_next(args: argparse.Namespace) -> int:
-    """Tell the model what to read and which command to run. CD-1/CD-3/CD-4/CD-9."""
-    work_dir = args.work_dir
+def build_next_payload(work_dir: Path) -> dict[str, Any]:
+    """Compute the dispatch answer `next --json` prints (Batch 3 refactor).
+
+    Extracted from cmd_next so `advance` can consult the same dispatch without
+    duplicating it: agent boundaries are returned as-is, deterministic commands
+    are executed by advance's loop."""
     manifest = load_manifest(work_dir)
     python = f'"{sys.executable}"'
     pipeline = HERE / "ppt_pipeline.py"
@@ -1982,6 +1986,7 @@ def cmd_next(args: argparse.Namespace) -> int:
                 calibration_rendered = bool(list((work_dir / "calibration" / "render").glob("calibration-*.png")))
                 if not calibration_manifest.is_file():
                     payload["agent"] = "student-presentation-suite:presentation-builder"
+                    payload["builder_mode"] = "calibration"
                     payload["notes"] = (
                         "pick 2-3 high-leverage slides (cover + dense/data page + representative visual page) and "
                         "spawn student-presentation-suite:presentation-builder mode=calibration with the absolute "
@@ -2054,6 +2059,7 @@ def cmd_next(args: argparse.Namespace) -> int:
                             )
                     else:
                         payload["agent"] = "student-presentation-suite:presentation-builder"
+                        payload["builder_mode"] = "initial"
                         payload["notes"] = (
                             "calibration is independently reviewed and green. Spawn the same builder "
                             "mode=initial to implement every remaining scaffold page (calibrated pages are "
@@ -2089,6 +2095,7 @@ def cmd_next(args: argparse.Namespace) -> int:
                 # no repair round, no critic pass on a doomed deck.
                 pre_qa = manifest.get("pre_qa") or {}
                 payload["agent"] = "student-presentation-suite:presentation-builder"
+                payload["builder_mode"] = "repair"
                 payload["pre_qa"] = {
                     "ok": False,
                     "blockers": pre_qa.get("blockers"),
@@ -2235,6 +2242,12 @@ def cmd_next(args: argparse.Namespace) -> int:
     # failed for this work dir (each one is a builder that fell back to the legacy
     # full-read context path and quietly gave back Batch 2's savings).
     payload["packet_fallback_count"] = len(packet_fallbacks(work_dir))
+    return payload
+
+
+def cmd_next(args: argparse.Namespace) -> int:
+    """Tell the model what to read and which command to run. CD-1/CD-3/CD-4/CD-9."""
+    payload = build_next_payload(args.work_dir.resolve())
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return 0
@@ -2254,6 +2267,151 @@ def cmd_next(args: argparse.Namespace) -> int:
     print(f"notes: {payload['notes']}")
     print("stage_contract: " + json.dumps(payload["contract"], ensure_ascii=False))
     return 0
+
+
+MAX_ADVANCE_STEPS = 8
+BUILDER_AGENT = "student-presentation-suite:presentation-builder"
+CRITIC_AGENT = "student-presentation-suite:visual-critic"
+
+
+def _advance_repair_packets(work_dir: Path) -> list[dict[str, Any]]:
+    """Repair packets projected from whatever QA reports exist (Batch 2 packets)."""
+    names = ("pipeline-qa.json", "pre-qa-quality.json", "pre-qa-actual-content.json", "pre-qa-rendered.json")
+    blocker_slides = slides_named_in_reports(work_dir, names)
+    if not blocker_slides:
+        return []
+    reports = [name for name in names if (work_dir / name).is_file()]
+    try:
+        return _packet.prepare_packets(work_dir, "repair", blocker_slides, reports)
+    except Exception:
+        return []  # packet fallback is observable in the payload, never fatal
+
+
+def _run_quietly(func, ns: argparse.Namespace) -> int:
+    """Execute one deterministic step with its human log lines on stderr.
+
+    advance --json must keep stdout pure JSON: the wrapped commands (render /
+    repair / complete) each print progress lines, and a log line ahead of the
+    JSON would break every machine consumer."""
+    with _redirect_stdout(sys.stderr):
+        return func(ns)
+
+
+def cmd_advance(args: argparse.Namespace) -> int:
+    """Run every deterministic step until a genuine agent/user boundary (Batch 3).
+
+    The model used to drive mechanical transitions by hand — run the calibration
+    preview, then read the output, then run render, then read again, then record
+    the repair, then spawn. Each of those is a full model round-trip that adds no
+    intelligence. `advance` performs the deterministic transitions itself and
+    stops only where judgement is actually required:
+
+    - ``needs_agent`` — spawn a builder (packet paths included) or the
+      independent critic; the main session spawns, advance never does;
+    - ``needs_user`` — intake confirmation or inputs only the user can supply;
+    - ``complete`` — the deck is delivered.
+
+    ``next`` stays as the debug/introspection view of the same dispatch. A step
+    cap bounds the loop; a refusal surfaces as ``status: refused`` with the
+    error instead of guessing past it.
+    """
+    work_dir = args.work_dir.resolve()
+    actions: list[str] = []
+    result: dict[str, Any] = {}
+    try:
+        for _ in range(MAX_ADVANCE_STEPS):
+            payload = build_next_payload(work_dir)
+            state = str(payload.get("state") or "(absent)")
+            manifest = load_manifest(work_dir)
+            # A pending repair overrides whatever the plain producing dispatch says:
+            # after `repair` the render evidence is still current, so the plain
+            # dispatch would route to the critic — but the deck is about to change.
+            # The correct boundary is the repair builder.
+            if state == "producing" and bool((manifest.get("build") or {}).get("pending_repair")):
+                result = {
+                    "status": "needs_agent", "actions": actions,
+                    "agent": BUILDER_AGENT, "mode": "repair",
+                    "packets": _advance_repair_packets(work_dir),
+                    "reason": "pending repair: fix the QA blocker pages, then build → render → qa",
+                }
+                break
+            if payload.get("agent"):
+                result = {"status": "needs_agent", "actions": actions, "dispatch": payload}
+                break
+            command = str(payload.get("next_command") or "")
+            bordered = f" {command} "
+            if state in {"(absent)", "intake_pending"} or " plan " in bordered or " status " in command or not command:
+                result = {
+                    "status": "needs_user", "actions": actions,
+                    "reason": "intake confirmation or user-provided inputs required",
+                    "dispatch": payload,
+                }
+                break
+            if state == "complete":
+                result = {"status": "complete", "actions": actions, "dispatch": payload}
+                break
+            if "calibration_preview.py" in command:
+                ids: list[str] = []
+                if "--slides" in command:
+                    for token in command.split("--slides", 1)[1].split():
+                        if not token.isdigit():
+                            break
+                        ids.append(token)
+                argv = [sys.executable, str(HERE / "calibration_preview.py"), "--work-dir", str(work_dir)]
+                if ids:
+                    argv += ["--slides", *ids]
+                argv.append("--json")
+                proc = _runner(argv)
+                if proc.returncode != 0:
+                    detail = (proc.stderr or proc.stdout or "").strip()
+                    raise RefusedError(f"calibration preview failed: {detail[:300]}")
+                actions.append("calibration_preview")
+                continue
+            if " render " in bordered:
+                _run_quietly(cmd_render, argparse.Namespace(work_dir=work_dir, cols=3, prefix="slide"))
+                actions.append("render")
+                continue
+            if " repair " in bordered:
+                packets = _advance_repair_packets(work_dir)
+                _run_quietly(cmd_repair, argparse.Namespace(
+                    work_dir=work_dir, reason="advance: recorded QA blockers",
+                    extend=0, extend_reason=None, force=False,
+                ))
+                actions.append("repair")
+                result = {
+                    "status": "needs_agent", "actions": actions,
+                    "agent": BUILDER_AGENT, "mode": "repair", "packets": packets,
+                    "reason": "repair recorded; fix the blocker pages, then build → render → qa",
+                }
+                break
+            if " complete " in bordered:
+                _run_quietly(cmd_complete, argparse.Namespace(work_dir=work_dir))
+                actions.append("complete")
+                continue
+            result = {
+                "status": "needs_user", "actions": actions,
+                "reason": f"unroutable deterministic command: {command[:160]}",
+                "dispatch": payload,
+            }
+            break
+        else:
+            result = {
+                "status": "needs_user", "actions": actions,
+                "reason": f"step cap {MAX_ADVANCE_STEPS} reached without an agent boundary; inspect with next --json",
+            }
+    except RefusedError as exc:
+        result = {"status": "refused", "actions": actions, "error": str(exc)[:300]}
+    result["packet_fallback_count"] = len(packet_fallbacks(work_dir))
+    if getattr(args, "json", False):
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        line = f"ppt_pipeline: advance → {result['status']}"
+        if result.get("mode"):
+            line += f" ({result['mode']})"
+        if actions:
+            line += f" — executed: {', '.join(actions)}"
+        print(line)
+    return 0 if result["status"] != "refused" else 2
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -2329,6 +2487,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     nxt.add_argument("--work-dir", type=Path, required=True)
     nxt.add_argument("--json", action="store_true")
     nxt.set_defaults(func=cmd_next)
+
+    advance = sub.add_parser(
+        "advance",
+        help=f"run deterministic steps until an agent/user boundary (cap {MAX_ADVANCE_STEPS})",
+    )
+    advance.add_argument("--work-dir", type=Path, required=True)
+    advance.add_argument("--json", action="store_true")
+    advance.set_defaults(func=cmd_advance)
 
     return parser.parse_args(argv)
 

@@ -61,7 +61,7 @@ PLUGIN_PATH = re.compile(
 # The CLI path may be quoted (`python "…/ppt_pipeline.py" next`), which is how the skills
 # write it. A bare `.py\s+next` never matched that form, so the allow-list silently failed.
 PIPELINE_RUN = re.compile(
-    r"ppt_pipeline\.py['\"]?\s+(next|plan|build|render|qa|repair|complete|status)\b",
+    r"ppt_pipeline\.py['\"]?\s+(next|plan|build|render|qa|repair|complete|status|advance)\b",
     re.I,
 )
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}

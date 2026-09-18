@@ -1486,5 +1486,160 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.assertEqual(pp.MAX_PARALLEL_BUILDERS, payload["builder_shards"]["parallel"])
 
 
+class AdvanceTests(PipelineTestCase):
+    """Batch 3: advance runs every deterministic step and stops only at boundaries
+    that need intelligence. It never spawns or calls a model agent — the result is
+    a status (needs_agent / needs_user / complete) plus the dispatch payload the
+    main session already knows how to act on."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.files = self.write_inputs()
+
+    def write_rich_spec(self, count: int) -> None:
+        slides = [
+            {
+                "id": n,
+                "title": f"Slide {n}",
+                "claim": f"Claim {n}",
+                "layout": "cover" if n == 1 else "content",
+                "content": [],
+                "slide_copy": [f"Copy {n}"],
+            }
+            for n in range(1, count + 1)
+        ]
+        self.files["spec"].write_text(
+            json.dumps({"meta": {"slide_count": count, "topic": "test"}, "slides": slides}),
+            encoding="utf-8",
+        )
+
+    def write_art(self, leverage: list[int]) -> None:
+        self.files["art"].write_text(
+            "high_leverage_slides: [" + ", ".join(str(n) for n in leverage) + "]\n",
+            encoding="utf-8",
+        )
+
+    def use_fake_runtime(self) -> None:
+        base = FakeRunner(self.work)
+
+        def runner(argv: list[str]) -> subprocess.CompletedProcess[str]:
+            joined = " ".join(argv)
+            if "pptx_tool.py" in joined and " render " in f" {joined} ":
+                from PIL import Image
+
+                out_dir = Path(argv[argv.index("--output-dir") + 1])
+                out_dir.mkdir(parents=True, exist_ok=True)
+                page = out_dir / "slide-1.png"
+                Image.new("RGB", (64, 48), "white").save(page)
+                return subprocess.CompletedProcess(
+                    argv, 0, stdout=json.dumps({"pages": [str(page)]}), stderr=""
+                )
+            if "calibration_preview.py" in joined:
+                render_dir = self.work / "calibration" / "render"
+                render_dir.mkdir(parents=True, exist_ok=True)
+                for number in (1, 3, 4):
+                    (render_dir / f"calibration-{number}.png").write_bytes(b"PNG")
+                return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
+            return base(argv)
+
+        pp._runner = runner
+
+    def state_qa(self, *, ok: bool) -> None:
+        self.plan(self.files)
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        self.render_evidence(self.files)
+        pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])])
+        manifest = self.manifest()
+        manifest["qa"]["ok"] = ok
+        manifest["qa"]["blockers"] = 0 if ok else 2
+        pp.save_manifest(self.work, manifest)
+
+    def advance(self) -> dict:
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            rc = pp.main(["advance", "--work-dir", str(self.work), "--json"])
+        self.assertEqual(rc, 0)
+        return json.loads(buffer.getvalue())
+
+    def test_without_a_manifest_it_needs_the_user(self) -> None:
+        result = self.advance()
+        self.assertEqual("needs_user", result["status"])
+        self.assertEqual([], result["actions"])
+        self.assertIn("reason", result)
+
+    def test_a_planned_deck_needs_the_calibration_builder_with_its_packet(self) -> None:
+        self.write_rich_spec(9)
+        self.write_art([1, 3, 4])
+        self.plan(self.files)
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual([], result["actions"])
+        self.assertEqual(pp.BUILDER_AGENT, result["dispatch"]["agent"])
+        self.assertEqual("calibration", result["dispatch"]["builder_mode"])
+        self.assertIn("builder_packet", result["dispatch"])
+
+    def test_advance_runs_the_calibration_preview_itself_then_needs_the_critic(self) -> None:
+        self.write_rich_spec(9)
+        self.write_art([1, 3, 4])
+        self.plan(self.files)
+        calibration = self.work / "calibration"
+        calibration.mkdir()
+        (calibration / "calibration-manifest.json").write_text(
+            json.dumps({"slides": [1, 3, 4]}), encoding="utf-8"
+        )
+        (calibration / "calibration.pptx").write_bytes(b"PK\x03\x04 fake")
+        self.use_fake_runtime()
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual(["calibration_preview"], result["actions"])
+        self.assertEqual(pp.CRITIC_AGENT, result["dispatch"]["agent"])
+        self.assertTrue(list((self.work / "calibration" / "render").glob("calibration-*.png")))
+
+    def test_advance_renders_a_built_deck_then_needs_the_critic(self) -> None:
+        self.plan(self.files)
+        self.use_fake_runtime()
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual(["render"], result["actions"])
+        self.assertEqual(pp.CRITIC_AGENT, result["dispatch"]["agent"])
+
+    def test_advance_with_a_current_render_needs_the_critic_without_actions(self) -> None:
+        self.plan(self.files)
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        self.render_evidence(self.files)
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual([], result["actions"])
+        self.assertEqual(pp.CRITIC_AGENT, result["dispatch"]["agent"])
+
+    def test_advance_records_the_repair_and_needs_the_repair_builder(self) -> None:
+        self.state_qa(ok=False)
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual(["repair"], result["actions"])
+        self.assertEqual(pp.BUILDER_AGENT, result["agent"])
+        self.assertEqual("repair", result["mode"])
+        self.assertIsInstance(result["packets"], list)
+        manifest = self.manifest()
+        self.assertEqual("producing", manifest["state"])
+        self.assertTrue(manifest["build"]["pending_repair"])
+
+    def test_advance_completes_a_green_deck(self) -> None:
+        self.state_qa(ok=True)
+        result = self.advance()
+        self.assertEqual("complete", result["status"])
+        self.assertIn("complete", result["actions"])
+        self.assertEqual("complete", self.manifest()["state"])
+
+    def test_advance_reports_pending_repair_without_repeating_the_repair(self) -> None:
+        self.state_qa(ok=False)
+        self.advance()  # first call records the repair and stops at the builder
+        result = self.advance()  # second call must not repair again
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual([], result["actions"])
+        self.assertEqual("repair", result["mode"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,12 @@
 {
   "contract_version": "2.0",
   "manifest_version": "2.0",
+  "execution": {
+    "auto": "advance",
+    "introspection": "next",
+    "advance_runs_deterministic_transitions_only": true,
+    "advance_never_spawns_agents": true
+  },
   "workflow_states": [
     "intake_pending",
     "intake_confirmed",

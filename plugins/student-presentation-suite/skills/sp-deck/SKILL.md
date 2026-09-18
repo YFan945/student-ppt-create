@@ -36,6 +36,8 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" next --wor
 
 `next --json` 的 `contract` 是按阶段选择的紧凑执行契约，含当前 policy hash、QA 顺序和 repair budget；不再预读整套 references。仅在具体内容/设计问题无法由当前契约解决时，按需读对应 reference。intake 规则仍以 `../../references/presentation-intake.md` 为准，机器规则以 `../../references/pipeline-contract.json` 为准。
 
+**常规推进用 `advance --json`，`next --json` 退为调试/巡检入口**（v0.15 Batch 3）：`advance` 自动串行执行所有确定性步骤（校准预览、render、repair 登记、complete），只在真正需要智能的边界停下并返回 `needs_agent`（agent + builder_mode + packet 路径，dispatch 字段就是 `next` 的完整应答）/ `needs_user` / `complete`，附带 `actions` 列表记录本轮执行了哪些确定性步骤。它不 spawn 任何子代理，也永远不会替你判断视觉质量——boundary 到了就停。`pending_repair` 状态下 advance 直接指向 repair builder 而不是 critic（deck 即将改变，先评审旧图没有意义）。
+
 Helper API 用 `node scripts/pptx-helpers.js --describe`；逐页实现时由 `presentation-builder` 自己调用该描述接口，不把 helper 源码拉回主会话。正式与 calibration 的 raster render 都由插件内 `pptx_tool.py` 通过受控 pipeline/helper 调用，不依赖项目 PATH 中的同名脚本。
 
 ## State gate

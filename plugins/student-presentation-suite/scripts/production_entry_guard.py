@@ -43,7 +43,7 @@ PUBLIC_DECK_ENTRYPOINTS = frozenset(
 )
 BUILDER = "student-presentation-suite:presentation-builder"
 PUBLIC_PIPELINE_ACTIONS = frozenset(
-    {"plan", "build", "render", "qa", "repair", "complete", "status", "next"}
+    {"plan", "build", "render", "qa", "repair", "complete", "status", "next", "advance"}
 )
 ROOT_PRODUCTION_INTERNALS = frozenset(
     {

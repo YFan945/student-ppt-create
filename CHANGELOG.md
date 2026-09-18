@@ -2,6 +2,44 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — v0.15 Pipeline Simplification（Batch 3：`ppt_pipeline advance`）
+
+时间优化的核心批次：把「跑一步 → 看结果 → 再发下一步」的确定性回合交给管线本身。
+模型只在真正需要智能的边界被叫回。与 Batch 0~2.3 一起随 0.15.0 发布。
+
+### `advance` 命令
+
+- 新增 `ppt_pipeline.py advance --work-dir <wd> --json`：循环执行所有确定性转换
+  （校准预览、render、repair 登记、complete），直到一个真正的边界：
+  - `needs_agent`：spawn builder（`builder_mode` + packet 路径齐备）或独立 critic；
+    `dispatch` 字段就是 `next --json` 的完整应答，主会话按既有方式行动；
+  - `needs_user`：intake 确认或只有用户能提供的输入；
+  - `complete`：deck 已交付。
+  另有 `actions` 数组记录本轮执行了哪些确定性步骤，`packet_fallback_count` 一并携带。
+- **advance 永不 spawn 或调用任何模型 agent**——确定性管线与 agent runtime 的边界
+  保持清晰；步数上限（8 步）防循环，拒绝以 `status: refused` + error 呈现而非猜测续跑。
+- **`pending_repair` 优先**：repair 之后 render 证据仍是当前的，plain dispatch 会误路由到
+  critic；advance 识别 `pending_repair` 直接指向 repair builder（deck 即将改变，先评审
+  旧图没有意义）。
+- `--json` 模式 stdout 为纯 JSON：被包裹的确定性步骤（render/repair/complete）的
+  人类日志重定向到 stderr（`_run_quietly`）。
+- `cmd_next` 的应答构建抽为 `build_next_payload(work_dir)`，advance 与 next 共用同一份
+  派发逻辑；`next` 保留为调试/巡检入口。builder 边界新增 `builder_mode` 字段。
+
+### 接线与投影
+
+- `production_entry_guard` / `cost_guard` 允许面加入 `advance`（mandated-command 原则）。
+- `pipeline-contract.json` 新增 `execution` 小节（auto=advance、introspection=next、
+  advance 永不 spawn agent）。
+- `SKILL.md`（sp-deck）：常规推进改用 `advance --json`，`next --json` 为调试/巡检。
+
+### 测试
+
+- `test_ppt_pipeline.py` 新增 `AdvanceTests`（8 用例）：无 manifest → needs_user、
+  planned → calibration builder + packet、advance 自动跑校准预览 → critic、
+  自动 render → critic、render 已现成 → critic（零动作）、QA blocker → 自动 repair
+  登记 + repair builder packet、QA 绿 → 自动 complete、pending_repair 不重复 repair。
+
 ## Unreleased — v0.15 Pipeline Simplification（Batch 2.3：spawn 模板收口 + CI 咬合）
 
 Owner 细读发现 spawn-templates.md 仍有三处旧规则残留（先读冻结契约 / 要上下文就用
