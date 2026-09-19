@@ -2,7 +2,25 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
-## Unreleased — 调度幂等性修复（Batch 5.1 follow-up，测试先行）
+## 0.15.0 — 2026-09-19 · v0.15 Pipeline Simplification 全系列发布
+
+架构主线从「Prompt 驱动工作流」转向「状态机驱动工作流」：Machine Contract → Builder Packet
+→ `ppt_pipeline advance`。本节为总览，各批次细节见下方按主题保留的小节。
+
+- **Batch 0–1**：指标基线（deterministic round-trips / shared-context duplication）+
+  `agent-behavior-contract.json` 单一机器行为契约，消除指令冲突。
+- **Batch 2 + Closure**：Builder/Repair Packet 最小上下文投影；packet 边界由
+  `builder_guard` 运行时执行（no_reread 禁重读 + shard 页面作用域按 agent_id 显式注册）。
+- **Batch 3 + 3.1**：`advance` 确定性推进到 agent 边界；build 纳入自动推进；advance
+  ledger 量化 collapsed round-trips；QA→repair 边界统一。
+- **Batch 4**：archetype coverage 校准选页、calibration style contract（视觉体系机械传播，
+  style-summary 为 green 硬条件）、deck rhythm 计划、美学 advisory 与结构 hard gate 解耦。
+- **Batch 5 + 5.1**：`qa_gates` registry + 单一 gate 构造器；packet 绑定显式身份注册、
+  跨轮失效、调度幂等（相同重派发不使在飞 builder 失权）。
+- **Batch 6**：ppt_pipeline 拆为 239 行 facade + `pipeline/` 包（零行为变更）。
+- 测试 685 → 783；全部 8 个批次与 Closure、幂等修复各自独立提交并带回归测试。
+
+## 0.15.0 — 2026-09-19 · 调度幂等性修复（Batch 5.1 follow-up，测试先行）
 
 外部审查提出一个假设性风险：主会话在多 builder 飞行中重复调用 `next`/`advance` 可能意外
 使在飞 builder 失去授权。按「测试 → 确认 → 最小修复」流程处理：
@@ -18,7 +36,7 @@
   巡检下保持、真重分片按设计轮换并过期旧绑定、fallback 无 active round 时不启用 enforcement。
 - 测试 780 → 783。
 
-## Unreleased — v0.15 Batch 6：ppt_pipeline 模块化（行为不变重构）
+## 0.15.0 — 2026-09-19 · v0.15 Batch 6：ppt_pipeline 模块化（行为不变重构）
 
 `ppt_pipeline.py` 从 2590 行单文件拆为 **239 行 CLI facade + `pipeline/` 包**（11 个模块，
 最大 631 行，全部低于计划的 600–800 行上限）。**零行为变更**——模块体按符号边界原样搬移，
@@ -47,7 +65,7 @@
 - 目标达成：entry < 300 行 ✓、核心模块 < 800 行 ✓、改 QA 不会再误伤 render/repair——
   各阶段代码物理隔离，共享面收敛到 core。
 
-## Unreleased — v0.15 Batch 5.1：小范围收尾（绑定语义 + 测试去重 + registry 咬合）
+## 0.15.0 — 2026-09-19 · v0.15 Batch 5.1：小范围收尾（绑定语义 + 测试去重 + registry 咬合）
 
 - **Packet 绑定升级为显式身份注册**：shard 范围不再从「第一次碰了哪个页面」推断——
   builder **读取自己的 Builder Packet**（其任务输入）这一动作即完成 agent_id → packet 的
@@ -63,7 +81,7 @@
   不得携带 `--visual-report`——registry 是机器真相而不是文档。
 - 测试 788（执行数）→ 780（去重后的真实场景数）。
 
-## Unreleased — v0.15 Batch 5：QA / Gate 整合（registry + 单一构造器）
+### 0.15.0 · v0.15 Batch 5：QA / Gate 整合（registry + 单一构造器）
 
 按「行为不变、增量拆、兼容层保留」的原则执行。探查确认：delivery 三代（v07/v071/v08）是
 分层导入而非复制，`quality_gate.py` / `delivery_check.py` 已是稳定分发 CLI——计划担心的
@@ -86,7 +104,7 @@
   `quality/` 包与 Batch 6 管线模块化合并考虑，避免行为未稳定时先行重构。
 - 测试 786 → 788。
 
-## Unreleased — v0.15 Batch 1–4 Closure（集成断点收口）
+### 0.15.0 · v0.15 Batch 1–4 Closure（集成断点收口）
 
 对 Batch 1–4 做跨模块交叉审计后发现：主体功能全部落地、测试全绿，但存在 9 处现有测试
 未覆盖的集成断点。本批次全部收口，测试 761 → 786。
@@ -140,7 +158,7 @@
   style-summary 不变量与 provenance（2）、AD 瘦身（1）、rhythm 失败（1）、多页 blocker（1）、
   4.1 漂移回归（1）等。
 
-## Unreleased — CI 流程精简与提速
+### 0.15.0 · CI 流程精简与提速
 
 测试套件经全量盘点确认无冗余（64 文件 / 761 测试：跨文件重复断言仅 2 处同句；守卫类 8 个
 文件各管一层契约；v07/v071/v08 三代均为版本分发的活目标），未做删除。CI 侧消除真实冗余：
@@ -156,7 +174,7 @@
 - schema 语法检查从 7 行重复改为循环；dotnet 保留在 runtime / release-checks /
   render-matrix / security-scan（OpenXML validator 运行时构建与 NuGet audit 都真实用到）。
 
-## Unreleased — v0.15 Pipeline Simplification（Batch 4：Calibration / 视觉系统重构）
+### 0.15.0 · v0.15 Pipeline Simplification（Batch 4：Calibration / 视觉系统重构）
 
 这批的重点不是更严格，而是更聪明地校准：校准样本按视觉语法覆盖选取、确立的视觉体系以
 契约形式投影给每个 builder、页面节奏在 plan 时成文、美学评分与硬门禁解耦。
@@ -211,7 +229,7 @@
   `pptx-visual-critic.md` 同步新口径。
 - 测试 752 → 761。
 
-## Unreleased — v0.15 Pipeline Simplification（Batch 3.1：advance 正确性 + 可观测性）
+### 0.15.0 · v0.15 Pipeline Simplification（Batch 3.1：advance 正确性 + 可观测性）
 
 把 Batch 3 留下的最后一个「模型手动 build」机械回合消掉，并给 advance 装上可量化的
 收益仪表。`next` 仍是调试/巡检入口，advance 仍是正常生产入口，仍不 spawn 任何 agent。
@@ -261,7 +279,7 @@
 - `test_pipeline_report.py` 新增 ledger 汇总用例（collapsed 口径含「零动作调用不虚报、
   不为负」的断言）。全套 730 → 735。
 
-## Unreleased — v0.15 Pipeline Simplification（Batch 3：`ppt_pipeline advance`）
+### 0.15.0 · v0.15 Pipeline Simplification（Batch 3：`ppt_pipeline advance`）
 
 时间优化的核心批次：把「跑一步 → 看结果 → 再发下一步」的确定性回合交给管线本身。
 模型只在真正需要智能的边界被叫回。与 Batch 0~2.3 一起随 0.15.0 发布。
@@ -299,7 +317,7 @@
   自动 render → critic、render 已现成 → critic（零动作）、QA blocker → 自动 repair
   登记 + repair builder packet、QA 绿 → 自动 complete、pending_repair 不重复 repair。
 
-## Unreleased — v0.15 Pipeline Simplification（Batch 2.3：spawn 模板收口 + CI 咬合）
+### 0.15.0 · v0.15 Pipeline Simplification（Batch 2.3：spawn 模板收口 + CI 咬合）
 
 Owner 细读发现 spawn-templates.md 仍有三处旧规则残留（先读冻结契约 / 要上下文就用
 page_brief / 请自行读报告原文），与 Packet contract 冲突。本轮除修掉三处外，把
@@ -324,7 +342,7 @@ page_brief / 请自行读报告原文），与 Packet contract 冲突。本轮�
   输入条目（要求逐一枚举禁重读对象）或带 fallback 门控标记的条目内。今后 prose 再出现
   无条件的「先读 slide-spec」，CI 直接失败，而不是等人工复核。
 
-## Unreleased — v0.15 Pipeline Simplification（Batch 2.2：page_brief 归零）
+### 0.15.0 · v0.15 Pipeline Simplification（Batch 2.2：page_brief 归零）
 
 Owner 细读发现的最后一条指令歧义：builder.md 顶部说「packet 是 complete task input，
 不要重读投影输入」，Hard boundaries 却仍无条件要求每轮调一次 page_brief——有 packet 的
@@ -339,7 +357,7 @@ builder 会白付一个上下文往返。修法与 Batch 2.1 同形（条件化�
   `{"with_packet": 0, "legacy_fallback_max": 1}`——packet 在手时该调用必须为零。
 - 契约测试新增一条钉住上述三方一致（contract 数字 + 两份 prose 文件的条件式措辞）。
 
-## Unreleased — v0.15 Pipeline Simplification（Batch 2.1：Packet 收尾）
+### 0.15.0 · v0.15 Pipeline Simplification（Batch 2.1：Packet 收尾）
 
 Owner 复核 Batch 2 后指出的三处收尾，全部落地：
 
@@ -373,7 +391,7 @@ Owner 复核 Batch 2 后指出的三处收尾，全部落地：
   `test_agent_behavior_contract.py` 新增 1 用例（fallback-only 条件式投影）；
   `test_pipeline_report.py` 新增 1 用例（回退计数聚合）。
 
-## Unreleased — v0.15 Pipeline Simplification（Batch 2：Builder Packet）
+### 0.15.0 · v0.15 Pipeline Simplification（Batch 2：Builder Packet）
 
 上下文从「隔离但重复读取」升级为「隔离 + 最小任务包」：并行 builder 不再各自重读
 同一份 Slide Spec / Art Direction / 研究包 / QA 报告，改由管线在派发前投影出每个
