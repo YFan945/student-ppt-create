@@ -2,6 +2,22 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — 调度幂等性修复（Batch 5.1 follow-up，测试先行）
+
+外部审查提出一个假设性风险：主会话在多 builder 飞行中重复调用 `next`/`advance` 可能意外
+使在飞 builder 失去授权。按「测试 → 确认 → 最小修复」流程处理：
+
+- **live 复现证实**：`prepare_packets` 每次被 dispatch 调用都无条件重写
+  `builder-packets/active-round.json`（新 `at` 时间戳），而 guard 按 `round_at` 判定绑定
+  过期——相同状态的一次冗余重派发即可让全部在飞 builder 的下一次页面编辑被拒
+  （可复现脚本：register → edit OK → 相同 re-dispatch → edit 被拒 exit 2）。
+- **最小修复**：`record_active_round()` 幂等——mode、packet 路径与 assigned slides 全部
+  未变化时不重写轮次戳，在飞绑定保持有效；真正的重分片（不同 packet/页面集，如中断恢复）
+  仍按设计轮换并使旧作用域过期。
+- **四场景集成测试**（长期回归保护）：相同 dispatch 保留轮次戳、在飞 builder 授权在冗余
+  巡检下保持、真重分片按设计轮换并过期旧绑定、fallback 无 active round 时不启用 enforcement。
+- 测试 780 → 783。
+
 ## Unreleased — v0.15 Batch 6：ppt_pipeline 模块化（行为不变重构）
 
 `ppt_pipeline.py` 从 2590 行单文件拆为 **239 行 CLI facade + `pipeline/` 包**（11 个模块，

@@ -11,6 +11,7 @@ from test_helpers import load_module
 
 ROOT = Path(__file__).resolve().parents[1]
 guard = load_module(ROOT / "scripts/builder_guard.py")
+builder_packet = load_module(ROOT / "skills/sp-deck/scripts/builder_packet.py")
 
 
 class BuilderGuardFixture:
@@ -284,6 +285,51 @@ class BuilderPacketScopeTests(BuilderGuardFixture, unittest.TestCase):
         binding = self.binding()
         self.assertEqual([2, 5, 8], binding["allowed_slides"])
         self.assertEqual(2, guard.handle(self.builder(self.page, "Edit")))
+
+    def test_repeated_identical_dispatch_preserves_the_round_stamp(self) -> None:
+        """Dispatch idempotency (Batch 5.1 follow-up): the SAME state, the SAME page
+        assignment and the SAME packet content must produce the SAME effective
+        authorization. A re-dispatch that only rotates the active-round timestamp
+        would invalidate every in-flight builder's binding — the scheduler bug the
+        live repro confirmed before this fix."""
+        packets = [{"packet": str(self.own_packet), "slides": [1, 4, 7]}]
+        builder_packet.record_active_round(self.work, "initial", packets)
+        first = json.loads((self.packet_dir / "active-round.json").read_text(encoding="utf-8"))
+        builder_packet.record_active_round(self.work, "initial", packets)
+        second = json.loads((self.packet_dir / "active-round.json").read_text(encoding="utf-8"))
+        self.assertEqual(first["at"], second["at"])
+
+    def test_repeated_dispatch_preserves_active_builder_authorization(self) -> None:
+        """The main session may call next/advance again while shards are in flight
+        (inspection, a staggered spawn, a SubagentStop racing the batch). When that
+        re-dispatch carries unchanged packets, the working builders must keep their
+        binding — mid-flight page edits keep working without a re-read."""
+        packets = [{"packet": str(self.own_packet), "slides": [1, 4, 7]}]
+        builder_packet.record_active_round(self.work, "initial", packets)
+        self.assertEqual(0, guard.handle(self.builder(self.own_packet, "Read")))
+        self.assertEqual(0, guard.handle(self.builder(self.page, "Edit")))
+        # the main session re-dispatches with UNCHANGED packets while builders work
+        builder_packet.record_active_round(self.work, "initial", packets)
+        self.assertEqual(
+            0, guard.handle(self.builder(self.page, "Edit")),
+            "an idempotent re-dispatch must not invalidate in-flight builders",
+        )
+
+    def test_a_genuine_reshard_still_rotates_the_round(self) -> None:
+        """The reservation only covers UNCHANGED dispatches. When the pipeline
+        genuinely re-shards (different assigned slides — e.g. a resume after an
+        interrupted session), the round rotates by design and the previous
+        binding expires: the old scope must not leak into the new round."""
+        packets = [{"packet": str(self.own_packet), "slides": [1, 4, 7]}]
+        builder_packet.record_active_round(self.work, "initial", packets)
+        self.assertEqual(0, guard.handle(self.builder(self.own_packet, "Read")))
+        self.assertEqual(0, guard.handle(self.builder(self.page, "Edit")))
+        builder_packet.record_active_round(self.work, "initial", [
+            {"packet": str(self.own_packet), "slides": [2, 5]},
+            {"packet": str(self.other_packet), "slides": [3, 6]},
+        ])
+        self.assertEqual(2, guard.handle(self.builder(self.page, "Edit")))
+        self.assertIsNone(self.binding())
 
     def test_without_an_active_round_the_fallback_path_stays_open(self) -> None:
         (self.packet_dir / "active-round.json").unlink()

@@ -349,6 +349,13 @@ def record_active_round(work_dir: Path, mode: str, packets: list[dict[str, Any]]
     touch the page modules its shard was assigned. An empty packet list (the
     legacy fallback path) clears the file — fallback stays usable, and its cost
     stays observable via fallbacks.json.
+
+    Dispatch idempotency: re-dispatching the SAME mode with the SAME packet paths
+    and slide assignments does NOT rotate the round stamp. The main session may
+    legitimately call `next`/`advance` again while shards are in flight; a fresh
+    timestamp there would expire every working builder's binding mid-round. A
+    genuine re-shard (different packets or slides) still rotates the round and
+    expires the old scopes by design.
     """
     out_dir = work_dir / PACKET_DIR_NAME
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -356,19 +363,33 @@ def record_active_round(work_dir: Path, mode: str, packets: list[dict[str, Any]]
     if not packets:
         path.unlink(missing_ok=True)
         return
+    new_packets = [
+        {
+            "packet": str(item["packet"]),
+            "assigned_slides": item["slides"],
+            "speaker_notes_target": item.get("speaker_notes_target"),
+        }
+        for item in packets
+    ]
+
+    def scope(entry: dict[str, Any]) -> tuple:
+        slides = entry.get("assigned_slides") or []
+        return (entry.get("packet") or "", tuple(slides))
+
+    existing = load_optional(path)
+    if (
+        isinstance(existing, dict)
+        and existing.get("mode") == mode
+        and [scope(p) for p in existing.get("packets") or []]
+        == [scope(p) for p in new_packets]
+    ):
+        return
     path.write_text(
         json.dumps(
             {
                 "at": datetime.now(UTC).isoformat(),
                 "mode": mode,
-                "packets": [
-                    {
-                        "packet": str(item["packet"]),
-                        "assigned_slides": item["slides"],
-                        "speaker_notes_target": item.get("speaker_notes_target"),
-                    }
-                    for item in packets
-                ],
+                "packets": new_packets,
             },
             ensure_ascii=False,
             indent=2,
