@@ -37,7 +37,7 @@ class PipelineIntegrityTests(PipelineTestCase):
             image.save(page)
             return subprocess.CompletedProcess(argv, 0, stdout=json.dumps({"pages": [str(page)]}), stderr="")
 
-        pp._runner = render_runner
+        pp._core._runner = render_runner
         self.assertEqual(pp.main(["render", "--work-dir", str(self.work)]), 0)
         self.render_evidence(files)
         fake = FakeRunner(self.work)
@@ -52,7 +52,7 @@ class PipelineIntegrityTests(PipelineTestCase):
                 return result
             return fake(argv)
 
-        pp._runner = runner
+        pp._core._runner = runner
         output = io.StringIO()
         with redirect_stdout(output):
             pp.main(["next", "--work-dir", str(self.work), "--json"])
@@ -123,7 +123,7 @@ class PipelineIntegrityTests(PipelineTestCase):
         spec = json.loads(files["spec"].read_text())
         spec["research_scope"] = "D"
         files["spec"].write_text(json.dumps(spec))
-        pp._runner = FakeRunner(self.work)
+        pp._core._runner = FakeRunner(self.work)
         self.assertEqual(pp.main(["plan", "--work-dir", str(self.work), "--slide-spec", str(files["spec"]), "--validation-report", str(files["spec_report"]), "--art-direction", str(files["art"])]), 2)
 
     def test_source_image_is_rebuild_and_requires_analysis(self):
@@ -134,7 +134,7 @@ class PipelineIntegrityTests(PipelineTestCase):
         spec["source_deck"] = str(source)
         files["spec"].write_text(json.dumps(spec))
         args = ["plan", "--work-dir", str(self.work), "--slide-spec", str(files["spec"]), "--validation-report", str(files["spec_report"]), "--art-direction", str(files["art"])]
-        pp._runner = FakeRunner(self.work)
+        pp._core._runner = FakeRunner(self.work)
         self.assertEqual(pp.main(args), 2)
         (self.work / "source-analysis.md").write_text("Rebuild the supplied source while preserving approved content.")
         self.assertEqual(pp.main(args), 0)
@@ -158,7 +158,7 @@ class PipelineIntegrityTests(PipelineTestCase):
 
     def test_mutated_notes_prevent_complete(self):
         files = self.prepared()
-        pp._runner = FakeRunner(self.work)
+        pp._core._runner = FakeRunner(self.work)
         self.assertEqual(pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(files["visual_review"])]), 0)
         (self.work / "speaker-notes.md").write_text("Changed after QA")
         self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)

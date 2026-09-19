@@ -80,10 +80,10 @@ class PipelineRenderTests(unittest.TestCase):
             "qa": {},
             "history": [],
         })
-        self.original_runner = pp._runner
+        self.original_runner = pp._core._runner
 
     def tearDown(self) -> None:
-        pp._runner = self.original_runner
+        pp._core._runner = self.original_runner
         self.tmp.cleanup()
 
     def args(self) -> argparse.Namespace:
@@ -91,7 +91,7 @@ class PipelineRenderTests(unittest.TestCase):
 
     def test_render_creates_contact_sheet_and_hash_bindings(self) -> None:
         runner = RenderRunner(self.work)
-        pp._runner = runner
+        pp._core._runner = runner
         self.assertEqual(pp.cmd_render(self.args()), 0)
         manifest = pp.load_manifest(self.work)
         assert manifest is not None
@@ -107,7 +107,7 @@ class PipelineRenderTests(unittest.TestCase):
 
     def test_render_cache_hit_regenerates_a_missing_thumb(self) -> None:
         runner = RenderRunner(self.work)
-        pp._runner = runner
+        pp._core._runner = runner
         self.assertEqual(pp.cmd_render(self.args()), 0)
         thumb = Path((pp.load_manifest(self.work) or {})["render"]["contact_sheet_thumb"]["path"])
         thumb.unlink()
@@ -117,14 +117,14 @@ class PipelineRenderTests(unittest.TestCase):
 
     def test_identical_pptx_reuses_render_without_subprocess(self) -> None:
         runner = RenderRunner(self.work)
-        pp._runner = runner
+        pp._core._runner = runner
         self.assertEqual(pp.cmd_render(self.args()), 0)
         self.assertEqual(pp.cmd_render(self.args()), 0)
         self.assertEqual(runner.calls, 1)
 
     def test_changed_pptx_invalidates_render_cache(self) -> None:
         runner = RenderRunner(self.work)
-        pp._runner = runner
+        pp._core._runner = runner
         self.assertEqual(pp.cmd_render(self.args()), 0)
         self.pptx.write_bytes(b"PK changed")
         manifest = pp.load_manifest(self.work)
@@ -137,7 +137,7 @@ class PipelineRenderTests(unittest.TestCase):
     def test_render_reuse_is_recorded_for_observability(self) -> None:
         """Cache hits must be visible, otherwise cost reports show only spend."""
         runner = RenderRunner(self.work)
-        pp._runner = runner
+        pp._core._runner = runner
         self.assertEqual(pp.cmd_render(self.args()), 0)
         self.assertEqual(pp.cmd_render(self.args()), 0)
         self.assertEqual(runner.calls, 1)
@@ -186,10 +186,10 @@ class NextRoutingTests(unittest.TestCase):
             "qa": {},
             "history": [],
         })
-        self.original_runner = pp._runner
+        self.original_runner = pp._core._runner
 
     def tearDown(self) -> None:
-        pp._runner = self.original_runner
+        pp._core._runner = self.original_runner
         self.tmp.cleanup()
 
     def args(self) -> argparse.Namespace:
@@ -208,7 +208,7 @@ class NextRoutingTests(unittest.TestCase):
         self.assertEqual([], payload["read_images"])
 
     def test_next_points_at_qa_once_render_matches_the_pptx(self) -> None:
-        pp._runner = RenderRunner(self.work)
+        pp._core._runner = RenderRunner(self.work)
         self.assertEqual(pp.cmd_render(self.args()), 0)
         payload = self.next_payload()
         self.assertIn(" qa", payload["next_command"])
@@ -219,7 +219,7 @@ class NextRoutingTests(unittest.TestCase):
 
     def test_stale_contact_sheet_is_not_treated_as_render_evidence(self) -> None:
         """Reproduces the repair loop: rebuild clears the manifest, PNG stays."""
-        pp._runner = RenderRunner(self.work)
+        pp._core._runner = RenderRunner(self.work)
         self.assertEqual(pp.cmd_render(self.args()), 0)
         self.assertTrue((self.work / "contact-sheet.png").is_file())
         self.pptx.write_bytes(b"PK rebuilt")
@@ -235,7 +235,7 @@ class NextRoutingTests(unittest.TestCase):
         self.assertEqual([], payload["read_images"])
 
     def test_build_archives_render_evidence_of_the_previous_pptx(self) -> None:
-        pp._runner = RenderRunner(self.work)
+        pp._core._runner = RenderRunner(self.work)
         self.assertEqual(pp.cmd_render(self.args()), 0)
         contact = self.work / "contact-sheet.png"
         manifest = pp.load_manifest(self.work)

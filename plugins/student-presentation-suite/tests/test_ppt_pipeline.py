@@ -144,7 +144,7 @@ class PipelineTestCase(unittest.TestCase):
         self.env = patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": self._tmp.name})
         self.env.start()
         self.addCleanup(self.env.stop)
-        self._original_runner = pp._runner
+        self._original_runner = pp._core._runner
         self.summary = self.work / "production-summary.md"
         self.summary.write_text("approved", encoding="utf-8")
         self.workflow_state = self.work / "workflow-state.json"
@@ -163,7 +163,7 @@ class PipelineTestCase(unittest.TestCase):
         )
 
     def tearDown(self) -> None:
-        pp._runner = self._original_runner
+        pp._core._runner = self._original_runner
         self._tmp.cleanup()
 
     def write_inputs(self) -> dict[str, Path]:
@@ -197,7 +197,7 @@ class PipelineTestCase(unittest.TestCase):
 
     def plan(self, files: dict[str, Path], runner: FakeRunner | None = None) -> FakeRunner:
         runner = runner or FakeRunner(self.work)
-        pp._runner = runner
+        pp._core._runner = runner
         rc = pp.main([
             "plan", "--work-dir", str(self.work),
             "--workflow-state", str(self.workflow_state),
@@ -386,7 +386,7 @@ class PlanTests(PipelineTestCase):
         files = self.write_inputs()
         self.plan(files)
         self.confirm_intake()
-        pp._runner = FakeRunner(self.work)
+        pp._core._runner = FakeRunner(self.work)
         rc = pp.main([
             "plan", "--work-dir", str(self.work), "--workflow-state", str(self.workflow_state), "--force",
             "--slide-spec", str(files["spec"]), "--validation-report", str(files["spec_report"]),
@@ -422,7 +422,7 @@ class PreQaGateTests(PipelineTestCase):
         return runner
 
     def build(self, runner: FakeRunner) -> int:
-        pp._runner = runner
+        pp._core._runner = runner
         return pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry)])
 
     def edit_page(self) -> None:
@@ -873,7 +873,7 @@ class BuildTests(PipelineTestCase):
     def test_build_rechecks_the_freeze(self) -> None:
         self.prepared()
         runner = FakeRunner(self.work, check_ok=False)
-        pp._runner = runner
+        pp._core._runner = runner
         self.assertEqual(pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())]), 2)
 
 
@@ -892,7 +892,7 @@ class QaDagTests(PipelineTestCase):
     def test_delivery_consumes_this_runs_reports_in_contract_order(self) -> None:
         self.producing_manifest()
         runner = FakeRunner(self.work)
-        pp._runner = runner
+        pp._core._runner = runner
         rc = pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])])
         self.assertEqual(rc, 0)
         manifest = self.manifest()
@@ -909,7 +909,7 @@ class QaDagTests(PipelineTestCase):
     def test_identical_qa_reuses_previous_result(self) -> None:
         self.producing_manifest()
         runner = FakeRunner(self.work)
-        pp._runner = runner
+        pp._core._runner = runner
         argv = ["qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])]
         self.assertEqual(pp.main(argv), 0)
         first_calls = len(runner.calls)
@@ -921,7 +921,7 @@ class QaDagTests(PipelineTestCase):
         previews = self.work / "preview-01.png", self.work / "preview-02.png"
         for index, preview in enumerate(previews):
             preview.write_bytes(f"png-{index}".encode())
-        pp._runner = FakeRunner(self.work)
+        pp._core._runner = FakeRunner(self.work)
         self.assertEqual(pp.main([
             "qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"]),
             "--preview", str(previews[0]), "--preview", str(previews[1]),
@@ -936,7 +936,7 @@ class QaDagTests(PipelineTestCase):
         self.producing_manifest()
         runner = FakeRunner(self.work)
         runner.render_fails = True
-        pp._runner = runner
+        pp._core._runner = runner
         rc = pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])])
         self.assertEqual(rc, 2)
         executed = " | ".join(" ".join(c) for c in runner.calls)
@@ -961,7 +961,7 @@ class QaDagTests(PipelineTestCase):
                 {"severity": "major", "code": "delivery_incomplete", "message": "upstream gates failed"},
             ],
         }
-        pp._runner = runner
+        pp._core._runner = runner
         rc = pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])])
         self.assertEqual(rc, 2)
 
@@ -1523,7 +1523,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
             "--art-direction", str(self.files["art"]),
             "--visual-generation-report", str(self.files["vgr"]),
         ]
-        pp._runner = FakeRunner(self.work)
+        pp._core._runner = FakeRunner(self.work)
         with _patch.object(deck_rhythm, "ensure_rhythm", broken):
             rc = pp.main(plan_args)
         self.assertEqual(rc, 0)
@@ -1626,7 +1626,7 @@ class AdvanceTests(PipelineTestCase):
                 return subprocess.CompletedProcess(argv, 0, stdout="{}", stderr="")
             return base(argv)
 
-        pp._runner = runner
+        pp._core._runner = runner
 
     def state_qa(self, *, ok: bool) -> None:
         self.plan(self.files)

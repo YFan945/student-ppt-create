@@ -2,6 +2,35 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — v0.15 Batch 6：ppt_pipeline 模块化（行为不变重构）
+
+`ppt_pipeline.py` 从 2590 行单文件拆为 **239 行 CLI facade + `pipeline/` 包**（11 个模块，
+最大 631 行，全部低于计划的 600–800 行上限）。**零行为变更**——模块体按符号边界原样搬移，
+780 个测试全部保持绿。
+
+### 新结构
+
+- `pipeline/core.py`（631）：共享原语——契约常量、manifest I/O、hash 绑定、workflow 状态、
+  Stage 与 `_gate_stage()`（Batch 5 的单一 gate 构造器）、pre-QA 子集、`collect()` 与
+  **`_runner` subprocess 接缝**（唯一可变 seam）。
+- `pipeline/{plan,build,render,qa,repair,complete}.py`：每个生产阶段一个模块，各 90–304 行。
+- `pipeline/scheduler.py`（242）：shard 划分、页定位、packet fallback 登记与可观测性。
+- `pipeline/convergence.py`（174）：repair budget、收敛趋势、gate 回归检测。
+- `pipeline/dispatch.py`（456）：`build_next_payload()` + `next`（机器对话的只读半边）。
+- `pipeline/advance.py`（208）：确定性推进循环。
+- `ppt_pipeline.py`（239）：argparse 子命令 + dispatch + 测试钉住的兼容命名空间
+  （re-export 显式标注 F401 抑制）。
+
+### 接缝与兼容
+
+- **runner seam**：`_runner` 唯一定义在 `pipeline.core`，命令模块经 `core._runner(...)`
+  调用期解析；测试的 27 处 `pp._runner =` patch 改指 `pp._core._runner`（mechanical，
+  3 个测试文件）。
+- `_packet` / `_scaffold` 仍是共享模块对象，`pp._packet.prepare_packets` 式 patch 语义
+  不变。
+- 目标达成：entry < 300 行 ✓、核心模块 < 800 行 ✓、改 QA 不会再误伤 render/repair——
+  各阶段代码物理隔离，共享面收敛到 core。
+
 ## Unreleased — v0.15 Batch 5.1：小范围收尾（绑定语义 + 测试去重 + registry 咬合）
 
 - **Packet 绑定升级为显式身份注册**：shard 范围不再从「第一次碰了哪个页面」推断——
