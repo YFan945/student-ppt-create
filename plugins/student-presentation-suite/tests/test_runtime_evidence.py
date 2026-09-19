@@ -374,3 +374,61 @@ class RuntimeEvidenceTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ResearchActiveReleaseTests(unittest.TestCase):
+    """2026-09-20 review: scope release must be deterministic at delivery.
+
+    research-active cleared only at Stop or by TTL, so a session that finished
+    its deck kept blocking main-session WebSearch. complete now releases it —
+    as soon as EVERY work-dir is complete; any other state keeps it armed.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.project = Path(self.tmp.name)
+        env = patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(self.project)})
+        env.start()
+        self.addCleanup(env.stop)
+
+    def main_search(self):
+        return runtime.handle({
+            "cwd": str(self.project),
+            "session_id": "parent",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "WebSearch",
+            "tool_input": {"query": "latest battery prices"},
+        })
+
+    def write_manifest(self, work_id: str, state: str) -> None:
+        work = self.project / "outputs/.pptx-work" / work_id
+        work.mkdir(parents=True, exist_ok=True)
+        (work / "build-manifest.json").write_text(json.dumps({"state": state}), encoding="utf-8")
+
+    def test_release_after_all_work_ids_complete(self):
+        runtime.pipeline_context.mark_research_active(self.project, {"session_id": "parent"})
+        self.write_manifest("deck-a", "complete")
+        self.write_manifest("deck-b", "complete")
+        self.assertEqual(self.main_search(), 0)
+        self.assertFalse(
+            (self.project / "outputs/.pptx-work/.guard/research-active-parent.json").exists()
+        )
+
+    def test_kept_armed_while_any_work_id_is_in_production(self):
+        runtime.pipeline_context.mark_research_active(self.project, {"session_id": "parent"})
+        self.write_manifest("deck-a", "complete")
+        self.write_manifest("deck-b", "qa")
+        self.assertEqual(self.main_search(), 2)
+
+    def test_kept_armed_when_no_manifest_or_unreadable(self):
+        runtime.pipeline_context.mark_research_active(self.project, {"session_id": "parent"})
+        (self.project / "outputs/.pptx-work/intake-only").mkdir(parents=True)
+        self.assertEqual(self.main_search(), 2)
+        self.write_manifest("intake-only", "complete")
+        (self.project / "outputs/.pptx-work/broken/build-manifest.json").parent.mkdir(parents=True)
+        (self.project / "outputs/.pptx-work/broken/build-manifest.json").write_text("{oops", encoding="utf-8")
+        self.assertEqual(self.main_search(), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

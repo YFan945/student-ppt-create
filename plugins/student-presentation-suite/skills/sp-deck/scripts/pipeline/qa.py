@@ -42,6 +42,7 @@ from pipeline.core import (  # noqa: E402
     sha256_file,
     stable_hash,
     validate_manifest_authorization,
+    work_id_receipt_policy,
     write_stage_summary,
 )
 
@@ -75,7 +76,8 @@ def cmd_qa(args: argparse.Namespace) -> int:
         raise RefusedError("visual review must bind the current PPTX, contact sheet and every page SHA256")
     receipt = execution_receipt(
         work_dir, "critic", visual_review,
-        policy=getattr(args, "receipt_policy", "require") or "require",
+        policy=getattr(args, "receipt_policy", None)
+        or work_id_receipt_policy(manifest) or "require",
     )
     degraded_receipt = bool(receipt.get("degraded"))
     if not degraded_receipt:

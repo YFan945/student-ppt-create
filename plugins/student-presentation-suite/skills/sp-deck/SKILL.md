@@ -41,10 +41,13 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" next --wor
 **回执门与 doctor（2026-09-19 实测）**：`plan`/`qa` 因 `missing successful isolated
 *-execution.json` 拒绝时，**不要**反向排查 hook 机制（一次实测为此烧掉 52 个请求、6.5M
 输入 token，占全程一半）。回执只由 `runtime_evidence.py` 在 SubagentStop 落盘，模型写入
-会被守卫拒绝。先跑 `doctor --work-dir <wd> --json`：若报告 receipts unavailable（本机
-ZCode 默认如此——SubagentStart/SubagentStop 不达插件 hook），直接用 `plan`/`qa` 的
-`--receipt-policy allow-missing` 走降级路径（manifest 记录 `spawn_verified: false` 与
-`receipt_policy: allow-missing`，QA 报告保留标记）。已存在但绑定不符的回执仍是硬拒绝。
+会被守卫拒绝。先跑 `doctor --work-dir <wd> --json`：若报告 receipts
+suspected-unavailable（本机 ZCode 默认如此——SubagentStart/SubagentStop 不达插件 hook；
+doctor 只给出疑似判定，可用一次零检索研究员运行确认），`plan` 加
+`--receipt-policy allow-missing` 走降级路径。**策略是 work-id 状态**：之后 qa/complete
+自动继承，`next_command` 会自带该参数，无需 Agent 记忆补参（manifest 记录
+`spawn_verified: false` 与 `receipt_policy: allow-missing`，QA 报告与交付摘要保留标记）。
+已存在但为空、损坏或绑定不符的回执是硬拒绝——只有真正不存在的回执文件才能降级。
 visual-critic 无法 spawn（provider 不可用）时的降级：只读 `contact-sheet-thumb.jpg` +
 最多 3 张疑似 blocker 页全尺寸图，禁止逐页读全尺寸大图（2026-09-19 实测 13 张大图把
 上下文推到 compaction，一次性多花约 170K fresh tokens）。

@@ -213,7 +213,7 @@ class PipelineTestCase(unittest.TestCase):
     def manifest(self) -> dict[str, Any]:
         return json.loads((self.work / pp.MANIFEST_NAME).read_text(encoding="utf-8"))
 
-    def render_evidence(self, files):
+    def render_evidence(self, files, *, write_receipt: bool = True):
         from PIL import Image
         manifest = self.manifest()
         page = self.work / "render" / "slide-1.png"
@@ -227,8 +227,9 @@ class PipelineTestCase(unittest.TestCase):
         pp.save_manifest(self.work, manifest)
         review = {"pptx_sha256": pp.sha256_file(files["pptx"]), "contact_sheet_sha256": pp.sha256_file(contact), "page_sha256": {"1": pp.sha256_file(page)}}
         files["visual_review"].write_text(json.dumps(review), encoding="utf-8")
-        receipt = {"agent": "student-presentation-suite:visual-critic", "agent_id": "test-child", "spawn_verified": True, "work_id": self.work.name, "artifact": pp.bind(files["visual_review"]), "reads": {str(p): pp.sha256_file(p) for p in [page, contact]}}
-        (self.work / "critic-execution.json").write_text(json.dumps(receipt), encoding="utf-8")
+        if write_receipt:
+            receipt = {"agent": "student-presentation-suite:visual-critic", "agent_id": "test-child", "spawn_verified": True, "work_id": self.work.name, "artifact": pp.bind(files["visual_review"]), "reads": {str(p): pp.sha256_file(p) for p in [page, contact]}}
+            (self.work / "critic-execution.json").write_text(json.dumps(receipt), encoding="utf-8")
         (self.work / "speaker-notes.md").write_text("# Slide 1\nSpeaker notes for the test.", encoding="utf-8")
 
     def entry(self) -> Path:
@@ -1932,7 +1933,9 @@ class AdvanceTests(PipelineTestCase):
 
 
 class ReceiptPolicyTests(PipelineTestCase):
-    """Degradation is only for a MISSING receipt; a mismatching one stays fatal."""
+    """Degradation applies ONLY to a truly absent receipt file; a present file
+    that is empty, corrupt or identity-mismatched is always a hard refusal,
+    and the policy is work-id state that later stages inherit."""
 
     def test_execution_receipt_degrades_only_on_missing_file(self) -> None:
         artifact = self.work / "research-pack.json"
@@ -1947,6 +1950,57 @@ class ReceiptPolicyTests(PipelineTestCase):
         )
         with self.assertRaises(pp.RefusedError):
             pp.execution_receipt(self.work, "research", artifact, policy="allow-missing")
+
+    def test_present_but_empty_or_corrupt_receipt_never_degrades(self) -> None:
+        """2026-09-20 review: load_json(...) or {} conflated corrupt with missing."""
+        artifact = self.work / "research-pack.json"
+        artifact.write_text("{}", encoding="utf-8")
+        (self.work / "research-execution.json").write_text("{}", encoding="utf-8")
+        with self.assertRaises(pp.RefusedError):
+            pp.execution_receipt(self.work, "research", artifact, policy="allow-missing")
+        (self.work / "research-execution.json").write_text("{not json", encoding="utf-8")
+        with self.assertRaises(pp.RefusedError):
+            pp.execution_receipt(self.work, "research", artifact, policy="allow-missing")
+        (self.work / "research-execution.json").unlink()
+        receipt = pp.execution_receipt(self.work, "research", artifact, policy="allow-missing")
+        self.assertEqual(receipt["degraded"], "receipt-missing-allowed")
+
+    def degraded_research_plan(self, files: dict[str, Path]) -> None:
+        spec = json.loads(files["spec"].read_text(encoding="utf-8"))
+        spec["research_scope"] = "A"
+        files["spec"].write_text(json.dumps(spec), encoding="utf-8")
+        (self.work / "research-pack.json").write_text("{}", encoding="utf-8")
+        (self.work / "research-pack-validation.json").write_text("{}", encoding="utf-8")
+        self.plan(files, extra_args=["--receipt-policy", "allow-missing"])
+        self.assertEqual(self.manifest()["research"]["receipt_policy"], "allow-missing")
+
+    def test_qa_and_next_command_inherit_degraded_policy(self) -> None:
+        """2026-09-20 review: the policy must be work-id state — qa without the
+        flag inherits it, and next_command carries it verbatim."""
+        files = self.write_inputs()
+        self.degraded_research_plan(files)
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        self.render_evidence(files, write_receipt=False)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            pp.cmd_next(ns("next", self.work, json=True))
+        payload = json.loads(buffer.getvalue())
+        self.assertIn("--receipt-policy allow-missing", payload["next_command"])
+        pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(files["visual_review"])])
+        manifest = self.manifest()
+        self.assertEqual(manifest["state"], "qa")
+        self.assertEqual(manifest["qa"]["critic_receipt"], "missing-allowed")
+
+    def test_qa_without_degraded_state_still_requires_receipt(self) -> None:
+        files = self.write_inputs()
+        self.plan(files)
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        self.render_evidence(files, write_receipt=False)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            pp.cmd_next(ns("next", self.work, json=True))
+        self.assertNotIn("--receipt-policy", json.loads(buffer.getvalue())["next_command"])
+        self.assertEqual(pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(files["visual_review"])]), 2)
 
 
 if __name__ == "__main__":

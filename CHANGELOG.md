@@ -2,6 +2,27 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased
+
+2026-09-20 外部评审对 0.15.1 源码的 4 项边界修复：
+
+- **P1 · doctor 判定降格为 `suspected-unavailable`**：pack 存在但无 ledger 只能证明
+  "未观察到有效运行记录"，不能证明运行时不支持 SubagentStart/SubagentStop（pack 可能来自
+  旧会话、guard 状态可能被清理、ledger 可能在别的 project root）。建议措辞与确认路径
+  （一次零检索研究员运行）已写入 advice。
+- **P1 · 回执"存在但为空/损坏"与"不存在"严格区分**：`execution_receipt` 改为先判文件
+  存在性——只有真正不存在的文件才能按 `allow-missing` 降级；存在但解析为空、JSON 损坏或
+  身份不符一律硬拒绝（原实现 `load_json(...) or {}` 会把损坏回执放行为"缺失"，与
+  0.15.1 CHANGELOG 声明不一致）。测试 +1。
+- **P1 · 回执策略成为 work-id 状态，后续阶段自动继承**：plan 用过
+  `--receipt-policy allow-missing` 后，qa/complete 自动继承（qa 的 argparse 默认改为
+  None → 继承），`next` 在降级 work-id 的 qa `next_command` 里自带该参数——Agent 照抄
+  命令不会再重撞回执拒绝。测试 +2。
+- **P2 · 交付即释放研究作用域**：`pipeline_context.release_if_production_complete` ——
+  当 project root 下**所有** work-id 的 build-manifest 都是 `complete` 时，主会话
+  WebSearch/WebFetch 不再被 research-active 拦截；任一 manifest 缺失、不可读或处于更早
+  状态（含仅有 intake 的目录）则保持武装，并行 deck 不受影响。测试 +3。
+
 ## 0.15.1 — 2026-09-20 · Runtime Compatibility & Production Integrity
 
 ### Batch 6.1 — Hook Scope Isolation（2026-09-19）

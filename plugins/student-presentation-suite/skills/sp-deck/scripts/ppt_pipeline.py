@@ -147,10 +147,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     plan.add_argument("--research-validation", type=Path)
     plan.add_argument("--evidence-map", type=Path)
     plan.add_argument(
-        "--receipt-policy", choices=["require", "allow-missing"], default="require",
+        "--receipt-policy", choices=["require", "allow-missing"], default=None,
         help="allow-missing: continue without the hook-owned isolated-run receipt "
-        "(degraded mode, recorded in the manifest); use after doctor reports receipts "
-        "unavailable for this runtime",
+        "(degraded mode, recorded in the manifest and inherited by later stages of "
+        "this work-id); default: inherit the recorded policy, else require. Use after "
+        "doctor reports receipts suspected-unavailable for this runtime",
     )
     plan.add_argument(
         "--research-execution",
@@ -181,9 +182,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     qa.add_argument("--preview", type=Path, nargs="+", action="extend")
     qa.add_argument("--allow-missing-preview", action="store_true")
     qa.add_argument(
-        "--receipt-policy", choices=["require", "allow-missing"], default="require",
+        "--receipt-policy", choices=["require", "allow-missing"], default=None,
         help="allow-missing: accept the visual review without the hook-owned critic "
-        "receipt (degraded mode, recorded in the manifest)",
+        "receipt (degraded mode, recorded in the manifest); default: inherit this "
+        "work-id's recorded policy, else require",
     )
     qa.add_argument("--max-items", type=int, default=12)
     qa.set_defaults(func=cmd_qa)

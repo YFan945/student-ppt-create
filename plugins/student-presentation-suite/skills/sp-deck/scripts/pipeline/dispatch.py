@@ -35,6 +35,7 @@ from pipeline.core import (  # noqa: E402
     pre_qa_failed_current,
     render_is_current,
     sha256_file,
+    work_id_receipt_policy,
 )
 from pipeline.plan import (  # noqa: E402
     _research_budget,
@@ -347,10 +348,15 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 thumb = Path(str((render.get("contact_sheet_thumb") or {}).get("path") or ""))
                 overview = thumb if (thumb and thumb.is_file()) else contact
                 payload["read_images"] = [str(overview), str(work_dir / "render")]
-                payload["next_command"] = (
+                qa_command = (
                     f'{python} "{pipeline}" qa --work-dir "{work_dir}" '
                     f'--visual-review "{work_dir / "visual-review.json"}"'
                 )
+                if work_id_receipt_policy(manifest) == "allow-missing":
+                    # policy is work-id state: next_command carries it so an agent
+                    # following the command verbatim cannot re-hit the refusal
+                    qa_command += " --receipt-policy allow-missing"
+                payload["next_command"] = qa_command
                 payload["notes"] = (
                     "Spawn student-presentation-suite:visual-critic WITHOUT a `name` "
                     "parameter — a named Agent call becomes a teammate whose agent_type is the name, "

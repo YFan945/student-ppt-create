@@ -142,6 +142,33 @@ def research_active(project: Path, event: dict, *, now: float | None = None) -> 
     return True
 
 
+def release_if_production_complete(project: Path, event: dict) -> bool:
+    """Deterministic scope release once every work-id is delivered (2026-09-20 review).
+
+    research-active used to clear only at Stop or by TTL, so a session that had
+    finished its deck kept blocking main-session WebSearch for the rest of its
+    life. Release when EVERY work-dir under this project root carries a
+    build-manifest with state "complete": one manifest missing, unreadable or in
+    an earlier state (intake-only dirs included) keeps the scope armed, so
+    parallel or just-started decks are unaffected.
+    """
+    root = project / "outputs" / ".pptx-work"
+    if not root.is_dir():
+        return False
+    work_dirs = [p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")]
+    if not work_dirs:
+        return False
+    for work_dir in work_dirs:
+        try:
+            manifest = json.loads((work_dir / "build-manifest.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return False
+        if not isinstance(manifest, dict) or manifest.get("state") != "complete":
+            return False
+    clear_research_active(project, event)
+    return True
+
+
 @dataclass(frozen=True)
 class PipelineContext:
     """Resolved scope of one hook event.

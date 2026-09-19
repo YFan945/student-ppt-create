@@ -31,6 +31,7 @@ from pipeline.core import (  # noqa: E402
     require_state,
     save_manifest,
     validate_intake,
+    work_id_receipt_policy,
     write_stage_summary,
 )
 
@@ -135,7 +136,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
             raise RefusedError("compiled Slide Spec must be an object")
         receipt = execution_receipt(
             work_dir, "research", pack,
-            policy=getattr(args, "receipt_policy", "require") or "require",
+            policy=getattr(args, "receipt_policy", None)
+            or work_id_receipt_policy(manifest) or "require",
         )
         fresh["research"] = {
             "required": True,

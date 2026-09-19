@@ -75,12 +75,18 @@ def check_receipts(work_dir: Path) -> dict[str, Any]:
             "stopped before SubagentStop. Re-check after the isolated agent returns."
         )
     elif pack.is_file():
-        verdict = "unavailable"
+        # "unavailable" overclaimed: no ledger only proves nothing was OBSERVED
+        # here — the pack may predate the hooks, the guard state may have been
+        # cleaned, or the ledger may sit under another project root. The verdict
+        # is a suspicion an agent can confirm with one fresh researcher run.
+        verdict = "suspected-unavailable"
         advice = (
-            "research-pack.json exists but no SubagentStart ledger was ever written: this "
-            "runtime does not deliver subagent hook events to plugin hooks, so receipts "
-            "cannot be produced here. Re-run plan/qa with --receipt-policy allow-missing "
-            "(degraded mode, recorded in the manifest)."
+            "research-pack.json exists but no SubagentStart ledger was found: most likely "
+            "this runtime does not deliver subagent hook events to plugin hooks, but this "
+            "is a suspicion, not proof (other causes: pack from an earlier session, "
+            "cleaned guard state, ledger under a different project root). Confirm with "
+            "one fresh zero-search researcher run; then re-run plan/qa with "
+            "--receipt-policy allow-missing (degraded mode, recorded in the manifest)."
         )
     elif active_flags:
         verdict = "pending"

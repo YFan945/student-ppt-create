@@ -293,9 +293,12 @@ def execution_receipt(
     whole run, 6.5M input tokens) reverse-engineering the gate and abandoned
     the pipeline for a hand-rolled build with no gates at all.
     """
-    receipt = load_json(work_dir / f"{role}-execution.json") or {}
+    receipt_path = work_dir / f"{role}-execution.json"
     expected = "presentation-researcher" if role == "research" else "visual-critic"
-    if not receipt:
+    # Existence first: a PRESENT-but-empty/corrupt receipt file must not pass as
+    # "missing" under allow-missing — only a truly absent file can degrade
+    # (2026-09-20 review: load_json(...)" or {}" conflated the two).
+    if not receipt_path.is_file():
         if policy == "allow-missing":
             return {
                 "agent": f"student-presentation-suite:{expected}",
@@ -311,8 +314,14 @@ def execution_receipt(
             "Run doctor --work-dir <wd> to check whether this runtime delivers subagent "
             "hook events; if it does not, re-run plan/qa with --receipt-policy allow-missing"
         )
+    receipt = load_json(receipt_path) or {}
     if receipt.get("agent") != f"student-presentation-suite:{expected}" or not receipt.get("agent_id") or receipt.get("spawn_verified") is not True or receipt.get("work_id") != work_dir.name:
-        raise RefusedError(f"missing successful isolated {role} runtime receipt")
+        raise RefusedError(
+            f"invalid isolated {role} runtime receipt at {receipt_path} (present but "
+            "empty, corrupt or identity-mismatched) — a present receipt can never "
+            "degrade via --receipt-policy allow-missing; it must be re-issued by the "
+            "hook or removed together with the work-dir"
+        )
     if receipt.get("artifact") != bind(artifact):
         raise RefusedError(
             f"{role} artifact changed after isolated execution — if this was an "
@@ -321,6 +330,23 @@ def execution_receipt(
             "to re-issue it; do not edit the pack from the main session"
         )
     return receipt
+
+
+def work_id_receipt_policy(manifest: dict[str, Any] | None) -> str:
+    """Receipt policy as work-id state; later stages inherit it (2026-09-20 review).
+
+    Once plan ran with --receipt-policy allow-missing, every later stage of THIS
+    work-id inherits the decision — an agent following next_command verbatim must
+    not re-hit the receipt refusal just because it forgot a flag. A prior
+    degraded QA counts too, so repair loops after a degraded QA stay degraded.
+    """
+    if not manifest:
+        return "require"
+    if (manifest.get("research") or {}).get("receipt_policy") == "allow-missing":
+        return "allow-missing"
+    if (manifest.get("qa") or {}).get("critic_receipt") == "missing-allowed":
+        return "allow-missing"
+    return "require"
 
 
 def mirror_workflow_state(manifest: dict[str, Any], state: str, *, reason: str | None = None) -> None:

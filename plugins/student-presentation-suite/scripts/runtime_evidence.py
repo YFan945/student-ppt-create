@@ -267,11 +267,15 @@ def handle(event: dict) -> int:
                     print(WEB_REFUSAL, file=sys.stderr)
                     return 2
             elif pipeline_context.research_active(project, event):
-                # Main session: refused only while fresh research/production
-                # scope is armed for THIS session; Stop clears it and a TTL
-                # recovers sessions that never delivered Stop.
-                print(WEB_REFUSAL, file=sys.stderr)
-                return 2
+                if pipeline_context.release_if_production_complete(project, event):
+                    pass  # every work-id delivered: scope released, search allowed
+                else:
+                    # Main session: refused only while fresh research/production
+                    # scope is armed for THIS session; Stop clears it, a TTL
+                    # recovers sessions that never delivered Stop, and complete
+                    # releases it as soon as all work-ids are delivered.
+                    print(WEB_REFUSAL, file=sys.stderr)
+                    return 2
         if agent == CRITIC and tool in {"Write", "Edit"}:
             path = Path(inputs.get("file_path") or "").resolve()
             if path.parent.parent != root or path.name != "visual-review.json":
