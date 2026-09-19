@@ -1209,6 +1209,22 @@ class CompleteTests(PipelineTestCase):
         mirrored = json.loads(self.workflow_state.read_text(encoding="utf-8"))
         self.assertEqual(mirrored["state"], "complete")
 
+    def test_complete_with_degraded_critic_receipt_succeeds(self) -> None:
+        self.state_qa(ok=True, delivery_checked=True)
+        manifest = self.manifest()
+        manifest["qa"]["critic_execution"] = None
+        manifest["qa"]["critic_receipt"] = "missing-allowed"
+        pp.save_manifest(self.work, manifest)
+        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 0)
+        self.assertEqual(self.manifest()["state"], "complete")
+
+    def test_complete_with_unmarked_missing_critic_execution_is_refused(self) -> None:
+        self.state_qa(ok=True, delivery_checked=True)
+        manifest = self.manifest()
+        manifest["qa"]["critic_execution"] = None
+        pp.save_manifest(self.work, manifest)
+        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)
+
     def test_complete_with_blockers_is_refused(self) -> None:
         self.state_qa(ok=False, delivery_checked=True)
         self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)

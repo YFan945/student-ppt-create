@@ -38,7 +38,13 @@ def cmd_complete(args: argparse.Namespace) -> int:
         raise RefusedError(f"QA still has {qa.get('blockers', '?')} blocker(s)")
     if not delivery.get("checked") or not delivery.get("ok"):
         raise RefusedError("delivery stage did not pass")
-    evidence = [qa.get("report"), qa.get("visual_review"), qa.get("notes"), qa.get("critic_execution"), *(qa.get("previews") or []), *(qa.get("stages") or {}).values()]
+    # Degraded QA (critic receipt missing-allowed) has critic_execution=None by
+    # design; treating that None as "evidence disappeared" dead-ended delivery —
+    # a degraded run could plan, build and pass QA but never complete.
+    degraded_receipt = qa.get("critic_receipt") == "missing-allowed"
+    evidence = [qa.get("report"), qa.get("visual_review"), qa.get("notes"), *(qa.get("previews") or []), *(qa.get("stages") or {}).values()]
+    if not degraded_receipt:
+        evidence.append(qa.get("critic_execution"))
     if not render_is_current(manifest) or any(not item or not binding_is_current(item) for item in evidence):
         raise RefusedError("QA evidence changed or disappeared after QA; run QA again")
     if manifest.get("mode") != "create":
@@ -55,6 +61,15 @@ def cmd_complete(args: argparse.Namespace) -> int:
         [
             "- QA green; delivery stage ran and was hash-bound.",
             f"- pptx: `{((manifest.get('build') or {}).get('pptx') or {}).get('path')}`",
+            *(
+                []
+                if not degraded_receipt
+                else [
+                    "- degraded: independent-critic receipt was missing-allowed "
+                    "(--receipt-policy allow-missing); visual review exists but carries no "
+                    "hook-verified hash binding — state this to the user at delivery"
+                ]
+            ),
             "- do not re-inject /sp-deck; run sp-review only if the user asks",
         ],
     )

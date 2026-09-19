@@ -2,7 +2,7 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
-## Unreleased
+## 0.15.1 — 2026-09-20 · Runtime Compatibility & Production Integrity
 
 ### Batch 6.1 — Hook Scope Isolation（2026-09-19）
 
@@ -26,6 +26,16 @@
 （6.5M 输入 token，占全程一半）耗在 `plan` 的隔离运行回执门上，最终整条管线被弃用、改由
 主会话手写 python-pptx。本次修复全部针对复盘暴露的矛盾点：
 
+- **P0-B：管线受阻 ≠ 绕过管线**。sp-deck SKILL.md 新增 P0 硬规则与降级阶梯
+  （doctor → `--receipt-policy allow-missing` 走完整管线 → `npm ci` 修 build 后端 → 全部
+  不可行才 `incomplete`），失败分类固定为"环境能力缺失走降级、研究内容问题才 gap-fill/
+  重派"。补齐降级链最后一环：`complete` 不再把 `critic_execution: None`（降级 QA 的设计
+  状态）当作"证据消失"拒绝——此前降级运行能 plan/build/QA 却永远无法交付；complete 的
+  stage summary 保留降级标记，要求交付时向用户说明。doctor 对 pptxgenjs 的探测改为按
+  `run_with_pptxgenjs.js` 的真实解析路径（project → plugin → global）——2026-09-19 实测
+  该会话在项目 cwd 下误诊"pptxgenjs 不可用"（插件自带 node_modules 一直有它），这一误诊
+  直接推动了 472 行手写生成器的绕管线决定。测试 +2（降级 complete 通过；未标记的缺失
+  critic_execution 仍拒绝）。
 - **回执门降级路径**：`plan` / `qa` 新增 `--receipt-policy allow-missing`。回执**缺失**
   （运行时不向插件 hook 传递 `SubagentStart`/`SubagentStop`，如本机 ZCode）时可走降级继续，
   manifest 记录 `spawn_verified: false` / `receipt_policy: allow-missing`，QA 报告保留标记；

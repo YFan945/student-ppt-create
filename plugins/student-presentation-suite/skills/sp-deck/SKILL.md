@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.15.0
+version: 0.15.1
 ---
 
 # Student Presentation PPT
@@ -48,6 +48,26 @@ ZCode 默认如此——SubagentStart/SubagentStop 不达插件 hook），直接
 visual-critic 无法 spawn（provider 不可用）时的降级：只读 `contact-sheet-thumb.jpg` +
 最多 3 张疑似 blocker 页全尺寸图，禁止逐页读全尺寸大图（2026-09-19 实测 13 张大图把
 上下文推到 compaction，一次性多花约 170K fresh tokens）。
+
+**管线受阻 ≠ 绕过管线（P0 硬规则，2026-09-19 实测教训）**：正式管线在任何一步被拒时，
+**禁止**主会话自行编写 PPT 生成器（python-pptx / pptxgenjs 脚本、或任何 off-pipeline
+路径）替代生产。一次真实执行在 plan 被回执门拒绝后，误诊"pptxgenjs 不可用"（实际
+`run_with_pptxgenjs.js` 会回退到插件自带 node_modules），手写了 472 行独立生成器——
+Builder Packet、calibration、QA gate、complete 全部没有运行，交付物失去全部管线保证。
+正确动作按序是降级阶梯，每级都有机器标记：
+
+1. `doctor --work-dir <wd> --json` —— 一次性判定：回执可产生性、build 后端
+   （node/pptxgenjs）、渲染器、work-dir 可写性。
+2. 回执不可产生 → `plan`/`qa` 加 `--receipt-policy allow-missing` 走完**整条管线**
+   （manifest 记录 `spawn_verified: false`、`receipt_policy: allow-missing`，QA 报告与
+   complete 的 stage summary 保留降级标记，交付时必须向用户说明）。
+3. build 后端缺失 → `npm --prefix <plugin-root> ci` 修复，**不**换生成器。
+4. 仅当上述全部不可行（环境完全不可修复），才把 work-id 置为 `incomplete` 并向用户
+   说明阻塞点——宁可明确失败，不产生无验收证据的成品。
+
+失败分类同样固定：**环境能力缺失**（回执、后端、渲染器）→ doctor + 降级阶梯，不重跑
+研究、不重派研究员、不再 spawn "触发用" 复检代理；**研究内容问题**（数据缺失、来源
+不可靠）→ 才走 SendMessage gap-fill 或重派研究员。
 
 
 Helper API 用 `node scripts/pptx-helpers.js --describe`；逐页实现时由 `presentation-builder` 自己调用该描述接口，不把 helper 源码拉回主会话。正式与 calibration 的 raster render 都由插件内 `pptx_tool.py` 通过受控 pipeline/helper 调用，不依赖项目 PATH 中的同名脚本。

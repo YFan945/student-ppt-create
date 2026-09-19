@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -123,10 +124,21 @@ def check_toolchain() -> dict[str, Any]:
     toolchain["pdftoppm"] = bool(shutil.which("pdftoppm"))
     soffice = _soffice()
     toolchain["soffice"] = soffice
-    node_modules = ROOT / "node_modules" / "pptxgenjs" / "package.json"
-    toolchain["pptxgenjs"] = node_modules.is_file() or bool(shutil.which("node"))
-    if not toolchain["pptxgenjs"]:
-        toolchain["pptxgenjs"] = False
+    toolchain["node"] = bool(shutil.which("node"))
+    # Probe the way build actually resolves pptxgenjs (run_with_pptxgenjs.js
+    # searches project → plugin → global npm roots). 2026-09-19 live: a cwd-level
+    # `require('pptxgenjs/package.json')` failed in the project dir, the session
+    # concluded "pptxgenjs unavailable", and that misdiagnosis contributed to
+    # abandoning the pipeline for a hand-rolled python-pptx generator — the
+    # plugin's own node_modules had it all along.
+    pptxgenjs = (ROOT / "node_modules" / "pptxgenjs" / "package.json").is_file()
+    if not pptxgenjs and toolchain["node"]:
+        probe = subprocess.run(
+            [shutil.which("node"), "-e", "console.log(require.resolve('pptxgenjs/package.json'))"],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=15,
+        )
+        pptxgenjs = probe.returncode == 0 and "pptxgenjs" in probe.stdout
+    toolchain["pptxgenjs"] = pptxgenjs
     return toolchain
 
 
@@ -155,6 +167,12 @@ def run_doctor(work_dir: Path) -> dict[str, Any]:
     advice: list[str] = [report["receipts"]["advice"]]
     if not report["toolchain"]["python_pptx"]:
         advice.append("python-pptx missing: `pip install python-pptx` before build.")
+    if not report["toolchain"]["pptxgenjs"]:
+        advice.append(
+            "pptxgenjs not resolvable from the plugin root: the pipeline build backend "
+            "cannot run. `npm --prefix <plugin-root> ci` restores it; do NOT substitute a "
+            "hand-rolled generator for this."
+        )
     if not (report["toolchain"]["soffice"] or report["toolchain"]["pdftoppm"] or report["toolchain"]["pymupdf"]):
         advice.append(
             "no renderer found (LibreOffice/PyMuPDF/poppler): rendered QA and complete need one."
