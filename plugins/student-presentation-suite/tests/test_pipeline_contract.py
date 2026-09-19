@@ -113,6 +113,33 @@ class PipelineContractTests(unittest.TestCase):
             self.addCleanup(self._stage_dir.cleanup)
         return Path(self._stage_dir.name)
 
+    def test_registry_scripts_match_what_the_builder_actually_runs(self) -> None:
+        """Batch 5.1: the qa_gates registry must describe what _gate_stage really
+        executes — every registry script token has to appear in the constructed
+        stage argv, or the registry is documentation, not machine truth."""
+        pp = self.pipeline
+        registry = self.contract["qa_gates"]
+        gate_inputs = {
+            "pptx": "/tmp/deck.pptx",
+            "slide_spec": "/tmp/spec.json",
+            "spec_lock": "/tmp/lock.json",
+            "art_direction": "/tmp/art.yaml",
+            "visual_generation_report": "/tmp/vgr.json",
+            "slide_spec_report": "/tmp/report.json",
+        }
+        for name, entry in registry.items():
+            with self.subTest(gate=name):
+                stage = pp._gate_stage(name, self.tmp_dir(), "qa", gate_inputs)
+                argv_joined = " ".join(stage.argv).replace(chr(92), "/")
+                for token in entry["script"].split():
+                    self.assertIn(token, argv_joined)
+                # the registered artifact is what collect() keys the stage on
+                self.assertEqual(entry["artifact"], stage.artifact)
+        # the pre-build quality stage runs the SAME script without the critic report
+        deterministic = pp._gate_stage("quality", self.tmp_dir(), "pre-qa", gate_inputs)
+        self.assertNotIn("--visual-report", deterministic.argv)
+        self.assertIn("pptx_quality_gate_v071.py", " ".join(deterministic.argv))
+
     def test_repeat_policy_is_fail_closed(self) -> None:
         policy = self.contract["repeat_policy"]
         self.assertIs(policy["build_requires_changed_generator_after_repair"], True)

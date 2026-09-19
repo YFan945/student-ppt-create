@@ -2,6 +2,22 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased — v0.15 Batch 5.1：小范围收尾（绑定语义 + 测试去重 + registry 咬合）
+
+- **Packet 绑定升级为显式身份注册**：shard 范围不再从「第一次碰了哪个页面」推断——
+  builder **读取自己的 Builder Packet**（其任务输入）这一动作即完成 agent_id → packet 的
+  注册（`.guard/packet-binding-<agent>.json`，含 assigned slides 与轮次戳）；注册前触碰
+  `pages/*.js` 直接拒绝。绑定按轮失效：新的 active round 使旧绑定过期删除，上一轮的 shard
+  范围不可能泄漏到新一轮。误读他人 packet 会绑定到错误范围——fail-closed 优于 fail-open。
+  spawn 模板补「收到 packet 先读它 = 注册」的说明。
+- **测试继承去重**：`BuilderPacketScopeTests` 曾继承 `BuilderGuardTests`，unittest 会把
+  父类全部测试在子类上再执行一遍（30 次执行 ≠ 30 个场景）。改为共享
+  `BuilderGuardFixture` mixin + 两个独立 TestCase，780 = 真实场景数。
+- **registry ↔ 执行咬合测试**：`qa_gates` 每个条目的 script token 必须出现在
+  `_gate_stage()` 实际构造的 argv 中、artifact 必须与 Stage 一致，deterministic half
+  不得携带 `--visual-report`——registry 是机器真相而不是文档。
+- 测试 788（执行数）→ 780（去重后的真实场景数）。
+
 ## Unreleased — v0.15 Batch 5：QA / Gate 整合（registry + 单一构造器）
 
 按「行为不变、增量拆、兼容层保留」的原则执行。探查确认：delivery 三代（v07/v071/v08）是

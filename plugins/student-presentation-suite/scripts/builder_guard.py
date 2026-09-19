@@ -36,6 +36,7 @@ Three boundaries, one owner:
 """
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -202,17 +203,52 @@ def _binding_path(project: Path, agent_id: str) -> Path:
     return _guard_store(project) / f"packet-binding-{key}.json"
 
 
+def _load_binding(project: Path, agent_id: str, work_dir: Path, round_at: str) -> dict | None:
+    """The instance's binding for THIS work dir and round; stale round → expired."""
+    binding_path = _binding_path(project, agent_id)
+    try:
+        loaded = json.loads(binding_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    if loaded.get("work_id") != work_dir.name:
+        return None
+    if str(loaded.get("round_at") or "") != round_at:
+        # A binding from an earlier spawn round must not survive into this one —
+        # expire it instead of letting an old shard scope leak across rounds.
+        with contextlib.suppress(OSError):
+            binding_path.unlink(missing_ok=True)
+        return None
+    return loaded
+
+
+def _write_binding(project: Path, agent_id: str, binding: dict) -> None:
+    try:
+        _guard_store(project).mkdir(parents=True, exist_ok=True)
+        _binding_path(project, agent_id).write_text(
+            json.dumps(binding, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
+    except OSError:
+        pass  # enforcement bookkeeping must not take the work down
+
+
 def _enforce_packet_scope(event: dict, path: Path, work_dir: Path) -> str | None:
     """Runtime packet boundary for the isolated builder; None means allowed.
 
     With an active packet round the contract stops being prose:
 
+    - **Registration.** The builder's Read of its own Builder Packet IS its shard
+      registration: the guard binds agent_id → packet (slides included) at that
+      moment. This is an explicit spawn-identity binding, not an inference from
+      which page was touched first — and page access is refused until the packet
+      has been read.
     - `no_reread_files` (agent-behavior-contract.json#presentation_builder.packet)
       may not be Read/Edited — the packet already projects those bytes;
-    - page modules may only be used inside the shard this instance was assigned:
-      the instance binds to a packet on its first page-module access, and every
-      later access is checked against that packet's assigned slides. Pages outside
-      every active packet (other shards, completed pages) are refused outright.
+    - page modules may only be used inside the bound packet's assigned slides.
+      Pages outside it (other shards, completed pages) are refused outright.
+    - Bindings are round-scoped: a new active round expires every previous
+      binding, so a stale shard scope can never leak across rounds.
 
     No active round means the fallback path is in play and enforcement is off —
     the round's cost is still observable via builder-packets/fallbacks.json.
@@ -220,7 +256,32 @@ def _enforce_packet_scope(event: dict, path: Path, work_dir: Path) -> str | None
     active = _active_round(work_dir)
     if active is None:
         return None
+    project = _project(event)
     event_agent = str(event.get("agent_id"))
+    round_at = str(active.get("at") or "")
+    packets = [item for item in active.get("packets") or [] if isinstance(item, dict)]
+
+    # Reading the task input registers the instance (and is always allowed).
+    packet_dir = (work_dir / "builder-packets").resolve()
+    try:
+        in_packet_dir = path.resolve().relative_to(packet_dir) is not None
+    except (OSError, ValueError):
+        in_packet_dir = False
+    if in_packet_dir:
+        for item in packets:
+            try:
+                is_own = Path(str(item.get("packet") or "")).resolve() == path.resolve()
+            except (OSError, ValueError):
+                continue
+            if is_own:
+                _write_binding(project, event_agent, {
+                    "work_id": work_dir.name,
+                    "packet": item.get("packet"),
+                    "allowed_slides": item.get("assigned_slides"),
+                    "round_at": round_at,
+                })
+        return None
+
     if _matches_no_reread(path):
         return (
             "builder_guard: refused — this file is projected into your Builder Packet "
@@ -231,36 +292,13 @@ def _enforce_packet_scope(event: dict, path: Path, work_dir: Path) -> str | None
     page = _page_number(path)
     if page is None:
         return None
-    binding_path = _binding_path(_project(event), event_agent)
-    binding = None
-    try:
-        loaded = json.loads(binding_path.read_text(encoding="utf-8"))
-        if isinstance(loaded, dict) and loaded.get("work_id") == work_dir.name:
-            binding = loaded
-    except (OSError, json.JSONDecodeError):
-        binding = None
-    packets = [item for item in active.get("packets") or [] if isinstance(item, dict)]
+    binding = _load_binding(project, event_agent, work_dir, round_at)
     if binding is None:
-        for item in packets:
-            if page in (item.get("assigned_slides") or []):
-                binding = {
-                    "work_id": work_dir.name,
-                    "packet": item.get("packet"),
-                    "allowed_slides": item.get("assigned_slides"),
-                }
-                try:
-                    _guard_store(_project(event)).mkdir(parents=True, exist_ok=True)
-                    binding_path.write_text(
-                        json.dumps(binding, ensure_ascii=False) + "\n", encoding="utf-8"
-                    )
-                except OSError:
-                    pass  # enforcement bookkeeping must not take the work down
-                return None
         return (
-            f"builder_guard: refused — pages/p{page:02d}-* is not in any active Builder Packet "
-            f"for this round ({contract_ref()}#presentation_builder.read_other_shard_page_modules "
-            "= false). Your packet's allowed_files lists your scope; other pages belong to "
-            "another builder or to an already completed round."
+            f"builder_guard: refused — no packet binding for this instance. Read your Builder "
+            f"Packet first (it is your task input under builder-packets/); that read registers "
+            f"your shard scope ({contract_ref()}#presentation_builder.read_other_shard_page_modules "
+            "= false). Page access before registration is refused."
         )
     if page not in (binding.get("allowed_slides") or []):
         return (

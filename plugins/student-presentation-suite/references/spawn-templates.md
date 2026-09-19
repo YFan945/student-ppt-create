@@ -43,6 +43,9 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   build-manifest.json / pipeline-qa.json / pre-qa 报告（packet 的字段与它们同源）。
   未提供 packet 或字段缺失时，按下面的 page_brief 流程取上下文。
 - 目标页：<slide ids（calibration/repair）｜shard 的 slide ids（initial 分片）｜"全部剩余 scaffold 页"（initial 未分片）>
+- **收到 packet 后第一件事就是 Read 它**——这次读取同时是你的 shard 注册：
+  builder_guard 把 agent_id 绑定到该 packet 的 assigned slides，之后只允许本 shard 的页面；
+  未注册先碰 `pages/*.js` 会被拒绝，绑定按轮失效（新一轮 spawn 必须重读自己的 packet）。
 - **视觉体系只认 packet 的 `calibration_style` 契约**（calibration-style-contract.json——管线由
   green 校准评审 + Art Direction 确定性装配）：逐条跟随其 style / treatment / anti_repetition，
   **绝不读 calibration 页面 JS 去自行归纳风格**（那些页属于别的 builder 或已归档，读了既越界

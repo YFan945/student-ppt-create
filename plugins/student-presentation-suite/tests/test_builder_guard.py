@@ -13,12 +13,20 @@ ROOT = Path(__file__).resolve().parents[1]
 guard = load_module(ROOT / "scripts/builder_guard.py")
 
 
-class BuilderGuardTests(unittest.TestCase):
-    def setUp(self) -> None:
+class BuilderGuardFixture:
+    """Shared fixture for the guard test classes.
+
+    A plain mixin (NOT a unittest.TestCase): inheriting tests from a TestCase
+    subclass re-executes every parent test on the child, which silently doubles
+    runs without adding scenarios (Batch 5.1 cleanup).
+    """
+
+    def install_fixture(self) -> None:
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.project = Path(self.tmp.name)
-        self.page = self.project / "outputs/.pptx-work/demo/pages/p01-cover.js"
+        self.work = self.project / "outputs/.pptx-work/demo"
+        self.page = self.work / "pages/p01-cover.js"
         self.page.parent.mkdir(parents=True)
         self.page.write_text("// page", encoding="utf-8")
         env = patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(self.project)})
@@ -34,6 +42,28 @@ class BuilderGuardTests(unittest.TestCase):
             "tool_input": {"file_path": str(self.page)},
             **extra,
         }
+
+    def shell_event(self, command: str, **extra):
+        return {
+            "cwd": str(self.project),
+            "session_id": "parent",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Bash",
+            "tool_input": {"command": command},
+            **extra,
+        }
+
+    def builder(self, path: Path, tool: str = "Read", agent_id: str = "builder-shard-1") -> dict:
+        event = self.event(tool)
+        event["tool_input"] = {"file_path": str(path)}
+        event["agent_type"] = guard.BUILDER
+        event["agent_id"] = agent_id
+        return event
+
+
+class BuilderGuardTests(BuilderGuardFixture, unittest.TestCase):
+    def setUp(self) -> None:
+        self.install_fixture()
 
     def test_main_session_cannot_read_edit_or_write_page_modules(self) -> None:
         for tool in ("Read", "Edit", "Write"):
@@ -59,16 +89,6 @@ class BuilderGuardTests(unittest.TestCase):
         event = self.event("Read")
         event["tool_input"] = {"file_path": str(manifest)}
         self.assertEqual(0, guard.handle(event))
-
-    def shell_event(self, command: str, **extra):
-        return {
-            "cwd": str(self.project),
-            "session_id": "parent",
-            "hook_event_name": "PreToolUse",
-            "tool_name": "Bash",
-            "tool_input": {"command": command},
-            **extra,
-        }
 
     def test_builder_inline_json_extraction_is_redirected(self) -> None:
         """2026-09-17 live: 19-46 inline scripts per repair round, each one a full context
@@ -154,7 +174,8 @@ class BuilderGuardTests(unittest.TestCase):
 
     def test_builder_page_writes_record_the_instance_window(self) -> None:
         """The pipeline cross-references this with the repair rounds to detect a reused
-        instance — the largest measured cost driver."""
+        instance — the largest measured cost driver. (No active packet round here, so
+        page access needs no binding.)"""
         event = self.event("Edit", agent_type=guard.BUILDER, agent_id="builder-child")
         self.assertEqual(0, guard.handle(event))
         records = list((self.project / "outputs/.pptx-work/.guard").glob("builder-*.json"))
@@ -167,63 +188,108 @@ class BuilderGuardTests(unittest.TestCase):
         self.assertEqual(2, json.loads(records[0].read_text(encoding="utf-8"))["writes"])
 
 
+class BuilderPacketScopeTests(BuilderGuardFixture, unittest.TestCase):
+    """Batch 1-4 closure + Batch 5.1: the packet boundary is enforced with model
+    tools, not just prose. With an active packet round (builder-packets/
+    active-round.json) a builder may not re-read the frozen inputs the contract
+    lists, and its page access is confined to the shard bound to its agent_id.
 
-
-class BuilderPacketScopeTests(BuilderGuardTests):
-    """Batch 1-4 closure: the packet boundary is enforced with model tools, not
-    just prose. An active packet round (builder-packets/active-round.json) bans
-    re-reading the frozen inputs it projects and confines page access to the
-    instance's own shard."""
+    Registration is EXPLICIT: reading the instance's own Builder Packet — its task
+    input — binds agent_id → packet. Page access before that read is refused, so
+    the scope can never be inferred from whichever page was touched first."""
 
     def setUp(self) -> None:
-        super().setUp()
-        self.art = self.project / "outputs/.pptx-work/demo/art-direction.yaml"
+        self.install_fixture()
+        self.art = self.work / "art-direction.yaml"
         self.art.write_text("style_seed: x\n", encoding="utf-8")
-        self.other_page = self.project / "outputs/.pptx-work/demo/pages/p02-plain.js"
+        self.other_page = self.work / "pages/p02-plain.js"
         self.other_page.write_text("// other shard", encoding="utf-8")
-        packets = {"packets": [
-            {"packet": "builder-packets/initial-shard-01.json", "assigned_slides": [1, 4, 7]},
-            {"packet": "builder-packets/initial-shard-02.json", "assigned_slides": [2, 5, 8]},
-        ]}
-        active = self.project / "outputs/.pptx-work/demo/builder-packets"
-        active.mkdir(parents=True)
-        (active / "active-round.json").write_text(json.dumps(packets), encoding="utf-8")
+        self.packet_dir = self.work / "builder-packets"
+        self.packet_dir.mkdir(parents=True)
+        self.own_packet = self.packet_dir / "initial-shard-01.json"
+        self.own_packet.write_text("{}", encoding="utf-8")
+        self.other_packet = self.packet_dir / "initial-shard-02.json"
+        self.other_packet.write_text("{}", encoding="utf-8")
+        self.write_round()
 
-    def builder_event(self, path: Path, tool: str = "Read") -> dict:
-        event = self.event(tool)
-        event["tool_input"] = {"file_path": str(path)}
-        event["agent_type"] = guard.BUILDER
-        event["agent_id"] = "builder-shard-1"
-        return event
+    def write_round(self, at: str = "2026-09-19T10:00:00+00:00") -> None:
+        (self.packet_dir / "active-round.json").write_text(
+            json.dumps({
+                "at": at,
+                "mode": "initial",
+                "packets": [
+                    {"packet": str(self.own_packet), "assigned_slides": [1, 4, 7]},
+                    {"packet": str(self.other_packet), "assigned_slides": [2, 5, 8]},
+                ],
+            }),
+            encoding="utf-8",
+        )
+
+    def binding(self, agent_id: str = "builder-shard-1") -> dict | None:
+        path = self.project / "outputs/.pptx-work/.guard" / f"packet-binding-{agent_id}.json"
+        if not path.is_file():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
 
     def test_no_reread_artifact_is_refused_for_a_packed_builder(self) -> None:
-        self.assertEqual(2, guard.handle(self.builder_event(self.art, "Read")))
+        self.assertEqual(2, guard.handle(self.builder(self.art, "Read")))
 
     def test_main_session_still_reads_the_same_artifact(self) -> None:
         event = self.event("Read")
         event["tool_input"] = {"file_path": str(self.art)}
         self.assertEqual(0, guard.handle(event))
 
-    def test_first_page_access_binds_the_instance_to_its_shard(self) -> None:
-        self.assertEqual(0, guard.handle(self.builder_event(self.page, "Edit")))
-        binding = json.loads(
-            (self.project / "outputs/.pptx-work/.guard/packet-binding-builder-shard-1.json").read_text(encoding="utf-8")
-        )
+    def test_page_access_before_registration_is_refused(self) -> None:
+        """5.1: the shard scope is bound by reading the packet, never inferred from
+        whichever page the instance touched first."""
+        result = guard.handle(self.builder(self.page, "Edit"))
+        self.assertEqual(2, result)
+        self.assertIsNone(self.binding())
+
+    def test_reading_the_own_packet_registers_the_shard(self) -> None:
+        self.assertEqual(0, guard.handle(self.builder(self.own_packet, "Read")))
+        binding = self.binding()
         self.assertEqual([1, 4, 7], binding["allowed_slides"])
+        self.assertEqual("initial-shard-01.json", Path(binding["packet"]).name)
+        # own pages allowed after registration
+        self.assertEqual(0, guard.handle(self.builder(self.page, "Edit")))
 
-    def test_other_shard_page_is_refused_after_binding(self) -> None:
-        self.assertEqual(0, guard.handle(self.builder_event(self.page)))
-        self.assertEqual(2, guard.handle(self.builder_event(self.other_page)))
+    def test_other_shard_page_is_refused_after_registration(self) -> None:
+        guard.handle(self.builder(self.own_packet, "Read"))
+        self.assertEqual(2, guard.handle(self.builder(self.other_page)))
 
-    def test_page_outside_every_packet_is_refused_on_first_access(self) -> None:
-        orphan = self.project / "outputs/.pptx-work/demo/pages/p11-extra.js"
+    def test_pages_outside_every_packet_stay_refused_after_registration(self) -> None:
+        guard.handle(self.builder(self.own_packet, "Read"))
+        orphan = self.work / "pages/p11-extra.js"
         orphan.write_text("// nobody assigned", encoding="utf-8")
-        self.assertEqual(2, guard.handle(self.builder_event(orphan)))
+        self.assertEqual(2, guard.handle(self.builder(orphan)))
+
+    def test_a_binding_from_a_previous_round_is_expired(self) -> None:
+        """5.1: bindings are round-scoped. A new spawn round must never inherit the
+        previous round's shard scope — the stale binding is dropped and the
+        instance has to re-register by reading its (new) packet."""
+        guard.handle(self.builder(self.own_packet, "Read"))
+        self.assertIsNotNone(self.binding())
+        self.write_round(at="2026-09-19T11:00:00+00:00")
+        self.assertEqual(2, guard.handle(self.builder(self.page, "Edit")))
+        self.assertIsNone(self.binding())
+        # re-registering against the new round works
+        self.assertEqual(0, guard.handle(self.builder(self.own_packet, "Read")))
+        self.assertEqual(0, guard.handle(self.builder(self.page, "Edit")))
+
+    def test_reading_another_shards_packet_binds_to_it_fail_closed(self) -> None:
+        """Reading the wrong packet registers the wrong scope; every own-page access
+        is then refused. Fail-closed beats fail-open for a misdirected builder."""
+        self.assertEqual(0, guard.handle(self.builder(self.other_packet, "Read")))
+        binding = self.binding()
+        self.assertEqual([2, 5, 8], binding["allowed_slides"])
+        self.assertEqual(2, guard.handle(self.builder(self.page, "Edit")))
 
     def test_without_an_active_round_the_fallback_path_stays_open(self) -> None:
-        (self.project / "outputs/.pptx-work/demo/builder-packets/active-round.json").unlink()
-        self.assertEqual(0, guard.handle(self.builder_event(self.art, "Read")))
-        self.assertEqual(0, guard.handle(self.builder_event(self.other_page)))
+        (self.packet_dir / "active-round.json").unlink()
+        self.assertEqual(0, guard.handle(self.builder(self.art, "Read")))
+        self.assertEqual(0, guard.handle(self.builder(self.other_page)))
+        self.assertIsNone(self.binding())
 
 
 if __name__ == "__main__":
