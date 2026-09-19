@@ -420,6 +420,42 @@ class ResearchActiveReleaseTests(unittest.TestCase):
         self.write_manifest("deck-b", "qa")
         self.assertEqual(self.main_search(), 2)
 
+    def researcher_spawn_records_work_id(self):
+        """A researcher spawn whose prompt names one work-dir records it (same
+        single-path detection the critic spawn uses)."""
+        work = self.project / "outputs/.pptx-work/test"
+        work.mkdir(parents=True, exist_ok=True)
+        prompt = f"work-dir (only write location): {work.resolve()}"
+        rc = runtime.handle({
+            "cwd": str(self.project),
+            "session_id": "parent",
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Agent",
+            "tool_input": {"subagent_type": runtime.RESEARCHER, "prompt": prompt},
+        })
+        assert rc == 0, rc
+        active = runtime.pipeline_context.research_active_path(self.project, "parent")
+        data = json.loads(active.read_text(encoding="utf-8"))
+        assert data.get("work_ids") == ["test"], data
+
+    def test_release_scoped_to_session_work_ids_ignores_stale_decks(self):
+        """2026-09-20 review: a session that finished deck `test` must release
+        even when an unrelated historical deck sits in `incomplete`."""
+        self.researcher_spawn_records_work_id()
+        self.write_manifest("test", "complete")
+        self.write_manifest("deck-002-stale", "incomplete")
+        self.write_manifest("deck-003", "complete")
+        self.assertEqual(self.main_search(), 0)
+        self.assertFalse(
+            (self.project / "outputs/.pptx-work/.guard/research-active-parent.json").exists()
+        )
+
+    def test_kept_armed_while_recorded_work_id_still_in_production(self):
+        self.researcher_spawn_records_work_id()
+        self.write_manifest("test", "qa")
+        self.write_manifest("deck-other", "complete")
+        self.assertEqual(self.main_search(), 2)
+
     def test_kept_armed_when_no_manifest_or_unreadable(self):
         runtime.pipeline_context.mark_research_active(self.project, {"session_id": "parent"})
         (self.project / "outputs/.pptx-work/intake-only").mkdir(parents=True)

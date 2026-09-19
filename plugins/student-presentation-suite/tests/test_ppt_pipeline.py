@@ -1986,6 +1986,8 @@ class ReceiptPolicyTests(PipelineTestCase):
             pp.cmd_next(ns("next", self.work, json=True))
         payload = json.loads(buffer.getvalue())
         self.assertIn("--receipt-policy allow-missing", payload["next_command"])
+        self.assertIn("do NOT wait for critic-execution.json", payload["notes"])
+        self.assertNotIn("Wait for critic-execution.json before QA.", payload["notes"])
         pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(files["visual_review"])])
         manifest = self.manifest()
         self.assertEqual(manifest["state"], "qa")
@@ -1999,7 +2001,9 @@ class ReceiptPolicyTests(PipelineTestCase):
         buffer = io.StringIO()
         with redirect_stdout(buffer):
             pp.cmd_next(ns("next", self.work, json=True))
-        self.assertNotIn("--receipt-policy", json.loads(buffer.getvalue())["next_command"])
+        payload = json.loads(buffer.getvalue())
+        self.assertNotIn("--receipt-policy", payload["next_command"])
+        self.assertIn("Wait for critic-execution.json before QA.", payload["notes"])
         self.assertEqual(pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(files["visual_review"])]), 2)
 
 

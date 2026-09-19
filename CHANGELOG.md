@@ -2,6 +2,20 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased
+
+2026-09-20 第二轮外部评审的 2 项生命周期/一致性修复：
+
+- **P1 · 研究作用域释放改为会话关联 work-id**：researcher spawn 时（复用 critic 的
+  单一绝对路径检测）把 work-id 记入 `research-active-<session>.json` 的 `work_ids`（多次
+  spawn 合并）；`release_if_production_complete` 只检查**本会话记录的** work-id 是否全部
+  `complete`——历史 incomplete deck 不再阻碍自动释放。无记录（仅 Skill 激活、尚未 spawn）
+  时保持保守的全目录扫描。测试 +2。
+- **P2 · 降级 QA 的文字提示与机器状态一致**：`next` 在降级 work-id 的 notes 改为
+  "等待 critic 返回并确认 visual-review.json 有效，**不要**等待 critic-execution.json"；
+  正常模式保留原等待回执提示。消除诱导 Agent 等一个永不出现的文件的 prompt 矛盾
+  （对应 0.15.1 复盘的 52 请求事故根因类别）。断言写入既有继承测试。测试 +0（并入）。
+
 ## 0.15.2 — 2026-09-20 · Receipt Policy Integrity & Scope Release
 
 2026-09-20 外部评审对 0.15.1 源码的 4 项边界修复：

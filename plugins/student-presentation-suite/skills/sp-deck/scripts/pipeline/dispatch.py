@@ -363,7 +363,13 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     "so SubagentStop never issues critic-execution.json and QA blocks forever. "
                     "Overview: read the cheap contact-sheet-thumb.jpg, not the full-size contact sheet; "
                     "the isolated critic Reads EVERY full-size page (its context never reaches this session). "
-                    "Wait for critic-execution.json before QA."
+                    + (
+                        "Degraded receipt policy for this work-id: wait for the critic to return "
+                        "and confirm visual-review.json is valid — do NOT wait for "
+                        "critic-execution.json, which this runtime cannot produce."
+                        if work_id_receipt_policy(manifest) == "allow-missing"
+                        else "Wait for critic-execution.json before QA."
+                    )
                 )
                 payload["agent"] = "student-presentation-suite:visual-critic"
                 payload["session_segment"] = (

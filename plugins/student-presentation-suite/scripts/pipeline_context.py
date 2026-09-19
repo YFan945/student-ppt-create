@@ -103,19 +103,29 @@ def research_active_path(project: Path, session: str) -> Path:
     return guard_dir(project) / f"research-active-{_WORK_ID_SAFE.sub('_', str(session or 'unknown'))}.json"
 
 
-def mark_research_active(project: Path, event: dict) -> None:
-    """Arm research scope for this session (runtime_evidence owns the triggers)."""
+def mark_research_active(project: Path, event: dict, *, work_ids: list[str] | None = None) -> None:
+    """Arm research scope for this session (runtime_evidence owns the triggers).
+
+    work_ids records which work-ids THIS session is producing (2026-09-20 review:
+    a session-scoped release must not be blocked by unrelated historical decks).
+    """
     path = research_active_path(project, session_id(event))
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(
-            {
-                "session_id": event.get("session_id"),
-                "created_at": time.time(),
-            }
-        ),
-        encoding="utf-8",
-    )
+    previous = {}
+    if path.is_file():
+        try:
+            previous = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            previous = {}
+    merged: set[str] = set(previous.get("work_ids") or [])
+    merged.update(work_ids or [])
+    payload: dict[str, object] = {
+        "session_id": event.get("session_id"),
+        "created_at": previous.get("created_at") or time.time(),
+    }
+    if merged:
+        payload["work_ids"] = sorted(merged)
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def clear_research_active(project: Path, event: dict) -> None:
@@ -143,22 +153,27 @@ def research_active(project: Path, event: dict, *, now: float | None = None) -> 
 
 
 def release_if_production_complete(project: Path, event: dict) -> bool:
-    """Deterministic scope release once every work-id is delivered (2026-09-20 review).
+    """Deterministic scope release once THIS session's work-ids are delivered.
 
     research-active used to clear only at Stop or by TTL, so a session that had
     finished its deck kept blocking main-session WebSearch for the rest of its
-    life. Release when EVERY work-dir under this project root carries a
-    build-manifest with state "complete": one manifest missing, unreadable or in
-    an earlier state (intake-only dirs included) keeps the scope armed, so
-    parallel or just-started decks are unaffected.
+    life. The session's researcher spawns record their work-ids in the active
+    marker; release when every RECORDED work-id carries a build-manifest with
+    state "complete". Historical or parallel decks that this session never
+    touched cannot block the release. With no recorded work-ids (armed via
+    Skill before the first spawn) the conservative whole-root scan applies.
     """
     root = project / "outputs" / ".pptx-work"
     if not root.is_dir():
         return False
-    work_dirs = [p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")]
-    if not work_dirs:
-        return False
-    for work_dir in work_dirs:
+    recorded = session_work_ids(project, event)
+    if recorded:
+        targets = [root / work_id for work_id in recorded]
+    else:
+        targets = [p for p in root.iterdir() if p.is_dir() and not p.name.startswith(".")]
+        if not targets:
+            return False
+    for work_dir in targets:
         try:
             manifest = json.loads((work_dir / "build-manifest.json").read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
@@ -167,6 +182,19 @@ def release_if_production_complete(project: Path, event: dict) -> bool:
             return False
     clear_research_active(project, event)
     return True
+
+
+def session_work_ids(project: Path, event: dict) -> list[str]:
+    """Work-ids this session's researcher spawns recorded (possibly empty)."""
+    path = research_active_path(project, session_id(event))
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    ids = data.get("work_ids") if isinstance(data, dict) else None
+    return [str(item) for item in ids] if isinstance(ids, list) else []
 
 
 @dataclass(frozen=True)

@@ -245,7 +245,11 @@ def handle(event: dict) -> int:
                 print(NESTED_SPAWN_REFUSAL, file=sys.stderr)
                 return 2
             if inputs.get("subagent_type") == RESEARCHER:
-                pipeline_context.mark_research_active(project, event)
+                researcher_work = _critic_work_dir(inputs, root)
+                pipeline_context.mark_research_active(
+                    project, event,
+                    work_ids=[researcher_work.name] if researcher_work else None,
+                )
             else:
                 work_dir = _critic_work_dir(inputs, root)
                 if work_dir is None:
