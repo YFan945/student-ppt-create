@@ -133,8 +133,22 @@ def cmd_plan(args: argparse.Namespace) -> int:
         spec_data = yaml.safe_load(spec.read_text(encoding="utf-8"))
         if not isinstance(spec_data, dict):
             raise RefusedError("compiled Slide Spec must be an object")
-        receipt = execution_receipt(work_dir, "research", pack)
-        fresh["research"] = {"required": True, "scope": scope, "agent": receipt["agent"], "spawn_verified": True, "execution": bind(work_dir / "research-execution.json")}
+        receipt = execution_receipt(
+            work_dir, "research", pack,
+            policy=getattr(args, "receipt_policy", "require") or "require",
+        )
+        fresh["research"] = {
+            "required": True,
+            "scope": scope,
+            "agent": receipt["agent"],
+            "spawn_verified": receipt.get("spawn_verified") is True,
+            "execution": (
+                bind(work_dir / "research-execution.json")
+                if receipt.get("spawn_verified") is True else None
+            ),
+        }
+        if receipt.get("degraded"):
+            fresh["research"]["receipt_policy"] = "allow-missing"
     if manifest and args.force:
         fresh["build"]["repair_count"] = int((manifest.get("build") or {}).get("repair_count") or 0)
         fresh["history"] = list(manifest.get("history") or [])

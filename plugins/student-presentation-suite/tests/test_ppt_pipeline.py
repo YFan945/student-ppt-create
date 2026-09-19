@@ -195,7 +195,7 @@ class PipelineTestCase(unittest.TestCase):
         files["pptx"].write_bytes(b"PK\x03\x04 fake")
         return files
 
-    def plan(self, files: dict[str, Path], runner: FakeRunner | None = None) -> FakeRunner:
+    def plan(self, files: dict[str, Path], runner: FakeRunner | None = None, extra_args: list[str] | None = None) -> FakeRunner:
         runner = runner or FakeRunner(self.work)
         pp._core._runner = runner
         rc = pp.main([
@@ -205,6 +205,7 @@ class PipelineTestCase(unittest.TestCase):
             "--validation-report", str(files["spec_report"]),
             "--art-direction", str(files["art"]),
             "--visual-generation-report", str(files["vgr"]),
+            *(extra_args or []),
         ])
         self.assertEqual(rc, 0)
         return runner
@@ -359,6 +360,21 @@ class PlanTests(PipelineTestCase):
         self.assertTrue(any("research_pack_to_evidence.py" in " ".join(call) for call in runner.calls))
         self.assertTrue((self.work / "evidence-map.json").is_file())
         self.assertIn("evidence_map", self.manifest()["inputs"])
+
+    def test_research_plan_allows_missing_receipt_in_degraded_mode(self) -> None:
+        files = self.write_inputs()
+        spec = json.loads(files["spec"].read_text(encoding="utf-8"))
+        spec["research_scope"] = "A"
+        files["spec"].write_text(json.dumps(spec), encoding="utf-8")
+        pack = self.work / "research-pack.json"
+        pack.write_text("{}", encoding="utf-8")
+        (self.work / "research-pack-validation.json").write_text("{}", encoding="utf-8")
+        self.plan(files, extra_args=["--receipt-policy", "allow-missing"])
+        self.assertTrue((self.work / "evidence-map.json").is_file())
+        research = self.manifest()["research"]
+        self.assertFalse(research["spawn_verified"])
+        self.assertIsNone(research["execution"])
+        self.assertEqual(research["receipt_policy"], "allow-missing")
 
     def test_research_plan_without_pack_is_refused(self) -> None:
         files = self.write_inputs()
@@ -1897,6 +1913,24 @@ class AdvanceTests(PipelineTestCase):
         packet = pp._packet.build_packet(self.work, "initial")
         self.assertNotIn("calibration_style", packet)
         self.assertNotIn("calibration_style_note", packet)
+
+
+class ReceiptPolicyTests(PipelineTestCase):
+    """Degradation is only for a MISSING receipt; a mismatching one stays fatal."""
+
+    def test_execution_receipt_degrades_only_on_missing_file(self) -> None:
+        artifact = self.work / "research-pack.json"
+        artifact.write_text("{}", encoding="utf-8")
+        receipt = pp.execution_receipt(self.work, "research", artifact, policy="allow-missing")
+        self.assertFalse(receipt["spawn_verified"])
+        self.assertEqual(receipt["degraded"], "receipt-missing-allowed")
+        with self.assertRaises(pp.RefusedError):
+            pp.execution_receipt(self.work, "research", artifact)
+        (self.work / "research-execution.json").write_text(
+            json.dumps({"agent": "wrong-agent"}), encoding="utf-8"
+        )
+        with self.assertRaises(pp.RefusedError):
+            pp.execution_receipt(self.work, "research", artifact, policy="allow-missing")
 
 
 if __name__ == "__main__":

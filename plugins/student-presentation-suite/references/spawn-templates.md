@@ -25,6 +25,13 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - 检索预算：<band>（cap <N> 次）；当前已用 <X> 次，剩余 <Y> 次。
   gap-fill 授权必须写明剩余次数，耗尽即停；超出档位上限只有用户批准的
   budget_extension 可用，禁止删除已执行的 queries 记录。
+  上限以本槽填写的 <N> 为准，不必读取 validate_research_pack.py 源码确认
+  （标准档 8 次检索 / 12 来源；2026-09-19 实测：为确认上限多花一次读取）。
+  计数口径 = pack 内 queries 成功记录条数；一次并发批次内多条算多条；
+  未产出结果的失败调用不占额，但必须在 research/search-log.json 的
+  search_executions 标 status: failed。
+- gap-fill 轮结束时，把补检的每次检索**追加**进 research/search-log.json
+  （n 续号），再更新 pack——日志与 pack 必须能对上。
 - 禁止嵌套 spawn 任何其它 subagent。
 - 完成后只回契约信封：RESEARCH_DONE / RESEARCH_BLOCKED（字段以你的 agent 契约为准，
   不追加散文摘要）。

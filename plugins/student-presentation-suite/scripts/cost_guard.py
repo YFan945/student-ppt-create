@@ -1,17 +1,27 @@
 #!/usr/bin/env python3
 """PreToolUse guard for student-presentation-suite cost discipline.
 
-Blocks plugin-source archaeology, re-reading the same PNG (same sha256),
-repeated read-only inspection commands (ls/cat/find run a 3rd time in one
-session), and main-session reads of full-size render images beyond a small
-budget (per-page review belongs to the isolated visual-critic; the cheap
-overview is contact-sheet-thumb.jpg). Does *not* block first-time image reads —
-DeepSeek Flash caps each image at 1024 tokens.
+Batch 6.1 — Hook Scope Isolation: every rule below applies ONLY to the PPT
+pipeline's own scope (see ``pipeline_context.py``). A call is in scope when it
+targets a pipeline resource (paths under ``outputs/.pptx-work/``), comes from a
+plugin subagent (builder), or belongs to a session with managed production
+state armed. A plain development session — its ``ls``, its repeated reads, its
+plugin-source maintenance — is not this guard's business and passes through
+untouched.
+
+In-scope rules:
+- the isolated builder must not ls/grep/cat plugin source or the plugin cache;
+- re-reading the same render image (same sha256) is blocked — CD-9;
+- repeated read-only inspection commands (ls/cat/find run a 3rd time) are
+  blocked when they inspect the pipeline's work dirs;
+- main-session reads of full-size render images beyond a small budget are
+  blocked (per-page review belongs to the isolated visual-critic).
 
 Agent execution integrity (named/background/nested evidence-agent spawn rules,
 receipts, and isolated research/critic ownership) belongs to
 ``runtime_evidence.py``. Direct production-script entrypoints are controlled by
-``production_entry_guard.py``. This module intentionally stays focused on
+``production_entry_guard.py`` (deliberately NOT scope-gated: bypassing the
+pipeline is refused everywhere). This module intentionally stays focused on
 context and inspection cost.
 
 Seen state lives at `outputs/.pptx-work/.guard/seen-<session>.json`: scoped to
@@ -28,6 +38,12 @@ import os
 import re
 import sys
 from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import pipeline_context  # noqa: E402
 
 PLUGIN_HINTS = (
     "student-presentation-suite",
@@ -158,7 +174,14 @@ def helpers_hint() -> str:
     return "node pptx-helpers.js --describe"
 
 
-BUILDER = "student-presentation-suite:presentation-builder"
+RECEIPT_FACT = (
+    " If the goal is a 'missing successful isolated research runtime receipt' refusal: the "
+    "receipt is hook-owned (runtime_evidence.py writes it at SubagentStop) and cannot be "
+    "written by the model. Run `ppt_pipeline.py doctor --work-dir <wd>` to check whether "
+    "this runtime delivers subagent hook events; if it does not, re-run plan/qa with "
+    "--receipt-policy allow-missing."
+)
+BUILDER = pipeline_context.BUILDER
 
 
 def builder_hint() -> str:
@@ -184,11 +207,14 @@ def builder_hint() -> str:
 # 只读巡检命令的同会话重复上限：2026-09-16 实测 `ls critic-execution.json` 连跑
 # 5 次、`ls -la` ×4 —— 状态查询一律走 `next`（一次给全 read/forbidden/next_command）。
 # 只限制 ls/cat/find 等纯只读巡检；build/gates/qa 等动作命令不限制（修复后重跑是合法路径）。
+# Batch 6.1：计数只对 PPT 作用域的巡检生效（命令或 cwd 指向 .pptx-work）——
+# 普通会话观察自己项目的目录（例如盯着并行 builder 是否产出新文件）是合法轮询。
 INSPECT_RE = re.compile(r"^\s*(sudo\s+)?(ls|cat|head|tail|find|stat|dir|tree|du)\b", re.I)
 REPEAT_INSPECT_LIMIT = 3
 # 主会话大图预算：2026-09-16 实测 19 张图进主上下文共 3.27MB（回灌的 92%），
 # 而 per-page 复核本就属于隔离的 visual-critic。只限制主会话（无 agent_id）；
 # 大图 = >150KB；超出预算后指向 contact-sheet-thumb.jpg（render 会产出）。
+# Batch 6.1：只对 .pptx-work 内的图生效，普通会话读自己的图片不受限。
 BIG_IMAGE_BYTES = 150 * 1024
 MAIN_SESSION_BIG_IMAGE_BUDGET = 6
 
@@ -242,7 +268,7 @@ def check_bash(command: str, builder: bool = False) -> str | None:
             )
         return (
             "cost_guard: do not ls/grep/cat plugin source or the plugin cache. "
-            f"Run `{pipeline_hint()}` or `{helpers_hint()}`."
+            f"Run `{pipeline_hint()}` or `{helpers_hint()}`." + RECEIPT_FACT
         )
     if GREP_SED.search(command) and PLUGIN_PATH.search(command):
         if builder:
@@ -252,7 +278,7 @@ def check_bash(command: str, builder: bool = False) -> str | None:
             )
         return (
             "cost_guard: do not grep/sed/cat plugin source. "
-            f"Run `{pipeline_hint()}` or `{helpers_hint()}`."
+            f"Run `{pipeline_hint()}` or `{helpers_hint()}`." + RECEIPT_FACT
         )
     if "--help" in command and any(hint in command for hint in PLUGIN_HINTS):
         # `ppt_pipeline.py` is the agent's operating surface, and its --help is a few dozen
@@ -275,11 +301,21 @@ def check_bash(command: str, builder: bool = False) -> str | None:
     return None
 
 
-def check_read(path_str: str, cwd: str, session: str, is_main: bool = False) -> str | None:
+def check_read(
+    path_str: str,
+    cwd: str,
+    session: str,
+    *,
+    role: str = "main",
+    managed: bool = False,
+    is_main: bool = False,
+) -> str | None:
     raw = Path(path_str)
     path = raw if raw.is_absolute() else Path(cwd) / raw
     suffix = path.suffix.lower()
-    if suffix in IMAGE_EXT:
+    # Render-image discipline (CD-9 dedup, big-image budget) is about render
+    # evidence; it applies to images inside the pipeline's work areas only.
+    if suffix in IMAGE_EXT and pipeline_context.is_ppt_resource_path(path):
         digest = sha256_file(path)
         if not digest:
             return None
@@ -311,12 +347,15 @@ def check_read(path_str: str, cwd: str, session: str, is_main: bool = False) -> 
         save_seen(cwd, session, seen)
         return None
     text = str(path).replace("\\", "/")
-    if suffix in {".py", ".js"} and PLUGIN_PATH.search(text):
+    if role == "builder" and suffix in {".py", ".js"} and PLUGIN_PATH.search(text):
         return (
-            "cost_guard: do not Read plugin source. "
-            f"Run `{pipeline_hint()}` or `{helpers_hint()}`."
+            "cost_guard: the isolated builder must not Read plugin source. "
+            f"{builder_hint()}" + RECEIPT_FACT
         )
-    if "/references/" in text and text.endswith(".md"):
+    # Reference re-read discipline (CD-3) exists so a production session does not
+    # reload a policy document it already distilled; only a managed PPT session
+    # carries that state, and maintenance sessions re-read freely.
+    if managed and "/references/" in text and text.endswith(".md"):
         seen = load_seen(cwd, session)
         key = str(path.resolve())
         digest = sha256_file(path)
@@ -339,28 +378,47 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not isinstance(event, dict):
         return 0
+    context = pipeline_context.resolve(event)
     name = str(event.get("tool_name") or event.get("tool") or "")
     tool_input = event.get("tool_input") or event.get("input") or {}
     cwd = str(event.get("cwd") or os.getcwd())
     session = session_key({**event, "cwd": cwd})
     if name == "Bash":
         command = str(tool_input.get("command") or "")
-        builder = str(event.get("agent_type") or "") == BUILDER
-        msg = check_bash(command, builder=builder)
-        if msg:
-            return refuse(msg)
-        msg = check_inspection_repeat(command, cwd, session, builder=builder)
-        return refuse(msg) if msg else 0
+        if context.role == "builder":
+            msg = check_bash(command, builder=True)
+            if msg:
+                return refuse(msg)
+        # 巡检限流只对 PPT 作用域生效：命令指向 .pptx-work，或本身就运行在
+        # work-dir 内。普通会话的 ls/git status/pytest 与 PPT 预算无关。
+        ppt_scoped = pipeline_context.is_ppt_resource(command) or pipeline_context.is_ppt_resource(cwd)
+        if ppt_scoped:
+            msg = check_inspection_repeat(command, cwd, session, builder=context.role == "builder")
+            return refuse(msg) if msg else 0
+        return 0
     if name in {"Read", "Grep"}:
         path = str(tool_input.get("file_path") or tool_input.get("path") or "")
-        if name == "Grep" and PLUGIN_PATH.search(
-            str(tool_input.get("path") or "") + str(tool_input.get("pattern") or "")
-        ):
-            return refuse(
-                "cost_guard: do not Grep plugin source. "
-                f"Run `{pipeline_hint()}`."
+        if name == "Grep":
+            if context.role == "builder" and PLUGIN_PATH.search(
+                str(tool_input.get("path") or "") + str(tool_input.get("pattern") or "")
+            ):
+                return refuse(
+                    "cost_guard: the isolated builder must not Grep plugin source. "
+                    f"{builder_hint()}"
+                )
+            return 0
+        msg = (
+            check_read(
+                path,
+                cwd,
+                session,
+                role=context.role,
+                managed=context.managed,
+                is_main=not context.child,
             )
-        msg = check_read(path, cwd, session, is_main=not event.get("agent_id")) if path else None
+            if path
+            else None
+        )
         return refuse(msg) if msg else 0
     return 0
 

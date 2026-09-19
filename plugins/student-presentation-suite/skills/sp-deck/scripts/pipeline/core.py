@@ -269,7 +269,9 @@ def validate_manifest_authorization(manifest: dict[str, Any]) -> None:
         raise RefusedError("source deck changed after plan; restore source or re-confirm and re-plan")
     if any(not binding_is_current(item) for item in (manifest.get("inputs") or {}).values()):
         raise RefusedError("planned input changed or disappeared; re-plan")
-    if manifest.get("research") and not binding_is_current(manifest["research"]["execution"]):
+    research = manifest.get("research") or {}
+    research_execution = research.get("execution")
+    if research and research_execution is not None and not binding_is_current(research_execution):
         raise RefusedError("research execution receipt changed after plan")
 
 
@@ -278,13 +280,46 @@ def binding_is_current(binding: dict[str, Any]) -> bool:
     return path.is_file() and binding.get("sha256") == sha256_file(path)
 
 
-def execution_receipt(work_dir: Path, role: str, artifact: Path) -> dict[str, Any]:
+def execution_receipt(
+    work_dir: Path, role: str, artifact: Path, *, policy: str = "require",
+) -> dict[str, Any]:
+    """Hook-owned isolated-run receipt; policy="allow-missing" degrades openly.
+
+    A receipt that EXISTS but fails its binding checks stays a hard refusal.
+    Only a MISSING receipt can degrade, because the reason it is missing sits
+    with the runtime, not the model: 2026-09-19 live, ZCode never delivered
+    SubagentStart/SubagentStop to plugin hooks, so the receipt could not exist
+    and `plan` hard-refused — the session then burned 52 requests (~50% of the
+    whole run, 6.5M input tokens) reverse-engineering the gate and abandoned
+    the pipeline for a hand-rolled build with no gates at all.
+    """
     receipt = load_json(work_dir / f"{role}-execution.json") or {}
     expected = "presentation-researcher" if role == "research" else "visual-critic"
+    if not receipt:
+        if policy == "allow-missing":
+            return {
+                "agent": f"student-presentation-suite:{expected}",
+                "spawn_verified": False,
+                "degraded": "receipt-missing-allowed",
+                "work_id": work_dir.name,
+                "artifact": bind(artifact),
+                "reads": {},
+            }
+        raise RefusedError(
+            f"missing successful isolated {role} runtime receipt (hook-owned: "
+            "runtime_evidence.py writes it at SubagentStop; the model cannot write it). "
+            "Run doctor --work-dir <wd> to check whether this runtime delivers subagent "
+            "hook events; if it does not, re-run plan/qa with --receipt-policy allow-missing"
+        )
     if receipt.get("agent") != f"student-presentation-suite:{expected}" or not receipt.get("agent_id") or receipt.get("spawn_verified") is not True or receipt.get("work_id") != work_dir.name:
         raise RefusedError(f"missing successful isolated {role} runtime receipt")
     if receipt.get("artifact") != bind(artifact):
-        raise RefusedError(f"{role} artifact changed after isolated execution")
+        raise RefusedError(
+            f"{role} artifact changed after isolated execution — if this was an "
+            "authorized gap-fill, resume the SAME researcher via SendMessage (its next "
+            "SubagentStop refreshes the receipt) or run a zero-search recheck researcher "
+            "to re-issue it; do not edit the pack from the main session"
+        )
     return receipt
 
 

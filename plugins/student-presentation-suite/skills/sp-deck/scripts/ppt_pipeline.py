@@ -114,6 +114,7 @@ from pipeline.core import (  # noqa: E402,F401
     write_stage_summary,
 )
 from pipeline.dispatch import build_next_payload, cmd_next  # noqa: E402,F401
+from pipeline.doctor import cmd_doctor  # noqa: E402,F401
 from pipeline.plan import _research_budget, cmd_plan, compile_research_for_plan  # noqa: E402,F401
 from pipeline.qa import cmd_qa  # noqa: E402,F401
 from pipeline.render import cmd_render, make_contact_sheet, make_contact_thumb  # noqa: E402,F401
@@ -146,6 +147,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     plan.add_argument("--research-validation", type=Path)
     plan.add_argument("--evidence-map", type=Path)
     plan.add_argument(
+        "--receipt-policy", choices=["require", "allow-missing"], default="require",
+        help="allow-missing: continue without the hook-owned isolated-run receipt "
+        "(degraded mode, recorded in the manifest); use after doctor reports receipts "
+        "unavailable for this runtime",
+    )
+    plan.add_argument(
         "--research-execution",
         type=Path,
         help=argparse.SUPPRESS,
@@ -173,6 +180,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     qa.add_argument("--notes", type=Path)
     qa.add_argument("--preview", type=Path, nargs="+", action="extend")
     qa.add_argument("--allow-missing-preview", action="store_true")
+    qa.add_argument(
+        "--receipt-policy", choices=["require", "allow-missing"], default="require",
+        help="allow-missing: accept the visual review without the hook-owned critic "
+        "receipt (degraded mode, recorded in the manifest)",
+    )
     qa.add_argument("--max-items", type=int, default=12)
     qa.set_defaults(func=cmd_qa)
 
@@ -199,6 +211,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     status = sub.add_parser("status", help="one-line manifest summary")
     status.add_argument("--work-dir", type=Path, required=True)
     status.set_defaults(func=cmd_status)
+
+    doctor = sub.add_parser(
+        "doctor",
+        help="environment probe: receipt deliverability, toolchain, renderers, work-dir writability",
+    )
+    doctor.add_argument("--work-dir", type=Path, required=True)
+    doctor.add_argument("--json", action="store_true")
+    doctor.set_defaults(func=cmd_doctor)
 
     nxt = sub.add_parser("next", help="what to read and which command to run next")
     nxt.add_argument("--work-dir", type=Path, required=True)

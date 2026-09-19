@@ -25,7 +25,10 @@ def load(name: str, rel: str):
 
 
 cost_guard = load("cost_guard", "scripts/cost_guard.py")
+pipeline_context = load("pipeline_context", "scripts/pipeline_context.py")
 envelope = load("assert_research_envelope", "scripts/assert_research_envelope.py")
+
+BUILDER = "student-presentation-suite:presentation-builder"
 
 
 class CostGuardTests(unittest.TestCase):
@@ -50,30 +53,45 @@ class CostGuardTests(unittest.TestCase):
             finally:
                 sys.stdin = original
 
+    def work_png(self, name: str = "slide.png") -> Path:
+        """Render-image discipline applies inside the pipeline's work areas only."""
+        path = Path(self.cwd) / "outputs" / ".pptx-work" / "demo" / "render" / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        return path
+
+    def builder_event(self, tool: str, **tool_input) -> dict:
+        return {
+            **self.event(tool, **tool_input),
+            "agent_type": BUILDER,
+            "agent_id": "builder-child",
+        }
+
     def test_first_png_read_is_allowed(self) -> None:
-        png = Path(self.cwd) / "slide.png"
+        png = self.work_png()
         png.write_bytes(b"png-bytes-1")
         rc = self.run_guard(self.event("Read", file_path=str(png)))
         self.assertEqual(rc, 0)
 
     def test_same_hash_png_is_blocked(self) -> None:
-        png = Path(self.cwd) / "slide.png"
+        png = self.work_png()
         png.write_bytes(b"png-bytes-1")
         self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(png))))
         self.assertEqual(2, self.run_guard(self.event("Read", file_path=str(png))))
 
     def test_changed_hash_png_is_allowed(self) -> None:
-        png = Path(self.cwd) / "slide.png"
+        png = self.work_png()
         png.write_bytes(b"png-bytes-1")
         self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(png))))
         png.write_bytes(b"png-bytes-2")
         self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(png))))
 
-    def test_plugin_source_grep_is_blocked(self) -> None:
-        rc = self.run_guard(
-            self.event("Bash", command="grep -n plan plugins/student-presentation-suite/scripts/ppt_pipeline.py")
-        )
-        self.assertEqual(rc, 2)
+    def test_plugin_source_grep_is_builder_scoped(self) -> None:
+        """Batch 6.1: plugin-source inspection refusals belong to the isolated
+        builder; a main session may read/grep plugin source (maintenance is a
+        legitimate use, and production_entry_guard still owns execution)."""
+        command = "grep -n plan plugins/student-presentation-suite/scripts/ppt_pipeline.py"
+        self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
+        self.assertEqual(2, self.run_guard(self.builder_event("Bash", command=command)))
 
     def test_agent_execution_integrity_is_out_of_scope(self) -> None:
         """runtime_evidence.py, not cost_guard.py, owns spawn integrity."""
@@ -100,12 +118,10 @@ class CostGuardTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
 
-    def test_listing_plugin_cache_is_blocked(self) -> None:
-        rc = self.run_guard(self.event(
-            "Bash",
-            command='ls "C:/Users/28603/.claude/plugins/cache/claude-personal/student-presentation-suite/0.13.1/references/"',
-        ))
-        self.assertEqual(rc, 2)
+    def test_listing_plugin_cache_is_builder_scoped(self) -> None:
+        command = 'ls "C:/Users/28603/.claude/plugins/cache/claude-personal/student-presentation-suite/0.13.1/references/"'
+        self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
+        self.assertEqual(2, self.run_guard(self.builder_event("Bash", command=command)))
 
     def test_pipeline_commands_survive_the_plugin_cache_path(self) -> None:
         """2026-09-17 live: the skills require `python "…/ppt_pipeline.py" next --work-dir <wd>`
@@ -152,12 +168,10 @@ class CostGuardTests(unittest.TestCase):
             with self.subTest(command=command[-40:]):
                 self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
 
-    def test_validate_research_pack_help_is_blocked(self) -> None:
-        rc = self.run_guard(self.event(
-            "Bash",
-            command="python plugins/student-presentation-suite/scripts/validate_research_pack.py --help",
-        ))
-        self.assertEqual(rc, 2)
+    def test_validate_research_pack_help_is_builder_scoped(self) -> None:
+        command = "python plugins/student-presentation-suite/scripts/validate_research_pack.py --help"
+        self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
+        self.assertEqual(2, self.run_guard(self.builder_event("Bash", command=command)))
 
     def test_refusals_point_to_a_resolvable_pipeline_path(self) -> None:
         """裸脚本名会诱导 agent 用错路径；提示必须带可执行的绝对路径。"""
@@ -196,38 +210,44 @@ class CostGuardTests(unittest.TestCase):
         self.assertEqual(0, self.run_guard(action))
 
     def test_main_session_big_image_budget_is_enforced(self) -> None:
-        """主会话读 >150KB 的图超过 6 张即拒绝；缩略图与子代理不受限。"""
+        """主会话读 work-dir 内 >150KB 的图超过 6 张即拒绝；缩略图与子代理不受限。"""
         big = 200 * 1024
         results = []
         for index in range(7):
-            page = Path(self.cwd) / f"slide-{index}.png"
+            page = self.work_png(f"slide-{index}.png")
             page.write_bytes(b"\x00" * big)
             results.append(self.run_guard(self.event("Read", file_path=str(page))))
         self.assertEqual([0] * 6, results[:6])
         self.assertEqual(2, results[6])
         # 子代理（带 agent_id）不受预算限制
-        with_agent = {**self.event("Read", file_path=str(Path(self.cwd) / "slide-7.png")), "agent_id": "child"}
+        with_agent = {**self.event("Read", file_path=str(self.work_png("slide-7.png"))), "agent_id": "child"}
+        self.work_png("slide-7.png").write_bytes(b"\x00" * big)
         self.assertEqual(0, self.run_guard(with_agent))
 
     def test_small_images_are_not_budget_limited(self) -> None:
         small = 64 * 1024
         for index in range(9):
-            page = Path(self.cwd) / f"thumb-{index}.png"
+            page = self.work_png(f"thumb-{index}.png")
             page.write_bytes(b"\x00" * small)
             self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(page))))
 
-    def test_second_full_reference_read_is_blocked(self) -> None:
+    def test_second_full_reference_read_is_blocked_in_a_managed_session(self) -> None:
         ref = Path(self.cwd) / "references" / "cost-discipline.md"
         ref.parent.mkdir(parents=True, exist_ok=True)
         ref.write_text("# CD\n", encoding="utf-8")
-        self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(ref))))
-        self.assertEqual(2, self.run_guard(self.event("Read", file_path=str(ref))))
+        pipeline_context.mark_research_active(Path(self.cwd), {"session_id": "s"})
+        first = self.run_guard({**self.event("Read", file_path=str(ref)), "session_id": "s"})
+        second = self.run_guard({**self.event("Read", file_path=str(ref)), "session_id": "s"})
+        self.assertEqual(0, first)
+        self.assertEqual(2, second)
 
     def test_seen_state_is_scoped_to_the_session(self) -> None:
         """One task must not silence the next task's first reference read."""
         ref = Path(self.cwd) / "references" / "cost-discipline.md"
         ref.parent.mkdir(parents=True, exist_ok=True)
         ref.write_text("# CD\n", encoding="utf-8")
+        for session in ("task-a", "task-b"):
+            pipeline_context.mark_research_active(Path(self.cwd), {"session_id": session})
         first = self.run_guard({**self.event("Read", file_path=str(ref)), "session_id": "task-a"})
         second = self.run_guard({**self.event("Read", file_path=str(ref)), "session_id": "task-b"})
         self.assertEqual(0, first)
@@ -256,6 +276,7 @@ class CostGuardTests(unittest.TestCase):
         ref = Path(self.cwd) / "references" / "cost-discipline.md"
         ref.parent.mkdir(parents=True, exist_ok=True)
         ref.write_text("# CD\n", encoding="utf-8")
+        pipeline_context.mark_research_active(Path(self.cwd), {"session_id": "task-a"})
         rc = self.run_guard(
             {**self.event("Read", file_path=str(ref)), "session_id": "task-a"}
         )

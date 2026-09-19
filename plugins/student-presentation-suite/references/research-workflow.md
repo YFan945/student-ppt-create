@@ -149,6 +149,13 @@ Source C  35 亿   → 量级不一致 → confidence: low，conflict: true，
 默认由 `scenario` 推导，用户可覆盖。硬约束是：**不要为了某一页的一句话搜索二十个网页。**
 超限由 `validate_research_pack.py` 拦截。
 
+**档位必须按证据需求选，scenario 只定默认**：需核验的数据点/claims ≥ 10 或 slide_count ≥ 12
+时至少 `standard`；≥ 18 或 slide_count ≥ 15 时用 `deep`。宁可初始档位高一级——cap 触发后的
+gap-fill 重入实测代价约 7 个请求（主会话 SendMessage + 等待 + 核验，研究员重入 + 重校验；
+2026-09-19 实测），而同样的检索在第一次暖上下文里多跑只多 1–2 个请求。上限拦截的本意是防
+"为一句话搜二十个网页"，不是把 8 个维度的 deck 压进 5 个维度的预算（2026-09-17 live：
+deep 16/15 被迫整轮回退、12 页压成 10 页——那就是档位选低了，不是研究员浪费）。
+
 ### 补检（gap-fill）与预算申报
 
 - 授权补检前，主会话必须先报告**剩余额度**（`ppt_pipeline.py next` 在 work-dir 有
@@ -181,6 +188,11 @@ Research Pack    ~8k tokens
 ## 九、检索受阻必须留痕
 
 打不开网页、来源付费、来源不可得——**不许静默降级**，一律写进 `unresolved`：
+搜索层面的失败同样留痕——`research/search-log.json` 的 `search_executions` 必须包含
+每次实际执行的检索（含并发失败/超时重试，标 `status: failed`）；gap-fill 的检索必须
+**追加**写入该日志（`n` 续号），不得只改 pack。预算计数以 `pack.queries` 成功记录为准，
+失败调用不占额，但没有日志留痕就无法审计这个差额（2026-09-19 实测：search-log 停在
+初始 7 条，gap-fill 第 8 条检索只存在于 pack，日志与事实脱节）。
 
 ```yaml
 unresolved:

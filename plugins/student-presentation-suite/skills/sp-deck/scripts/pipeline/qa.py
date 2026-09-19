@@ -73,12 +73,18 @@ def cmd_qa(args: argparse.Namespace) -> int:
     expected_pages = {str(i): item["sha256"] for i, item in enumerate(manifest["render"]["pages"], 1)}
     if not review or review.get("pptx_sha256") != sha256_file(pptx) or review.get("contact_sheet_sha256") != manifest["render"]["contact_sheet"]["sha256"] or review.get("page_sha256") != expected_pages:
         raise RefusedError("visual review must bind the current PPTX, contact sheet and every page SHA256")
-    receipt = execution_receipt(work_dir, "critic", visual_review)
-    for item in [manifest["render"]["contact_sheet"], *manifest["render"]["pages"]]:
-        if receipt.get("reads", {}).get(item["path"]) != item["sha256"]:
-            raise RefusedError("independent critic did not read every current render image")
+    receipt = execution_receipt(
+        work_dir, "critic", visual_review,
+        policy=getattr(args, "receipt_policy", "require") or "require",
+    )
+    degraded_receipt = bool(receipt.get("degraded"))
+    if not degraded_receipt:
+        for item in [manifest["render"]["contact_sheet"], *manifest["render"]["pages"]]:
+            if receipt.get("reads", {}).get(item["path"]) != item["sha256"]:
+                raise RefusedError("independent critic did not read every current render image")
     fingerprint = qa_input_fingerprint(pptx, visual_review, notes, previews)
-    fingerprint = stable_hash([fingerprint, manifest.get("inputs"), bind(work_dir / "critic-execution.json"), args.allow_missing_preview])
+    receipt_binding = None if degraded_receipt else bind(work_dir / "critic-execution.json")
+    fingerprint = stable_hash([fingerprint, manifest.get("inputs"), receipt_binding, args.allow_missing_preview])
     old_qa = manifest.get("qa") or {}
     old_report = Path(str((old_qa.get("report") or {}).get("path") or ""))
     cached_bindings = [old_qa.get("report") or {}, *(old_qa.get("stages") or {}).values()]
@@ -167,7 +173,8 @@ def cmd_qa(args: argparse.Namespace) -> int:
         "visual_review": bind(visual_review) if visual_review and visual_review.is_file() else None,
         "previews": [bind(path) for path in previews if path.is_file()] or None,
         "notes": bind(notes) if notes and notes.is_file() else None,
-        "critic_execution": bind(work_dir / "critic-execution.json"),
+        "critic_execution": receipt_binding,
+        "critic_receipt": "missing-allowed" if degraded_receipt else None,
         "stage_cost_ms": {name: data["duration_ms"] for name, data in reports.items() if "duration_ms" in data},
     }
     manifest["state"] = "qa"

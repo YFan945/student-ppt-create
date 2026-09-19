@@ -5,6 +5,22 @@
 
 适用范围：`sp-research`、`sp-outline`、`sp-deck`、`sp-review` 的全部阶段。
 
+## 约束的作用域（Batch 6.1）
+
+本文件描述的成本纪律约束的是 **PPT 生产任务**，不是安装了本插件的每一段会话。
+守卫的生效边界由 `scripts/pipeline_context.py` 统一判定，只认三个确定性信号，
+不做关键词或 LLM 意图猜测（"帮我检查 PPT 插件的代码"是插件维护，不是 PPT 生产）：
+
+- **Agent 身份**（hook 事件自带）：isolated builder / researcher / critic 天然在管线作用域内；
+- **会话激活状态**：Skill（sp-research / sp-deck / sp-outline）或研究员 spawn 触发
+  `research-active-<session>.json`（Stop 清理兜底 + 6h TTL，崩溃会话的残留状态自动过期）；
+- **资源边界**：目标路径位于 `outputs/.pptx-work/` 之下。
+
+由此：普通开发会话的 `ls`、重复读同一张图、读插件源码不消耗 PPT 预算；插件维护
+会话可以自由读取源码与 references。唯一刻意**不做**作用域收窄的是
+`production_entry_guard`——直接调用内部生产脚本在任何会话都被拒绝，因为那是绕过
+状态机，不是成本问题。
+
 ## 为什么需要这份约束
 
 一次 PPTX 任务的 token 与时间开销，主要由**会话结构**决定，而不是内容难度。实测
@@ -205,7 +221,8 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 
 - 进入新阶段只读 `stage-<state>-summary.md` 与本阶段要改的那一个产物。
 - 下一动作以 `ppt_pipeline.py next --work-dir <wd> [--json]` 为准，不要 `--help`
-  插件脚本、不要 grep 插件源码。`scripts/cost_guard.py` 会拦截这些考古动作。
+  插件脚本、不要 grep 插件源码。`scripts/cost_guard.py` 会拦截这些考古动作
+  （作用域见上：对 isolated builder 硬拒绝，对已激活的生产会话重定向到 `next`）。
 - 不要把 SKILL 或 20 份 reference 在每一回合重新灌入。
 - **不要自己渲染**：`calibration_preview.py` 与所有 render 属于主会话，
   `builder_guard.py` 会拒绝。2026-09-18：一个 builder 实例自行调用

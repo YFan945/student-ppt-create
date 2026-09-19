@@ -28,6 +28,7 @@ from pipeline.core import (  # noqa: E402
     MAX_PRE_QA_REBUILDS,
     MAX_REPAIRS,
     QA_ORDER,
+    ROOT,
     generator_changed_since_build,
     load_json,
     load_manifest,
@@ -59,6 +60,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
     pipeline = HERE / "ppt_pipeline.py"
     if not manifest:
         budget = _research_budget(work_dir)
+        validator = str(ROOT / "scripts" / "validate_slide_spec.py")
         payload = {
             "state": "(absent)",
             "read": [],
@@ -70,6 +72,19 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 "--art-direction <art-direction.yaml>"
             ),
             "allowed_writes": ["production-summary.md", "art-direction.yaml", "slide-spec.yaml"],
+            "spec_authoring": {
+                "schema": str(ROOT / "references" / "slide-spec.schema.json"),
+                "validator": (
+                    f'{python} "{validator}" <work-dir>/slide-spec.yaml '
+                    "--output <work-dir>/spec-validation.json"
+                ),
+                "must": [
+                    "run the validator (or read the schema) BEFORE writing slide-spec.yaml — "
+                    "authoring by intuition cost 5 extra rounds on 2026-09-19 (integer ids, "
+                    "required content/timing_sec/owner, required visual object per slide)",
+                    "validate BEFORE plan: plan refuses without the --validation-report file",
+                ],
+            },
             "notes": (
                 "intake first; do not grep plugin source — this command is the discovery API. "
                 "If research-pack.json exists in the work-dir, plan compiles evidence-map.json "

@@ -2,6 +2,62 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased
+
+### Batch 6.1 — Hook Scope Isolation（2026-09-19）
+
+插件安装启用后不再干预非 PPT 会话。新增 `scripts/pipeline_context.py` 作为唯一的管线
+作用域判定入口——agent 身份 × 会话激活状态 × `.pptx-work` 资源边界，纯确定性信号，
+不做关键词/LLM 意图猜测：
+
+- **cost_guard 作用域收窄**：插件源码读取/巡检拒绝收窄到 isolated builder；巡检限流
+  只对指向 `.pptx-work` 的命令计数（普通会话观察自己项目目录的合法轮询不再被拦）；
+  渲染图去重（CD-9）与大图预算只对 work-dir 内图片生效；references 重读拦截（CD-3）
+  只对已激活的 PPT 会话生效。取代 maintainer 特判——其能力被通用作用域规则覆盖。
+- **runtime_evidence 的 `or child` 缺陷修复**：WebSearch/WebFetch 拒绝条件从"任何子代理"
+  收窄为"本插件的非研究员子代理"——其他插件/用户工作流的子代理不再被拦截；主会话仅在
+  research-active 状态新鲜时被拦，Stop 兜底清理之外新增 6h TTL，崩溃会话的残留状态自动过期。
+- **production_entry_guard / builder_guard / hook_health 不变**：内部脚本直调防护刻意
+  不做作用域收窄（绕过管线在任何会话都被拒）；builder 约束本就按 agent 身份挂载。
+- 测试 +19（TEST 01–10 验收矩阵：普通会话放行 ×4、builder 约束保留 ×3、生产入口保留、
+  幂等绑定、Stop 释放、并行隔离），全套 804 通过。
+
+来源：2026-09-19 一次真实 deck 会话（光伏 vs 风电）的逐请求成本复盘——108 个请求中 52 个
+（6.5M 输入 token，占全程一半）耗在 `plan` 的隔离运行回执门上，最终整条管线被弃用、改由
+主会话手写 python-pptx。本次修复全部针对复盘暴露的矛盾点：
+
+- **回执门降级路径**：`plan` / `qa` 新增 `--receipt-policy allow-missing`。回执**缺失**
+  （运行时不向插件 hook 传递 `SubagentStart`/`SubagentStop`，如本机 ZCode）时可走降级继续，
+  manifest 记录 `spawn_verified: false` / `receipt_policy: allow-missing`，QA 报告保留标记；
+  已存在但绑定不符的回执仍是硬拒绝（防伪造不变）。默认 `require`，行为向后兼容。
+- **`ppt_pipeline.py doctor`**：一次性环境探针——回执可产生性（依据 `.guard` agent ledger
+  与 research-pack 的组合判定 observed / unavailable / incomplete / pending / unknown）、
+  工具链（python-pptx / pptxgenjs / LibreOffice / PyMuPDF / poppler）、work-dir 可写性，
+  并给出下一步建议。已加入 `production_entry_guard` 公开动作白名单。
+- **cost_guard 拒绝信息携带答案**：插件源码读取/巡检被拒时，若拒绝缘由典型（回执缺失类），
+  拒绝信息直接给出 `doctor` 与 `--receipt-policy allow-missing` 指引，不再逼模型用 curl 从
+  GitHub 反向取证（实测 15+ 次探测）。新增 maintainer 模式：cwd 在插件开发仓库内时不再
+  拦截对其自身源码的读取/巡检（已被上方 Batch 6.1 的通用作用域规则取代）。
+- **spec 撰写引导**：`next`/`advance` 在 `(absent)` 边界新增 `spec_authoring` 块（schema
+  路径、validate 命令、"先 validate 再 plan"），消除实测中 5 轮的"凭直觉写 spec → 校验失败
+  → 重写"循环。
+- **intake Round 3a/3b 合并规则**：topic 明确映射到单一风格类别时一轮完成选择，不再白耗
+  一轮交互（2026-09-19 实测复现 2026-09-17 的拆轮模式）。
+- **研究预算的假节约修复**：档位选择从"只看 scenario"改为"按证据需求选档"（claims ≥ 10
+  或 slide_count ≥ 12 至少 standard；≥ 18 或 slide_count ≥ 15 用 deep），并在
+  research-workflow.md 写明实测依据——cap 触发后的 gap-fill 重入约 7 个请求，而同样检索
+  在首次暖上下文里只多 1–2 个；留痕规则扩展到搜索层失败（search_executions 标 status:
+  failed）且 gap-fill 检索必须追加进 search-log（2026-09-19 实测日志停在 7 条、与 pack
+  脱节）；计数口径写明"失败调用不占额"；回执 artifact 失配的拒绝信息现在给出合规的
+  re-receipt 路径（SendMessage 续跑同一研究员刷新回执 / 零检索复检轮），不再让主会话
+  现场发明（那次会话正是这么发明的）。
+- **researcher spawn 模板补预算口径**：固定段写明上限以模板槽 `<N>` 为准、计数口径为 pack
+  内 queries 记录数，消除为确认上限而读取校验器源码的一次额外读取（2026-09-19 子代理实测）。
+- **visual-critic 不可用时的降级规则**（sp-deck SKILL.md）：只读 contact-sheet-thumb +
+  最多 3 张疑似 blocker 页；禁止逐页读全尺寸大图（实测 13 张大图触发上下文 compaction，
+  单请求 170K fresh tokens）。
+- 测试 +2（降级路径与回执绑定语义），全套 785 通过。
+
 ## 0.15.0 — 2026-09-19 · v0.15 Pipeline Simplification 全系列发布
 
 架构主线从「Prompt 驱动工作流」转向「状态机驱动工作流」：Machine Contract → Builder Packet

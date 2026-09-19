@@ -143,6 +143,9 @@ Basic）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内
     承诺联网搜图；声明机制与降级见 `../../references/image-sourcing.md`。
 - `Citation style` → 不询问，默认 `Classroom/课堂引用`（详见 `../../references/evidence-and-citations.md`）
 - Round 3 只有视觉风格（占 2 轮）与配图 1 个问题，若需要可把 Deliverables 提前到本轮填满槽位
+- topic 明确映射到某一类别时，Round 3a/3b 合并为一轮：直接给出该类别 4 种样式（外加
+  Other 逃生项），两步选择只在 topic 跨类别模糊时使用——2026-09-19 实测：3a 一轮只拿到
+  一个类别选择，白耗一轮交互与两个请求
 
 **Round 4 — 输出格式**:
 - `Deliverables` (multi-select) → options: PPTX/幻灯片, Speaker notes/讲稿, Preview/预览图, PDF export/PDF, Contact sheet/缩略图联系人表, Full script/完整演讲稿

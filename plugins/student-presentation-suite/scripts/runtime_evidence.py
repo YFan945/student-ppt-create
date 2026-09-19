@@ -24,10 +24,11 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import critic_preview  # noqa: E402
+import pipeline_context  # noqa: E402
 
-RESEARCHER = "student-presentation-suite:presentation-researcher"
-CRITIC = "student-presentation-suite:visual-critic"
-PIPELINE_SKILLS = {"sp-research", "sp-deck", "sp-outline"}
+RESEARCHER = pipeline_context.RESEARCHER
+CRITIC = pipeline_context.CRITIC
+PIPELINE_SKILLS = pipeline_context.PIPELINE_SKILLS
 LOCK_STALE_SECONDS = 30.0
 EVIDENCE_NAME_RE = re.compile(r"research|critic", re.I)
 NAMED_TEAMMATE_REFUSAL = (
@@ -209,12 +210,9 @@ def handle(event: dict) -> int:
     kind = event.get("hook_event_name")
     tool = event.get("tool_name")
     inputs = event.get("tool_input") or {}
-    session = re.sub(r"[^A-Za-z0-9_-]", "_", str(event.get("session_id") or "unknown"))
-    active = root / ".guard" / f"research-active-{session}.json"
 
     if kind == "Stop" and not child:
-        with suppress(OSError):
-            active.unlink(missing_ok=True)
+        pipeline_context.clear_research_active(project, event)
         return 0
 
     if kind == "PreToolUse":
@@ -232,8 +230,7 @@ def handle(event: dict) -> int:
                 return 2
         skill = str(inputs.get("skill") or "").split(":")[-1]
         if tool == "Skill" and skill in PIPELINE_SKILLS:
-            active.parent.mkdir(parents=True, exist_ok=True)
-            active.write_text(json.dumps({"session_id": event.get("session_id")}), encoding="utf-8")
+            pipeline_context.mark_research_active(project, event)
         if tool in {"Agent", "SendMessage"}:
             name = str(inputs.get("name") or "").strip()
             dest = str(inputs.get("to") or inputs.get("recipient") or "").strip()
@@ -248,8 +245,7 @@ def handle(event: dict) -> int:
                 print(NESTED_SPAWN_REFUSAL, file=sys.stderr)
                 return 2
             if inputs.get("subagent_type") == RESEARCHER:
-                active.parent.mkdir(parents=True, exist_ok=True)
-                active.write_text(json.dumps({"session_id": event.get("session_id")}), encoding="utf-8")
+                pipeline_context.mark_research_active(project, event)
             else:
                 work_dir = _critic_work_dir(inputs, root)
                 if work_dir is None:
@@ -261,8 +257,19 @@ def handle(event: dict) -> int:
                     print(f"visual-critic preview preparation failed: {exc}", file=sys.stderr)
                     return 2
         if tool in {"WebSearch", "WebFetch"}:
-            isolated = agent == RESEARCHER and bool(child)
-            if not isolated and (active.is_file() or child):
+            if child:
+                # Batch 6.1: only THIS plugin's subagents are pipeline-scoped.
+                # The isolated researcher owns retrieval; the builder and critic
+                # have no retrieval mandate. Subagents from other plugins or user
+                # workflows are out of scope entirely and pass through — the old
+                # `or child` condition refused every subagent on the machine.
+                if agent != RESEARCHER and str(agent or "").startswith(pipeline_context.PLUGIN_PREFIX):
+                    print(WEB_REFUSAL, file=sys.stderr)
+                    return 2
+            elif pipeline_context.research_active(project, event):
+                # Main session: refused only while fresh research/production
+                # scope is armed for THIS session; Stop clears it and a TTL
+                # recovers sessions that never delivered Stop.
                 print(WEB_REFUSAL, file=sys.stderr)
                 return 2
         if agent == CRITIC and tool in {"Write", "Edit"}:

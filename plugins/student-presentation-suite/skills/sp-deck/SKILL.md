@@ -38,6 +38,18 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" next --wor
 
 **常规推进用 `advance --json`，`next --json` 退为调试/巡检入口**（v0.15 Batch 3，Batch 3.1 收紧）：`advance` 自动串行执行所有确定性步骤（校准预览、build（calibration green 且无 scaffold stub 时首次 build；repair/pre-QA 修复使 generator fingerprint 变化后的 rebuild）、render、repair 登记、complete），只在真正需要智能的边界停下并返回 `needs_agent`（agent + builder_mode + packet 路径，dispatch 字段就是 `next` 的完整应答）/ `needs_user` / `complete`，附带 `actions` 列表记录本轮执行了哪些确定性步骤。它不 spawn 任何子代理，也永远不会替你判断视觉质量——boundary 到了就停。`pending_repair` / pre-QA 失败状态下，generator fingerprint 未变化时 advance 指向 repair builder（deck 即将改变，先评审旧图没有意义），fingerprint 已变化时 advance 直接自动 rebuild。每次 advance 调用记入 manifest history，`pipeline_report.py` 汇总 collapsed round-trips。edit_ooxml 模式的首次 build 前必须由主会话先应用编辑意图，advance 会以 `needs_user` 停下。
 
+**回执门与 doctor（2026-09-19 实测）**：`plan`/`qa` 因 `missing successful isolated
+*-execution.json` 拒绝时，**不要**反向排查 hook 机制（一次实测为此烧掉 52 个请求、6.5M
+输入 token，占全程一半）。回执只由 `runtime_evidence.py` 在 SubagentStop 落盘，模型写入
+会被守卫拒绝。先跑 `doctor --work-dir <wd> --json`：若报告 receipts unavailable（本机
+ZCode 默认如此——SubagentStart/SubagentStop 不达插件 hook），直接用 `plan`/`qa` 的
+`--receipt-policy allow-missing` 走降级路径（manifest 记录 `spawn_verified: false` 与
+`receipt_policy: allow-missing`，QA 报告保留标记）。已存在但绑定不符的回执仍是硬拒绝。
+visual-critic 无法 spawn（provider 不可用）时的降级：只读 `contact-sheet-thumb.jpg` +
+最多 3 张疑似 blocker 页全尺寸图，禁止逐页读全尺寸大图（2026-09-19 实测 13 张大图把
+上下文推到 compaction，一次性多花约 170K fresh tokens）。
+
+
 Helper API 用 `node scripts/pptx-helpers.js --describe`；逐页实现时由 `presentation-builder` 自己调用该描述接口，不把 helper 源码拉回主会话。正式与 calibration 的 raster render 都由插件内 `pptx_tool.py` 通过受控 pipeline/helper 调用，不依赖项目 PATH 中的同名脚本。
 
 ## State gate
