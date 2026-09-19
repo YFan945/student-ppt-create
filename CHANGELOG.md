@@ -2,7 +2,7 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
-## Unreleased
+## 0.15.2 — 2026-09-20 · Receipt Policy Integrity & Scope Release
 
 2026-09-20 外部评审对 0.15.1 源码的 4 项边界修复：
 
