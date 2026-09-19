@@ -342,6 +342,8 @@ def work_id_receipt_policy(manifest: dict[str, Any] | None) -> str:
     """
     if not manifest:
         return "require"
+    if manifest.get("receipt_policy") == "allow-missing":
+        return "allow-missing"
     if (manifest.get("research") or {}).get("receipt_policy") == "allow-missing":
         return "allow-missing"
     if (manifest.get("qa") or {}).get("critic_receipt") == "missing-allowed":

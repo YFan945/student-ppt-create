@@ -456,6 +456,20 @@ class ResearchActiveReleaseTests(unittest.TestCase):
         self.write_manifest("deck-other", "complete")
         self.assertEqual(self.main_search(), 2)
 
+    def test_research_active_releases_at_complete_for_all_consumers(self):
+        """2026-09-20 review: the release lives inside research_active, so
+        cost_guard's managed flag (CD-3 reference re-reads) also sees a
+        delivered deck as inactive — not just the WebSearch path."""
+        runtime.pipeline_context.mark_research_active(self.project, {"session_id": "parent"})
+        self.write_manifest("test", "complete")
+        self.assertTrue(
+            runtime.pipeline_context.research_active(self.project, {"session_id": "parent"})
+            is False
+        )
+        self.assertFalse(
+            (self.project / "outputs/.pptx-work/.guard/research-active-parent.json").exists()
+        )
+
     def test_kept_armed_when_no_manifest_or_unreadable(self):
         runtime.pipeline_context.mark_research_active(self.project, {"session_id": "parent"})
         (self.project / "outputs/.pptx-work/intake-only").mkdir(parents=True)

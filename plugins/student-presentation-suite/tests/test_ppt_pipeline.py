@@ -1974,6 +1974,31 @@ class ReceiptPolicyTests(PipelineTestCase):
         self.plan(files, extra_args=["--receipt-policy", "allow-missing"])
         self.assertEqual(self.manifest()["research"]["receipt_policy"], "allow-missing")
 
+    def test_scope_c_no_research_degraded_policy_reaches_complete(self) -> None:
+        """2026-09-20 review #1: plan --receipt-policy allow-missing on a deck
+        with NO researcher (scope C, no pack) must still record the policy and
+        let qa/complete inherit — manifest["research"] is never created here."""
+        files = self.write_inputs()
+        self.plan(files, extra_args=["--receipt-policy", "allow-missing"])
+        manifest = self.manifest()
+        self.assertEqual(manifest["receipt_policy"], "allow-missing")
+        self.assertNotIn("research", manifest)
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        self.render_evidence(files, write_receipt=False)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            pp.cmd_next(ns("next", self.work, json=True))
+        payload = json.loads(buffer.getvalue())
+        self.assertIn("--receipt-policy allow-missing", payload["next_command"])
+        pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(files["visual_review"])])
+        manifest = self.manifest()
+        self.assertEqual(manifest["qa"]["critic_receipt"], "missing-allowed")
+        manifest["qa"]["ok"] = True
+        manifest["qa"]["blockers"] = 0
+        pp.save_manifest(self.work, manifest)
+        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 0)
+        self.assertEqual(self.manifest()["state"], "complete")
+
     def test_qa_and_next_command_inherit_degraded_policy(self) -> None:
         """2026-09-20 review: the policy must be work-id state — qa without the
         flag inherits it, and next_command carries it verbatim."""

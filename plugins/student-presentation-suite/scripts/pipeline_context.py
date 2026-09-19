@@ -149,7 +149,11 @@ def research_active(project: Path, event: dict, *, now: float | None = None) -> 
     if age > RESEARCH_ACTIVE_TTL_SECONDS or age < -5:
         clear_research_active(project, event)
         return False
-    return True
+    # Delivered scope is inactive for EVERY consumer (WebSearch refusal,
+    # cost_guard's managed flag, resolve()) — not only the WebSearch path
+    # (2026-09-20 review: a completed deck still counted as managed, so a
+    # reference re-read could be blocked after delivery).
+    return not release_if_production_complete(project, event)
 
 
 def release_if_production_complete(project: Path, event: dict) -> bool:

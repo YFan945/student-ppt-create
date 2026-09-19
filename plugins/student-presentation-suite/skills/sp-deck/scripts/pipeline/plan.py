@@ -108,12 +108,20 @@ def cmd_plan(args: argparse.Namespace) -> int:
         raise RefusedError(str(exc)) from exc
     work_dir.mkdir(parents=True, exist_ok=True)
 
+    receipt_policy = (
+        getattr(args, "receipt_policy", None)
+        or work_id_receipt_policy(manifest) or "require"
+    )
     fresh: dict[str, Any] = {
         "manifest_version": MANIFEST_VERSION,
         "contract_version": CONTRACT.get("contract_version"),
         "work_id": work_dir.name,
         "work_dir": str(work_dir),
         "mode": mode,
+        # Policy is work-id state, not research state: a scope-C deck with no
+        # researcher never creates manifest["research"], so hanging the flag
+        # there lost the degrade decision for no-research decks entirely.
+        "receipt_policy": receipt_policy,
         "source": bind(Path(spec_data["source_deck"])) if spec_data.get("source_deck") else None,
         "edit_contract": {key: spec_data.get(key) for key in ("edit_intent", "review_findings", "preserve", "change_summary_required")},
         "state": "(absent)", "inputs": {},
@@ -134,11 +142,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         spec_data = yaml.safe_load(spec.read_text(encoding="utf-8"))
         if not isinstance(spec_data, dict):
             raise RefusedError("compiled Slide Spec must be an object")
-        receipt = execution_receipt(
-            work_dir, "research", pack,
-            policy=getattr(args, "receipt_policy", None)
-            or work_id_receipt_policy(manifest) or "require",
-        )
+        receipt = execution_receipt(work_dir, "research", pack, policy=receipt_policy)
         fresh["research"] = {
             "required": True,
             "scope": scope,

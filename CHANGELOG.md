@@ -6,6 +6,20 @@
 
 2026-09-20 第二轮外部评审的 2 项生命周期/一致性修复：
 
+- **P1 · 无 Researcher 的 deck 回执策略丢失（顶层字段修复）**：`plan.py` 此前只在研究包
+  参与时创建 `manifest["research"]`，scope C 无研究包的 deck 加
+  `--receipt-policy allow-missing` 时策略无处记录，qa/complete 无法继承。现把策略提升为
+  manifest **顶层字段** `receipt_policy`（每次 plan 都写入，require 也显式记录），
+  `work_id_receipt_policy` 优先读它，`research.receipt_policy` 与 `qa.critic_receipt`
+  保留为兼容回退。新增回归：scope C 无 pack 的 Plan → QA → Complete 全链降级。测试 +1。
+- **P2 · 交付释放下沉到 `research_active()` 本身**：此前释放只在主会话 WebSearch/
+  WebFetch 路径触发，deck 交付后 cost_guard 的 managed 标记仍为 true，reference 重读
+  （CD-3）仍可能被拦。现 `research_active()` 在 scope 武装且新鲜时先做交付检查——
+  所有消费端（WebSearch 拒绝、CD-3、`resolve()`）一致看到交付后的作用域为非激活。
+  测试 +1。
+- （评审保留项，未动）未启动 Researcher 的任务仍无法经 spawn 记录 work-id、会回退到
+  全目录扫描——需 pipeline 侧写入会话关联状态，留给下个小补丁。
+
 - **P1 · 研究作用域释放改为会话关联 work-id**：researcher spawn 时（复用 critic 的
   单一绝对路径检测）把 work-id 记入 `research-active-<session>.json` 的 `work_ids`（多次
   spawn 合并）；`release_if_production_complete` 只检查**本会话记录的** work-id 是否全部
