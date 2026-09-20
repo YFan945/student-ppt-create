@@ -132,14 +132,13 @@ class TitleClaimRelationTests(unittest.TestCase):
     @staticmethod
     def _check(slide: dict) -> dict:
         module = load_module(SCRIPT)
-        report = module.preflight(
+        return module.preflight(
             {"slides": [slide]},
             None,
             content_w=10.0 - 0.6 * 2,
             regions=dict(TitleClaimRelationTests.REGIONS),
             max_chars=80,
         )
-        return report
 
     def _fields(self, slide: dict) -> list[str]:
         return [p["field"] for p in self._check(slide)["problems"]]
