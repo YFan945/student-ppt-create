@@ -76,7 +76,58 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Exit non-zero unless all file, preview, and QA-manifest gates pass",
     )
+    parser.add_argument(
+        "--deliverables",
+        help=(
+            "Comma-separated deliverables confirmed in the Production Summary "
+            "(e.g. 'pptx' or 'pptx,speaker-notes'). Notes and preview are then "
+            "required only when the user actually asked for them."
+        ),
+    )
     return parser.parse_args()
+
+
+def parse_deliverables(raw: str | None) -> list[str] | None:
+    """Split a `--deliverables` value; ``None`` means 'not supplied'."""
+    if raw is None:
+        return None
+    items = [item.strip() for item in raw.split(",")]
+    return [item for item in items if item]
+
+
+#: Deliverables that make a readable artifact a required delivery file.
+#: Render pages and the contact sheet are QA evidence, not deliverables: the
+#: pipeline always renders them, but they only become owed artifacts when the
+#: user selects `preview` or `contact-sheet`.
+NOTES_DELIVERABLES = {"speaker-notes", "full-script", "teleprompter"}
+PREVIEW_DELIVERABLES = {"preview", "contact-sheet"}
+
+
+def resolve_requirements(
+    deliverables: list[str] | None,
+    *,
+    allow_missing_notes: bool = False,
+    allow_missing_preview: bool = False,
+) -> tuple[bool, bool]:
+    """Decide whether notes/preview files are owed artifacts.
+
+    Before 0.14.x these two requirements were pure CLI flags, so a deck the
+    user asked for as "PPTX only" still failed delivery for want of a
+    speaker-notes file the user never requested. An explicit
+    `--allow-missing-*` flag still wins; otherwise the confirmed
+    deliverables decide; with no deliverables supplied the historical
+    default (both required) is preserved.
+    """
+    require_notes = not allow_missing_notes
+    require_preview = not allow_missing_preview
+    if deliverables is None:
+        return require_notes, require_preview
+    confirmed = set(deliverables)
+    if not allow_missing_notes:
+        require_notes = bool(confirmed & NOTES_DELIVERABLES)
+    if not allow_missing_preview:
+        require_preview = bool(confirmed & PREVIEW_DELIVERABLES)
+    return require_notes, require_preview
 
 
 def slide_number(name: str) -> int:
@@ -604,12 +655,18 @@ def print_text(result: dict[str, Any]) -> None:
 
 def main() -> None:
     args = parse_args()
+    deliverables = parse_deliverables(getattr(args, "deliverables", None))
+    require_notes, require_preview = resolve_requirements(
+        deliverables,
+        allow_missing_notes=args.allow_missing_notes,
+        allow_missing_preview=args.allow_missing_preview,
+    )
     result = inspect_delivery(
         args.pptx,
         args.notes,
         args.preview,
-        require_notes=not args.allow_missing_notes,
-        require_preview=not args.allow_missing_preview,
+        require_notes=require_notes,
+        require_preview=require_preview,
         extra_files={
             "pdf": args.pdf,
             "teleprompter": args.teleprompter,
@@ -625,6 +682,7 @@ def main() -> None:
         visual_reviewed=args.visual_reviewed,
         visual_review_report=args.visual_review_report,
     )
+    result.setdefault("requirements", {})["deliverables"] = deliverables
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:

@@ -136,5 +136,55 @@ class DefaultSelectionTests(unittest.TestCase):
         self.assertEqual([1, 4, 5], ca.default_calibration_slides(self.work))
 
 
+class CoverageReportTests(unittest.TestCase):
+    """2026-09-20: `next --json` hands over a default packet and, in the same
+    note, invites an override. With no rule, a live session argued with itself
+    over [1,2,3] vs [1,7,9]. The rule is numbers now: `keeps_coverage`."""
+
+    SPEC = {
+        "slides": [
+            slide(1, kind="cover"),
+            slide(2, layout="comparison-cards"),
+            slide(3, layout="timeline"),
+            slide(4, layout="text-heavy"),
+            slide(5, layout="text-heavy"),
+            slide(6, layout="data-chart"),
+            slide(7, layout="matrix-diagram"),
+        ]
+    }
+
+    def test_the_default_set_is_the_baseline(self) -> None:
+        report = ca.coverage_report(self.SPEC, [], None, 3)
+        self.assertEqual([1, 2, 3], report["default"])
+        self.assertEqual(report["default"], report["candidate"])
+        self.assertTrue(report["keeps_coverage"])
+
+    def test_an_override_that_loses_an_archetype_is_flagged(self) -> None:
+        """hero + comparison + process → hero + narrative + narrative."""
+        report = ca.coverage_report(self.SPEC, [], [1, 4, 5], 3)
+        self.assertFalse(report["keeps_coverage"])
+        self.assertEqual({"default": 3, "candidate": 2}, report["archetype_count"])
+        self.assertEqual(["comparison", "process"], report["archetypes_lost"])
+        self.assertEqual(["narrative"], report["archetypes_gained"])
+        self.assertIn("rejected", report["verdict"])
+
+    def test_an_override_that_trades_one_grammar_for_another_is_kept(self) -> None:
+        """Swap the timeline for a chart: still three distinct grammars."""
+        report = ca.coverage_report(self.SPEC, [], [1, 2, 6], 3)
+        self.assertTrue(report["keeps_coverage"])
+        self.assertEqual(["process"], report["archetypes_lost"])
+        self.assertEqual(["data"], report["archetypes_gained"])
+        self.assertIn("trades", report["verdict"])
+
+    def test_dropping_a_flagged_high_leverage_page_is_visible(self) -> None:
+        report = ca.coverage_report(self.SPEC, [6, 7], [1, 2, 3], 3)
+        self.assertEqual([6, 7], report["high_leverage_missed"])
+
+    def test_the_map_lets_a_caller_reason_about_pages_not_positions(self) -> None:
+        report = ca.coverage_report(self.SPEC, [], [1, 6], 3)
+        self.assertEqual("hero", report["archetype_of"]["1"])
+        self.assertEqual("data", report["archetype_of"]["6"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -88,20 +88,65 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--allow-missing-notes", action="store_true")
     parser.add_argument("--allow-missing-preview", action="store_true")
+    parser.add_argument(
+        "--deliverables",
+        help=(
+            "Comma-separated confirmed deliverables (e.g. 'pptx'). When omitted "
+            "they are read from --slide-spec meta.deliverables."
+        ),
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict", action="store_true")
     return parser.parse_args()
 
 
+def deliverables_from_spec(spec_path: Path) -> list[str] | None:
+    """Read confirmed deliverables from a Slide Spec.
+
+    This keeps the gate honest about what the user actually approved: the
+    pipeline always renders pages and a contact sheet for QA, but a deck
+    approved as "PPTX only" must not fail delivery for a speaker-notes file
+    nobody asked for. ``None`` means the spec is silent or unreadable, and
+    the historical default (notes and preview required) still applies.
+    """
+    try:
+        if spec_path.suffix.lower() == ".json":
+            data = json.loads(spec_path.read_text(encoding="utf-8"))
+        else:
+            import yaml  # noqa: PLC0415 - optional dependency, spec YAML is not always parsed here
+
+            data = yaml.safe_load(spec_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError, ImportError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    meta = data.get("meta") or {}
+    if not isinstance(meta, dict):
+        return None
+    for key in ("deliverables", "export_formats"):
+        value = meta.get(key)
+        if isinstance(value, list) and value:
+            return [str(item) for item in value]
+    return None
+
+
 def main() -> None:
     args = parse_args()
+    deliverables = legacy.parse_deliverables(args.deliverables)
+    if deliverables is None:
+        deliverables = deliverables_from_spec(args.slide_spec)
+    require_notes, require_preview = legacy.resolve_requirements(
+        deliverables,
+        allow_missing_notes=args.allow_missing_notes,
+        allow_missing_preview=args.allow_missing_preview,
+    )
     result = legacy.inspect_delivery(
         args.pptx,
         args.notes,
         args.preview,
-        require_notes=not args.allow_missing_notes,
-        require_preview=not args.allow_missing_preview,
+        require_notes=require_notes,
+        require_preview=require_preview,
         package_report=args.package_report,
         require_package_report=True,
         slide_spec_report=args.slide_spec_report,
@@ -138,6 +183,9 @@ def main() -> None:
     delivery["art_direction_sha256"] = sha256_file(args.art_direction) if args.art_direction.is_file() else None
     delivery["gate_profile"] = "simplified-v08"
     delivery["generation_core_version"] = "0.8"
+    delivery["deliverables"] = deliverables
+    delivery["notes_required"] = require_notes
+    delivery["preview_required"] = require_preview
 
     review_check = (result.get("delivery_report") or {}).get("visual_review_check") or {}
     delivery["visual_review_check_passed"] = review_check.get("valid") is True

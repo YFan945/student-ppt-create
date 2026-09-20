@@ -136,11 +136,8 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     payload["agent"] = "student-presentation-suite:presentation-builder"
                     payload["builder_mode"] = "calibration"
                     payload["notes"] = (
-                        "pick 2-3 slides covering DISTINCT visual archetypes (cover + data/comparison + a "
-                        "different grammar — the packet's default set is chosen for archetype coverage, not "
-                        "page position) and "
                         "spawn student-presentation-suite:presentation-builder mode=calibration with the absolute "
-                        "work-dir and those slide ids (no `name`). It implements only those pages; the rest stay "
+                        "work-dir and the packet's slide ids (no `name`). It implements only those pages; the rest stay "
                         "scaffolded so an early full build stays impossible. The MAIN session never edits "
                         "pages/pNN-*.js itself. After BUILDER_DONE run calibration_preview.py."
                     )
@@ -163,9 +160,19 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             )
                             payload["notes"] += (
                                 f" A packet projecting the default calibration set ({', '.join(map(str, cal_slides))}) "
-                                f"is at {cal_path} — pass it as the builder's task input. To pick different slides, "
-                                "rerun builder_packet.py --mode calibration --slides <ids> first."
+                                f"is at {cal_path} — pass it as the builder's task input. Keep that default unless "
+                                "you can name a visual archetype it misses: it is chosen for distinct grammars, not "
+                                "for page importance, so 'these pages matter more' is not a reason to swap. To "
+                                "override, run builder_packet.py --mode calibration --slides <ids> and read its "
+                                "coverage block — swap only when it covers at least as many distinct archetypes; "
+                                "trading one grammar for another is fine, dropping one is not."
                             )
+                            try:
+                                coverage = _packet.calibration_coverage(work_dir, cal_slides)
+                                if coverage:
+                                    payload["calibration_coverage"] = coverage
+                            except Exception:
+                                pass
                     except Exception as exc:
                         observe_packet_failure(work_dir, payload, "calibration", exc)
                 elif not calibration_rendered:

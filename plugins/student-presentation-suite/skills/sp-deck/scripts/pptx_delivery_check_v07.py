@@ -39,6 +39,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--visual-reviewed", action="store_true")
     parser.add_argument("--allow-missing-notes", action="store_true")
     parser.add_argument("--allow-missing-preview", action="store_true")
+    parser.add_argument("--deliverables", help="Comma-separated confirmed deliverables (e.g. 'pptx')")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict", action="store_true")
@@ -71,12 +72,17 @@ def validate_actual_report(path: Path, pptx: Path, slide_count: int | None) -> d
 
 def main() -> None:
     args = parse_args()
+    require_notes, require_preview = legacy.resolve_requirements(
+        legacy.parse_deliverables(getattr(args, "deliverables", None)),
+        allow_missing_notes=args.allow_missing_notes,
+        allow_missing_preview=args.allow_missing_preview,
+    )
     result = legacy.inspect_delivery(
         args.pptx,
         args.notes,
         args.preview,
-        require_notes=not args.allow_missing_notes,
-        require_preview=not args.allow_missing_preview,
+        require_notes=require_notes,
+        require_preview=require_preview,
         package_report=args.package_report,
         require_package_report=True,
         slide_spec_report=args.slide_spec_report,

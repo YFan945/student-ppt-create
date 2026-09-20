@@ -159,6 +159,102 @@ def coverage_slides(
     return sorted(chosen[:limit])
 
 
+def archetype_map(spec: dict[str, Any]) -> dict[int, str]:
+    """Slide number -> archetype, for inspection and coverage comparisons."""
+    out: dict[int, str] = {}
+    for index, item in enumerate(spec.get("slides") or []):
+        if not isinstance(item, dict):
+            continue
+        number = int(item.get("id") or index + 1)
+        if number > 0:
+            out[number] = archetype_of(item)
+    return out
+
+
+def coverage_verdict(
+    lost_count: int,
+    lost: list[str],
+    gained: list[str],
+    leverage_missed: list[int],
+) -> str:
+    """One sentence a session can act on without re-deriving the rule."""
+    if lost_count > 0:
+        verdict = (
+            f"rejected: covers {lost_count} fewer distinct archetype(s) than the default "
+            f"(lost {', '.join(lost) or 'none'}); keep the default or add a page carrying one of them"
+        )
+    elif lost and gained:
+        verdict = f"accepted: trades {', '.join(lost)} for {', '.join(gained)} — same coverage count"
+    else:
+        verdict = "accepted: same or better archetype coverage as the default"
+    if leverage_missed:
+        verdict += f"; misses high-leverage page(s) {leverage_missed}"
+    return verdict
+
+
+def coverage_report(
+    spec: dict[str, Any],
+    leverage: list[int] | None = None,
+    candidate: list[int] | None = None,
+    limit: int = 3,
+) -> dict[str, Any]:
+    """Compare a candidate calibration set against the deterministic default.
+
+    2026-09-20: the `next --json` hand-over note projects a default packet and,
+    in the same breath, tells the session to "pick 2-3 slides covering DISTINCT
+    archetypes". With no rule for when an override is justified, a live session
+    argued with itself for rounds over `[1,2,3]` vs `[1,7,9]` — the chart pages it
+    cared about were missing from the default, but so was any way to tell whether
+    swapping them in lost coverage. The rule is data now: keep the default unless
+    the candidate covers at least as many distinct archetypes. Trading one grammar
+    for another keeps the count and is a legitimate swap; dropping one is not.
+    """
+    total = sum(1 for item in (spec.get("slides") or []) if isinstance(item, dict))
+    flagged = sorted({int(n) for n in (leverage or []) if 1 <= int(n) <= total})
+    default = coverage_slides(spec, leverage, limit)
+    chosen = sorted({int(n) for n in (candidate or default) if 1 <= int(n) <= total})[:limit]
+    arch = archetype_map(spec)
+    default_arch = sorted({arch[n] for n in default if n in arch})
+    candidate_arch = sorted({arch[n] for n in chosen if n in arch})
+    lost = sorted(set(default_arch) - set(candidate_arch))
+    gained = sorted(set(candidate_arch) - set(default_arch))
+    lost_count = len(default_arch) - len(candidate_arch)
+    return {
+        "default": default,
+        "candidate": chosen,
+        "default_archetypes": default_arch,
+        "candidate_archetypes": candidate_arch,
+        "archetype_count": {"default": len(default_arch), "candidate": len(candidate_arch)},
+        # Count-based, not set-based: swapping a timeline for a chart trades one
+        # grammar for another and still samples three.
+        "keeps_coverage": len(candidate_arch) >= len(default_arch),
+        "archetypes_lost": lost,
+        "archetypes_gained": gained,
+        "high_leverage": flagged,
+        "high_leverage_missed": [n for n in flagged if n not in chosen],
+        "verdict": coverage_verdict(lost_count, lost, gained, [n for n in flagged if n not in chosen]),
+        "archetype_of": {str(n): arch[n] for n in sorted(arch)},
+    }
+
+
+def calibration_coverage(
+    work_dir: Path,
+    candidate: list[int] | None = None,
+    limit: int = 3,
+) -> dict[str, Any] | None:
+    """Work-dir entry point for the coverage comparison (None when no spec)."""
+    spec_path = find_spec(work_dir)
+    if spec_path is None:
+        return None
+    try:
+        spec = load_structured(spec_path)
+    except Exception:
+        return None
+    if not isinstance(spec, dict):
+        return None
+    return coverage_report(spec, high_leverage(work_dir), candidate, limit)
+
+
 def default_calibration_slides(work_dir: Path, limit: int = 3) -> list[int]:
     """Work-dir entry point shared by builder_packet and calibration_preview.
 

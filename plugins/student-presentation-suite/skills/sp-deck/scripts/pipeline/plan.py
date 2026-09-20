@@ -71,6 +71,46 @@ def compile_research_for_plan(
     return spec, pack, validation, evidence_map.resolve()
 
 
+def aligned_validation_report(work_dir: Path, spec: Path, report: Path) -> tuple[Path, bool]:
+    """Return a validation report that describes `spec` exactly (2026-09-20).
+
+    A research-backed deck is a chicken-and-egg trap: `plan` compiles the source
+    spec into `slide-spec-compiled.yaml` and then freezes **that** file, so a
+    report the session produced from the source spec can never match. The guard
+    refuses, the session only then discovers the compiled file, and plan has to
+    run twice — three wasted round-trips on a transition the pipeline itself
+    owns. Plan created the compiled spec, so plan re-validates it.
+
+    Re-validation never hides a failure: a spec that does not validate produces
+    `valid: false` and the freeze still refuses, now against the right file.
+    """
+    from slide_spec_guard import sha256_file
+
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        data = None
+    if (
+        isinstance(data, dict)
+        and data.get("valid") is True
+        and data.get("slide_spec_sha256") == sha256_file(spec)
+    ):
+        return report, False
+
+    regenerated = work_dir / "slide-spec-report.json"
+    proc = core._runner([
+        sys.executable, str(ROOT / "scripts" / "validate_slide_spec.py"), str(spec),
+        "--output", str(regenerated),
+    ])
+    if proc.returncode != 0 or not regenerated.is_file():
+        detail = (proc.stderr or proc.stdout or "").strip()
+        raise RefusedError(
+            f"Slide Spec validation failed for the spec being frozen ({spec.name}) "
+            f"(exit {proc.returncode}): {detail[:400]}"
+        )
+    return regenerated, True
+
+
 def cmd_plan(args: argparse.Namespace) -> int:
     work_dir = args.work_dir.resolve()
     manifest = load_manifest(work_dir)
@@ -185,6 +225,12 @@ def cmd_plan(args: argparse.Namespace) -> int:
         detail = (pre.stderr or pre.stdout or "").strip()
         raise RefusedError(f"copy-fit preflight blocked plan (exit {pre.returncode}): {detail[:400]}")
 
+    validation_report, report_regenerated = aligned_validation_report(work_dir, spec, validation_report)
+    if report_regenerated:
+        print(
+            f"ppt_pipeline: {args.validation_report.name} does not describe {spec.name}; "
+            f"re-validated the frozen spec into {validation_report}"
+        )
     lock = work_dir / "slide-spec-lock.json"
     freeze_argv = [
         sys.executable, str(HERE / "slide_spec_guard.py"), "freeze",
@@ -203,6 +249,13 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "slide_spec": bind(spec), "spec_lock": bind(lock),
         "slide_spec_report": bind(validation_report), "art_direction": bind(art),
     })
+    if report_regenerated:
+        # Visible in the manifest so a cost/QA review can see that the source spec
+        # and the frozen spec are two different files, not one drifting artifact.
+        fresh["spec_report_regenerated"] = {
+            "frozen_spec": spec.name,
+            "supplied_report": str(args.validation_report),
+        }
     for key, path in (("visual_generation_report", args.visual_generation_report), ("evidence_map", args.evidence_map), ("research_pack", args.research_pack), ("research_validation", args.research_validation)):
         if path:
             resolved = path.resolve()

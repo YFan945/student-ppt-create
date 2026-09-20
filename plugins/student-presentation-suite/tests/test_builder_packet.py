@@ -225,6 +225,28 @@ class BuilderPacketTests(unittest.TestCase):
         self.assertTrue(Path(payload["packet"]).is_file())
         self.assertEqual([1, 4], payload["slides"])
 
+    def test_cli_reports_whether_an_override_keeps_coverage(self) -> None:
+        """2026-09-20: overriding the calibration default is allowed, but the
+        cost of the swap must be on the record, not in the session's head."""
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = self.packet.main(
+                ["--work-dir", str(self.work), "--mode", "calibration", "--slides", "1", "4", "--json"]
+            )
+        self.assertEqual(0, code)
+        coverage = json.loads(buffer.getvalue())["coverage"]
+        self.assertEqual([1, 3, 4], coverage["default"])
+        self.assertEqual([1, 4], coverage["candidate"])
+        self.assertEqual({"default": 3, "candidate": 2}, coverage["archetype_count"])
+        self.assertFalse(coverage["keeps_coverage"])
+        self.assertIn("rejected", coverage["verdict"])
+
+    def test_coverage_is_printed_as_one_line_without_json(self) -> None:
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            self.packet.main(["--work-dir", str(self.work), "--mode", "calibration", "--slides", "1", "4"])
+        self.assertIn("calibration coverage:", buffer.getvalue())
+
     def test_empty_initial_set_yields_no_packets(self) -> None:
         (self.work / "pages" / "p01-s01.js").write_text(
             "// implemented — no scaffold marker\nexport default {};\n", encoding="utf-8"

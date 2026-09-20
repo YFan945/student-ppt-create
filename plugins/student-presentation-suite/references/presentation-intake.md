@@ -42,11 +42,34 @@ Confirm every item before production:
 | Edit intent | None (new deck) | For improvements: `incremental` / `rebuild-clean-copy` / `fix-specific`; `rebuild-clean-copy` overrides the edit_ooxml default |
 | Image strategy | `hybrid-adaptive`：生成能力可用且获准时制作关键插图，否则采用确定性图表/形状 | Controls sourcing and production |
 | Visual style | Recommend three topic-fit styles; choose one only after confirmation | Controls visual direction |
-| Deliverables | PPTX, speaker notes, preview/contact sheet; add change summary for edits | Controls completion criteria |
+| Deliverables | PPTX only; speaker notes, preview, contact sheet, PDF, and full script appear only when the user selects them; add change summary for edits | Controls completion criteria |
 | Interaction/quality mode | Beginner + high-score | Controls guidance, evidence, and rehearsal depth |
 | Structure mode | Scenario default | Controls the narrative spine |
 | Content controls | 40 English words / 80 Chinese characters, balanced visual/text, notes on | Controls density and output layers |
 | Citation/export/versioning | Classroom citations; requested local exports; versioning on for edits | Controls traceability and rollback |
+
+### Deliverables vs. pipeline evidence
+
+`deliverables` is the **user-confirmed** set and nothing else. Two neighbors are
+routinely confused with it and must stay separate:
+
+- **Pipeline evidence** — rendered pages, the contact sheet, and the
+  package/readback/quality/delivery reports. The pipeline always writes these
+  into the work directory because the visual critic and the QA gates read them.
+  They are **not** implied deliverables: never list them in the Production
+  Summary as "will be delivered" unless the user actually selected `preview`,
+  `contact-sheet`, or `quality-report`.
+- **Embedded speaker notes** — Slide Spec `meta.include_speaker_notes` puts the
+  script into the PPTX notes pane. It is independent of `deliverables`, so a
+  deck approved as "PPTX only" can still carry notes inside the file. Selecting
+  `speaker-notes` asks for an *additional* standalone `-speaker-notes.md`.
+
+When the user selects `pptx` and nothing else, the Production Summary says
+exactly that. Do not pad the list with defaults: before 0.14.x a missing value
+silently expanded to "PPTX, speaker notes, preview", which made the summary
+contradict the user's own choice and forced the deck to produce a script nobody
+asked for. If the deck needs a script for a 10-minute talk, raise it as a
+`调整方案` hint at the confirmation round — do not add it silently.
 
 If duration is known but slide count is not, recommend:
 
@@ -148,7 +171,7 @@ Basic）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内
   一个类别选择，白耗一轮交互与两个请求
 
 **Round 4 — 输出格式**:
-- `Deliverables` (multi-select) → options: PPTX/幻灯片, Speaker notes/讲稿, Preview/预览图, PDF export/PDF, Contact sheet/缩略图联系人表, Full script/完整演讲稿
+- `Deliverables` (multi-select) → options: PPTX/幻灯片（默认，始终包含）, Speaker notes/讲稿（额外的独立 .md；PPTX 备注窗格由 `include_speaker_notes` 单独控制）, Preview/预览图（管线必产作质检留痕，勾选=额外交付给你）, PDF export/PDF, Contact sheet/缩略图联系人表（管线必产，勾选=额外交付）, Full script/完整演讲稿
 - Other output-specific fields as needed
 
 ### Example

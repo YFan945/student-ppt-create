@@ -2,6 +2,56 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased
+
+- **P1 · `deliverables` 不再被默认值静默扩大**：此前 Slide Spec 缺 `meta.deliverables`
+  时，`slide_spec_to_pptx_brief.py` 回退为硬编码的
+  `["pptx", "speaker-notes", "preview"]`，并在 `## Output Contract` 里无条件列出 Notes 与
+  Preview 路径。后果是用户在 intake 只勾"PPTX 幻灯片"后，Production Summary 与管线 brief
+  仍声称欠一份讲稿和一份预览图，摘要与用户自己的选择互相矛盾。现统一收敛到
+  `required_deliverables()`：`deliverables` → `export_formats` → `["pptx"]`；Notes 行只在
+  勾选 `speaker-notes` 时出现；Preview/contact sheet 明确标注为"管线必产的质检留痕，勾选
+  才成为交付物"。
+- **P1 · 交付门禁读取确认的 deliverables**：`pptx_delivery_check`（含 v07/v071/v08）新增
+  `--deliverables`，v08 在未显式传入时从 `--slide-spec` 的 `meta.deliverables` /
+  `export_formats` 自动读取；notes 与 preview 是否属于必需交付文件由确认集合推导
+  （`resolve_requirements`），`--allow-missing-*` 仍可显式覆盖，未传 deliverables 时保留
+  历史默认。此前这两个必需项只由手工 flag 决定，因此"只选 PPTX"的 deck 仍会因为缺少
+  `speaker-notes.md` 被判交付不完整——主会话为满足门禁而产出用户没要的文件，是这条矛盾
+  链的最后一环。报告新增 `deliverables` / `notes_required` / `preview_required` 字段。
+  测试 +14。
+- **P2 · 文档区分交付物与管线证据**：`presentation-intake.md` 新增
+  "Deliverables vs. pipeline evidence" 小节，讲清 `deliverables`、
+  `meta.include_speaker_notes`（PPTX 备注窗格内嵌讲稿）与 render/contact sheet（质检留痕）
+  三者的边界，Round 4 选项加标注；`presentation-brief.md` 加指针；`sp-deck/SKILL.md` 的
+  Output contract 拆成"交付物"与"管线证据"两类。  默认值行由"PPTX, speaker notes,
+  preview/contact sheet"改为"PPTX only"。
+- **P1 · `plan` 自己对齐验证报告，消除 compiled-spec 的"鸡生蛋"**：研究型 deck 的
+  `plan` 会先把源 spec 编译成 `slide-spec-compiled.yaml` 再 freeze 它，而会话提交的
+  `--validation-report` 是针对源 spec 生成的，哈希必然不等 →
+  `REFUSED — slide_spec_guard freeze failed: stale or belongs to another spec`。会话只能
+  先跑一遍 plan（失败但写盘 compiled）、`ls` 发现 compiled、手跑 validator、再跑第二遍
+  plan。现 `plan.aligned_validation_report()` 在报告与将冻结的 spec 不匹配时**自行对该
+  spec 重新生成报告**到 `<wd>/slide-spec-report.json`，并在 manifest 记
+  `spec_report_regenerated`；spec 本身校验不通过仍然 REFUSED（不是绕过）。
+  `slide_spec_guard` 的重建提示改为带真实路径而非 `<work-dir>` 占位符。测试 +4。
+- **P1 · `claim` 与 `title` 的关系进入 copy-fit 门禁**：此前 spec 同时有 `title` 与
+  `claim`，文档没说二者能否同句，门禁也不判，于是每次生成都要靠模型自己纠结一遍
+  （"claim 要不要 = title""会不会上屏出现两句相似的话""会不会被 copy-fit 再查一次"）。
+  现按页面 kind 定死：论证/证据页 `claim` 不得复述 `title`（`claim_duplicates_title`，
+  major，写生成器之前就拦下）；`cover` / `section-divider` / `quotation` / `references` /
+  `appendix` / `qa` / `closing` 这七类 descriptive title 页面允许且应当重复——标题本身
+  就是结论句，页面只印一次，密度上限也只计一次（此前重复会被计两遍）。金样例的
+  1/3/9 页正是这个模式，已作为回归钉住。`slide-spec.md` 同步写清，并补上
+  `slide_copy` 只接受 string / string[]（`{title, subtitle}` 对象会被 schema 拒）。测试 +4。
+- **P2 · 校准样本的默认集与自选之间给出判定规则**：`next --json` 原先一边递上按
+  archetype coverage 选出的默认集，一边又说"pick 2-3 slides covering DISTINCT
+  archetypes"，没有何时该覆盖的规则，会话因此在 `[1,2,3]` 与自选集之间反复摇摆。
+  现 `calibration_archetypes.coverage_report()` 给出 `archetype_count` / `archetypes_lost` /
+  `high_leverage_missed` 与一句 `verdict`；`builder_packet.py --mode calibration --slides`
+  输出 `coverage` 块并打印一行结论；判定按**覆盖的 archetype 数量**而非集合相等——换掉
+  一种语法换另一种可以，少一种不行。`dispatch` payload 新增 `calibration_coverage`。测试 +7。
+
 ## 0.15.3 — 2026-09-20 · Lifecycle & Consistency
 
 2026-09-20 第二轮外部评审的 2 项生命周期/一致性修复：

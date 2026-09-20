@@ -186,7 +186,8 @@ def main() -> None:
         raise SystemExit(2) from exc
     prefix = args.prefix or (data.get("meta") or {}).get("output_prefix") or args.spec.stem
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    confirmed = set((data.get("meta") or {}).get("deliverables") or [])
+    spec_meta = data.get("meta") or {}
+    confirmed = set(spec_meta.get("deliverables") or spec_meta.get("export_formats") or [])
     requested = set(args.only or [])
     unconfirmed = requested - confirmed
     if unconfirmed:

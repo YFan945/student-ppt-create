@@ -82,8 +82,23 @@ Optional v2 slide fields:
   visible text, verbatim — the actual-content gate matches PPTX text runs byte-exact,
   so a claim that lives only in this file is undelivered (chart data labels are not
   text runs).
+  **Whether it may restate `title` depends on the page kind.**
+  - Argumentative / evidence slides: no. `title` labels the page, `claim` carries
+    the judgement the label does not (evidence, consequence, or a number). A
+    duplicated claim prints the same sentence twice, wastes the claim band, and is
+    blocked by `copy_fit_preflight.py` as `claim_duplicates_title` (major) before
+    any generator is written.
+  - Descriptive-title kinds (`cover`, `section-divider`, `quotation`, `references`,
+    `appendix`, `qa`, `closing`): yes, and it is normal. There the title *is* the
+    takeaway line, the page prints it once, and `claim` repeats it so the verbatim
+    actual-content gate has the sentence to match — see `examples/golden-sample`.
+    Nothing is printed twice and the density cap counts it once.
+  - `title` and `claim` both count toward the density cap; an exact duplicate is
+    counted once because the page renders it once.
 - `supporting_points`: concise reasons, examples, or evidence
-- `slide_copy`: final compact PPT wording
+- `slide_copy`: final compact PPT wording — **a single string or a list of strings**.
+  An object (`{title, subtitle}`) is rejected by the schema, which reads as
+  `is not valid under any of the given schemas`; flatten it to a list instead.
 - `speaker_notes`: speakable explanation rather than an essay
 - `key_line`: optional memorable sentence
 - `evidence_refs`: ids from the top-level Evidence Ledger
@@ -102,6 +117,8 @@ Schema and validation:
 - The validator requires `jsonschema` and `PyYAML` from `requirements.txt`.
 - Unknown fields are rejected in `meta`, slides, visuals, and review findings to catch spelling mistakes.
 - Semantic validation also checks contiguous slide ids, `slide_count`, total timing vs `duration_min`, group members/owners, existing-deck combinations, high-score controls, evidence references, and lock semantics.
+- `copy_fit_preflight.py` (run by `plan`) additionally checks that `title` fits the title band, that `claim` fits the claim band and does not restate `title`, and that `title` + `claim` + `slide_copy` stay inside the density cap.
+- **Which file to validate:** for a research-backed deck `plan` compiles your source spec into `slide-spec-compiled.yaml` and freezes *that* file, so the validation report must describe the compiled spec. `plan` now re-validates automatically when the supplied report describes a different file (recorded as `spec_report_regenerated` in the manifest); when you run the validator by hand before `plan`, run it against the source spec and let `plan` own the compiled one.
 - Scenario-driven story roles（如 `defense` 的 problem/method/result/solution/limitation/qa）是**建议性**的，不再作为硬错误阻断：`validate_slide_spec.py` 不因缺失角色失败，`analyze_presentation_spec.py` 会以 Minor 提示。不要为了凑满角色而硬塞一页。
 
 ```powershell

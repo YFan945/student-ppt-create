@@ -228,6 +228,28 @@ def _estimate_slide_text_fit(
     return warnings
 
 
+#: The only deliverable that is guaranteed when nothing is confirmed.
+#: Render pages, the contact sheet, and the quality report are pipeline
+#: evidence that the QA gates need; they are never implied deliverables.
+DEFAULT_DELIVERABLES = ["pptx"]
+
+
+def required_deliverables(meta: dict[str, Any]) -> list[str]:
+    """Resolve the deliverables the user actually confirmed.
+
+    `meta.deliverables` is the confirmed set from the Production Summary and
+    `meta.export_formats` is its legacy alias. Neither may be padded with
+    defaults: before 0.14.x a missing value silently expanded to
+    ``["pptx", "speaker-notes", "preview"]``, so a user who picked PPTX only
+    was told the deck owed them a script and a preview.
+    """
+    for key in ("deliverables", "export_formats"):
+        value = meta.get(key)
+        if isinstance(value, list) and value:
+            return [str(item) for item in value]
+    return list(DEFAULT_DELIVERABLES)
+
+
 def build_brief(
     data: dict[str, Any],
     source: Path,
@@ -263,6 +285,7 @@ def build_brief(
         meta.get("visual_style"), meta.get("visual_style_custom")
     )
 
+    deliverables = required_deliverables(meta)
     lines = [
         "# Claude PPTX Production Brief",
         "",
@@ -289,10 +312,15 @@ def build_brief(
         "## Output Contract",
         f"- Project output directory: `{resolved_output_dir}`",
         f"- PPTX: `{pptx_path}`",
-        f"- Notes: `{notes_path}`",
-        f"- Preview/contact sheet: `{preview_path}` or a contact sheet in the same directory",
-        f"- Delivery report: `{delivery_report_path}`",
     ]
+    if "speaker-notes" in deliverables:
+        lines.append(f"- Notes: `{notes_path}`")
+    lines.append(
+        "- Preview/contact sheet (QA evidence: always rendered because the visual "
+        f"critic and QA gates read it; a deliverable only when selected): `{preview_path}` "
+        "or a contact sheet in the same directory"
+    )
+    lines.append(f"- Delivery report: `{delivery_report_path}`")
     if production_mode == "edit_ooxml":
         toolkit_start = lines.index("## Runtime Contract")
         output_contract = lines.index("## Output Contract")
@@ -304,7 +332,7 @@ def build_brief(
             "Preserve theme, masters, layouts, notes, relationships, embedded media, and unrelated slides.",
             "",
         ]
-    export_formats = meta.get("export_formats") or meta.get("deliverables") or []
+    export_formats = deliverables
     if "pdf" in export_formats:
         lines.append(f"- PDF: `{resolved_output_dir / f'{output_prefix}-presentation.pdf'}`")
     if "teleprompter" in export_formats:
@@ -347,11 +375,7 @@ def build_brief(
             f"- Visual style: {meta_value(meta, 'visual_style')}",
             f"- Custom visual reference: {json.dumps(meta.get('visual_style_custom'), ensure_ascii=False) if meta.get('visual_style_custom') else 'not applicable'}",
             "- Required deliverables:",
-            text_block(
-                meta.get("deliverables")
-                or ["pptx", "speaker-notes", "preview"],
-                "  ",
-            ),
+            text_block(required_deliverables(meta), "  "),
         ]
     )
     lines.extend(

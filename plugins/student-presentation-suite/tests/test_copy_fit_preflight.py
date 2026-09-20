@@ -118,5 +118,59 @@ class CopyFitPreflightTests(unittest.TestCase):
         self.assertTrue(report["ok"], report["problems"])
 
 
+class TitleClaimRelationTests(unittest.TestCase):
+    """2026-09-20: whether `claim` may repeat `title` was re-decided by hand in
+    every session. The rule lives in the gate now — forbidden on argumentative
+    pages, expected on descriptive-title kinds (see golden-sample slides 1/3/9)."""
+
+    REGIONS = {
+        "title_w": None, "title_h": 0.72,
+        "claim_w": None, "claim_h": 0.94,
+        "body_w": None, "body_h": 3.04,
+    }
+
+    @staticmethod
+    def _check(slide: dict) -> dict:
+        module = load_module(SCRIPT)
+        report = module.preflight(
+            {"slides": [slide]},
+            None,
+            content_w=10.0 - 0.6 * 2,
+            regions=dict(TitleClaimRelationTests.REGIONS),
+            max_chars=80,
+        )
+        return report
+
+    def _fields(self, slide: dict) -> list[str]:
+        return [p["field"] for p in self._check(slide)["problems"]]
+
+    def test_a_content_slide_may_not_restate_its_title(self) -> None:
+        problems = self._check({"id": 1, "title": "风光互补", "claim": "风光互补"})["problems"]
+        majors = [p for p in problems if p["severity"] == "major"]
+        self.assertEqual(1, len(majors))
+        self.assertEqual("claim_duplicates_title", majors[0]["field"])
+
+    def test_punctuation_noise_does_not_hide_the_duplicate(self) -> None:
+        fields = self._fields({"id": 1, "title": "风光互补，而非替代", "claim": "风光互补而非替代。"})
+        self.assertIn("claim_duplicates_title", fields)
+
+    def test_descriptive_title_kinds_may_repeat_the_title(self) -> None:
+        for kind in ("cover", "section-divider", "closing", "quotation", "references", "appendix", "qa"):
+            with self.subTest(kind=kind):
+                self.assertNotIn(
+                    "claim_duplicates_title",
+                    self._fields({"id": 1, "kind": kind, "title": "流畅是能力，忠实是选择。", "claim": "流畅是能力，忠实是选择。"}),
+                )
+
+    def test_a_repeated_claim_is_counted_once_toward_density(self) -> None:
+        """The page prints the sentence once, so the cap must count it once."""
+        module = load_module(SCRIPT)
+        duplicated = {"id": 1, "kind": "cover", "title": "一二三四五", "claim": "一二三四五"}
+        distinct = {"id": 1, "kind": "cover", "title": "一二三四五", "claim": "六七八九十"}
+        self.assertEqual(5, self._check(duplicated)["slides"][0]["on_slide_chars"])
+        self.assertEqual(10, self._check(distinct)["slides"][0]["on_slide_chars"])
+        self.assertEqual(module.comparison_key("一二三四五"), module.comparison_key("一二三四五"))
+
+
 if __name__ == "__main__":
     unittest.main()

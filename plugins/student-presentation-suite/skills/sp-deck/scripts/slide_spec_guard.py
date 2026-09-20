@@ -30,20 +30,27 @@ RESEARCH_ARGS = (
 RESEARCH_KEYS = {name.lstrip("-").replace("-", "_") for name, _ in RESEARCH_ARGS}
 
 
-def _spec_report_regen_hint() -> str:
+def _spec_report_regen_hint(spec: Path | None = None) -> str:
     """Exact regeneration command for the plan-compiled spec (2026-09-17).
 
     A live session burned three freeze attempts because the refusal named the
     problem but not the fix: the report must come from the plan-compiled spec
     (slide-spec-compiled.yaml), not the source slide-spec.yaml and not the
     research-pack validation report.
+
+    The 2026-09-20 fix takes the spec actually being frozen so the hint carries
+    real paths instead of `<work-dir>` placeholders — a placeholder command is
+    not copy-pasteable and cost the session another round-trip.
     """
     validator = Path(__file__).resolve().parents[3] / "scripts" / "validate_slide_spec.py"
+    target = f'"{spec}"' if spec is not None else '"<work-dir>/slide-spec-compiled.yaml"'
+    report = f'"{spec.with_name("slide-spec-report.json")}"' if spec is not None else "<report.json>"
     return (
         " Regenerate it with: "
-        f'"{sys.executable}" "{validator}" "<work-dir>/slide-spec-compiled.yaml" '
-        "--output <report.json> (the report must be produced from the plan-compiled "
-        "spec, not the source slide-spec.yaml)."
+        f'"{sys.executable}" "{validator}" {target} '
+        f"--output {report} (the report must be produced from the spec being "
+        "frozen — for a research-backed deck that is the plan-compiled "
+        "slide-spec-compiled.yaml, not the source slide-spec.yaml)."
     )
 
 
@@ -85,16 +92,18 @@ def validated_spec(spec: Path, report: Path) -> tuple[str, str]:
         raise SystemExit(f"Slide Spec does not exist: {spec}")
     if not report.is_file():
         raise SystemExit(
-            f"Slide Spec validation report does not exist: {report}.{_spec_report_regen_hint()}"
+            f"Slide Spec validation report does not exist: {report}.{_spec_report_regen_hint(spec)}"
         )
     data = load_json(report)
     spec_hash = sha256_file(spec)
     if data.get("valid") is not True:
-        raise SystemExit(f"Slide Spec validation report is not passing.{_spec_report_regen_hint()}")
+        raise SystemExit(
+            f"Slide Spec validation report is not passing.{_spec_report_regen_hint(spec)}"
+        )
     if data.get("slide_spec_sha256") != spec_hash:
         raise SystemExit(
             "Slide Spec validation report is stale or belongs to another spec."
-            f"{_spec_report_regen_hint()}"
+            f"{_spec_report_regen_hint(spec)}"
         )
     return spec_hash, sha256_file(report)
 

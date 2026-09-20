@@ -105,6 +105,33 @@ def default_calibration_slides(work_dir: Path, limit: int = 3) -> list[int]:
     return coverage_default(work_dir, limit)
 
 
+def calibration_coverage(work_dir: Path, slides: list[int] | None, limit: int = 3) -> dict[str, Any] | None:
+    """Archetype coverage of an explicit calibration pick vs. the default set.
+
+    Overriding the default is allowed, but an override that silently drops an
+    archetype defeats the point of calibration (one grammar sampled three times
+    cannot catch a systemic choice). The comparison is emitted with the packet so
+    the decision is made on numbers, not on a feeling about page importance.
+    """
+    from calibration_archetypes import calibration_coverage as coverage_report
+
+    try:
+        return coverage_report(work_dir, slides, limit)
+    except Exception:
+        return None
+
+
+def coverage_line(coverage: dict[str, Any] | None) -> str:
+    """One human line stating whether an override keeps coverage."""
+    if not coverage:
+        return ""
+    return (
+        f"calibration coverage: {coverage['verdict']} — candidate {coverage['candidate']} "
+        f"[{', '.join(coverage['candidate_archetypes'])}] vs default {coverage['default']} "
+        f"[{', '.join(coverage['default_archetypes'])}]"
+    )
+
+
 def remaining_scaffold_slides(work_dir: Path) -> list[int]:
     """Slides whose page module still carries the stub marker (never implemented)."""
     pages = work_dir / "pages"
@@ -491,22 +518,23 @@ def main(argv: list[str] | None = None) -> int:
     if not work_dir.is_dir():
         raise SystemExit(f"Work directory does not exist: {work_dir}")
     path, packet = write_packet(work_dir, args.mode, args.slides, args.shard, args.qa_report)
+    coverage = calibration_coverage(work_dir, args.slides) if args.mode == "calibration" else None
     if args.json:
-        print(
-            json.dumps(
-                {
-                    "packet": str(path),
-                    "mode": packet["mode"],
-                    "shard": packet["shard"],
-                    "slides": packet["assigned_slides"],
-                    "speaker_notes_target": packet["speaker_notes_target"],
-                },
-                ensure_ascii=False,
-                indent=2,
-            )
-        )
+        payload = {
+            "packet": str(path),
+            "mode": packet["mode"],
+            "shard": packet["shard"],
+            "slides": packet["assigned_slides"],
+            "speaker_notes_target": packet["speaker_notes_target"],
+        }
+        if coverage:
+            payload["coverage"] = coverage
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(f"packet: {path} (mode={packet['mode']} slides={packet['assigned_slides']})")
+        line = coverage_line(coverage)
+        if line:
+            print(line)
     return 0
 
 

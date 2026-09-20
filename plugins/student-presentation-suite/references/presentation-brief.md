@@ -41,6 +41,15 @@ Depth controls terminology and explanation:
 
 Both modes require explicit Production Summary approval before PPTX production.
 
+## Deliverables
+
+`deliverables` is the user-confirmed set, and it is the only thing that decides
+what gets handed over. Render pages, the contact sheet, and the QA reports are
+pipeline evidence and are never implied deliverables; embedded speaker notes are
+controlled by Slide Spec `meta.include_speaker_notes`, not by this field. See
+`presentation-intake.md` § "Deliverables vs. pipeline evidence" for the full
+boundary — do not restate it here.
+
 ## Visual Style Reference
 
 Choose one of the 12 formal lightweight references in `visual-style-menu.md`, or set

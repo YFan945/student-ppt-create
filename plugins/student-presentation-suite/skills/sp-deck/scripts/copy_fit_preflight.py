@@ -15,8 +15,16 @@ is revised while revising it is still cheap.
 It checks, per slide:
   * `title` fits the title band at `slide_title_pt`;
   * `claim` (or `key_line`) fits the claim band at `body_pt`;
+  * on argumentative slides, `claim` says something the `title` does not already
+    say (2026-09-20: a live session spent several rounds deciding by hand whether
+    `claim` may repeat the title; the answer belongs in the gate, not in the
+    model's head). Descriptive-title kinds (cover, section-divider, quotation,
+    references, appendix, qa, closing) are exempt — there the title *is* the
+    takeaway line and repeating it in `claim` is the documented pattern;
   * every `slide_copy` / `content` fragment fits the body region;
-  * total on-slide characters stay within the confirmed density cap.
+  * total on-slide characters stay within the confirmed density cap — this is
+    `title` + `claim` + body fragments, so a duplicated claim is counted twice
+    because the page genuinely renders it twice.
 
 Width model: CJK and full-width punctuation cost one em, Latin letters and digits
 0.58 em, half-width punctuation 0.35 em. Line height uses 1.45x, matching how
@@ -46,6 +54,15 @@ DEFAULT_REGIONS = {
     "body_w": None,
     "body_h": 3.04,
 }
+# `slide-spec.md`: a claim-style `title` is required on argumentative/evidence
+# slides, but a DESCRIPTIVE title is allowed on these kinds. There the title *is*
+# the takeaway line, the page prints it once, and `claim` repeats it so the
+# verbatim actual-content gate has something to match — the golden sample does
+# exactly that on its cover, divider and closing pages. Flagging those would
+# punish the documented pattern, so duplication is only a defect off this list.
+DESCRIPTIVE_TITLE_KINDS = frozenset(
+    {"cover", "section-divider", "quotation", "references", "appendix", "qa", "closing"}
+)
 CJK_RE = re.compile(r"[　-〿一-鿿＀-￯]")
 HALF_PUNCT_RE = re.compile(r"[.,:%+/()\-]")
 LINE_HEIGHT_FACTOR = 1.45
@@ -121,6 +138,14 @@ def cjk_char_count(text: str) -> int:
     return len(CJK_RE.findall(str(text or "")))
 
 
+_DUP_IGNORE_RE = re.compile(r"[\s　、，。；：！？,.!?;:\"'“”‘’（）()\-—…·]+")
+
+
+def comparison_key(text: str) -> str:
+    """Normalise copy so whitespace/punctuation noise cannot hide a duplicate."""
+    return _DUP_IGNORE_RE.sub("", str(text or "")).casefold()
+
+
 def is_caption(text: str) -> bool:
     """Source lines and figure captions are excluded from the density cap."""
     return bool(re.match(r"^\s*(来源|注[:：]|数据来|图\d|表\d)", str(text or "")))
@@ -166,6 +191,28 @@ def check_slide(
                 }
             )
 
+    # A claim that restates the title is a defect on an argumentative page: it
+    # prints the same sentence twice and spends the whole claim band on it. On a
+    # descriptive-title page (cover/divider/closing…) the title *is* the takeaway
+    # and the page prints it once, so the repeat is the documented pattern. The
+    # spec carries both fields, so the gate has to say which one applies instead
+    # of letting every session re-decide it from scratch.
+    kind = str(slide.get("kind") or "").strip().lower()
+    duplicated = bool(title and claim and comparison_key(title) == comparison_key(claim))
+    if duplicated and kind not in DESCRIPTIVE_TITLE_KINDS:
+        problems.append(
+            {
+                "field": "claim_duplicates_title",
+                "severity": "major",
+                "text": claim,
+                "chars": len(claim),
+                "advice": (
+                    "claim must add what the title does not already say (evidence, "
+                    "consequence, or number) — or drop the claim and keep the title"
+                ),
+            }
+        )
+
     body_pieces = [piece for piece in copy if piece and not is_caption(piece)]
     if body_pieces:
         total_h = 0.0
@@ -184,7 +231,9 @@ def check_slide(
                 }
             )
 
-    on_slide = "".join([title, claim, *body_pieces])
+    # A repeated claim is one sentence on the page, not two — counting it twice
+    # would overstate density and push a legal cover/divider page over the cap.
+    on_slide = "".join([title, "" if duplicated else claim, *body_pieces])
     chars = cjk_char_count(on_slide) or len(on_slide)
     if chars > max_chars:
         problems.append(
@@ -270,6 +319,8 @@ def render(report: dict[str, Any], report_path: Path, *, verbose: bool, max_item
             detail = f"{item['fragments']} 段需 {item['required_h']}in > 可用 {item['available_h']}in"
         elif field == "density":
             detail = f"{item['chars']} 字 > 上限 {item['max_chars']}"
+        elif field == "claim_duplicates_title":
+            detail = f"claim 与 title 重复（{item['chars']} 字）：{item['advice']}"
         else:
             detail = f"{item['chars']} 字 / {item['estimated_lines']} 行 需 {item['required_h']}in > 可用 {item['available_h']}in"
         lines.append(f"  [{item['severity']}] slide {item['slide']} {field} — {detail}")

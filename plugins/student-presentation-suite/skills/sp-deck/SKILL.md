@@ -92,9 +92,9 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" status --w
 2. **Mode**：按 source deck/edit intent 唯一确定 `create` / `edit_ooxml` / `rebuild_from_source`。
 3. **Research Gate + Compile**：依赖外部事实时先跑 `sp-research` 产生 `research-pack.json` 与 validation。主会话 spawn `student-presentation-suite:presentation-researcher` **不传 `name`、禁止再套一层**。`ppt_pipeline.py plan` 自己编译 evidence map 与带 E ids 的 spec，不让模型猜编译 CLI。
 4. **Art Direction**：**先读 `references/design-tokens.json`，再呈现具体样式选项或做任何颜色/视觉承诺**——选项只能引用 token 名；6 角色位之外的配色语义（如"暖色琥珀当第二主角"）禁止承诺（2026-09-17 live：承诺"光伏配琥珀"后才发现调色板契约禁色族外颜色，被迫中途换风格并重绑确认哈希）。visual style 只作为 seed，形成 `art-direction.yaml` 与 3–5 个 high-leverage slides。
-5. **Plan**：`<wd>` 必须为项目 `outputs/.pptx-work/<work-id>`；`edit_ooxml` 自动解包到 `ooxml/`，不生成 JS；`rebuild_from_source` 须先写 `source-analysis.md`。`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证 Production Summary、copy-fit、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/` 并建立 `build-manifest.json`。
+5. **Plan**：`<wd>` 必须为项目 `outputs/.pptx-work/<work-id>`；`edit_ooxml` 自动解包到 `ooxml/`，不生成 JS；`rebuild_from_source` 须先写 `source-analysis.md`。`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证 Production Summary、copy-fit、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/` 并建立 `build-manifest.json`。`--validation-report` 若描述的不是将被 freeze 的那个 spec（研究型 deck 会是 plan 自己编译出的 `slide-spec-compiled.yaml`），plan 会**自动对该 spec 重新生成报告**并在 manifest 记 `spec_report_regenerated`；不要为此手工跑第二遍 plan，也不要自己猜 compiled 文件的哈希。
 6. **Reference + Composition**：high-leverage 页保存 reference selection、2–3 个 silhouette candidates 与 wireframe 选择证据；普通页保留明确 composition intent。
-7. **Calibration Build**：仅 `create` / `rebuild_from_source`。校准样本按 **archetype coverage** 选取（`calibration_archetypes.py` 从 spec 的 kind / layout_family / layout 关键词确定性分类，覆盖最多不同视觉语法的 2–3 张；high-leverage 页优先认领组席位；packet 已含默认集，可用 `builder_packet.py --mode calibration --slides <ids>` 覆盖）。主会话 spawn `student-presentation-suite:presentation-builder`，不传 `name`，传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder **只实现这些页面**，其余页面保持 scaffold，主流程此时故意不能正式 build。
+7. **Calibration Build**：仅 `create` / `rebuild_from_source`。校准样本按 **archetype coverage** 选取（`calibration_archetypes.py` 从 spec 的 kind / layout_family / layout 关键词确定性分类，覆盖最多不同视觉语法的 2–3 张；high-leverage 页优先认领组席位；packet 已含默认集，**默认集就是答案，除非你能说出一个它没覆盖到的视觉语法**——"这几页更重要"不是换的理由。要覆盖就跑 `builder_packet.py --mode calibration --slides <ids>` 读它的 `coverage` 块：覆盖的 archetype **数量不少于**默认集才算可以换（换掉一种语法换另一种可以，少一种不行）。主会话 spawn `student-presentation-suite:presentation-builder`，不传 `name`，传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder **只实现这些页面**，其余页面保持 scaffold，主流程此时故意不能正式 build。
 8. **Calibration Preview**：收到 `BUILDER_DONE(mode=calibration)` 后，由主会话运行确定性 helper，而不是让 builder 自己 build：
 
 ```bash
@@ -155,4 +155,10 @@ Production Summary confirmation
 
 ## Output contract
 
-仅写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目 `outputs/`。work dir 保留 `build-manifest.json`、Slide Spec lock、Art Direction、calibration preview evidence、research provenance、正式 render/contact sheet、visual review 与 QA/delivery reports。最终交付 PPTX、speaker notes、正式 preview/contact sheet、package/readback/quality/delivery reports；**`calibration/` 仅为内部早期反馈，不作为最终交付物**。编辑任务另含 change summary。禁止覆盖 source deck。
+仅写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目 `outputs/`。
+
+**交付物**由 Production Summary 里确认的 `deliverables` 决定，不多不少。用户只选 `pptx` 时，最终交付就是 PPTX 本身。PPTX 备注窗格里有没有讲稿由 Slide Spec 的 `meta.include_speaker_notes` 决定，与 `deliverables` 无关——不要因为"10 分钟汇报没讲稿会吃力"就私自把 `speaker-notes` 加进交付清单，在最终确认轮提示用户即可。
+
+**管线证据**始终写入 work dir，但**不是交付物**：`build-manifest.json`、Slide Spec lock、Art Direction、calibration preview evidence、research provenance、正式 render/contact sheet、visual review、package/readback/quality/delivery reports。visual critic 与 QA 门禁依赖它们，所以 `deliverables` 只有 `pptx` 时它们依然会存在——呈报时标注为"质检留痕"，不要列进交付清单，也不要因为"用户没选 preview 却产出了预览图"而判定自己违约。`pptx_delivery_check` 已从 Slide Spec 的 `meta.deliverables` 推导 notes/preview 是否必需，无需手工传 `--allow-missing-*`。
+
+**`calibration/` 仅为内部早期反馈，不作为最终交付物。** 编辑任务另含 change summary。禁止覆盖 source deck。
