@@ -208,7 +208,11 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/delivery_check.py" --core v
 
 `--visual-review-report` 是逐页视觉复核的证据文件（`pptx_sha256` 绑定当前 PPTX + 每页条目）；只传裸 `--visual-reviewed` 而不传该报告时，simplified 门禁停留在 `incomplete`。
 
-每页必须对应一张有效 PNG/JPEG 预览；缺预览、spec lock 失效、quality gate 未通过或未完成逐页视觉复核时状态只能是 `incomplete`。用户明确不需要 notes 时可传 `--allow-missing-notes`。
+**交付物按类型逐个验证（v0.15.3+）**。门禁不再用"要不要讲稿"一个布尔代表所有可读产物：`speaker-notes` / `full-script` / `teleprompter` 是三个不同的文件（`*-speaker-notes.md` / `*-full-script.md` / `*-teleprompter.html`），各自按 `build_support_outputs.py` 的命名契约查存在性（PDF 按 `<prefix>*.pdf` 兜底），缺哪个就报哪个名字，并在 v08 报告里写入 `owed_deliverables` / `missing_deliverables`。**任一已确认交付物缺文件都会把交付判为 `incomplete`**，不是只在报告里留一行提示。文件由 `--notes` / `--pdf` / `--full-script` / `--teleprompter` 传入，未传则按名发现——所以"确认了 PDF 但没导出"现在会被检出，而不是静默跳过。`--pdf` 同时是导出型预览的证据，**同一个文件不会被要求两次**。
+
+`--deliverables` 未显式传入时，v08 从 `--slide-spec` 的 `meta.deliverables` / `export_formats` 读取；两者都缺时回退到**与 `slide_spec_to_pptx_brief.py` 同一份**默认值（`["pptx"]`），不会出现"Brief 说只要 PPTX、Delivery QA 却要 Notes"的分裂。缺 `meta.deliverables` 的旧项目由 `--deliverables` 显式传入旧集合来迁移。
+
+每页必须对应一张有效 PNG/JPEG 预览；缺预览、spec lock 失效、quality gate 未通过或未完成逐页视觉复核时状态只能是 `incomplete`。用户明确不需要 notes 时可传 `--allow-missing-notes`（只免除它命名的那个类型）。
 
 交付报告通过后：
 

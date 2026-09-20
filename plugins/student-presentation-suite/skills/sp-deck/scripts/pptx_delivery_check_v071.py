@@ -96,8 +96,9 @@ def validate_quality_report(
 
 def main() -> None:
     args = parse_args()
+    deliverables = legacy.parse_deliverables(getattr(args, "deliverables", None))
     require_notes, require_preview = legacy.resolve_requirements(
-        legacy.parse_deliverables(getattr(args, "deliverables", None)),
+        deliverables,
         allow_missing_notes=args.allow_missing_notes,
         allow_missing_preview=args.allow_missing_preview,
     )
@@ -107,6 +108,15 @@ def main() -> None:
         args.preview,
         require_notes=require_notes,
         require_preview=require_preview,
+        owed_deliverables=legacy.required_deliverables(
+            deliverables,
+            allow_missing_notes=args.allow_missing_notes,
+            allow_missing_preview=args.allow_missing_preview,
+        ),
+        extra_files={
+            "pdf": getattr(args, "pdf", None),
+            "teleprompter": getattr(args, "teleprompter", None),
+        },
         package_report=args.package_report,
         require_package_report=True,
         slide_spec_report=args.slide_spec_report,

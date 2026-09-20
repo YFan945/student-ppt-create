@@ -509,7 +509,33 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="QA / pre-QA report (relative to work-dir or absolute); repair blockers come from here",
     )
     parser.add_argument("--json", action="store_true", help="print the generated packet descriptor")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "write the packet even when an explicit calibration override drops an "
+            "archetype; the coverage block still records the loss"
+        ),
+    )
     return parser.parse_args(argv)
+
+
+def enforce_coverage(coverage: dict[str, Any] | None, *, requested: list[int] | None) -> bool:
+    """Refuse an override that covers fewer archetypes than the default.
+
+    Coverage is a HARD gate on an explicit `--slides` override and advisory on
+    the default set. The asymmetry is the rule, not a feeling: overriding the
+    deterministic default is the only way to lose an archetype, and it is the
+    model — not the script — that picks the override. Running with no `--slides`
+    cannot fail, because the default set is by construction the widest sample.
+
+    The check must run BEFORE the packet is written: a packet on disk is what the
+    builder is told to trust, and leaving a rejected packet behind is how a bad
+    sample still gets built. Returns True when the caller may proceed.
+    """
+    if not requested or not coverage:
+        return True
+    return bool(coverage["keeps_coverage"])
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -517,8 +543,17 @@ def main(argv: list[str] | None = None) -> int:
     work_dir = args.work_dir.resolve()
     if not work_dir.is_dir():
         raise SystemExit(f"Work directory does not exist: {work_dir}")
-    path, packet = write_packet(work_dir, args.mode, args.slides, args.shard, args.qa_report)
     coverage = calibration_coverage(work_dir, args.slides) if args.mode == "calibration" else None
+    if not enforce_coverage(coverage, requested=args.slides) and not args.force:
+        line = coverage_line(coverage)
+        if line:
+            print(line)
+        raise SystemExit(
+            "calibration override rejected: it covers fewer distinct archetypes than the default. "
+            "Keep the default set, add a page carrying one of the dropped grammars, "
+            "or pass --force to record the trade."
+        )
+    path, packet = write_packet(work_dir, args.mode, args.slides, args.shard, args.qa_report)
     if args.json:
         payload = {
             "packet": str(path),
@@ -529,12 +564,14 @@ def main(argv: list[str] | None = None) -> int:
         }
         if coverage:
             payload["coverage"] = coverage
+            payload["coverage_enforced"] = bool(args.slides) and not args.force
         print(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         print(f"packet: {path} (mode={packet['mode']} slides={packet['assigned_slides']})")
         line = coverage_line(coverage)
         if line:
             print(line)
+            print("coverage is enforced for explicit --slides overrides" if args.slides else "coverage is advisory for the default set")
     return 0
 
 

@@ -218,16 +218,132 @@ class BuilderPacketTests(unittest.TestCase):
         buffer = io.StringIO()
         with redirect_stdout(buffer):
             code = self.packet.main(
-                ["--work-dir", str(self.work), "--mode", "calibration", "--slides", "1", "4", "--json"]
+                ["--work-dir", str(self.work), "--mode", "calibration", "--slides", "1", "3", "--json"]
             )
         self.assertEqual(0, code)
         payload = json.loads(buffer.getvalue())
         self.assertTrue(Path(payload["packet"]).is_file())
-        self.assertEqual([1, 4], payload["slides"])
+        self.assertEqual([1, 3], payload["slides"])
 
     def test_cli_reports_whether_an_override_keeps_coverage(self) -> None:
         """2026-09-20: overriding the calibration default is allowed, but the
-        cost of the swap must be on the record, not in the session's head."""
+        cost of the swap must be on the record, not in the session's head.
+        The record is readable because the override is a legitimate swap."""
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = self.packet.main(
+                ["--work-dir", str(self.work), "--mode", "calibration", "--slides", "1", "3", "--json"]
+            )
+        self.assertEqual(0, code)
+        coverage = json.loads(buffer.getvalue())["coverage"]
+        self.assertEqual([1, 3, 4], coverage["default"])
+        self.assertEqual([1, 3], coverage["candidate"])
+        self.assertTrue(coverage["keeps_coverage"])
+        self.assertIn("accepted", coverage["verdict"])
+
+    #: Five pages, five distinct grammars. The default widest sample is
+    #: `[1, 2, 4]` (hero / comparison / data) with slides 1 and 4 flagged.
+    #: The 4-page fixture in `setUp` cannot express a lost grammar: its default
+    #: already covers every archetype the deck has, so any 2-page subset is at
+    #: worst a shorter sample.
+    WIDE_SPEC = """\
+meta:
+  citation_style: classroom
+slides:
+  - id: 1
+    title: 封面页
+    claim: 交叉点不等于替代时点
+    layout: cover
+    content: []
+    timing_sec: 30
+    owner: deck
+  - id: 2
+    title: 对比页
+    claim: 度电成本已交叉
+    layout: comparison
+    content: []
+    timing_sec: 45
+    owner: deck
+  - id: 3
+    title: 流程页
+    claim: 替代路径分三步
+    layout: timeline
+    content: []
+    timing_sec: 45
+    owner: deck
+  - id: 4
+    title: 数据页
+    claim: 储能决定替代速度
+    layout: chart
+    content: []
+    timing_sec: 40
+    owner: deck
+  - id: 5
+    title: 结语页
+    claim: 结论回到初始问题
+    layout: closing
+    content: []
+    timing_sec: 30
+    owner: deck
+"""
+
+    def use_wide_deck(self) -> None:
+        """Swap in the 5-archetype deck used by the coverage-gate tests."""
+        (self.work / "slide-spec-compiled.yaml").write_text(self.WIDE_SPEC, encoding="utf-8")
+        (self.work / "art-direction.yaml").write_text(
+            "style_id: academic-rigorous\n"
+            "palette:\n"
+            '  light: {bg: "#FFFFFF", fg: "#111111", accent: "#0A5C2E"}\n'
+            "typography:\n"
+            "  body_min_pt: 22\n"
+            "high_leverage_slides: [1, 4]\n",
+            encoding="utf-8",
+        )
+
+    def test_losing_an_archetype_is_a_hard_gate_on_an_override(self) -> None:
+        """The rule is asymmetric on purpose: the default set IS the answer, so
+        only an explicit `--slides` override can trade a grammar away — and that
+        is the one decision made by the model rather than the script.
+
+        Default `[1, 2, 4]` is hero / comparison / data. Asking for `[1, 3]` swaps
+        in the process page and drops `data` outright: two grammars for three
+        slots, so it is refused before the packet is written.
+        """
+        self.use_wide_deck()
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            with self.assertRaises(SystemExit) as caught:
+                self.packet.main(
+                    ["--work-dir", str(self.work), "--mode", "calibration", "--slides", "1", "3", "--json"]
+                )
+        self.assertIn("rejected", str(caught.exception))
+        self.assertIn("rejected", buffer.getvalue(), "the verdict must be visible, not just the refusal")
+        self.assertFalse(
+            (self.work / "builder-packets" / "calibration.json").exists(),
+            "a rejected packet must not be left on disk for a builder to trust",
+        )
+
+    def test_force_records_the_trade_without_refusing(self) -> None:
+        self.use_wide_deck()
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = self.packet.main(
+                [
+                    "--work-dir", str(self.work), "--mode", "calibration",
+                    "--slides", "1", "3", "--force", "--json",
+                ]
+            )
+        self.assertEqual(0, code)
+        payload = json.loads(buffer.getvalue())
+        self.assertFalse(payload["coverage"]["keeps_coverage"])
+        self.assertFalse(payload["coverage_enforced"])
+        self.assertTrue(Path(payload["packet"]).is_file())
+
+    def test_a_subset_of_the_default_is_not_a_lost_grammar(self) -> None:
+        """`[1, 4]` is a subset of the default `[1, 2, 4]`. The dropped page was
+        one the default also did not cover, so no grammar was traded away — a
+        shorter sample is reported, not refused."""
+        self.use_wide_deck()
         buffer = io.StringIO()
         with redirect_stdout(buffer):
             code = self.packet.main(
@@ -235,17 +351,37 @@ class BuilderPacketTests(unittest.TestCase):
             )
         self.assertEqual(0, code)
         coverage = json.loads(buffer.getvalue())["coverage"]
-        self.assertEqual([1, 3, 4], coverage["default"])
-        self.assertEqual([1, 4], coverage["candidate"])
-        self.assertEqual({"default": 3, "candidate": 2}, coverage["archetype_count"])
-        self.assertFalse(coverage["keeps_coverage"])
-        self.assertIn("rejected", coverage["verdict"])
+        self.assertTrue(coverage["is_subset_of_default"])
+        self.assertTrue(coverage["keeps_coverage"])
+
+    def test_the_default_set_is_never_refused(self) -> None:
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = self.packet.main(["--work-dir", str(self.work), "--mode", "calibration"])
+        self.assertEqual(0, code)
+        self.assertIn("calibration coverage:", buffer.getvalue())
+        self.assertIn("advisory", buffer.getvalue())
+
+    def test_a_shorter_sample_of_the_default_is_not_a_lost_grammar(self) -> None:
+        """[1, 3] is a subset of the default [1, 3, 4]: the dropped page was one
+        the default also did not cover, so no grammar was traded away."""
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            code = self.packet.main(
+                ["--work-dir", str(self.work), "--mode", "calibration", "--slides", "1", "3", "--json"]
+            )
+        self.assertEqual(0, code)
+        coverage = json.loads(buffer.getvalue())["coverage"]
+        self.assertTrue(coverage["is_subset_of_default"])
+        self.assertTrue(coverage["keeps_coverage"])
 
     def test_coverage_is_printed_as_one_line_without_json(self) -> None:
         buffer = io.StringIO()
         with redirect_stdout(buffer):
-            self.packet.main(["--work-dir", str(self.work), "--mode", "calibration", "--slides", "1", "4"])
-        self.assertIn("calibration coverage:", buffer.getvalue())
+            self.packet.main(["--work-dir", str(self.work), "--mode", "calibration"])
+        text = buffer.getvalue()
+        self.assertIn("calibration coverage:", text)
+        self.assertIn("advisory", text)
 
     def test_empty_initial_set_yields_no_packets(self) -> None:
         (self.work / "pages" / "p01-s01.js").write_text(

@@ -203,6 +203,8 @@ Before writing the final deck, mark 3–5 slides in `high_leverage_slides`. Typi
 
 The calibration sample itself is no longer this list truncated (v0.15 Batch 4.1): `calibration_archetypes.py` classifies every spec slide into an archetype from `kind` / `visual.layout_family` / documented `layout` keywords and picks the sample maximising DISTINCT archetypes, with your flagged pages winning group seats and filling the rest. So mark the pages whose failure would cost the most — the coverage algorithm guarantees the sample still spans different visual grammars.
 
+That guarantee is now **enforced rather than suggested**: an explicit `--slides` override that covers fewer distinct archetypes than the default is refused before its Builder Packet is written (`builder_packet.py` exits non-zero and leaves no packet on disk for a builder to trust). The default set is never refused, and a strict subset of it — a shorter sample — is recorded without refusal, because the pages dropped were pages the default did not cover either. Pass `--force` to record a deliberate trade instead of refusing it; the `coverage` block still carries the loss.
+
 These pages must go through v0.8 multi-candidate composition. This list is also consumed by `pptx_visual_generation_gate_v08.py`; therefore it is production evidence, not informal notes. Ordinary lower-risk slides may use one composition after reference retrieval.
 
 ## Asset budget

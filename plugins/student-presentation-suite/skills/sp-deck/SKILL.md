@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.15.3
+version: 0.15.4
 ---
 
 # Student Presentation PPT
@@ -94,7 +94,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" status --w
 4. **Art Direction**：**先读 `references/design-tokens.json`，再呈现具体样式选项或做任何颜色/视觉承诺**——选项只能引用 token 名；6 角色位之外的配色语义（如"暖色琥珀当第二主角"）禁止承诺（2026-09-17 live：承诺"光伏配琥珀"后才发现调色板契约禁色族外颜色，被迫中途换风格并重绑确认哈希）。visual style 只作为 seed，形成 `art-direction.yaml` 与 3–5 个 high-leverage slides。
 5. **Plan**：`<wd>` 必须为项目 `outputs/.pptx-work/<work-id>`；`edit_ooxml` 自动解包到 `ooxml/`，不生成 JS；`rebuild_from_source` 须先写 `source-analysis.md`。`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证 Production Summary、copy-fit、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/` 并建立 `build-manifest.json`。`--validation-report` 若描述的不是将被 freeze 的那个 spec（研究型 deck 会是 plan 自己编译出的 `slide-spec-compiled.yaml`），plan 会**自动对该 spec 重新生成报告**并在 manifest 记 `spec_report_regenerated`；不要为此手工跑第二遍 plan，也不要自己猜 compiled 文件的哈希。
 6. **Reference + Composition**：high-leverage 页保存 reference selection、2–3 个 silhouette candidates 与 wireframe 选择证据；普通页保留明确 composition intent。
-7. **Calibration Build**：仅 `create` / `rebuild_from_source`。校准样本按 **archetype coverage** 选取（`calibration_archetypes.py` 从 spec 的 kind / layout_family / layout 关键词确定性分类，覆盖最多不同视觉语法的 2–3 张；high-leverage 页优先认领组席位；packet 已含默认集，**默认集就是答案，除非你能说出一个它没覆盖到的视觉语法**——"这几页更重要"不是换的理由。要覆盖就跑 `builder_packet.py --mode calibration --slides <ids>` 读它的 `coverage` 块：覆盖的 archetype **数量不少于**默认集才算可以换（换掉一种语法换另一种可以，少一种不行）。主会话 spawn `student-presentation-suite:presentation-builder`，不传 `name`，传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder **只实现这些页面**，其余页面保持 scaffold，主流程此时故意不能正式 build。
+7. **Calibration Build**：仅 `create` / `rebuild_from_source`。校准样本按 **archetype coverage** 选取（`calibration_archetypes.py` 从 spec 的 kind / layout_family / layout 关键词确定性分类，覆盖最多不同视觉语法的 2–3 张；high-leverage 页优先认领组席位；packet 已含默认集，**默认集就是答案，除非你能说出一个它没覆盖到的视觉语法**——"这几页更重要"不是换的理由。要覆盖就跑 `builder_packet.py --mode calibration --slides <ids>` 读它的 `coverage` 块：覆盖的 archetype **数量不少于**默认集才算可以换（换掉一种语法换另一种可以，少一种不行）。**这条判定是硬门禁**：显式 `--slides` 覆盖若丢掉一种语法，脚本会在写出 packet **之前**拒绝（`SystemExit`，packet 不落盘——落盘的 packet 就是 builder 被要求信任的任务输入）；确有理由时要显式 `--force`，代价照样记进 `coverage` 块。**默认集永远不被拒**（它构造上就是最宽的样本）；默认集的**子集**（更短的样本）只记录不拒绝。主会话 spawn `student-presentation-suite:presentation-builder`，不传 `name`，传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder **只实现这些页面**，其余页面保持 scaffold，主流程此时故意不能正式 build。
 8. **Calibration Preview**：收到 `BUILDER_DONE(mode=calibration)` 后，由主会话运行确定性 helper，而不是让 builder 自己 build：
 
 ```bash

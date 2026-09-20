@@ -176,9 +176,16 @@ def coverage_verdict(
     lost: list[str],
     gained: list[str],
     leverage_missed: list[int],
+    *,
+    is_subset: bool = False,
 ) -> str:
     """One sentence a session can act on without re-deriving the rule."""
-    if lost_count > 0:
+    if lost_count > 0 and is_subset:
+        verdict = (
+            f"accepted: shorter sample (covers {lost_count} fewer archetype(s) than the default "
+            f"because it asks for fewer of the default's own pages)"
+        )
+    elif lost_count > 0:
         verdict = (
             f"rejected: covers {lost_count} fewer distinct archetype(s) than the default "
             f"(lost {', '.join(lost) or 'none'}); keep the default or add a page carrying one of them"
@@ -212,13 +219,20 @@ def coverage_report(
     total = sum(1 for item in (spec.get("slides") or []) if isinstance(item, dict))
     flagged = sorted({int(n) for n in (leverage or []) if 1 <= int(n) <= total})
     default = coverage_slides(spec, leverage, limit)
-    chosen = sorted({int(n) for n in (candidate or default) if 1 <= int(n) <= total})[:limit]
+    chosen = sorted({int(n) for n in (candidate or default) if 1 <= int(n) <= total})
     arch = archetype_map(spec)
     default_arch = sorted({arch[n] for n in default if n in arch})
     candidate_arch = sorted({arch[n] for n in chosen if n in arch})
     lost = sorted(set(default_arch) - set(candidate_arch))
     gained = sorted(set(candidate_arch) - set(default_arch))
     lost_count = len(default_arch) - len(candidate_arch)
+    # A strict subset of the default is a SHORTER sample, not a different one.
+    # The default is already the widest sample the deck allows, so requesting
+    # fewer of its own pages cannot lose a grammar the deck lacks elsewhere — the
+    # pages dropped are pages the default already did not cover. Only an
+    # out-of-default pick lengthens the gap, and that is the case worth refusing.
+    dropped_in_default = [n for n in default if n not in chosen]
+    added_outside_default = [n for n in chosen if n not in default]
     return {
         "default": default,
         "candidate": chosen,
@@ -226,13 +240,22 @@ def coverage_report(
         "candidate_archetypes": candidate_arch,
         "archetype_count": {"default": len(default_arch), "candidate": len(candidate_arch)},
         # Count-based, not set-based: swapping a timeline for a chart trades one
-        # grammar for another and still samples three.
-        "keeps_coverage": len(candidate_arch) >= len(default_arch),
+        # grammar for another and still samples three. A subset only shortens the
+        # sample, so it is reported but does not count as losing a grammar.
+        "keeps_coverage": len(candidate_arch) >= len(default_arch)
+        or (bool(dropped_in_default) and not added_outside_default),
+        "is_subset_of_default": bool(dropped_in_default) and not added_outside_default,
         "archetypes_lost": lost,
         "archetypes_gained": gained,
         "high_leverage": flagged,
         "high_leverage_missed": [n for n in flagged if n not in chosen],
-        "verdict": coverage_verdict(lost_count, lost, gained, [n for n in flagged if n not in chosen]),
+        "verdict": coverage_verdict(
+            lost_count,
+            lost,
+            gained,
+            [n for n in flagged if n not in chosen],
+            is_subset=bool(dropped_in_default) and not added_outside_default,
+        ),
         "archetype_of": {str(n): arch[n] for n in sorted(arch)},
     }
 

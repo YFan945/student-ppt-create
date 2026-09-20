@@ -33,8 +33,25 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="Preview image, contact sheet, or exported PDF path; repeatable",
     )
-    parser.add_argument("--pdf", type=Path, help="Optional requested PDF export")
-    parser.add_argument("--teleprompter", type=Path, help="Optional requested HTML teleprompter")
+    parser.add_argument(
+        "--pdf",
+        type=Path,
+        help=(
+            "PDF export; required when the spec confirms the `pdf` deliverable, and "
+            "also accepted as exported-preview evidence (a file passed here is never "
+            "demanded twice). Omitted means it is discovered by name."
+        ),
+    )
+    parser.add_argument(
+        "--full-script",
+        type=Path,
+        help="Full-script Markdown; required when the spec confirms `full-script`",
+    )
+    parser.add_argument(
+        "--teleprompter",
+        type=Path,
+        help="HTML teleprompter; required when the spec confirms `teleprompter`",
+    )
     parser.add_argument("--quality-report", type=Path, help="Optional requested JSON quality report")
     parser.add_argument("--package-report", type=Path, help="PPTX package validation JSON report")
     parser.add_argument(
@@ -95,12 +112,120 @@ def parse_deliverables(raw: str | None) -> list[str] | None:
     return [item for item in items if item]
 
 
-#: Deliverables that make a readable artifact a required delivery file.
+#: Deliverables that make a specific readable artifact a required delivery file.
 #: Render pages and the contact sheet are QA evidence, not deliverables: the
 #: pipeline always renders them, but they only become owed artifacts when the
 #: user selects `preview` or `contact-sheet`.
+#:
+#: Each name maps to its OWN artifact. `speaker-notes`, `full-script` and
+#: `teleprompter` are three different files (a notes Markdown, a full script
+#: Markdown and an HTML teleprompter), so a single "notes owed" boolean cannot
+#: represent them: a user who confirmed `teleprompter` was still asked for
+#: `*-speaker-notes.md`, while a missing teleprompter HTML went unreported.
 NOTES_DELIVERABLES = {"speaker-notes", "full-script", "teleprompter"}
 PREVIEW_DELIVERABLES = {"preview", "contact-sheet"}
+#: Deliverables whose artifact is a per-slide raster/PDF, so several files may
+#: satisfy one name (`preview` and `contact-sheet` share the discovery glob).
+#: The artifacts each named deliverable is allowed to supply. Declared here so a
+#: confirmed-but-missing file can be reported by name, and so the `--preview`
+#: argument is never counted twice (once as preview evidence, once as an extra
+#: file). `build_support_outputs.py` renders the Markdown/HTML names; export
+#: produces the PDF.
+DELIVERABLE_ARTIFACTS: dict[str, tuple[str, ...]] = {
+    "speaker-notes": ("speaker-notes",),
+    "full-script": ("full-script",),
+    "teleprompter": ("teleprompter",),
+    "pdf": ("pdf",),
+    "preview": ("preview",),
+    "contact-sheet": ("preview",),
+}
+#: Output suffixes to try when locating an owed artifact next to the PPTX.
+_ARTIFACT_SUFFIXES: dict[str, tuple[str, ...]] = {
+    "speaker-notes": (".md",),
+    "full-script": (".md",),
+    "teleprompter": (".html", ".htm"),
+    "pdf": (".pdf",),
+}
+
+#: Historical default: with no deliverables supplied, notes and preview stay
+#: required. New specs always carry `meta.deliverables`; old projects that
+#: predate the field keep the behaviour they were validated under.
+LEGACY_DEFAULT_DELIVERABLES = ["pptx", "speaker-notes", "preview"]
+
+
+def output_prefix(pptx: Path) -> str:
+    stem = pptx.stem
+    return stem[: -len("-presentation")] if stem.endswith("-presentation") else stem
+
+
+def expected_artifact_paths(pptx: Path, deliverable: str) -> list[Path]:
+    """Paths that may satisfy one named deliverable, next to the PPTX.
+
+    Derived from the `build_support_outputs.py` naming contract
+    (`<prefix>-speaker-notes.md`, `<prefix>-full-script.md`,
+    `<prefix>-teleprompter.html`), so an owed file is looked up by the same
+    rule that would have produced it.
+    """
+    prefix = output_prefix(pptx)
+    parent = pptx.parent
+    if deliverable == "pdf":
+        return sorted({*parent.glob(f"{prefix}*.pdf"), *parent.glob("*.pdf")})
+    suffixes = _ARTIFACT_SUFFIXES.get(deliverable)
+    if not suffixes:
+        return []
+    return [parent / f"{prefix}-{deliverable}{suffix}" for suffix in suffixes]
+
+
+def file_has_content(path: Path) -> bool:
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except (PermissionError, OSError):
+        return False
+
+
+def export_evidence(pptx: Path, deliverable: str) -> dict[str, Any]:
+    """Start an evidence entry for one named deliverable.
+
+    The paths are derived here so a report can say which artifact is owed, not
+    just that "notes" are missing.
+    """
+    return {
+        "deliverable": deliverable,
+        "expected": [str(path) for path in expected_artifact_paths(pptx, deliverable)],
+        "satisfied": False,
+        "matched": [],
+    }
+
+
+def apply_export_evidence(
+    evidence: dict[str, Any], candidate_paths: list[Path | None]
+) -> None:
+    """Mark one deliverable satisfied when any of its candidate files exists."""
+    matched = sorted({str(Path(p).resolve()) for p in candidate_paths if p and file_has_content(Path(p))})
+    evidence["matched"] = matched
+    evidence["satisfied"] = bool(matched)
+
+
+def required_deliverables(
+    deliverables: list[str] | None,
+    *,
+    allow_missing_notes: bool = False,
+    allow_missing_preview: bool = False,
+) -> list[str]:
+    """The deliverable names that must be backed by a real file.
+
+    `--allow-missing-notes` / `--allow-missing-preview` drop only the file they
+    name; with no deliverables supplied the historical default is kept.
+    """
+    confirmed = (
+        list(LEGACY_DEFAULT_DELIVERABLES) if deliverables is None else list(deliverables)
+    )
+    owed = [name for name in confirmed if name in DELIVERABLE_ARTIFACTS]
+    if allow_missing_notes:
+        owed = [name for name in owed if name not in NOTES_DELIVERABLES]
+    if allow_missing_preview:
+        owed = [name for name in owed if name not in {"preview", "contact-sheet"}]
+    return owed
 
 
 def resolve_requirements(
@@ -117,17 +242,19 @@ def resolve_requirements(
     `--allow-missing-*` flag still wins; otherwise the confirmed
     deliverables decide; with no deliverables supplied the historical
     default (both required) is preserved.
+
+    Kept as the coarse two-flag view of `required_deliverables()` for callers
+    that only need the summary booleans.
     """
-    require_notes = not allow_missing_notes
-    require_preview = not allow_missing_preview
-    if deliverables is None:
-        return require_notes, require_preview
-    confirmed = set(deliverables)
-    if not allow_missing_notes:
-        require_notes = bool(confirmed & NOTES_DELIVERABLES)
-    if not allow_missing_preview:
-        require_preview = bool(confirmed & PREVIEW_DELIVERABLES)
-    return require_notes, require_preview
+    owed = required_deliverables(
+        deliverables,
+        allow_missing_notes=allow_missing_notes,
+        allow_missing_preview=allow_missing_preview,
+    )
+    return (
+        any(name in NOTES_DELIVERABLES for name in owed),
+        any(name in PREVIEW_DELIVERABLES for name in owed),
+    )
 
 
 def slide_number(name: str) -> int:
@@ -410,14 +537,11 @@ def validate_slide_spec_report(path: Path | None) -> dict[str, Any]:
 
 
 def expected_notes_path(pptx: Path) -> Path:
-    stem = pptx.stem
-    prefix = stem[: -len("-presentation")] if stem.endswith("-presentation") else stem
-    return pptx.with_name(f"{prefix}-speaker-notes.md")
+    return pptx.with_name(f"{output_prefix(pptx)}-speaker-notes.md")
 
 
 def expected_preview_paths(pptx: Path) -> list[Path]:
-    stem = pptx.stem
-    prefix = stem[: -len("-presentation")] if stem.endswith("-presentation") else stem
+    prefix = output_prefix(pptx)
     parent = pptx.parent
     discovered = sorted(
         {
@@ -438,6 +562,7 @@ def inspect_delivery(
     *,
     require_notes: bool = True,
     require_preview: bool = True,
+    owed_deliverables: list[str] | None = None,
     extra_files: dict[str, Path | None] | None = None,
     qa_manifest: Path | None = None,
     quality_report: Path | None = None,
@@ -475,6 +600,39 @@ def inspect_delivery(
     for name, info in extra_infos.items():
         if not info or not info["exists"]:
             missing.append(name)
+
+    # Per-name deliverable verification. Every confirmed deliverable is checked
+    # against its OWN artifact, and a file handed in as preview evidence is not
+    # demanded a second time under its deliverable name: `--pdf` doubles as
+    # preview evidence for exported decks, so counting it twice reported a
+    # phantom "pdf" gap. A name whose file is absent joins `missing` unless the
+    # same gap is already reported as `notes` / `preview`.
+    handed_in: dict[str, list[Path]] = {}
+    for label, path in (extra_files or {}).items():
+        if path is not None:
+            handed_in.setdefault(label, []).append(Path(path))
+    if notes is not None:
+        handed_in.setdefault("speaker-notes", []).append(Path(notes))
+    deliverable_evidence: dict[str, dict[str, Any]] = {}
+    for name in owed_deliverables or []:
+        evidence = export_evidence(pptx, name)
+        if name in {"preview", "contact-sheet"}:
+            candidates = list(previews)
+        elif name == "pdf":
+            # A PDF handed in as preview evidence already proves the export.
+            candidates = [*handed_in.get("pdf", []), *previews]
+        else:
+            candidates = handed_in.get(name, [])
+        # Whatever was not handed in explicitly is looked up by its expected name.
+        candidates = [*candidates, *expected_artifact_paths(pptx, name)]
+        apply_export_evidence(evidence, candidates)
+        deliverable_evidence[name] = evidence
+        if evidence["satisfied"]:
+            continue
+        # A preview deliverable already reports as `preview`; do not double-count.
+        if name in PREVIEW_DELIVERABLES and "preview" in missing:
+            continue
+        missing.append(name)
 
     qa_summary = validate_qa_manifest(qa_manifest, pptx, slide_count, preview_checks)
     spec_summary = validate_slide_spec_report(slide_spec_report) if simple else {
@@ -611,6 +769,7 @@ def inspect_delivery(
         "quality_report": quality_summary,
         "package_validation": package_summary,
         "missing_expected_files": missing,
+        "deliverable_evidence": deliverable_evidence,
         "ok": complete_ready,
         "delivery_report": delivery_report,
         "requirements": {
@@ -619,8 +778,7 @@ def inspect_delivery(
             "package_report_required": require_package_report,
             "simple_gate": simple,
         },
-        "note": (
-            "The simplified gate requires a valid Slide Spec report, package validation, one readable preview per slide, and explicit visual review."
+        "note": (            "The simplified gate requires a valid Slide Spec report, package validation, one readable preview per slide, and explicit visual review."
             if simple
             else "Strict delivery requires package validation, readable rendered previews, and a QA manifest bound to the current PPTX."
         ),
@@ -648,6 +806,10 @@ def print_text(result: dict[str, Any]) -> None:
         print(f"Slide count error: {result['slide_count_error']}")
     if result["missing_expected_files"]:
         print("Missing expected files: " + ", ".join(result["missing_expected_files"]))
+    for name, evidence in sorted(result.get("deliverable_evidence", {}).items()):
+        state = "present" if evidence["satisfied"] else "MISSING"
+        detail = ", ".join(evidence["matched"]) or ", ".join(evidence["expected"]) or "no expected path"
+        print(f"Deliverable {name}: {state} ({detail})")
     for warning in result.get("qa_manifest", {}).get("warnings", []):
         print(f"Warning: {warning}")
     print(f"Delivery OK: {result['ok']}")
@@ -656,6 +818,11 @@ def print_text(result: dict[str, Any]) -> None:
 def main() -> None:
     args = parse_args()
     deliverables = parse_deliverables(getattr(args, "deliverables", None))
+    owed = required_deliverables(
+        deliverables,
+        allow_missing_notes=args.allow_missing_notes,
+        allow_missing_preview=args.allow_missing_preview,
+    )
     require_notes, require_preview = resolve_requirements(
         deliverables,
         allow_missing_notes=args.allow_missing_notes,
@@ -667,8 +834,10 @@ def main() -> None:
         args.preview,
         require_notes=require_notes,
         require_preview=require_preview,
+        owed_deliverables=owed,
         extra_files={
             "pdf": args.pdf,
+            "full-script": args.full_script,
             "teleprompter": args.teleprompter,
             "quality-report": args.quality_report,
             "revision-manifest": args.revision_manifest,
@@ -683,6 +852,7 @@ def main() -> None:
         visual_review_report=args.visual_review_report,
     )
     result.setdefault("requirements", {})["deliverables"] = deliverables
+    result["requirements"]["owed_deliverables"] = owed
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:

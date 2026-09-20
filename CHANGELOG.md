@@ -2,7 +2,10 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
-## Unreleased
+## 0.15.4 — 2026-09-20 · Deliverable contract & gate verdicts
+
+2026-09-20 第三轮源码复查的 4 项修复：交付物按类型逐个验证、门禁与 Brief 共用默认值、
+校准覆盖率的定性，以及 `--pdf` 的双重核算。
 
 - **P1 · `deliverables` 不再被默认值静默扩大**：此前 Slide Spec 缺 `meta.deliverables`
   时，`slide_spec_to_pptx_brief.py` 回退为硬编码的
@@ -51,6 +54,33 @@
   `high_leverage_missed` 与一句 `verdict`；`builder_packet.py --mode calibration --slides`
   输出 `coverage` 块并打印一行结论；判定按**覆盖的 archetype 数量**而非集合相等——换掉
   一种语法换另一种可以，少一种不行。`dispatch` payload 新增 `calibration_coverage`。测试 +7。
+- **P1 · 交付物按类型逐个验证，不再用一个布尔代表所有讲稿类产物**：此前的
+  `NOTES_DELIVERABLES = {speaker-notes, full-script, teleprompter}` 把三个**不同的文件**
+  压成一个 `require_notes` 布尔，于是确认了 `teleprompter` 的用户仍被要求交出
+  `*-speaker-notes.md`，而真正缺失的 teleprompter HTML 反而检不出来；`extra_files` 又只在
+  参数非 `None` 时参与 `missing` 判定，因此"确认了 PDF / full-script 但文件不存在"根本
+  无法被拒绝。现 `DELIVERABLE_ARTIFACTS` 为每个名称声明各自的产物，按
+  `build_support_outputs.py` 的命名契约逐项查存在性（`<prefix>-speaker-notes.md` /
+  `<prefix>-full-script.md` / `<prefix>-teleprompter.html`；PDF 按 `<prefix>*.pdf` 兜底），
+  缺哪个报哪个名字，报告新增 `deliverable_evidence` 与 v08 的 `owed_deliverables` /
+  `missing_deliverables`，且**任一已确认交付物缺文件即判 `incomplete`**（不再只是报告里
+  一行提示）。顺带修掉一个既有双重核算：`--pdf` 同时可作为导出型预览的证据，此前会被
+  `preview` 与 `pdf` 各要一次，对已存在的文件报出幻影缺口。测试 +10。
+- **P2 · 交付门禁与 Brief 共用同一份默认值**：`slide_spec_to_pptx_brief` 缺
+  `meta.deliverables` 时回退 `["pptx"]`，而 v08 读不到时返回 `None`、在
+  `resolve_requirements` 里保留历史默认（Notes 与 Preview 都必需）——同一份 spec 会同时
+  产出"Brief: PPTX only"与"Delivery QA: Notes required"。现 v08 的
+  `confirmed_deliverables()` 直接调用 Brief 的 `required_deliverables()`，两处不可能再
+  分叉；只有"规格沉默"才回落到历史默认，旧项目用 `--deliverables` 显式传入旧集合迁移。
+  测试 +3。
+- **P2 · 校准覆盖率定性为"覆盖不足即拒绝"的硬门禁（仅限显式覆盖）**：此前
+  `builder_packet.py` 先写 packet 再算 coverage，`rejected` 也只打印结论不影响退出码，
+  规则因此是建议而非约束。现 `enforce_coverage()` 在**写出 packet 之前**判定：显式
+  `--slides` 覆盖若比默认集少覆盖一种 archetype 就 `SystemExit` 且不落盘（落盘的 packet
+  就是 builder 被要求信任的任务输入）；`--force` 可显式记录取舍。非对称是有意的——默认集
+  构造上就是最宽样本，永不拒绝；默认集的**子集**只是更短的样本，记录但不拒绝
+  （`is_subset_of_default`），因为被丢掉的页默认集本来也没覆盖。`coverage_verdict` 相应
+  区分"更短样本"与"丢失语法"。测试 +3。
 
 ## 0.15.3 — 2026-09-20 · Lifecycle & Consistency
 

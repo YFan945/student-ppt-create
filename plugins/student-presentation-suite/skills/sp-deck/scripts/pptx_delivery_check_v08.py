@@ -6,11 +6,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import pptx_delivery_check as legacy
 import pptx_delivery_check_v07 as v07
 import pptx_delivery_check_v071 as v071
+
+PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 
 
 def sha256_file(path: Path) -> str:
@@ -77,6 +80,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--quality-report", type=Path, required=True)
     parser.add_argument("--notes", type=Path)
     parser.add_argument("--preview", type=Path, action="append", default=[])
+    parser.add_argument("--pdf", type=Path, help="Requested PDF export (also counts as preview evidence)")
+    parser.add_argument(
+        "--full-script",
+        type=Path,
+        help="Requested full-script Markdown; discovered by name when omitted",
+    )
+    parser.add_argument(
+        "--teleprompter",
+        type=Path,
+        help="Requested HTML teleprompter; discovered by name when omitted",
+    )
     parser.add_argument("--package-report", type=Path, required=True)
     parser.add_argument("--slide-spec-report", type=Path, required=True)
     parser.add_argument("--actual-content-report", type=Path, required=True)
@@ -104,11 +118,13 @@ def parse_args() -> argparse.Namespace:
 def deliverables_from_spec(spec_path: Path) -> list[str] | None:
     """Read confirmed deliverables from a Slide Spec.
 
-    This keeps the gate honest about what the user actually approved: the
-    pipeline always renders pages and a contact sheet for QA, but a deck
-    approved as "PPTX only" must not fail delivery for a speaker-notes file
-    nobody asked for. ``None`` means the spec is silent or unreadable, and
-    the historical default (notes and preview required) still applies.
+    Keeps the gate honest about what the user actually approved: the pipeline
+    always renders pages and a contact sheet for QA, but a deck approved as
+    "PPTX only" must not fail delivery for a speaker-notes file nobody asked
+    for. ``None`` means the spec is silent or unreadable, and
+    ``resolve_requirements`` then keeps the historical default (notes and
+    preview required) so projects predating `meta.deliverables` keep the
+    behaviour they were validated under.
     """
     try:
         if spec_path.suffix.lower() == ".json":
@@ -131,11 +147,44 @@ def deliverables_from_spec(spec_path: Path) -> list[str] | None:
     return None
 
 
+def confirmed_deliverables(spec_path: Path, raw: str | None) -> list[str]:
+    """The confirmed set, resolved through ONE rule shared with the brief.
+
+    `slide_spec_to_pptx_brief.required_deliverables()` decides what the
+    Production Summary and the generation brief call owed; this gate must read
+    the same source with the same fallback, or a spec with no
+    `meta.deliverables` produces "Brief: PPTX only" from the brief and
+    "Delivery QA: Notes required" from the gate. The brief owns the default
+    (`["pptx"]`); this module only decides between "spec said something" and
+    "nobody said anything", because the latter is what selects the legacy
+    default in `resolve_requirements`.
+    """
+    explicit = legacy.parse_deliverables(raw)
+    if explicit is not None:
+        return explicit
+    return deliverables_from_spec(spec_path) or list(brief_required_deliverables({}))
+
+
+def brief_required_deliverables(meta: dict) -> list[str]:
+    """The brief's own resolver, imported without a second copy of the rule."""
+    if str(PLUGIN_ROOT) not in sys.path:
+        sys.path.insert(0, str(PLUGIN_ROOT))
+    try:
+        from slide_spec_to_pptx_brief import required_deliverables  # noqa: PLC0415
+
+        return required_deliverables(meta)
+    except ImportError:  # pragma: no cover - brief module always ships with the plugin
+        return ["pptx"]
+
+
 def main() -> None:
     args = parse_args()
-    deliverables = legacy.parse_deliverables(args.deliverables)
-    if deliverables is None:
-        deliverables = deliverables_from_spec(args.slide_spec)
+    deliverables = confirmed_deliverables(args.slide_spec, args.deliverables)
+    owed = legacy.required_deliverables(
+        deliverables,
+        allow_missing_notes=args.allow_missing_notes,
+        allow_missing_preview=args.allow_missing_preview,
+    )
     require_notes, require_preview = legacy.resolve_requirements(
         deliverables,
         allow_missing_notes=args.allow_missing_notes,
@@ -147,6 +196,12 @@ def main() -> None:
         args.preview,
         require_notes=require_notes,
         require_preview=require_preview,
+        owed_deliverables=owed,
+        extra_files={
+            "pdf": args.pdf,
+            "full-script": args.full_script,
+            "teleprompter": args.teleprompter,
+        },
         package_report=args.package_report,
         require_package_report=True,
         slide_spec_report=args.slide_spec_report,
@@ -184,8 +239,12 @@ def main() -> None:
     delivery["gate_profile"] = "simplified-v08"
     delivery["generation_core_version"] = "0.8"
     delivery["deliverables"] = deliverables
+    delivery["owed_deliverables"] = owed
     delivery["notes_required"] = require_notes
     delivery["preview_required"] = require_preview
+    delivery["missing_deliverables"] = [
+        name for name, evidence in result.get("deliverable_evidence", {}).items() if not evidence["satisfied"]
+    ]
 
     review_check = (result.get("delivery_report") or {}).get("visual_review_check") or {}
     delivery["visual_review_check_passed"] = review_check.get("valid") is True
@@ -196,6 +255,16 @@ def main() -> None:
         result["ok"] = False
         delivery["ok"] = False
         delivery["status"] = "incomplete"
+    # Per-name deliverable verification is the last word: confirming a deliverable
+    # and then not producing its file must block completion, not just appear as a
+    # warning line in the report. `required_deliverables` already limits `owed` to
+    # names backed by a concrete artifact (and honours --allow-missing-*), so an
+    # empty `owed` — e.g. "PPTX only" — cannot fail here.
+    if delivery["missing_deliverables"]:
+        result["ok"] = False
+        delivery["ok"] = False
+        delivery["status"] = "incomplete"
+        delivery["deliverable_blockers"] = delivery["missing_deliverables"]
 
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
