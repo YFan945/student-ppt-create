@@ -43,6 +43,20 @@ class SmokeTests(unittest.TestCase):
             # 脚本以 exit 0 或 1 报告验证结果，不崩溃即视为通过
             self.assertIn(proc.returncode, (0, 1), msg=proc.stderr[:500])
 
+    def test_validate_slide_spec_explains_slide_copy_object(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            spec = Path(tmp) / "spec.yaml"
+            spec.write_text(
+                "slides:\n"
+                "  - id: 1\n"
+                "    title: Hello\n"
+                "    slide_copy: {title: Hello, subtitle: World}\n",
+                encoding="utf-8",
+            )
+            proc = self._run(str(SCRIPTS / "validate_slide_spec.py"), str(spec))
+            self.assertEqual(1, proc.returncode)
+            self.assertIn("slide_copy must be a string or string[]", proc.stdout)
+
     def test_analyze_presentation_spec(self) -> None:
         """analyze_presentation_spec 对合法 spec 输出 JSON。"""
         with tempfile.TemporaryDirectory() as tmp:

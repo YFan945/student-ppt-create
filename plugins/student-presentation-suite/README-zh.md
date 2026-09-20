@@ -232,7 +232,13 @@ CI 继续渲染完整场景矩阵，但不会提交生成产物。
 **校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与
 Art Direction 的作者，看不见自己选的视觉语言在每页重复，所以它读预览 PNG 不算评审；
 在 `calibration/calibration-visual-review.json` 存在、绑定当前校准 PPTX、且无
-critical/major 之前，正式 `build` 会被机械拒绝。
+critical/major 之前，正式 `build` 会被机械拒绝。runtime hook 会按 production / calibration
+范围生成 `critic-preview-map.json`，critic 只能读取其中列出的当前压缩预览、写 map 指定的
+`review_output`；校准评审正常停止后，hook 另写
+`calibration/calibration-critic-execution.json`，正式 build 会验证它覆盖了每张当前校准预览。
+陈旧 render、错误报告路径和损坏/错绑 receipt 都会在放行前被拒绝。通过
+`builder_packet.py --mode calibration --slides ...` 指定的校准样本会与 active round 原子记录，
+后续 `next` / `advance` 会保持这组页面，不会静默退回默认样本。
 
 **每轮 repair 都 spawn 一个新的 builder 实例**，不要继续上一个：一个扛了多轮的实例
 常驻上下文涨到 699K，96% 的成本花在 200K 以上；`next --json` 检出跨轮实例时会报

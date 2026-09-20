@@ -2,6 +2,29 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.15.5 — 2026-09-20 · Calibration critic runtime closure
+
+- **P0 · 校准 visual-critic 运行链闭环**：`critic_preview.py` 现在可从生产 render 或
+  `calibration/calibration-manifest.json` 生成带 `scope`、真实 slide id、`review_output` 与
+  `receipt_output` 的 hash-bound 压缩预览映射；`runtime_evidence.py` 允许 critic 只写映射指定的
+  校准报告，并在停止时写 `calibration/calibration-critic-execution.json`。正式 build 新增校准
+  receipt 校验：必须覆盖所有当前预览，存在但损坏/错绑的 receipt 即使在 allow-missing 模式也
+  不能降级通过。修复 0.15.4 实跑中 calibration critic 因只能识别生产 manifest、又被禁止写
+  校准报告而无法 spawn 的最终 blocker。
+- **P1 · 自定义校准集不再被下一次派发覆盖**：calibration `builder_packet.py` 现在同时写 packet
+  与 active-round 描述；`next` / `advance` 优先复用经验证的 active calibration packet，保留显式
+  `--slides` / `--force` 选择，而不是重新计算默认样本。
+- **P1 · 校准失败派发不再自相矛盾**：报告/receipt 缺失、损坏或过期时明确重跑 critic；报告已
+  确认 Major/Critical 或缺少 style summary 时改派 `presentation-builder mode=calibration`，并为
+  受影响页面生成定向 packet。此前 JSON 的 `agent` 仍是 visual-critic，说明文字却要求 builder
+  修页，自动推进会在同一错误分支反复循环。
+- **P1 · `doctor` 恢复为受支持的生产入口**：production entry guard 将 `doctor` 纳入公开 action
+  allowlist，和 CLI 已存在的诊断动作保持一致。
+- **P2 · Slide Spec 错误可直接修**：`slide_copy` 被写成对象时，验证错误现在明确指出只接受
+  string / string[]，并提示把对象字段展平成数组，不再只报模糊的 `not valid under any schema`。
+- 新增 calibration preview/receipt/stale-evidence、active override、doctor 与定向 schema 诊断回归测试；
+  同步 critic agent、spawn 模板、管线契约和中英文插件 README。
+
 ## 0.15.4 — 2026-09-20 · Deliverable contract & gate verdicts
 
 2026-09-20 第三轮源码复查的 4 项修复：交付物按类型逐个验证、门禁与 Brief 共用默认值、

@@ -59,6 +59,32 @@ class RuntimeEvidenceTests(unittest.TestCase):
         (self.work / "build-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
         return contact, pages
 
+    def prepare_calibration(self, slides: tuple[int, ...] = (1, 7, 9)) -> list[Path]:
+        calibration = self.work / "calibration"
+        render_dir = calibration / "render"
+        render_dir.mkdir(parents=True, exist_ok=True)
+        pptx = calibration / "calibration.pptx"
+        pptx.write_bytes(b"calibration-pptx")
+        pages: list[Path] = []
+        bindings: list[dict] = []
+        for index, slide in enumerate(slides, 1):
+            page = render_dir / f"calibration-{index}.png"
+            Image.new("RGB", (1920, 1080), "white").save(page)
+            pages.append(page)
+            bindings.append(
+                {"slide": slide, "path": str(page.resolve()), "sha256": runtime.digest(page)}
+            )
+        manifest = {
+            "version": "1.0",
+            "slides": list(slides),
+            "pptx": {"path": str(pptx.resolve()), "sha256": runtime.digest(pptx)},
+            "render": bindings,
+        }
+        (calibration / "calibration-manifest.json").write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+        return pages
+
     def critic_spawn(self, *, prompt: str | None = None, **extra) -> int:
         tool_input = {
             "subagent_type": runtime.CRITIC,
@@ -80,6 +106,8 @@ class RuntimeEvidenceTests(unittest.TestCase):
         review.write_text("{}")
         self.event_call("SubagentStop")
         self.assertFalse((self.work / "critic-execution.json").exists())
+        self.prepare_render()
+        self.assertEqual(self.critic_spawn(), 0)
         self.event_call("SubagentStart")
         page = self.work / "slide-1.png"
         page.write_bytes(b"test-image")
@@ -127,6 +155,8 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertFalse((work / "research-execution.json").exists())
 
     def test_critic_cannot_write_generator_or_other_work_area(self):
+        self.prepare_render()
+        self.assertEqual(self.critic_spawn(), 0)
         self.assertEqual(
             self.event_call("PreToolUse", tool_name="Write", tool_input={"file_path": str(self.work / "deck.js")}),
             2,
@@ -139,6 +169,56 @@ class RuntimeEvidenceTests(unittest.TestCase):
             ),
             0,
         )
+
+    def test_calibration_critic_spawn_and_receipt_use_calibration_evidence(self):
+        pages = self.prepare_calibration()
+        self.assertEqual(self.critic_spawn(), 0)
+        mapping = json.loads((self.work / runtime.critic_preview.MAP_NAME).read_text())
+        self.assertEqual("calibration", mapping["scope"])
+        self.assertEqual(3, len(mapping["entries"]))
+        self.assertFalse(any(entry["kind"] == "overview" for entry in mapping["entries"]))
+        review = self.work / "calibration" / "calibration-visual-review.json"
+        self.assertEqual(
+            0,
+            self.event_call(
+                "PreToolUse", tool_name="Write", tool_input={"file_path": str(review)}
+            ),
+        )
+        self.assertEqual(
+            2,
+            self.event_call(
+                "PreToolUse",
+                tool_name="Write",
+                tool_input={"file_path": str(self.work / "visual-review.json")},
+            ),
+        )
+
+        self.event_call("SubagentStart")
+        for entry in mapping["entries"]:
+            self.event_call(
+                "PostToolUse",
+                tool_name="Read",
+                tool_input={"file_path": entry["preview_path"]},
+            )
+        review.write_text('{"pptx_sha256":"calibration"}', encoding="utf-8")
+        self.event_call(
+            "PostToolUse", tool_name="Write", tool_input={"file_path": str(review)}
+        )
+        self.event_call("SubagentStop")
+
+        receipt = json.loads(
+            (self.work / "calibration" / "calibration-critic-execution.json").read_text()
+        )
+        self.assertEqual(self.work.name, receipt["work_id"])
+        self.assertEqual(runtime.digest(review), receipt["artifact"]["sha256"])
+        for page in pages:
+            self.assertEqual(runtime.digest(page), receipt["reads"][str(page.resolve())])
+
+    def test_calibration_critic_spawn_rejects_stale_render_binding(self):
+        pages = self.prepare_calibration(slides=(1, 7))
+        pages[0].write_bytes(b"changed")
+        self.assertEqual(self.critic_spawn(), 2)
+        self.assertFalse((self.work / runtime.critic_preview.MAP_NAME).exists())
 
     def test_critic_preview_artifacts_are_hook_owned(self):
         preview = self.work / runtime.critic_preview.PREVIEW_DIR_NAME / "p01.jpg"
@@ -300,6 +380,8 @@ class RuntimeEvidenceTests(unittest.TestCase):
         )
 
     def test_parallel_image_events_do_not_lose_read_hashes(self):
+        self.prepare_render()
+        self.assertEqual(self.critic_spawn(), 0)
         self.event_call("SubagentStart")
         paths = [self.work / f"page-{index}.png" for index in range(8)]
         for path in paths:

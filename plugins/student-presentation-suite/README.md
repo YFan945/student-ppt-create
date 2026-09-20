@@ -285,7 +285,15 @@ session. The main session authors the Slide Spec and the Art Direction, so it
 cannot see that its own treatment repeats on every page; its own reading of the
 preview PNGs is therefore not the review, and production `build` is refused until
 `calibration/calibration-visual-review.json` exists, is bound to the current
-calibration PPTX, and carries no critical/major finding.
+calibration PPTX, carries no critical/major finding, and has a hook-owned
+`calibration/calibration-critic-execution.json` proving that the critic read
+every current calibration preview. The hook builds a scope-aware
+`critic-preview-map.json` for either production or calibration and only permits
+the critic to write that map's `review_output`; stale renders and wrong output
+paths are rejected before review. An explicit calibration sample created with
+`builder_packet.py --mode calibration --slides ...` is recorded atomically as
+the active round, so `next` and `advance` preserve it instead of silently
+restoring the default sample.
 
 Each repair round spawns a **new** builder instance instead of continuing the
 previous one: a builder instance that served several rounds reached 699K resident

@@ -4,7 +4,8 @@
 This is an execution-integrity gate inside a trusted local Claude session, not a
 sandbox against a user/process able to rewrite the hook and its evidence files.
 
-Receipt artifacts (research-pack.json / visual-review.json) are credited through
+Receipt artifacts (research-pack.json / visual-review.json / the calibration
+visual review) are credited through
 hash snapshots taken at SubagentStart and refreshed after every child tool call,
 so script writes (e.g. ``python json.dump``) count the same as Write-tool writes.
 """
@@ -121,16 +122,18 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-RECEIPT_ARTIFACTS = ("research-pack.json", "visual-review.json")
-
-
 def artifact_snapshot(root: Path) -> dict[str, str]:
     """Hash receipt artifacts across work dirs (a few small JSON files)."""
     snap: dict[str, str] = {}
     if not root.is_dir():
         return snap
-    for name in RECEIPT_ARTIFACTS:
-        for path in root.glob(f"*/{name}"):
+    patterns = (
+        "*/research-pack.json",
+        "*/visual-review.json",
+        "*/calibration/calibration-visual-review.json",
+    )
+    for pattern in patterns:
+        for path in root.glob(pattern):
             try:
                 snap[str(path)] = digest(path)
             except OSError:
@@ -202,6 +205,19 @@ def _hook_owned_preview_path(path: Path, root: Path) -> bool:
     return critic_preview.PREVIEW_DIR_NAME in path.parts
 
 
+def _critic_review_target(path: Path, root: Path) -> tuple[Path, Path] | None:
+    """Return (work-dir, receipt path) for an allowed critic report location."""
+    if path.name == "visual-review.json" and path.parent.parent == root:
+        return path.parent, path.parent / "critic-execution.json"
+    if (
+        path.name == "calibration-visual-review.json"
+        and path.parent.name == "calibration"
+        and path.parent.parent.parent == root
+    ):
+        return path.parent.parent, path.parent / "calibration-critic-execution.json"
+    return None
+
+
 def handle(event: dict) -> int:
     project = Path(os.environ.get("CLAUDE_PROJECT_DIR") or event.get("cwd") or Path.cwd()).resolve()
     root = project / "outputs" / ".pptx-work"
@@ -219,7 +235,11 @@ def handle(event: dict) -> int:
         if tool in {"Write", "Edit"}:
             path = Path(inputs.get("file_path") or "").resolve()
             if path.is_relative_to(root) and (
-                path.name in {"research-execution.json", "critic-execution.json"}
+                path.name in {
+                    "research-execution.json",
+                    "critic-execution.json",
+                    "calibration-critic-execution.json",
+                }
                 or path.is_relative_to(root / ".guard")
                 or _hook_owned_preview_path(path, root)
             ):
@@ -282,8 +302,14 @@ def handle(event: dict) -> int:
                     return 2
         if agent == CRITIC and tool in {"Write", "Edit"}:
             path = Path(inputs.get("file_path") or "").resolve()
-            if path.parent.parent != root or path.name != "visual-review.json":
-                print("visual-critic may only write its work-dir/visual-review.json", file=sys.stderr)
+            target = _critic_review_target(path, root)
+            allowed = None if target is None else critic_preview.assigned_review_output(target[0])
+            if allowed is None or path != allowed:
+                print(
+                    "visual-critic may only write the current review_output declared by "
+                    "the hook-owned critic-preview-map.json",
+                    file=sys.stderr,
+                )
                 return 2
         return 0
     if agent not in {RESEARCHER, CRITIC} or not child:
@@ -316,22 +342,29 @@ def handle(event: dict) -> int:
     elif kind == "PostToolUse" and tool in {"Bash", "PowerShell"}:
         record_artifact_changes(data, root)
     elif kind == "SubagentStop":
-        artifact_name = "research-pack.json" if agent == RESEARCHER else "visual-review.json"
         for name, sha in data["writes"].items():
             artifact = Path(name)
-            if artifact.name != artifact_name or artifact.parent.parent != root:
-                continue
+            if agent == RESEARCHER:
+                if artifact.name != "research-pack.json" or artifact.parent.parent != root:
+                    continue
+                work_dir = artifact.parent
+                target = work_dir / "research-execution.json"
+            else:
+                critic_target = _critic_review_target(artifact, root)
+                if critic_target is None:
+                    continue
+                work_dir, target = critic_target
+                allowed = critic_preview.assigned_review_output(work_dir)
+                if allowed is None or artifact.resolve() != allowed:
+                    continue
             if not artifact.is_file() or digest(artifact) != sha:
                 continue
             receipt = {
                 **data,
                 "spawn_verified": True,
                 "artifact": {"path": name, "sha256": sha},
-                "work_id": artifact.parent.name,
+                "work_id": work_dir.name,
             }
-            target = artifact.parent / (
-                "research-execution.json" if agent == RESEARCHER else "critic-execution.json"
-            )
             target.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     ledger.parent.mkdir(parents=True, exist_ok=True)
     ledger.write_text(json.dumps(data, ensure_ascii=False) + "\n", encoding="utf-8")

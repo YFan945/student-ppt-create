@@ -145,28 +145,42 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     # set so the builder gets one task input instead of re-reading
                     # spec + art direction + research pack itself.
                     try:
-                        cal_slides = _packet.default_calibration_slides(work_dir)
+                        active_packets = _packet.active_packet_descriptors(work_dir, "calibration")
+                        if active_packets:
+                            descriptor = active_packets[0]
+                            cal_slides = list(descriptor["slides"])
+                            cal_path = Path(descriptor["packet"])
+                            packet_source = "active calibration override"
+                        else:
+                            cal_slides = _packet.default_calibration_slides(work_dir)
+                            cal_path = None
+                            packet_source = "default calibration set"
                         if cal_slides:
-                            cal_path, _ = _packet.write_packet(work_dir, "calibration", cal_slides)
+                            if cal_path is None:
+                                cal_path, _ = _packet.write_packet(work_dir, "calibration", cal_slides)
+                                _packet.record_active_round(
+                                    work_dir,
+                                    "calibration",
+                                    [{"packet": str(cal_path), "slides": list(cal_slides)}],
+                                )
                             payload["builder_packet"] = {
                                 "mode": "calibration",
                                 "slides": cal_slides,
                                 "packet": str(cal_path),
                             }
-                            _packet.record_active_round(
-                                work_dir,
-                                "calibration",
-                                [{"packet": str(cal_path), "slides": list(cal_slides)}],
-                            )
                             payload["notes"] += (
-                                f" A packet projecting the default calibration set ({', '.join(map(str, cal_slides))}) "
-                                f"is at {cal_path} — pass it as the builder's task input. Keep that default unless "
-                                "you can name a visual archetype it misses: it is chosen for distinct grammars, not "
-                                "for page importance, so 'these pages matter more' is not a reason to swap. To "
-                                "override, run builder_packet.py --mode calibration --slides <ids> and read its "
-                                "coverage block — swap only when it covers at least as many distinct archetypes; "
-                                "trading one grammar for another is fine, dropping one is not."
+                                f" A packet projecting the {packet_source} ({', '.join(map(str, cal_slides))}) "
+                                f"is at {cal_path} — pass it as the builder's task input."
                             )
+                            if not active_packets:
+                                payload["notes"] += (
+                                    " Keep that default unless you can name a visual archetype it misses: it is "
+                                    "chosen for distinct grammars, not for page importance, so 'these pages matter "
+                                    "more' is not a reason to swap. To override, run builder_packet.py --mode "
+                                    "calibration --slides <ids> and read its coverage block — swap only when it "
+                                    "covers at least as many distinct archetypes; trading one grammar for another "
+                                    "is fine, dropping one is not."
+                                )
                             try:
                                 coverage = _packet.calibration_coverage(work_dir, cal_slides)
                                 if coverage:
@@ -191,7 +205,6 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 else:
                     review = calibration_review(work_dir)
                     if not review["ok"]:
-                        payload["agent"] = "student-presentation-suite:visual-critic"
                         payload["calibration"] = {
                             "slides": review["slides"],
                             "pptx": str(work_dir / CALIBRATION_DIR_NAME / "calibration.pptx"),
@@ -201,23 +214,34 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             ],
                             "manifest": str(work_dir / CALIBRATION_DIR_NAME / CALIBRATION_MANIFEST_NAME),
                             "review_output": review["path"],
+                            "receipt_output": review["receipt"],
+                            "critic_preview_map": str(work_dir / "critic-preview-map.json"),
                             "status": review["reason"],
                         }
-                        payload["notes"] = (
-                            "calibration preview is on disk and has NO independent review yet. Spawn "
-                            "student-presentation-suite:visual-critic (no `name`) against the calibration "
-                            "pptx and its 2-3 page renders, writing the review to the path above. Scope it "
-                            "to what would spread to the whole deck: repeated structure across DIFFERENT "
-                            "page roles, Art Direction conformance, and whether the page roles stay "
-                            "visually distinct. The main session's own read of these PNGs is NOT the "
-                            "review — it is the session that chose the treatment, so it cannot see that "
-                            "its own pattern repeats (2026-09-18 live: 12 pages were built on a pattern "
-                            "the independent critic then rejected wholesale)."
-                        )
-                        if review["present"]:
-                            payload["notes"] += (
-                                f" The last review reported: {review['reason']}. Respawn builder "
-                                "mode=calibration for only those pages, then rerun calibration_preview.py."
+                        if review.get("action") == "builder":
+                            repair_slides = review.get("repair_slides") or review["slides"]
+                            payload["agent"] = "student-presentation-suite:presentation-builder"
+                            payload["builder_mode"] = "calibration"
+                            packets = _packet.prepare_packets(work_dir, "calibration", repair_slides)
+                            if packets:
+                                payload["builder_packet"] = packets[0]
+                            payload["notes"] = (
+                                f"The independent calibration review requires a targeted builder repair: "
+                                f"{review['reason']}. Spawn presentation-builder (no `name`) with "
+                                f"mode=calibration for slides {repair_slides} using the packet above, then "
+                                "rerun calibration_preview.py for the complete calibration set."
+                            )
+                        else:
+                            payload["agent"] = "student-presentation-suite:visual-critic"
+                            payload["notes"] = (
+                                "Calibration evidence needs an independent visual-critic run. Spawn "
+                                "student-presentation-suite:visual-critic (no `name`) with the absolute "
+                                "work-dir. The runtime hook will create a scope=calibration "
+                                "critic-preview-map.json; the critic must read every mapped preview and "
+                                "write only its review_output. Scope the review to repeated structure "
+                                "across different page roles, Art Direction conformance, and whether roles "
+                                "remain visually distinct. The main session's own read is not a review. "
+                                f"Current status: {review['reason']}"
                             )
                     else:
                         remaining = remaining_scaffold_slides(work_dir)

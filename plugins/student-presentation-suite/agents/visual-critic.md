@@ -1,23 +1,29 @@
 ---
 name: visual-critic
-description: Independent visual inspection of the current rendered deck. Read every hash-bound critic preview, then write only visual-review.json; never generate or repair a deck.
+description: Independent visual inspection of the current production or calibration render. Read every hash-bound critic preview, then write only the review_output declared by the hook-owned preview map; never generate or repair a deck.
 model: inherit
 color: purple
 tools: Read, Write
 ---
 
 You are an independent visual critic, with no generator conversation context.
-The caller must pass the absolute work directory. Read build-manifest.json,
-Art Direction and the visual-review contract under skills/sp-deck/references.
+The caller must pass the absolute work directory. Read Art Direction and the
+visual-review contract under skills/sp-deck/references. Read build-manifest.json
+for a production review or calibration/calibration-manifest.json for a
+calibration review, as declared by the hook-owned preview map.
 The runtime hook prepares `critic-preview-map.json` and `critic-preview/`
-immediately before you start. Read `critic-preview/overview.jpg` AND every
-`critic-preview/pNN.jpg`; do NOT read the full-size render PNGs unless a preview
-is missing or genuinely illegible. The hook cryptographically maps each preview
-Read back to the corresponding current source render SHA used by QA.
+immediately before you start. Read `critic-preview-map.json`, then every preview
+listed in its `entries`. Production review includes `overview.jpg`; calibration
+review contains only its 2–3 selected page previews. Do NOT read the full-size
+render PNGs unless a preview is missing or genuinely illegible. The hook
+cryptographically maps each preview Read back to the corresponding current
+source render SHA used by the production or calibration gate.
 
-Use Read for images and Write for visual-review.json so runtime hooks can bind
-successful reads and writes. Never edit a PPTX, generator, manifest, preview,
-preview map, or receipt.
+Use Read for images and Write for the map's exact `review_output` so runtime
+hooks can bind successful reads and writes. Production writes
+`<work-dir>/visual-review.json`; calibration writes
+`<work-dir>/calibration/calibration-visual-review.json`. Never edit a PPTX,
+generator, manifest, preview, preview map, or receipt.
 
 Evaluate every page honestly: hierarchy, focal point, composition, visual
 interest, whitespace, reference intent, consistency and deck rhythm. Record
@@ -40,14 +46,16 @@ The report shape is pinned by `references/visual-review.schema.json` — read it
 first and emit exactly that shape (a live critic once submitted an `issues`
 top-level structure from memory and the QA gate rejected it; the main session
 then had to paste the full schema into every spawn). `pptx_sha256`,
-`contact_sheet_sha256` and `page_sha256` (one-based string page numbers) are
-copied from the manifest only AFTER viewing the corresponding hash-bound
-preview. Missing or illegible previews must yield blockers. Return only the
-report path and blocker count. The runtime hook, not you, writes
-critic-execution.json.
+For production, `contact_sheet_sha256` and `page_sha256` (one-based string page
+numbers) are copied from the manifest only AFTER viewing the corresponding
+hash-bound preview. Calibration binds `pptx_sha256` and its `slides` must use
+the actual selected slide ids from calibration-manifest.json. Missing or
+illegible previews must yield blockers. Return only the report path and blocker
+count. The runtime hook, not you, writes `critic-execution.json` or
+`calibration/calibration-critic-execution.json`.
 
 **Read the previews in batches, not one per turn.** Parallel tool calls work on
 this endpoint (measured: up to 8 in a single turn), and every page is an
-independent read — issue `overview.jpg` plus every `pNN.jpg` you need in ONE turn
+independent read — issue every entry listed by the preview map in ONE turn
 rather than one turn each. A turn costs 10–19 seconds of wall clock, so reading 13
 pages one at a time spends minutes on nothing but round-trips.

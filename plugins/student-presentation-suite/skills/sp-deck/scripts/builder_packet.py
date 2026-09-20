@@ -435,6 +435,42 @@ def active_round(work_dir: Path) -> dict[str, Any] | None:
     return loaded if isinstance(loaded, dict) and loaded.get("packets") else None
 
 
+def active_packet_descriptors(work_dir: Path, mode: str) -> list[dict[str, Any]]:
+    """Return a validated active packet round, or ``[]`` when it is stale.
+
+    Dispatch uses this before generating a default calibration packet. Without
+    this read-back, a valid CLI override is immediately overwritten by the next
+    `next`/`advance` call and builder_guard keeps the old assignment.
+    """
+    active = active_round(work_dir)
+    if not active or active.get("mode") != mode:
+        return []
+    descriptors: list[dict[str, Any]] = []
+    for item in active.get("packets") or []:
+        if not isinstance(item, dict):
+            return []
+        path = Path(str(item.get("packet") or ""))
+        packet = load_optional(path)
+        slides = [int(value) for value in item.get("assigned_slides") or []]
+        if (
+            not isinstance(packet, dict)
+            or packet.get("mode") != mode
+            or Path(str(packet.get("work_dir") or "")).resolve() != work_dir.resolve()
+            or packet.get("assigned_slides") != slides
+            or not slides
+        ):
+            return []
+        descriptors.append(
+            {
+                "shard": packet.get("shard"),
+                "slides": slides,
+                "speaker_notes_target": packet.get("speaker_notes_target"),
+                "packet": str(path.resolve()),
+            }
+        )
+    return descriptors
+
+
 def packet_name(mode: str, shard: int | None) -> str:
     return f"{mode}-shard-{shard:02d}.json" if shard else f"{mode}.json"
 
@@ -553,7 +589,16 @@ def main(argv: list[str] | None = None) -> int:
             "Keep the default set, add a page carrying one of the dropped grammars, "
             "or pass --force to record the trade."
         )
-    path, packet = write_packet(work_dir, args.mode, args.slides, args.shard, args.qa_report)
+    if args.mode == "calibration":
+        slides = args.slides or default_calibration_slides(work_dir)
+        descriptors = prepare_packets(work_dir, args.mode, slides, args.qa_report)
+        if len(descriptors) != 1:
+            raise SystemExit("calibration packet generation did not produce exactly one packet")
+        descriptor = descriptors[0]
+        path = Path(descriptor["packet"])
+        packet = load_optional(path)
+    else:
+        path, packet = write_packet(work_dir, args.mode, args.slides, args.shard, args.qa_report)
     if args.json:
         payload = {
             "packet": str(path),

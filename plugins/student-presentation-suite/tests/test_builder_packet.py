@@ -224,6 +224,9 @@ class BuilderPacketTests(unittest.TestCase):
         payload = json.loads(buffer.getvalue())
         self.assertTrue(Path(payload["packet"]).is_file())
         self.assertEqual([1, 3], payload["slides"])
+        active = self.packet.active_packet_descriptors(self.work, "calibration")
+        self.assertEqual([1, 3], active[0]["slides"])
+        self.assertEqual(Path(payload["packet"]).resolve(), Path(active[0]["packet"]))
 
     def test_cli_reports_whether_an_override_keeps_coverage(self) -> None:
         """2026-09-20: overriding the calibration default is allowed, but the

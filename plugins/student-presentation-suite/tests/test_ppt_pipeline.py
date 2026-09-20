@@ -213,6 +213,26 @@ class PipelineTestCase(unittest.TestCase):
     def manifest(self) -> dict[str, Any]:
         return json.loads((self.work / pp.MANIFEST_NAME).read_text(encoding="utf-8"))
 
+    def write_calibration_receipt(
+        self,
+        review: Path,
+        render_bindings: list[dict[str, Any]] | None = None,
+    ) -> None:
+        receipt = {
+            "agent": "student-presentation-suite:visual-critic",
+            "agent_id": "test-calibration-critic",
+            "spawn_verified": True,
+            "work_id": self.work.name,
+            "artifact": pp.bind(review),
+            "reads": {
+                str(Path(item["path"]).resolve()): item["sha256"]
+                for item in (render_bindings or [])
+            },
+        }
+        (review.parent / "calibration-critic-execution.json").write_text(
+            json.dumps(receipt), encoding="utf-8"
+        )
+
     def render_evidence(self, files, *, write_receipt: bool = True):
         from PIL import Image
         manifest = self.manifest()
@@ -814,6 +834,7 @@ class BuildTests(PipelineTestCase):
             ),
             encoding="utf-8",
         )
+        self.write_calibration_receipt(review)
         return review
 
     def test_next_with_calibration_render_dispatches_the_independent_review(self) -> None:
@@ -846,16 +867,29 @@ class BuildTests(PipelineTestCase):
         self.write_calibration_review(
             calibration,
             [
-                {"slide": 1, "visual_structure": "cover", "issues": []},
-                {"slide": 6, "visual_structure": "panel", "issues": [
+                {"slide": 1, "visual_structure": "cover", "issues": [
                     {"severity": "major", "code": "repetitive_structure_run", "message": "same bordered panel"},
                 ]},
+                {"slide": 6, "visual_structure": "panel", "issues": []},
                 {"slide": 7, "visual_structure": "compare", "issues": []},
             ],
         )
         payload = self.next_dispatch_payload()
-        self.assertEqual("student-presentation-suite:visual-critic", payload["agent"])
+        self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
+        self.assertEqual("calibration", payload["builder_mode"])
+        self.assertEqual([1], payload["builder_packet"]["slides"])
         self.assertIn("repetitive_structure_run", payload["calibration"]["status"])
+
+    def test_next_retries_critic_when_review_exists_but_receipt_is_missing(self) -> None:
+        self.plan(self.files)
+        calibration = self.calibration_with_render()
+        self.write_calibration_review(calibration)
+        (calibration / "calibration-critic-execution.json").unlink()
+        payload = self.next_dispatch_payload()
+        self.assertEqual("student-presentation-suite:visual-critic", payload["agent"])
+        self.assertNotIn("builder_mode", payload)
+        self.assertIn("missing successful isolated calibration critic receipt", payload["calibration"]["status"])
+        self.assertIn("scope=calibration", payload["notes"])
 
     def prepared_calibrated_without_review(self) -> Path:
         self.prepared()
@@ -1425,6 +1459,43 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.assertEqual("calibration.json", Path(payload["builder_packet"]["packet"]).name)
         self.assertTrue(all(item.get("requirements") for item in packet["slides"]))
 
+    def test_next_preserves_an_atomic_calibration_override(self) -> None:
+        """The CLI override and builder_guard round are one transaction.
+
+        0.15.3 wrote calibration.json for [1,7,9] but left active-round.json at
+        [1,2,3]; the builder was then refused. A later `next` also recreated the
+        default packet. Neither half of that split-brain may recur.
+        """
+        self.files = self.write_inputs()
+        self.write_rich_spec(9)
+        self.write_art([1, 3, 4])
+        self.plan(self.files)
+        output = io.StringIO()
+        with redirect_stdout(output):
+            self.assertEqual(
+                0,
+                pp._packet.main(
+                    [
+                        "--work-dir", str(self.work),
+                        "--mode", "calibration",
+                        "--slides", "1", "2", "5",
+                        "--force", "--json",
+                    ]
+                ),
+            )
+        overridden = json.loads(output.getvalue())
+        self.assertEqual([1, 2, 5], overridden["slides"])
+
+        first_round = json.loads(
+            (self.work / "builder-packets" / "active-round.json").read_text(encoding="utf-8")
+        )
+        payload = self.next_dispatch_payload()
+        second_round = json.loads(
+            (self.work / "builder-packets" / "active-round.json").read_text(encoding="utf-8")
+        )
+        self.assertEqual([1, 2, 5], payload["builder_packet"]["slides"])
+        self.assertEqual(first_round, second_round)
+
     def test_next_survives_a_missing_art_direction_with_a_spec_driven_packet(self) -> None:
         """Packet generation must never break the dispatch answer — and under
         archetype coverage (Batch 4.1) a missing art-direction no longer prevents
@@ -1575,7 +1646,8 @@ class ParallelBuilderShardTests(PipelineTestCase):
             encoding="utf-8",
         )
         (calibration / "render" / "calibration-1.png").write_bytes(b"png")
-        (calibration / "calibration-visual-review.json").write_text(
+        calibration_review = calibration / "calibration-visual-review.json"
+        calibration_review.write_text(
             json.dumps({
                 "pptx_sha256": "cal",
                 "slides": [
@@ -1586,6 +1658,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
             }),
             encoding="utf-8",
         )
+        self.write_calibration_receipt(calibration_review)
         # Green requires the calibration builder's style summary (closure invariant).
         (calibration / "style-summary.json").write_text(
             json.dumps({
@@ -1816,10 +1889,12 @@ class AdvanceTests(PipelineTestCase):
         render_dir.mkdir(parents=True, exist_ok=True)
         for number in slides:
             (render_dir / f"calibration-{number}.png").write_bytes(b"PNG")
-        (calibration / "calibration-visual-review.json").write_text(
+        calibration_review = calibration / "calibration-visual-review.json"
+        calibration_review.write_text(
             json.dumps({"pptx_sha256": pptx_sha, "slides": [{"slide": n} for n in slides]}),
             encoding="utf-8",
         )
+        self.write_calibration_receipt(calibration_review)
         # Green now REQUIRES the calibration builder's style summary (closure).
         (calibration / "style-summary.json").write_text(
             json.dumps(

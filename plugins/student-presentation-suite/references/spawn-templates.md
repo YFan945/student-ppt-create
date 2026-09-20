@@ -130,10 +130,13 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 你是本 deck 的独立视觉复核者。做一次全新复核。
 
 - work-dir（绝对路径）：<absolute work-dir>
+- hook 会在 spawn 前把当前证据压缩成 <work-dir>/critic-preview/ 并写
+  <work-dir>/critic-preview-map.json。先读 map，再读其中的 overview（如有）和每个 pages[].preview；
+  不要绕过 map 直接猜 render 路径。map 的 `scope` 必须是 `production`。
 - 当前渲染：第 <N> 次 build（<pptx 文件名>）已重渲染。此前所有报告绑定的都是旧哈希、
-  已全部失效——只依据当前渲染独立判断，不沿用任何旧结论。
+  已全部失效——只依据当前 preview map 独立判断，不沿用任何旧结论。
 - 报告形状的唯一来源：<CLAUDE_PLUGIN_ROOT>/references/visual-review.schema.json：
-  先读它，再写 <work-dir>/visual-review.json，绑定当前 SHA256，
+  先读它，再写 map 的 `review_output`（即 <work-dir>/visual-review.json），绑定当前 SHA256，
   slides 数组恰好覆盖 1..<page_count> 每一页。
 - 判断准绳：<work-dir>/art-direction.yaml；高杠杆页：<ids>。
 - 评分诚实：`hierarchy` / `focal_point` 低于质量下限（high-score 6、其余 5）是 blocker；
@@ -162,10 +165,11 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 你是这次校准预览的独立视觉复核者。只评审已实现的 <N> 页校准稿，不猜未实现的页面。
 
 - work-dir（绝对路径）：<absolute work-dir>
-- 校准 PPTX：<work-dir>/calibration/calibration.pptx（绑定其 SHA256）
-- 校准页图：<calibration/render/ 下 2–3 张 PNG 的绝对路径>
+- hook 会在 spawn 前读取校准 manifest，把当前校准页压缩成 <work-dir>/critic-preview/ 并写
+  <work-dir>/critic-preview-map.json。先确认 map 的 `scope` 是 `calibration`，再逐张读取
+  `pages[].preview`；这些 preview 保留原始 slide id，并绑定 calibration.pptx 与原始 PNG 哈希。
 - 报告形状的唯一来源：<CLAUDE_PLUGIN_ROOT>/references/visual-review.schema.json；
-  写到 <work-dir>/calibration/calibration-visual-review.json，`slides` 恰好覆盖
+  写到 map 的 `review_output`（即 <work-dir>/calibration/calibration-visual-review.json），`slides` 恰好覆盖
   <calibration slide ids>（不是 1..N），`pptx_sha256` 用 calibration.pptx 的哈希。
 - 判断准绳：<work-dir>/art-direction.yaml。
 - **只判会扩散到全 deck 的形态**，逐条回答：
@@ -177,6 +181,8 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - 细则打磨（字号层级微调、单页构图留白）**不在本次范围**——留给最终 critic，不要在这里
   判 Major。本次给 Major/Critical 的每一条都必须是"铺开到全 deck 会重复出现"的形态。
 - 每条 issue 必须有 code 与 severity；只写报告，不生成或修复任何页面/PPTX。
+- 正常停止后 hook 写 <work-dir>/calibration/calibration-critic-execution.json；不要自己创建、
+  轮询或伪造该文件。生产 build 会验证它确实覆盖了 map 中每张校准 preview 的读取。
 - 完成后只回：报告路径 + blocker 计数（口径 = critical + major）。
 ```
 

@@ -43,8 +43,22 @@ class StyleContractTests(unittest.TestCase):
         (self.work / "calibration" / "calibration-manifest.json").write_text(
             json.dumps({"slides": slides, "pptx": {"sha256": pptx_sha}}), encoding="utf-8"
         )
-        (self.work / "calibration" / "calibration-visual-review.json").write_text(
+        review = self.work / "calibration" / "calibration-visual-review.json"
+        review.write_text(
             json.dumps({"pptx_sha256": pptx_sha, "slides": [{"slide": n} for n in slides]}),
+            encoding="utf-8",
+        )
+        (self.work / "calibration" / "calibration-critic-execution.json").write_text(
+            json.dumps(
+                {
+                    "agent": "student-presentation-suite:visual-critic",
+                    "agent_id": "test-calibration-critic",
+                    "spawn_verified": True,
+                    "work_id": self.work.name,
+                    "artifact": cr._binding(review),
+                    "reads": {},
+                }
+            ),
             encoding="utf-8",
         )
         self.write_summary()
@@ -94,6 +108,7 @@ class StyleContractTests(unittest.TestCase):
         (self.work / "calibration" / "style-summary.json").unlink()
         review = cr.calibration_review(self.work)
         self.assertFalse(review["ok"])
+        self.assertEqual("builder", review["action"])
         self.assertIn("style-summary", review["reason"])
         self.assertIsNone(sc.build_style_contract(self.work))
         # an empty-shaped summary is equally unusable
@@ -108,6 +123,30 @@ class StyleContractTests(unittest.TestCase):
             json.dumps({"slides": [1], "pptx": {"sha256": "x"}}), encoding="utf-8"
         )
         self.assertIsNone(sc.build_style_contract(self.work))
+
+    def test_calibration_review_requires_hook_owned_receipt(self) -> None:
+        self.green_calibration([1])
+        receipt = self.work / "calibration" / "calibration-critic-execution.json"
+        receipt.unlink()
+        result = cr.calibration_review(self.work)
+        self.assertFalse(result["ok"])
+        self.assertEqual("critic", result["action"])
+        self.assertIn("missing successful isolated calibration critic receipt", result["reason"])
+
+    def test_allow_missing_degrades_only_an_absent_calibration_receipt(self) -> None:
+        self.green_calibration([1])
+        receipt = self.work / "calibration" / "calibration-critic-execution.json"
+        receipt.unlink()
+        (self.work / "build-manifest.json").write_text(
+            json.dumps({"receipt_policy": "allow-missing"}), encoding="utf-8"
+        )
+        result = cr.calibration_review(self.work)
+        self.assertTrue(result["ok"])
+        self.assertTrue(result["receipt_degraded"])
+        receipt.write_text("{}", encoding="utf-8")
+        result = cr.calibration_review(self.work)
+        self.assertFalse(result["ok"])
+        self.assertIn("identity is invalid", result["reason"])
 
     def test_green_calibration_projects_style_and_archetypes(self) -> None:
         self.green_calibration([1, 4])

@@ -15,6 +15,7 @@ all 13 built pages — 76.4M tokens (58.8% of that session) for a rework that a
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -28,6 +29,7 @@ CALIBRATION_DIR_NAME = "calibration"
 CALIBRATION_MANIFEST_NAME = "calibration-manifest.json"
 CALIBRATION_REVIEW_NAME = "calibration-visual-review.json"
 STYLE_SUMMARY_NAME = "style-summary.json"
+CALIBRATION_RECEIPT_NAME = "calibration-critic-execution.json"
 
 # The treatment keys the calibration builder records about what it established.
 STYLE_SUMMARY_KEYS = (
@@ -60,6 +62,73 @@ def _read_object(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"expected object: {path}")
     return value
+
+
+def _sha256(path: Path) -> str:
+    value = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            value.update(chunk)
+    return value.hexdigest()
+
+
+def _binding(path: Path) -> dict[str, str]:
+    return {"path": str(path.resolve()), "sha256": _sha256(path)}
+
+
+def _receipt_policy(work_dir: Path) -> str:
+    manifest_path = work_dir / "build-manifest.json"
+    try:
+        manifest = _read_object(manifest_path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return "require"
+    if manifest.get("receipt_policy") == "allow-missing":
+        return "allow-missing"
+    if (manifest.get("research") or {}).get("receipt_policy") == "allow-missing":
+        return "allow-missing"
+    return "require"
+
+
+def calibration_receipt_valid(
+    work_dir: Path,
+    calibration: dict[str, Any],
+    review_path: Path,
+) -> tuple[bool, bool, str]:
+    """Validate the hook-owned calibration critic receipt.
+
+    Returns ``(ok, degraded, reason)``. Only a genuinely absent receipt may
+    degrade under the work-id's ``allow-missing`` policy; a present but corrupt
+    or stale receipt always fails closed, matching production QA semantics.
+    """
+    receipt_path = work_dir / CALIBRATION_DIR_NAME / CALIBRATION_RECEIPT_NAME
+    if not receipt_path.is_file():
+        if _receipt_policy(work_dir) == "allow-missing":
+            return True, True, "calibration critic receipt is missing and explicitly allowed"
+        return False, False, (
+            "missing successful isolated calibration critic receipt; runtime_evidence.py "
+            "must write calibration/calibration-critic-execution.json at SubagentStop"
+        )
+    try:
+        receipt = _read_object(receipt_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return False, False, f"calibration critic receipt is unreadable: {exc}"
+    if (
+        receipt.get("agent") != "student-presentation-suite:visual-critic"
+        or not receipt.get("agent_id")
+        or receipt.get("spawn_verified") is not True
+        or receipt.get("work_id") != work_dir.name
+    ):
+        return False, False, "calibration critic receipt identity is invalid"
+    if receipt.get("artifact") != _binding(review_path):
+        return False, False, "calibration review changed after isolated critic execution"
+    reads = receipt.get("reads") or {}
+    for item in calibration.get("render") or []:
+        if not isinstance(item, dict):
+            return False, False, "calibration manifest contains an invalid render binding"
+        path = str(Path(str(item.get("path") or "")).resolve())
+        if not item.get("sha256") or reads.get(path) != item.get("sha256"):
+            return False, False, "independent calibration critic did not read every current render image"
+    return True, False, ""
 
 
 def style_summary_valid(work_dir: Path) -> tuple[bool, str]:
@@ -115,6 +184,11 @@ def calibration_review(work_dir: Path) -> dict[str, Any]:
         "blockers": None,
         "slides": [],
         "path": str(review_path),
+        "receipt": str(target / CALIBRATION_RECEIPT_NAME),
+        "receipt_verified": False,
+        "receipt_degraded": False,
+        "action": "critic",
+        "repair_slides": [],
         "reason": "",
     }
     if not manifest_path.is_file():
@@ -159,21 +233,35 @@ def calibration_review(work_dir: Path) -> dict[str, Any]:
         )
         return status
 
+    receipt_ok, receipt_degraded, receipt_reason = calibration_receipt_valid(
+        work_dir, calibration, review_path
+    )
+    if not receipt_ok:
+        status["reason"] = receipt_reason
+        return status
+    status["receipt_verified"] = not receipt_degraded
+    status["receipt_degraded"] = receipt_degraded
+
     blocking: list[str] = []
+    repair_slides: set[int] = set()
     for item in review.get("slides") or []:
         if not isinstance(item, dict):
             continue
         slide_no = int(item.get("slide") or 0)
         if str(item.get("ai_template_feel") or "none").strip().lower() == "major":
             blocking.append(f"slide {slide_no}: ai_template_feel=major")
+            repair_slides.add(slide_no)
         for finding in item.get("issues") or []:
             if not isinstance(finding, dict):
                 continue
             if normalise_severity(review, finding) in QA_BLOCKING_SEVERITIES:
                 blocking.append(f"slide {slide_no}: {finding.get('code') or 'visual_finding'}")
+                repair_slides.add(slide_no)
     status["blockers"] = len(blocking)
     status["ok"] = not blocking
     if blocking:
+        status["action"] = "builder"
+        status["repair_slides"] = sorted(repair_slides)
         status["reason"] = "calibration review still reports systemic findings: " + "; ".join(blocking[:6])
         return status
     # Hard invariant (Batch 1-4 closure): green ALSO requires the calibration
@@ -181,7 +269,11 @@ def calibration_review(work_dir: Path) -> dict[str, Any]:
     # reach later builders via the style contract instead of only the Art Direction.
     ok, reason = style_summary_valid(work_dir)
     if not ok:
+        status["action"] = "builder"
+        status["repair_slides"] = slides
         status["blockers"] = len(blocking) + 1
         status["ok"] = False
         status["reason"] = reason
+    else:
+        status["action"] = None
     return status

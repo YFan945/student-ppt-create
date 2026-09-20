@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.15.4
+version: 0.15.5
 ---
 
 # Student Presentation PPT
@@ -106,7 +106,9 @@ helper 只把这些已实现页面组装成临时 `calibration/calibration.pptx`
 
 **校准必须由独立 critic 评审，不能由主会话自己看图**。主会话是这份 spec 与 art direction 的作者，检查 hierarchy/密度/配色时会全部通过，唯独看不见自己选的视觉语言是否在每一页重复。2026-09-18 live 就是这样：主会话接受了 3 张校准图，独立 critic 随后判定"13 页套同一个带边框通栏面板"要求全 deck 重做，代价 76.4M token（该次会话的 58.8%），而 3 页规模的评审只需 1.4M。
 
-`next --json` 这时给出 critic 的 spawn 参数与 `calibration/calibration-visual-review.json` 的写入路径：spawn `student-presentation-suite:visual-critic`（不传 `name`），**只判会扩散到全 deck 的形态**——不同页型是否套用了同一结构、Art Direction 是否一致、页型之间是否还看得出区别；细则打磨留给最终 critic。评审带 Major/Critical 就 spawn builder `mode=calibration` 只修这些页并重跑 helper；**评审全绿之前正式 `build` 会被机械拒绝**。不要先生成剩余 10–20 页再发现基础风格错误。
+`next --json` 这时给出 critic 的 spawn 参数与 `calibration/calibration-visual-review.json` 的写入路径：spawn `student-presentation-suite:visual-critic`（不传 `name`）。runtime hook 会从当前 `calibration-manifest.json` 生成 `critic-preview-map.json`（`scope=calibration`），critic 只读 map 列出的压缩预览、只写 map 指定的 `review_output`；正常停止后 hook 写 `calibration/calibration-critic-execution.json`。生产 build 会同时校验报告的 PPTX/PNG 绑定和该 receipt 对所有校准预览的读取覆盖；`receipt_policy=allow-missing` 只允许 receipt **缺席**时降级，已经存在但损坏或不匹配仍然硬失败。critic **只判会扩散到全 deck 的形态**——不同页型是否套用了同一结构、Art Direction 是否一致、页型之间是否还看得出区别；细则打磨留给最终 critic。评审带 Major/Critical 就 spawn builder `mode=calibration` 只修这些页并重跑 helper；**评审全绿之前正式 `build` 会被机械拒绝**。不要先生成剩余 10–20 页再发现基础风格错误。
+
+显式改校准样本时，`builder_packet.py --mode calibration --slides <ids>` 会把 packet 与 `builder-active-round.json` **原子地一起更新**；随后 `next` / `advance` 复用这组 slide ids，不会重新落回默认校准集。不要手改 packet 或只改其中一个文件。
 9. **Full Isolated Page Build**：Calibration 视觉系统经独立评审可接受后，再 spawn `presentation-builder`，传绝对 work-dir 与 `mode=initial`。Builder 保留已校准页面，按它们已建立的 typography/spacing/surface/image language 实现**所有剩余 scaffold 页面**。主会话不得打开逐页源码复核，只接受紧凑信封。
 
    **页数够多时并行分片（`next --json` 会给出 `builder_shards`）**：墙钟 = 回合数 × 每回合往返延迟，而全套门实测只花 150 秒（占全程 1.7%）——**唯一不碰门、又能压缩墙钟的杠杆就是让页面工作并发**。给出 `builder_shards` 时，在**同一条消息里 spawn 全部 shard**（每个都不传 `name`），每个只做自己的 slide ids、只写自己的 `speaker-notes-shard-<N>.md`，绝不碰别人的页面；`build` 会把碎片按页序拼成 `speaker-notes.md`。分片由管线按页号轮转计算，天然互斥且页数均衡。少于 `parallel_builder_min_pages`（默认 4）页时不拆——启动与读取开销不划算。

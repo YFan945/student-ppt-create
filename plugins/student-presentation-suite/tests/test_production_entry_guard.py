@@ -36,6 +36,7 @@ class ProductionEntryGuardTests(unittest.TestCase):
     def test_public_deck_entrypoints_are_allowed(self) -> None:
         commands = [
             'python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" next --work-dir wd --json',
+            'python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" doctor --work-dir wd --json',
             'python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" build --work-dir wd --entry deck.js',
             'python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/calibration_preview.py" --work-dir wd --slides 1 3 --json',
             'python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/visual_reference_select.py" --role cover --count 3',
