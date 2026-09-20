@@ -2,7 +2,7 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
-## Unreleased
+## 0.15.3 — 2026-09-20 · Lifecycle & Consistency
 
 2026-09-20 第二轮外部评审的 2 项生命周期/一致性修复：
 
