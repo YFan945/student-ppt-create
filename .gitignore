@@ -11,3 +11,4 @@
 **/node_modules/
 **/openxml_validator/bin/
 **/openxml_validator/obj/
+/tmp_cost_analysis/
