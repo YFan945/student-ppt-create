@@ -303,6 +303,22 @@ def _enforce_packet_scope(event: dict, path: Path, work_dir: Path) -> str | None
                         "round was published. The main session must run `ppt_pipeline.py next "
                         "--work-dir <wd> --json` to publish a fresh hash-bound round."
                     )
+                existing = _load_binding(project, event_agent, work_dir, round_at)
+                if existing is not None:
+                    try:
+                        same_packet = (
+                            Path(str(existing.get("packet") or "")).resolve()
+                            == path.resolve()
+                        )
+                    except (OSError, ValueError):
+                        same_packet = False
+                    if not same_packet:
+                        return (
+                            "builder_guard: refused — this Builder instance is already bound "
+                            f"to {existing.get('packet')} for the active round and cannot switch "
+                            "shards by reading another Packet. The main session must publish a "
+                            "fresh round to authorize a genuine re-shard."
+                        )
                 _write_binding(project, event_agent, {
                     "work_id": work_dir.name,
                     "packet": item.get("packet"),

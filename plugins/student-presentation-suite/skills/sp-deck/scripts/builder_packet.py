@@ -29,7 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -416,10 +416,18 @@ def record_active_round(work_dir: Path, mode: str, packets: list[dict[str, Any]]
         == [scope(p) for p in new_packets]
     ):
         return
+    stamp = datetime.now(UTC)
+    if isinstance(existing, dict) and existing.get("at"):
+        try:
+            previous_stamp = datetime.fromisoformat(str(existing["at"]))
+            if stamp <= previous_stamp:
+                stamp = previous_stamp + timedelta(microseconds=1)
+        except ValueError:
+            pass
     path.write_text(
         json.dumps(
             {
-                "at": datetime.now(UTC).isoformat(),
+                "at": stamp.isoformat(),
                 "mode": mode,
                 "packets": new_packets,
             },

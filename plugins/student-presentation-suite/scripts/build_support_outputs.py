@@ -6,9 +6,13 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import posixpath
+import re
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -23,6 +27,14 @@ SUPPORTED = {
     "training-cards",
     "references",
 }
+
+A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+NOTESLIDE_REL_RE = re.compile(r'Type="[^"]*?/notesSlide"[^>]*?Target="([^"]+)"')
+NOTES_HEADING_RE = re.compile(
+    r"(?m)^#{1,6}\s+(?:(?:Slide|幻灯片)\s*)?(?:第\s*)?(?P<slide>\d+)"
+    r"(?:\s*页)?(?:\s*[-—:.：][^\n]*|\s*)$",
+    re.IGNORECASE,
+)
 
 
 def load_optional_dependencies():
@@ -47,6 +59,100 @@ def load_spec(path: Path) -> dict[str, Any]:
     return value
 
 
+def extract_pptx_notes(pptx: Path) -> dict[int, str]:
+    """Read the actual notes panes, keyed by one-based slide number."""
+    notes: dict[int, str] = {}
+    with zipfile.ZipFile(pptx) as zf:
+        names = set(zf.namelist())
+        for name in names:
+            match = re.fullmatch(r"ppt/slides/slide(\d+)\.xml", name)
+            if not match:
+                continue
+            slide_no = int(match.group(1))
+            rels_name = f"ppt/slides/_rels/slide{slide_no}.xml.rels"
+            if rels_name not in names:
+                continue
+            targets = NOTESLIDE_REL_RE.findall(zf.read(rels_name).decode("utf-8"))
+            for target in targets:
+                notes_path = posixpath.normpath(posixpath.join("ppt/slides", target))
+                if notes_path not in names:
+                    continue
+                root = ET.fromstring(zf.read(notes_path))
+                text = "\n".join(
+                    node.text or "" for node in root.iter(f"{{{A_NS}}}t")
+                ).strip()
+                if text:
+                    notes[slide_no] = text
+                break
+    return notes
+
+
+def parse_speaker_notes_markdown(path: Path, slide_ids: list[int]) -> dict[int, str]:
+    """Parse Builder-authored per-slide sections from the merged notes file."""
+    text = path.read_text(encoding="utf-8")
+    matches = list(NOTES_HEADING_RE.finditer(text))
+    parsed: dict[int, str] = {}
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        body = text[match.end():end].strip()
+        if body:
+            parsed[int(match.group("slide"))] = body
+    if not parsed and len(slide_ids) == 1:
+        body = re.sub(r"(?m)^#\s+[^\n]+\n?", "", text, count=1).strip()
+        if body:
+            parsed[slide_ids[0]] = body
+    return parsed
+
+
+def actual_speaker_notes(
+    data: dict[str, Any], notes_path: Path | None, pptx_path: Path | None
+) -> dict[int, str]:
+    """Resolve actual authored prose; planning goals are deliberately excluded."""
+    slides = {
+        int(slide.get("id") or 0): str(slide.get("title") or "")
+        for slide in data.get("slides", [])
+        if isinstance(slide, dict) and int(slide.get("id") or 0) > 0
+    }
+    slide_ids = list(slides)
+    notes: dict[int, str] = {}
+    if notes_path and notes_path.is_file():
+        notes.update(parse_speaker_notes_markdown(notes_path, slide_ids))
+    if pptx_path and pptx_path.is_file():
+        for slide_id, body in extract_pptx_notes(pptx_path).items():
+            notes.setdefault(slide_id, body)
+    missing = []
+    for slide_id in slide_ids:
+        body = notes.get(slide_id, "").strip()
+        compact = re.sub(r"\s+", "", body)
+        placeholder_only = compact.casefold() in {
+            str(slide_id),
+            re.sub(r"\s+", "", slides[slide_id]).casefold(),
+        }
+        meaningful_chars = re.findall(r"[\w\u3400-\u9fff]", compact, re.UNICODE)
+        if placeholder_only or len(meaningful_chars) < 8:
+            missing.append(slide_id)
+    if missing:
+        raise ValueError(
+            "full-script/teleprompter require substantive per-slide speaker prose from "
+            "speaker-notes.md or PPTX notes panes; missing or too short: "
+            + ", ".join(map(str, missing))
+        )
+    return notes
+
+
+def with_actual_speaker_notes(
+    data: dict[str, Any], notes: dict[int, str]
+) -> dict[str, Any]:
+    value = dict(data)
+    value["slides"] = [
+        {**slide, "speaker_notes": notes.get(int(slide.get("id") or 0), "")}
+        if isinstance(slide, dict)
+        else slide
+        for slide in data.get("slides", [])
+    ]
+    return value
+
+
 def teleprompter_html(data: dict[str, Any]) -> str:
     topic = html.escape(str((data.get("meta") or {}).get("topic") or "Presentation"))
     sections = []
@@ -58,7 +164,7 @@ def teleprompter_html(data: dict[str, Any]) -> str:
         except (ValueError, TypeError):
             slide_id = 0
         title = html.escape(str(slide.get("title") or f"Slide {slide_id}"))
-        notes = html.escape(str(slide.get("speaker_notes") or slide.get("note_goal") or ""))
+        notes = html.escape(str(slide.get("speaker_notes") or ""))
         transition = html.escape(str(slide.get("transition") or ""))
         key_line = html.escape(str(slide.get("key_line") or ""))
         try:
@@ -150,7 +256,7 @@ def full_script_markdown(data: dict[str, Any]) -> str:
     for slide in data.get("slides", []):
         if not isinstance(slide, dict):
             continue
-        script = slide.get("speaker_notes") or slide.get("note_goal") or slide.get("claim") or ""
+        script = slide.get("speaker_notes") or ""
         lines.extend([f"## Slide {slide.get('id')}: {slide.get('title', '')}", str(script)])
         if slide.get("transition"):
             lines.append(f"Transition: {slide['transition']}")
@@ -164,6 +270,8 @@ def main() -> None:
     parser.add_argument("spec", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--prefix")
+    parser.add_argument("--speaker-notes", type=Path)
+    parser.add_argument("--pptx", type=Path)
     parser.add_argument(
         "--only",
         action="append",
@@ -204,6 +312,13 @@ def main() -> None:
         )
         raise SystemExit(2)
     selected = requested if requested else confirmed & SUPPORTED
+    if selected & {"full-script", "teleprompter"}:
+        try:
+            actual_notes = actual_speaker_notes(data, args.speaker_notes, args.pptx)
+            data = with_actual_speaker_notes(data, actual_notes)
+        except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
+            print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
+            raise SystemExit(2) from exc
     renderers = {
         "speaker-notes": (f"{prefix}-speaker-notes.md", speaker_notes_markdown),
         "full-script": (f"{prefix}-full-script.md", full_script_markdown),

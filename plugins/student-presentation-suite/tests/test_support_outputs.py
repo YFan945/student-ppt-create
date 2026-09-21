@@ -105,6 +105,50 @@ class SupportOutputTests(unittest.TestCase):
             self.assertFalse(json.loads(only.stdout)["ok"])
             self.assertFalse((output / "demo-teleprompter.html").exists())
 
+    def test_full_script_and_teleprompter_use_builder_authored_notes(self) -> None:
+        module = load_module(SCRIPT)
+        data = {
+            "meta": {"topic": "Demo"},
+            "slides": [
+                {"id": 1, "title": "Opening", "note_goal": "Introduce the topic."},
+                {"id": 2, "title": "Evidence", "note_goal": "Explain the chart."},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            notes_path = Path(tmp) / "speaker-notes.md"
+            notes_path.write_text(
+                "# 演讲稿\n\n## 1 — Opening\n这是 Builder 写出的开场正文。\n\n"
+                "## 2 — Evidence\n这里逐项解释实验结果与方法局限。\n",
+                encoding="utf-8",
+            )
+            notes = module.actual_speaker_notes(data, notes_path, None)
+            actual = module.with_actual_speaker_notes(data, notes)
+            script = module.full_script_markdown(actual)
+            teleprompter = module.teleprompter_html(actual)
+        self.assertIn("Builder 写出的开场正文", script)
+        self.assertIn("方法局限", teleprompter)
+        self.assertNotIn("Introduce the topic", script)
+        self.assertNotIn("Explain the chart", teleprompter)
+
+    def test_planning_note_goal_cannot_stand_in_for_full_script(self) -> None:
+        module = load_module(SCRIPT)
+        data = {
+            "slides": [
+                {"id": 1, "title": "Opening", "note_goal": "Introduce the topic."},
+            ]
+        }
+        with self.assertRaisesRegex(ValueError, "substantive per-slide speaker prose"):
+            module.actual_speaker_notes(data, None, None)
+
+    def test_pptx_placeholder_text_is_not_a_complete_script(self) -> None:
+        module = load_module(SCRIPT)
+        data = {"slides": [{"id": 1, "title": "Opening"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            notes_path = Path(tmp) / "speaker-notes.md"
+            notes_path.write_text("## 1 — Opening\n1\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "missing or too short: 1"):
+                module.actual_speaker_notes(data, notes_path, None)
+
 
 if __name__ == "__main__":
     unittest.main()

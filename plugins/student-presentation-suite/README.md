@@ -184,7 +184,9 @@ project's `outputs/` directory when the environment variable is unavailable:
 Each requested deliverable is validated independently. `full-script` and
 `teleprompter` do not imply a separate speaker-notes file; a requested PDF must
 be a real `.pdf` with a PDF signature, and preview PNGs cannot satisfy it. A
-PPTX-only request can therefore complete without a notes file.
+PPTX-only request can therefore complete without a notes file. Full-script and
+teleprompter content comes from the Builder-authored merged notes or the actual
+PPTX notes panes; planning-only `note_goal` text cannot pass as a complete script.
 
 The plugin installation directory is read-only for user deliverables.
 
@@ -265,7 +267,9 @@ After render, `ppt_pipeline.py prepare-deliverables` deterministically creates o
 support/export files confirmed in the frozen Slide Spec. It uses the render-owned PDF,
 never an unrelated PDF found beside the deck, and hash-binds every generated file before
 the critic and QA run. If one changes after QA, completion is refused and the pipeline
-returns to production to regenerate the file and rerun QA.
+returns to production to regenerate the file and rerun deterministic QA and Delivery while
+reusing still-current visual evidence; it does not spawn another critic unless the deck or
+render evidence changed.
 Production sessions do
 not invoke individual gate internals directly; production after intake is dispatched by
 `skills/sp-deck/scripts/ppt_pipeline.py next --work-dir <wd> --json` (plan scaffolds

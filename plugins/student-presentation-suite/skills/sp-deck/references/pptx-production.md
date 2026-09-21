@@ -12,7 +12,7 @@
   只接收 ≤ 20 行的结构化结论并写入 Evidence Ledger。委派不豁免 `image-sourcing.md`
   的图片权限门禁。
 - **门禁一次运行（CD-6）**：Art Direction、composition 候选与 v0.8 探索证据由一次
-  `run_gates.sh` 覆盖，通过时只回显 1 行，明细写入 `gates-report.json`：
+  `run_gates.py` 覆盖，通过时只回显 1 行，明细写入 `gates-report.json`：
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
@@ -111,7 +111,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/composition_candidate_check
   <composition-candidates-N.json> --quality <high-score|standard> --output <candidate-report-N.json> --json --strict
 ```
 
-多个候选文件一次校验用 `run_gates.sh --candidates <file> <file> …`，一次运行覆盖全部页。
+多个候选文件一次校验用 `run_gates.py --candidates <file> <file> …`，一次运行覆盖全部页。
 
 再生成低成本 wireframe：
 
@@ -135,7 +135,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" render <wireframes-N.pptx> -
 6. `deck.js` 从 `process.argv[2]` 接收输出路径；每个输出只创建一个 pptxgen 实例。
    按 CD-2，`deck.js` 只做装配，页面实现放在同目录 `pages/pNN-*.js`（每页一文件、
    导出 `function (ctx)`），使不同页的修复可并行发出。
-7. 执行：
+7. 正式生产通过 `ppt_pipeline.py build|render|next` 执行并绑定以下检查。下面的底层命令只用于维护者调试单个实现，不是受守卫生产会话的入口：
 
 ```bash
 node "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" --output <candidate.pptx> <deck.js>
@@ -167,4 +167,9 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_actual_content_check.p
 
 ## Transition to QA
 
-生产完成只代表获得 candidate。`build_support_outputs.py` 仅按确认 deliverables 生成 speaker notes、full script、teleprompter、training cards 和 references；preview/contact sheet/PDF 统一由 render/export 流程生成。完成后转 `qa` 执行 `pptx-qa.md`，不得提前声称 ready-to-present。
+生产完成只代表获得 candidate。正式流程执行 `ppt_pipeline.py prepare-deliverables`：
+`full-script` / `teleprompter` 必须读取 Builder 合并讲稿或 PPTX 备注区的实际逐页正文，
+不得用 Slide Spec 的 `note_goal` 冒充完整稿；缺正文时生成失败。preview/contact sheet/PDF
+统一由 render/export 流程生成。完成后通过 `ppt_pipeline.py next|advance` 转入 QA，
+不得提前声称 ready-to-present。
+`build_support_outputs.py` 是该公开动作调用的内部确定性实现，只用于维护者单步调试。

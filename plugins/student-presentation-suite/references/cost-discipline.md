@@ -87,7 +87,8 @@ outputs/.pptx-work/<work-id>/
 
 **可验证**：`pages/` 下的文件数等于页数；`deck.js` 只含装配与共享定义、不含任何页面
 坐标；任一次修复只命中一个 `pages/` 文件；同一路径的整文件写次数 ≤ 1（第 2 次写入
-必须伴随 `slide_spec_guard.py revise --reason ...` 或阶段小结中的明确理由）。
+必须伴随公开入口记录的 plan revision（仅 planned 状态可用
+`ppt_pipeline.py plan --force --reason ...`）或阶段小结中的明确理由）。
 
 ## CD-3 产物写盘即弃
 

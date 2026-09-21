@@ -2,6 +2,15 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.15.9 — 2026-09-21 · Builder identity and script integrity
+
+- Builder Packet 授权在同一 active round 内改为首次绑定后不可切换；读取另一分片 Packet 会
+  被拒绝，原分片授权保持有效，合法重分片必须发布新 round。
+- `full-script` / `teleprompter` 改为优先读取 Builder 合并讲稿并回退到 PPTX 备注区；缺少
+  任一页实际讲稿正文时拒绝生成，不再把规划性的 `note_goal` 当作完整演讲稿。
+- 仅支持/导出文件变化时保留仍有效的视觉评审证据，重新执行确定性 QA 与 Delivery，不再
+  重复启动 Visual Critic；生产参考文档同步收敛到 `ppt_pipeline.py` / `run_gates.py` 入口。
+
 ## 0.15.8 — 2026-09-21 · Deterministic deliverable preparation
 
 - 修复 QA 缓存未纳入 `visual-generation-report.json` 当前哈希的问题，repair 后生成证据变化会

@@ -29,6 +29,7 @@ from pipeline.core import (  # noqa: E402
     MAX_REPAIRS,
     QA_ORDER,
     ROOT,
+    binding_is_current,
     generator_changed_since_build,
     load_json,
     load_manifest,
@@ -416,26 +417,46 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     # following the command verbatim cannot re-hit the refusal
                     qa_command += " --receipt-policy allow-missing"
                 payload["next_command"] = qa_command
-                payload["notes"] = (
-                    "Spawn student-presentation-suite:visual-critic WITHOUT a `name` "
-                    "parameter — a named Agent call becomes a teammate whose agent_type is the name, "
-                    "so SubagentStop never issues critic-execution.json and QA blocks forever. "
-                    "Overview: read the cheap contact-sheet-thumb.jpg, not the full-size contact sheet; "
-                    "the isolated critic Reads EVERY full-size page (its context never reaches this session). "
-                    + (
-                        "Degraded receipt policy for this work-id: wait for the critic to return "
-                        "and confirm visual-review.json is valid — do NOT wait for "
-                        "critic-execution.json, which this runtime cannot produce."
-                        if work_id_receipt_policy(manifest) == "allow-missing"
-                        else "Wait for critic-execution.json before QA."
+                previous_qa = manifest.get("qa") or {}
+                reusable_review = previous_qa.get("visual_review") or {}
+                reusable_receipt = previous_qa.get("critic_execution") or {}
+                can_reuse_visual = bool(
+                    previous_qa.get("ok")
+                    and binding_is_current(reusable_review)
+                    and (
+                        previous_qa.get("critic_receipt") == "missing-allowed"
+                        or binding_is_current(reusable_receipt)
                     )
                 )
-                payload["agent"] = "student-presentation-suite:visual-critic"
-                payload["session_segment"] = (
-                    "boundary-recommended: build+render is done and this work-dir carries all state. "
-                    "Running review+QA in a NEW session (just /sp-deck then `next --json`) avoids "
-                    "re-reading this session's history on every request — the single largest cost lever."
-                )
+                if can_reuse_visual:
+                    payload["read_images"] = []
+                    payload["notes"] = (
+                        "Only confirmed support/export deliverable bytes changed. Reuse the "
+                        "still-current visual review and rerun deterministic QA + Delivery; "
+                        "do not spawn another Visual Critic."
+                    )
+                    payload["visual_evidence_reused"] = True
+                else:
+                    payload["notes"] = (
+                        "Spawn student-presentation-suite:visual-critic WITHOUT a `name` "
+                        "parameter — a named Agent call becomes a teammate whose agent_type is the name, "
+                        "so SubagentStop never issues critic-execution.json and QA blocks forever. "
+                        "Overview: read the cheap contact-sheet-thumb.jpg, not the full-size contact sheet; "
+                        "the isolated critic Reads EVERY full-size page (its context never reaches this session). "
+                        + (
+                            "Degraded receipt policy for this work-id: wait for the critic to return "
+                            "and confirm visual-review.json is valid — do NOT wait for "
+                            "critic-execution.json, which this runtime cannot produce."
+                            if work_id_receipt_policy(manifest) == "allow-missing"
+                            else "Wait for critic-execution.json before QA."
+                        )
+                    )
+                    payload["agent"] = "student-presentation-suite:visual-critic"
+                    payload["session_segment"] = (
+                        "boundary-recommended: build+render is done and this work-dir carries all state. "
+                        "Running review+QA in a NEW session (just /sp-deck then `next --json`) avoids "
+                        "re-reading this session's history on every request — the single largest cost lever."
+                    )
             else:
                 payload["next_command"] = (
                     f'{python} "{pipeline}" render --work-dir "{work_dir}"'

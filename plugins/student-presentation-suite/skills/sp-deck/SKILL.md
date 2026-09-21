@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.15.8
+version: 0.15.9
 ---
 
 # Student Presentation PPT
@@ -123,7 +123,7 @@ Windows 下优先用这个 python 形式；`run_gates.sh` 只是定位解释器�
 
 该 orchestrator 会把 delivery 所需的 canonical `visual-generation-report.json` 自动写入 work-dir；它是 repair 后可更新的生成证据，不是冻结输入，QA 会绑定当轮版本，complete 会拒绝 QA 后再次变化；不得直调内部 visual-generation gate 或手写报告。校准预览和正式 `rendered` gate 都会从 PPTX 成品的 slide、chart、diagram XML 核对所选 style 的浅/深六角色 palette，并解析 theme scheme 的基础色；静态门不完整模拟 `tint` / `shade` / `alpha` 等 OOXML 颜色变换，最终观感仍由渲染图与 visual-critic 判断，raster 图片由 provenance 与视觉评审负责。
 11. **Render**：调用 `ppt_pipeline.py render --work-dir <wd>`。Pipeline 一次渲染全部页面并生成 `contact-sheet.png` / 缩略图；相同 PPTX hash 复用。build 后旧渲染证据被归档，repair 后必须重新 render。**render 只接受确定性预检全绿的 deck**：build 打包后会立即在本地跑 `rendered` + `actual-content` + `quality` 的确定性部分（evidence/timing/lock，只读 PPTX 与 spec、不依赖 critic）；不绿时 `render` 直接拒绝，`next --json` 会指向免 repair 轮的修法——spawn builder `mode=repair` 读 `pre-qa-*.json` 报告改页后重建（连续失败上限 `max_pre_qa_rebuilds`，超过即转正式 render/critic 流程）。critic 从此只评审确定性门全绿的 deck，不再为一个注定返工的 deck 花一整轮评审。
-12. **Prepare Deliverables**：`ppt_pipeline.py prepare-deliverables --work-dir <wd>` 在 render 后、critic 前按冻结 Slide Spec 确定性生成 `speaker-notes` / `full-script` / `teleprompter` / `training-cards` / `references`，PDF 只复制本轮 render 的 hash-bound PDF。所有产物与当前 PPTX/spec 绑定；QA 后变化会使 complete 拒绝并回到 producing 重建产物、重跑 QA。
+12. **Prepare Deliverables**：`ppt_pipeline.py prepare-deliverables --work-dir <wd>` 在 render 后、critic 前按冻结 Slide Spec 确定性生成已确认类型；`full-script` / `teleprompter` 的正文只取 Builder 合并讲稿或 PPTX 备注区，缺页即拒绝，不用 `note_goal` 充当演讲稿。PDF 只复制本轮 render 的 hash-bound PDF。所有产物与当前 PPTX/spec 绑定；QA 后仅支持/导出文件变化会保留视觉证据，回到 producing 重建产物并重跑确定性 QA/Delivery，不重复启动 critic。
 13. **Visual Critique**：Agent `student-presentation-suite:visual-critic`，不传 `name`，独立读取当前 contact sheet 和所有页图，写绑定当前 SHA256 的 `visual-review.json`；最终 critic 仍负责全 deck rhythm，Calibration 不能替代它。
 14. **QA DAG**：必须已有 `critic-execution.json`；`ppt_pipeline.py qa --work-dir <wd> --visual-review <visual-review.json>` 按 `package → rendered → actual-content → quality → delivery` 执行并绑定本轮输入。**产物可用性门（package/rendered）失败即停；内容质量门（actual-content/quality/delivery）全部跑完再汇总**——一轮 repair 必须拿到完整 blocker 清单，而不是每轮只发现一层门（2026-09-17 live 因此耗掉 6 轮 repair、约 199M token）。`pipeline-qa.json` 的 `failed_stages` 与 `blockers_by_gate` 就是给 repair 的清单：传报告路径给 builder 让它自己读，不要转抄；`derived_problems` 是上游失败的派生结论，不要当成独立任务去修。
 15. **Repair**：只有 QA blocker 才先运行 `ppt_pipeline.py repair --reason <摘要>`；随后 spawn `presentation-builder mode=repair`，只改 blocker 页及直接共享依赖。**给 builder 的输入是 `pipeline-qa.json` 路径 + 一句话摘要**——该报告已含全部门的问题（`failed_stages` / `blockers_by_gate`），一轮把它们全修完，不要按门分批。

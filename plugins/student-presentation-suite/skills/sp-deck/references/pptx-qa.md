@@ -2,7 +2,12 @@
 
 v0.7.1 默认 QA 仍按四个阶段组织：Plan Freeze、Actual Artifact、Render + Quality Critic、Delivery。普通任务不生成旧式冗长审计链，但必须保存最小的 spec lock、package、actual-content、visual-review、quality 和 delivery 报告。
 
-**CLI 入口约定**：对外只使用稳定入口 `quality_gate.py` 与 `delivery_check.py`（`--core v07|v071|v08` 选择实现，默认 v08；本文示例显式传 `--core v071` 以对应当前四阶段契约）。`pptx_quality_gate_v071.py`、`pptx_delivery_check_v071.py` 等历史脚本保留为内部实现模块，不再作为平级 CLI 调用；`ppt_pipeline.py qa` 与 `run_gates.py` 在内部直接按版本 dispatch（delivery 用 v08）。
+**正式生产入口**：生产会话只执行 `ppt_pipeline.py next|advance|qa|complete` 与
+`run_gates.py` 返回的公开动作。下面的 `slide_spec_guard.py`、`pptx_tool.py`、
+`quality_gate.py`、`delivery_check.py` 命令只用于维护者调试和解释内部 Gate，不得绕过
+pipeline manifest、状态守卫或证据绑定在正式会话中单独执行。
+`pptx_quality_gate_v071.py` / `pptx_delivery_check_v071.py` 等版本脚本是 wrapper 内部实现，
+仅保留给维护者定位问题，不是平级生产入口。
 
 兼容性说明：v0.6 的“三道门禁”和 v0.7 仅依赖 `--visual-reviewed` 的交付形式仍保留兼容脚本，但新的 `sp-deck` 不得把它们当作完整高质量证明。
 
@@ -33,7 +38,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/slide_spec_guard.py" check 
   --slide-spec <slide-spec.yaml> --lock-file <slide-spec-lock.json>
 ```
 
-Artifact 与 Plan 不一致时默认修 `deck.js` / composition / actual PPTX，**禁止通过改 Slide Spec 让检查通过**。只有计划本身确实错误、用户要求变化或发现事实/结构问题时，才允许先重跑 validator，再显式 revision：
+Artifact 与 Plan 不一致时默认修 `deck.js` / composition / actual PPTX，**禁止通过改 Slide Spec 让检查通过**。只有计划本身确实错误、用户要求变化或发现事实/结构问题时才允许修订。正式生产中，尚未开始 build 时用 `ppt_pipeline.py plan --force --reason <原因>` 重新规划；生产已经开始后创建新 work-id。下列底层 revision 仅供维护者调试锁文件：
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/slide_spec_guard.py" revise \
@@ -171,7 +176,8 @@ Render
 每一张 blocker 页 PNG。不要逐张串行；不要在 hash 未变时重读。`ppt_pipeline.py next`
 会列出本轮该读的图。
 
-**Spec revision 不是普通 repair 手段。** 只有 plan 本身错误时才走 `slide_spec_guard.py revise --reason ...`；revision 后重新校验并重新生成。
+**Spec revision 不是普通 repair 手段。** 只有 plan 本身错误时才通过公开的
+`ppt_pipeline.py plan --force --reason ...`（仅 planned 状态）修订；生产开始后使用新 work-id。
 
 **能在写生成器之前发现的问题，不要留到 readback。** 动手写 `deck.js` 之前先跑：
 
@@ -214,7 +220,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/delivery_check.py" --core v
 
 每页必须对应一张有效 PNG/JPEG 预览；缺预览、spec lock 失效、quality gate 未通过或未完成逐页视觉复核时状态只能是 `incomplete`。用户明确不需要 notes 时可传 `--allow-missing-notes`（只免除它命名的那个类型）。
 
-交付报告通过后：
+正式生产不单独执行上面的 delivery wrapper；由 pipeline QA 调用并绑定报告。通过后：
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete --work-dir <wd>

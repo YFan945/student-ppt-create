@@ -267,6 +267,14 @@ class BuilderPacketScopeTests(BuilderGuardFixture, unittest.TestCase):
         guard.handle(self.builder(self.own_packet, "Read"))
         self.assertEqual(2, guard.handle(self.builder(self.other_page)))
 
+    def test_registered_builder_cannot_switch_packets_within_the_round(self) -> None:
+        self.assertEqual(0, guard.handle(self.builder(self.own_packet, "Read")))
+        original = self.binding()
+        self.assertEqual(2, guard.handle(self.builder(self.other_packet, "Read")))
+        self.assertEqual(original, self.binding())
+        self.assertEqual(0, guard.handle(self.builder(self.page, "Edit")))
+        self.assertEqual(2, guard.handle(self.builder(self.other_page, "Edit")))
+
     def test_pages_outside_every_packet_stay_refused_after_registration(self) -> None:
         guard.handle(self.builder(self.own_packet, "Read"))
         orphan = self.work / "pages/p11-extra.js"

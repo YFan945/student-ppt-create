@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.15.8
+version: 0.15.9
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---

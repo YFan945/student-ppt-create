@@ -139,7 +139,11 @@ def cmd_prepare_deliverables(args: argparse.Namespace) -> int:
             "--prefix",
             prefix,
             "--json",
+            "--pptx",
+            str(pptx),
         ]
+        if merged_notes.is_file():
+            argv += ["--speaker-notes", str(merged_notes)]
         for name in support:
             argv += ["--only", name]
         proc = core._runner(argv)
@@ -187,10 +191,10 @@ def cmd_prepare_deliverables(args: argparse.Namespace) -> int:
     before = str(manifest.get("state"))
     after = "producing" if before == "qa" else before
     if before == "qa":
-        # Recreating a deleted or changed deliverable invalidates the QA result
-        # that checked the previous bytes. Return to producing so the critic/QA
-        # boundary is traversed again instead of completing with stale evidence.
-        manifest["qa"] = {}
+        # Recreating a deleted or changed support/export file invalidates the QA
+        # result that checked the previous bytes, but it does not change the PPTX
+        # or render. Keep the old, hash-bound visual evidence so dispatch can
+        # rerun deterministic QA without paying for another critic pass.
         manifest["state"] = after
     record(
         manifest,
@@ -198,6 +202,7 @@ def cmd_prepare_deliverables(args: argparse.Namespace) -> int:
         before,
         after,
         requested=requested,
+        visual_evidence_retained=before == "qa",
     )
     save_manifest(work_dir, manifest)
     if before == "qa":

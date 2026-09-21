@@ -1124,7 +1124,11 @@ class QaDagTests(PipelineTestCase):
         )
         refreshed = self.manifest()
         self.assertEqual(refreshed["state"], "producing")
-        self.assertEqual(refreshed["qa"], {})
+        self.assertTrue(refreshed["qa"]["ok"])
+        dispatch = pp.build_next_payload(self.work)
+        self.assertTrue(dispatch["visual_evidence_reused"])
+        self.assertNotIn("agent", dispatch)
+        self.assertIn(" qa ", dispatch["next_command"])
 
     def test_previews_and_visual_review_are_hash_bound(self) -> None:
         self.producing_manifest()

@@ -153,7 +153,8 @@ Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 
 
 每类交付物独立验收：`full-script` / `teleprompter` 不会隐含要求一份 speaker-notes；
 请求 PDF 时必须存在带 PDF 文件签名的真实 `.pdf`，PNG 预览不能替代。因而只请求 PPTX
-时，即使没有独立讲稿文件也可以完成。
+时，即使没有独立讲稿文件也可以完成。完整稿与提词器正文只读取 Builder 合并讲稿或
+PPTX 备注区的实际内容，规划性的 `note_goal` 不能冒充完整演讲稿。
 
 用户文件不得写入插件安装目录。
 
@@ -220,7 +221,8 @@ QA 之后再次变化的报告。
 render 之后，`ppt_pipeline.py prepare-deliverables` 只按冻结 Slide Spec 中已确认的类型
 确定性生成支持/导出文件。PDF 直接采用本轮 render 产出的 PDF，不会扫描同目录的无关
 PDF；每个产物在 critic 和 QA 前绑定哈希。QA 后任一产物变化都会阻断 complete，管线回到
-生产态重新生成并重跑 QA。
+生产态重新生成并重跑确定性 QA 与 Delivery；只要 PPTX 和 render 证据未变，就复用已有
+视觉评审，不重复启动 critic。
 生产段用 `skills/sp-deck/scripts/ppt_pipeline.py next --work-dir <wd> --json` 发现下一步
 （`plan` 会 scaffold `deck.js` + `pages/pNN-*.js`，整文件生成器会被 `build` 拒绝）。
 工作方式约束（并行调用、定点编辑、写盘即弃、阶段小结、检索走 `sp-research` 显式 spawn、
