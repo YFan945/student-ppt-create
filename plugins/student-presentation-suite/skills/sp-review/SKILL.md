@@ -1,7 +1,7 @@
 ---
 name: sp-review
 description: Use only for a clearly student-owned academic context when the user explicitly asks to review, audit, score, critique, compare, or diagnose an existing PPT/PPTX/PowerPoint deck or rendered export.
-version: 0.15.9
+version: 0.15.10
 ---
 
 # Student Presentation Review

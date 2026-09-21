@@ -32,7 +32,7 @@ A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 NOTESLIDE_REL_RE = re.compile(r'Type="[^"]*?/notesSlide"[^>]*?Target="([^"]+)"')
 NOTES_HEADING_RE = re.compile(
     r"(?m)^#{1,6}\s+(?:(?:Slide|幻灯片)\s*)?(?:第\s*)?(?P<slide>\d+)"
-    r"(?:\s*页)?(?:\s*[-—:.：][^\n]*|\s*)$",
+    r"(?:\s*页)?(?:\s*[-—:.：·][^\n]*|\s*)$",
     re.IGNORECASE,
 )
 

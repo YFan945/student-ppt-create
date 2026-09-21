@@ -2,6 +2,13 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.15.10 — 2026-09-22 · Speaker notes parsing and dependency binding
+
+- 修复讲稿解析器不支持 `·`（中间点）分隔符格式的问题，`## 第 N 页 · 标题` 现在可被正确解析；
+  添加回归测试验证中文分隔符格式兼容性。
+- 完善交付物依赖绑定机制：当交付物包含 `full-script` 或 `teleprompter` 时，将 `speaker-notes.md`
+  作为独立依赖纳入当前性检查，确保讲稿文件变化后自动生成的完整稿/提词器会失效重生成。
+
 ## 0.15.9 — 2026-09-21 · Builder identity and script integrity
 
 - Builder Packet 授权在同一 active round 内改为首次绑定后不可切换；读取另一分片 Packet 会

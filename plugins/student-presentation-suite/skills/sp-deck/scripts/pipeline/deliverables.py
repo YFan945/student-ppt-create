@@ -80,6 +80,9 @@ def deliverables_are_current(manifest: dict[str, Any]) -> bool:
         return False
     if not binding_is_current(prepared.get("source_slide_spec") or {}):
         return False
+    source_notes = prepared.get("source_speaker_notes")
+    if source_notes and not binding_is_current(source_notes):
+        return False
     outputs = prepared.get("outputs") or {}
     if any(name not in outputs or not binding_is_current(outputs[name]) for name in requested):
         return False
@@ -92,7 +95,7 @@ def deliverable_bindings(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, dict):
         return []
     bindings: list[dict[str, Any]] = []
-    for name in ("source_pptx", "source_slide_spec", "report"):
+    for name in ("source_pptx", "source_slide_spec", "source_speaker_notes", "report"):
         item = value.get(name)
         if isinstance(item, dict):
             bindings.append(item)
@@ -177,7 +180,7 @@ def cmd_prepare_deliverables(args: argparse.Namespace) -> int:
     if missing:
         raise RefusedError("requested deliverables were not prepared: " + ", ".join(missing))
     report_path = work_dir / "deliverables-report.json"
-    report = {
+    report: dict[str, Any] = {
         "ok": True,
         "prepared_at": now(),
         "source_pptx": bind(pptx),
@@ -186,6 +189,10 @@ def cmd_prepare_deliverables(args: argparse.Namespace) -> int:
         "requested": requested,
         "outputs": outputs,
     }
+    if merged_notes.is_file() and any(
+        name in requested for name in {"full-script", "teleprompter"}
+    ):
+        report["source_speaker_notes"] = bind(merged_notes)
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     manifest["deliverables"] = {**report, "report": bind(report_path)}
     before = str(manifest.get("state"))

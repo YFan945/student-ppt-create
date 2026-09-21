@@ -149,6 +149,26 @@ class SupportOutputTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "missing or too short: 1"):
                 module.actual_speaker_notes(data, notes_path, None)
 
+    def test_chinese_dot_separator_format_is_recognized(self) -> None:
+        """Regression test: '## 第 N 页 · 标题' format must be parsed."""
+        module = load_module(SCRIPT)
+        data = {
+            "slides": [
+                {"id": 1, "title": "开场"},
+                {"id": 10, "title": "环境"},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            notes_path = Path(tmp) / "speaker-notes.md"
+            notes_path.write_text(
+                "# 演讲稿\n\n## 第 1 页 · 开场\n\n这是开场白的完整正文内容。\n\n"
+                "## 第 10 页 · 环境\n\n这是环境分析的完整正文内容。\n",
+                encoding="utf-8",
+            )
+            notes = module.actual_speaker_notes(data, notes_path, None)
+            self.assertEqual(notes[1], "这是开场白的完整正文内容。")
+            self.assertEqual(notes[10], "这是环境分析的完整正文内容。")
+
 
 if __name__ == "__main__":
     unittest.main()
