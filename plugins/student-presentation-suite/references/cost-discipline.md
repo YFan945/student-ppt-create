@@ -194,7 +194,8 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 - 不再逐条调用单个 gate，也不再逐个回显每个 gate 的完整 JSON 报告。
 - 单个 gate 脚本（`art_direction_check.py`、`composition_candidate_check.py`、
   `pptx_visual_generation_gate_v08.py`、`slide_spec_guard.py`）仍是 canonical 实现，
-  调试单个门禁时可以直接调用。
+  但生产会话只通过 `run_gates.py` / `ppt_pipeline.py` 间接调用；entry guard 会拒绝
+  直调，避免报告生成、manifest 绑定与 revision 链脱节。
 
 **可验证**：一次门禁运行的 stdout ≤ 15 行（通过时恰为 1 行）；`gates-report.json`
 存在且包含每个子门的计数与输入 SHA-256。

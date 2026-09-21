@@ -30,6 +30,7 @@ CALIBRATION_MANIFEST_NAME = "calibration-manifest.json"
 CALIBRATION_REVIEW_NAME = "calibration-visual-review.json"
 STYLE_SUMMARY_NAME = "style-summary.json"
 CALIBRATION_RECEIPT_NAME = "calibration-critic-execution.json"
+PALETTE_REPORT_NAME = "palette-report.json"
 
 # The treatment keys the calibration builder records about what it established.
 STYLE_SUMMARY_KEYS = (
@@ -204,6 +205,32 @@ def calibration_review(work_dir: Path) -> dict[str, Any]:
     slides = [int(value) for value in calibration.get("slides") or [] if isinstance(value, int)]
     status["slides"] = slides
     expected_pptx = str((calibration.get("pptx") or {}).get("sha256") or "")
+
+    palette_path = target / PALETTE_REPORT_NAME
+    palette = None
+    if palette_path.is_file() or calibration.get("palette"):
+        try:
+            palette = _read_object(palette_path)
+        except Exception as exc:
+            status["action"] = "builder"
+            status["repair_slides"] = slides
+            status["blockers"] = 1
+            status["reason"] = f"calibration palette report is unreadable: {exc}"
+            return status
+    if palette is not None and palette.get("ok") is not True:
+        affected = sorted({
+            int(item["slide"])
+            for item in palette.get("issues") or []
+            if isinstance(item, dict) and isinstance(item.get("slide"), int)
+        })
+        status["action"] = "builder"
+        status["repair_slides"] = affected or slides
+        status["blockers"] = len(palette.get("issues") or []) or 1
+        status["reason"] = (
+            "calibration PPTX uses colors outside the approved token palettes; "
+            f"repair from {palette_path}"
+        )
+        return status
 
     if not review_path.is_file():
         status["reason"] = (

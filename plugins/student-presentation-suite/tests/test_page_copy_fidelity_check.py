@@ -117,6 +117,24 @@ class PageCopyFidelityTests(unittest.TestCase):
         page = self.write_page("p01-cost.js", body)
         self.assertTrue(fidelity.check(SPEC, [page])["ok"])
 
+    def test_ascii_thousands_separator_is_content(self) -> None:
+        spec = {
+            "slides": [{
+                "id": 1,
+                "title": "全球风光装机规模比较",
+                "claim": "累计装机已经达到新的量级",
+                "slide_copy": ["光伏 1,865 GW，风电 1,133 GW"],
+            }]
+        }
+        slide = spec["slides"][0]
+        page = self.write_page(
+            "p01-scale.js",
+            "\n".join(text_call(value) for value in [
+                slide["title"], slide["claim"], slide["slide_copy"][0]
+            ]),
+        )
+        self.assertTrue(fidelity.check(spec, [page])["ok"])
+
     def test_pages_map_by_ordinal_not_by_slug(self) -> None:
         """`p03-lcoe.js` is slide 3 even though the slug is not the slide id."""
         spec = {

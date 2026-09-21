@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -128,10 +129,36 @@ def merge_speaker_note_shards(work_dir: Path) -> list[str]:
     if not fragments:
         return []
     parts: list[str] = []
+    # Repair rounds may re-shard pages.  Concatenating files by shard name then
+    # duplicates a page whenever its new shard differs from the initial round.
+    # Parse page sections and let the most recently written fragment replace the
+    # older copy; only legacy fragments without page headings use concatenation.
+    section_re = re.compile(
+        r"(?m)^##\s+(?:第\s*)?(?P<slide>\d+)(?:\s*页|\s*[-—:.])[^\n]*\n"
+    )
+    by_slide: dict[int, tuple[int, str, str]] = {}
+    parsed_any = False
     for path in fragments:
         text = path.read_text(encoding="utf-8").strip()
-        if text:
+        if not text:
+            continue
+        matches = list(section_re.finditer(text))
+        if not matches:
             parts.append(text)
+            continue
+        parsed_any = True
+        stamp = path.stat().st_mtime_ns
+        for index, match in enumerate(matches):
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+            slide = int(match.group("slide"))
+            section = text[match.start():end].strip()
+            previous = by_slide.get(slide)
+            marker = (stamp, path.name)
+            if previous is None or marker > (previous[0], previous[1]):
+                by_slide[slide] = (stamp, path.name, section)
+    if parsed_any:
+        ordered = [by_slide[slide][2] for slide in sorted(by_slide)]
+        parts = ["# 演讲稿", *ordered, *parts]
     if not parts:
         return []
     target = work_dir / "speaker-notes.md"

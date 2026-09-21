@@ -209,7 +209,8 @@ v0.8 的视觉门禁（Art Direction、composition 候选、探索证据）由�
 python skills/sp-deck/scripts/run_gates.py --art-direction <a.yaml> --slide-spec <s.yaml> --evidence-dir <work-id> --lock-file <lock.json>
 ```
 
-通过时只回显 1 行，完整明细写入 `gates-report.json`；单个 gate 脚本仍可单独调用用于调试。
+通过时只回显 1 行，完整明细写入 `gates-report.json`，delivery 需要的 canonical
+`visual-generation-report.json` 同时自动落到 work-dir。生产会话不直调内部 gate 脚本。
 生产段用 `skills/sp-deck/scripts/ppt_pipeline.py next --work-dir <wd> --json` 发现下一步
 （`plan` 会 scaffold `deck.js` + `pages/pNN-*.js`，整文件生成器会被 `build` 拒绝）。
 工作方式约束（并行调用、定点编辑、写盘即弃、阶段小结、检索走 `sp-research` 显式 spawn、
@@ -239,6 +240,8 @@ critical/major 之前，正式 `build` 会被机械拒绝。runtime hook 会按 
 陈旧 render、错误报告路径和损坏/错绑 receipt 都会在放行前被拒绝。通过
 `builder_packet.py --mode calibration --slides ...` 指定的校准样本会与 active round 原子记录，
 后续 `next` / `advance` 会保持这组页面，不会静默退回默认样本。
+校准预览与最终 `rendered` gate 还会直接检查 PPTX 成品，只允许所选 style 的浅/深两套
+六角色 palette；任何越位 sRGB 色值都会按页面返回修复。
 
 **每轮 repair 都 spawn 一个新的 builder 实例**，不要继续上一个：一个扛了多轮的实例
 常驻上下文涨到 699K，96% 的成本花在 200K 以上；`next --json` 检出跨轮实例时会报
@@ -250,8 +253,8 @@ JSON / 改页面模块"的各种写法。
 **墙钟 = 回合数 × 往返延迟，而门不占时间**：全套门在一次 147 分钟的运行里实测只有
 **150 秒（1.7%）**，其余是 **519 个模型回合**、每个回合只带一个工具调用。`next --json`
 给出 `builder_shards` 时，主会话**在同一条消息里 spawn 全部 shard** 让页面工作并发——
-分片天然互斥，每个只写自己的 `speaker-notes-shard-<N>.md`（`build` 会拼成
-`speaker-notes.md`），任何一道门都没有改动。`session_cost.py` 现在输出 `turns`、
+分片天然互斥，每个只写自己的 `speaker-notes-shard-<N>.md`（`build` 按页号合并，repair
+分片中较新的同页讲稿会替换旧稿，不会重复），任何一道门都没有改动。`session_cost.py` 现在输出 `turns`、
 `tool_calls_per_turn` 与 `turns_under_20min`，让时间预算可以对着数据判断；它的请求计数
 也改为"每个 API 调用一行"（按 message id 取最大 ctx）——旧规则把一个子代理读成 480 个
 请求，实际只发了 261 个。

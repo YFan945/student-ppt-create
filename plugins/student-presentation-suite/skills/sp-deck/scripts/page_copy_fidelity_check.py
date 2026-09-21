@@ -57,7 +57,10 @@ def source_text(path: Path) -> str:
     raw = path.read_text(encoding="utf-8", errors="replace")
     joined = re.sub(r"['\"`]\s*\+\s*['\"`]", "", raw)
     joined = joined.replace("\\n", " ").replace("\\t", " ")
-    return normalize(re.sub(r"['\"`,]", "", joined))
+    # Quotes/backticks are JavaScript syntax, but commas are content.  Removing
+    # commas here made the source side disagree with ``missing_fragments`` and
+    # guaranteed a false negative for every frozen thousands separator.
+    return normalize(re.sub(r"['\"`]", "", joined))
 
 
 def page_for(pages: list[Path], index: int) -> Path | None:

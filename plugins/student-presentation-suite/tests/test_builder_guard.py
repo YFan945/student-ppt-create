@@ -315,6 +315,28 @@ class BuilderPacketScopeTests(BuilderGuardFixture, unittest.TestCase):
             "an idempotent re-dispatch must not invalidate in-flight builders",
         )
 
+    def test_rewritten_packet_rotates_round_even_when_path_and_slides_match(self) -> None:
+        packets = [{"packet": str(self.own_packet), "slides": [1, 4, 7]}]
+        builder_packet.record_active_round(self.work, "initial", packets)
+        self.assertEqual(0, guard.handle(self.builder(self.own_packet, "Read")))
+        first = json.loads((self.packet_dir / "active-round.json").read_text(encoding="utf-8"))
+        self.own_packet.write_text('{"revision": 2}', encoding="utf-8")
+        builder_packet.record_active_round(self.work, "initial", packets)
+        second = json.loads((self.packet_dir / "active-round.json").read_text(encoding="utf-8"))
+        self.assertNotEqual(first["at"], second["at"])
+        self.assertNotEqual(
+            first["packets"][0]["packet_sha256"],
+            second["packets"][0]["packet_sha256"],
+        )
+        self.assertEqual(2, guard.handle(self.builder(self.page, "Edit")))
+
+    def test_rewritten_packet_cannot_register_against_stale_round(self) -> None:
+        packets = [{"packet": str(self.own_packet), "slides": [1, 4, 7]}]
+        builder_packet.record_active_round(self.work, "initial", packets)
+        self.own_packet.write_text('{"revision": 2}', encoding="utf-8")
+        self.assertEqual(2, guard.handle(self.builder(self.own_packet, "Read")))
+        self.assertIsNone(self.binding())
+
     def test_a_genuine_reshard_still_rotates_the_round(self) -> None:
         """The reservation only covers UNCHANGED dispatches. When the pipeline
         genuinely re-shards (different assigned slides — e.g. a resume after an

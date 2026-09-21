@@ -453,7 +453,10 @@ def _gate_stage(
     if name == "package":
         argv = [sys.executable, str(PPTX_TOOL), "validate", pptx, "--output", str(report)]
     elif name == "rendered":
-        argv = gate("pptx_rendered_check.py", "--pptx", pptx, "--output", str(report))
+        argv = gate(
+            "pptx_rendered_check.py", "--pptx", pptx,
+            "--art-direction", art, "--output", str(report),
+        )
     elif name == "actual_content":
         argv = gate("pptx_actual_content_check.py", pptx, spec, "--output", str(report))
     elif name == "quality":

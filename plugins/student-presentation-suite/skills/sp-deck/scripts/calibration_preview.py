@@ -20,6 +20,11 @@ from typing import Any
 import yaml
 
 HERE = Path(__file__).resolve().parent
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+
+import pptx_palette_check  # noqa: E402
+
 ROOT = HERE.parents[2]
 BUILDER = ROOT / "scripts" / "run_with_pptxgenjs.js"
 PPTX_TOOL = ROOT / "scripts" / "pptx_tool.py"
@@ -154,6 +159,11 @@ def build_preview(work_dir: Path, slides: list[int]) -> dict[str, Any]:
     images = sorted(render_dir.glob("*.png"))
     if len(images) != len(slides):
         raise RuntimeError(f"calibration render produced {len(images)} images for {len(slides)} slides")
+    palette_report = target / "palette-report.json"
+    palette = pptx_palette_check.check_pptx(pptx, work_dir / "art-direction.yaml")
+    palette_report.write_text(
+        json.dumps(palette, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     manifest = {
         "version": "1.0",
         "slides": slides,
@@ -162,6 +172,11 @@ def build_preview(work_dir: Path, slides: list[int]) -> dict[str, Any]:
             for number, path in zip(slides, pages, strict=True)
         ],
         "pptx": {"path": str(pptx), "sha256": sha256_file(pptx)},
+        "palette": {
+            "path": str(palette_report.resolve()),
+            "sha256": sha256_file(palette_report),
+            "ok": palette["ok"],
+        },
         "render": [
             {"slide": number, "path": str(path.resolve()), "sha256": sha256_file(path)}
             for number, path in zip(slides, images, strict=True)
@@ -169,7 +184,7 @@ def build_preview(work_dir: Path, slides: list[int]) -> dict[str, Any]:
     }
     out = target / "calibration-manifest.json"
     out.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return {**manifest, "manifest": str(out)}
+    return {**manifest, "manifest": str(out), "ok": palette["ok"]}
 
 
 def parse_args() -> argparse.Namespace:
@@ -204,7 +219,7 @@ def main() -> int:
         print(json.dumps(result, ensure_ascii=False))
     else:
         print(f"calibration_preview: rendered slides {result['slides']} → {result['manifest']}")
-    return 0
+    return 0 if result["ok"] else 2
 
 
 if __name__ == "__main__":

@@ -98,6 +98,9 @@ class RunGatesSummaryTests(unittest.TestCase):
             self.assertEqual(0, report["counts"]["blockers"])
             self.assertIn("art_direction", report["gates"])
             self.assertIn("visual_generation", report["gates"])
+            visual_report = Path(report["gates"]["visual_generation"]["report"])
+            self.assertTrue(visual_report.is_file())
+            self.assertEqual("0.8", json.loads(visual_report.read_text(encoding="utf-8"))["generation_core_version"])
 
     def test_blocking_run_lists_only_problems_and_exits_two(self) -> None:
         with TemporaryDirectory() as tmp:

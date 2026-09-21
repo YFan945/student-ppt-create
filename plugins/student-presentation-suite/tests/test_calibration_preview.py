@@ -70,6 +70,7 @@ class CalibrationPreviewTests(unittest.TestCase):
         page4 = self.write_page(4)
 
         original = calibration.run_checked
+        original_palette = calibration.pptx_palette_check.check_pptx
 
         def fake_run(argv: list[str], label: str) -> None:
             if label == "calibration build":
@@ -82,10 +83,12 @@ class CalibrationPreviewTests(unittest.TestCase):
                 (out_dir / "calibration-2.png").write_bytes(b"two")
 
         calibration.run_checked = fake_run
+        calibration.pptx_palette_check.check_pptx = lambda *_: {"ok": True, "issues": []}
         try:
             result = calibration.build_preview(self.work, [1, 4])
         finally:
             calibration.run_checked = original
+            calibration.pptx_palette_check.check_pptx = original_palette
 
         manifest = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
         self.assertEqual([1, 4], manifest["slides"])
@@ -108,6 +111,7 @@ class CalibrationPreviewTests(unittest.TestCase):
         stale.write_bytes(b"previous preview")
 
         original = calibration.run_checked
+        original_palette = calibration.pptx_palette_check.check_pptx
 
         def fake_run(argv: list[str], label: str) -> None:
             if label == "calibration build":
@@ -122,10 +126,12 @@ class CalibrationPreviewTests(unittest.TestCase):
                     (out_dir / f"calibration-{number}.png").write_bytes(b"img")
 
         calibration.run_checked = fake_run
+        calibration.pptx_palette_check.check_pptx = lambda *_: {"ok": True, "issues": []}
         try:
             result = calibration.build_preview(self.work, [1, 4])
         finally:
             calibration.run_checked = original
+            calibration.pptx_palette_check.check_pptx = original_palette
         self.assertTrue(Path(result["manifest"]).is_file())
         self.assertEqual(b"pptx", stale.read_bytes())
 

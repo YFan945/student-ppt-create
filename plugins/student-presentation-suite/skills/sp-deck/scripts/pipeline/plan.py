@@ -120,7 +120,34 @@ def cmd_plan(args: argparse.Namespace) -> int:
         raise RefusedError("already planned; pass --force to re-plan")
 
     workflow_state_path = (args.workflow_state or default_workflow_state(work_dir)).resolve()
-    intake = validate_intake(workflow_state_path)
+    if manifest and args.force:
+        # Re-planning an approved, still-unbuilt plan is a revision of the same
+        # authorization, not a new intake.  Requiring reset + confirm here used
+        # to erase the useful state transition while still leaving the old lock
+        # behind, after which freeze instructed callers to use an unreachable
+        # ``slide_spec_guard revise`` command.
+        if manifest.get("state") != "planned":
+            raise RefusedError(
+                "force re-plan is only allowed while the manifest is planned; "
+                "once production starts, create a new work-id"
+            )
+        intake = core.load_json(workflow_state_path) or {}
+        workflow = manifest.get("workflow") or {}
+        summary = Path(str(workflow.get("summary_file") or ""))
+        summary_sha = str(workflow.get("summary_sha256") or "")
+        if (
+            intake.get("work_id") != manifest.get("work_id")
+            or intake.get("state") != "planned"
+            or intake.get("summary_sha256") != summary_sha
+            or not summary.is_file()
+            or core.sha256_file(summary) != summary_sha
+        ):
+            raise RefusedError(
+                "force re-plan requires the original approved Production Summary "
+                "and matching planned workflow state"
+            )
+    else:
+        intake = validate_intake(workflow_state_path)
     if workflow_state_path != default_workflow_state(work_dir) or intake.get("work_id") != work_dir.name:
         raise RefusedError("intake must belong to this work_id and use its workflow-state.json")
 
@@ -232,8 +259,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
             f"re-validated the frozen spec into {validation_report}"
         )
     lock = work_dir / "slide-spec-lock.json"
+    lock_action = "revise" if manifest and args.force else "freeze"
     freeze_argv = [
-        sys.executable, str(HERE / "slide_spec_guard.py"), "freeze",
+        sys.executable, str(HERE / "slide_spec_guard.py"), lock_action,
         "--slide-spec", str(spec), "--validation-report", str(validation_report),
         "--lock-file", str(lock), "--reason", args.reason,
     ]
@@ -243,7 +271,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
     frozen = core._runner(freeze_argv)
     if frozen.returncode != 0 or not lock.is_file():
         detail = (frozen.stderr or frozen.stdout or "").strip()
-        raise RefusedError(f"slide_spec_guard freeze failed (exit {frozen.returncode}): {detail[:400]}")
+        raise RefusedError(
+            f"slide_spec_guard {lock_action} failed (exit {frozen.returncode}): {detail[:400]}"
+        )
 
     fresh["inputs"].update({
         "slide_spec": bind(spec), "spec_lock": bind(lock),

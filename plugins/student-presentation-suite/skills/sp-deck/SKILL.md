@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.15.5
+version: 0.15.6
 ---
 
 # Student Presentation PPT
@@ -92,7 +92,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" status --w
 2. **Mode**：按 source deck/edit intent 唯一确定 `create` / `edit_ooxml` / `rebuild_from_source`。
 3. **Research Gate + Compile**：依赖外部事实时先跑 `sp-research` 产生 `research-pack.json` 与 validation。主会话 spawn `student-presentation-suite:presentation-researcher` **不传 `name`、禁止再套一层**。`ppt_pipeline.py plan` 自己编译 evidence map 与带 E ids 的 spec，不让模型猜编译 CLI。
 4. **Art Direction**：**先读 `references/design-tokens.json`，再呈现具体样式选项或做任何颜色/视觉承诺**——选项只能引用 token 名；6 角色位之外的配色语义（如"暖色琥珀当第二主角"）禁止承诺（2026-09-17 live：承诺"光伏配琥珀"后才发现调色板契约禁色族外颜色，被迫中途换风格并重绑确认哈希）。visual style 只作为 seed，形成 `art-direction.yaml` 与 3–5 个 high-leverage slides。
-5. **Plan**：`<wd>` 必须为项目 `outputs/.pptx-work/<work-id>`；`edit_ooxml` 自动解包到 `ooxml/`，不生成 JS；`rebuild_from_source` 须先写 `source-analysis.md`。`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证 Production Summary、copy-fit、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/` 并建立 `build-manifest.json`。`--validation-report` 若描述的不是将被 freeze 的那个 spec（研究型 deck 会是 plan 自己编译出的 `slide-spec-compiled.yaml`），plan 会**自动对该 spec 重新生成报告**并在 manifest 记 `spec_report_regenerated`；不要为此手工跑第二遍 plan，也不要自己猜 compiled 文件的哈希。
+5. **Plan**：`<wd>` 必须为项目 `outputs/.pptx-work/<work-id>`；`edit_ooxml` 自动解包到 `ooxml/`，不生成 JS；`rebuild_from_source` 须先写 `source-analysis.md`。`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证 Production Summary、copy-fit、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/` 并建立 `build-manifest.json`。仍处于 `planned` 时确需更新 spec / research chain，直接给同一命令加 `--force --reason <具体原因>`；管线会调用 revision、保留锁的 revision/parent 链，不要 reset intake、移动旧锁或直调 `slide_spec_guard.py`。`--validation-report` 若描述的不是将被 freeze 的那个 spec（研究型 deck 会是 plan 自己编译出的 `slide-spec-compiled.yaml`），plan 会**自动对该 spec 重新生成报告**并在 manifest 记 `spec_report_regenerated`；不要为此手工跑第二遍 plan，也不要自己猜 compiled 文件的哈希。
 6. **Reference + Composition**：high-leverage 页保存 reference selection、2–3 个 silhouette candidates 与 wireframe 选择证据；普通页保留明确 composition intent。
 7. **Calibration Build**：仅 `create` / `rebuild_from_source`。校准样本按 **archetype coverage** 选取（`calibration_archetypes.py` 从 spec 的 kind / layout_family / layout 关键词确定性分类，覆盖最多不同视觉语法的 2–3 张；high-leverage 页优先认领组席位；packet 已含默认集，**默认集就是答案，除非你能说出一个它没覆盖到的视觉语法**——"这几页更重要"不是换的理由。要覆盖就跑 `builder_packet.py --mode calibration --slides <ids>` 读它的 `coverage` 块：覆盖的 archetype **数量不少于**默认集才算可以换（换掉一种语法换另一种可以，少一种不行）。**这条判定是硬门禁**：显式 `--slides` 覆盖若丢掉一种语法，脚本会在写出 packet **之前**拒绝（`SystemExit`，packet 不落盘——落盘的 packet 就是 builder 被要求信任的任务输入）；确有理由时要显式 `--force`，代价照样记进 `coverage` 块。**默认集永远不被拒**（它构造上就是最宽的样本）；默认集的**子集**（更短的样本）只记录不拒绝。主会话 spawn `student-presentation-suite:presentation-builder`，不传 `name`，传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder **只实现这些页面**，其余页面保持 scaffold，主流程此时故意不能正式 build。
 8. **Calibration Preview**：收到 `BUILDER_DONE(mode=calibration)` 后，由主会话运行确定性 helper，而不是让 builder 自己 build：
@@ -111,7 +111,7 @@ helper 只把这些已实现页面组装成临时 `calibration/calibration.pptx`
 显式改校准样本时，`builder_packet.py --mode calibration --slides <ids>` 会把 packet 与 `builder-active-round.json` **原子地一起更新**；随后 `next` / `advance` 复用这组 slide ids，不会重新落回默认校准集。不要手改 packet 或只改其中一个文件。
 9. **Full Isolated Page Build**：Calibration 视觉系统经独立评审可接受后，再 spawn `presentation-builder`，传绝对 work-dir 与 `mode=initial`。Builder 保留已校准页面，按它们已建立的 typography/spacing/surface/image language 实现**所有剩余 scaffold 页面**。主会话不得打开逐页源码复核，只接受紧凑信封。
 
-   **页数够多时并行分片（`next --json` 会给出 `builder_shards`）**：墙钟 = 回合数 × 每回合往返延迟，而全套门实测只花 150 秒（占全程 1.7%）——**唯一不碰门、又能压缩墙钟的杠杆就是让页面工作并发**。给出 `builder_shards` 时，在**同一条消息里 spawn 全部 shard**（每个都不传 `name`），每个只做自己的 slide ids、只写自己的 `speaker-notes-shard-<N>.md`，绝不碰别人的页面；`build` 会把碎片按页序拼成 `speaker-notes.md`。分片由管线按页号轮转计算，天然互斥且页数均衡。少于 `parallel_builder_min_pages`（默认 4）页时不拆——启动与读取开销不划算。
+   **页数够多时并行分片（`next --json` 会给出 `builder_shards`）**：墙钟 = 回合数 × 每回合往返延迟，而全套门实测只花 150 秒（占全程 1.7%）——**唯一不碰门、又能压缩墙钟的杠杆就是让页面工作并发**。给出 `builder_shards` 时，在**同一条消息里 spawn 全部 shard**（每个都不传 `name`），每个只做自己的 slide ids、只写自己的 `speaker-notes-shard-<N>.md`，绝不碰别人的页面；`build` 会按页号合并，并让较新的 repair 分片替换同页旧稿，不会因重分片产生重复讲稿。分片由管线按页号轮转计算，天然互斥且页数均衡。少于 `parallel_builder_min_pages`（默认 4）页时不拆——启动与读取开销不划算。
 10. **Exploration Gates + Production Build**：运行一次 gates orchestrator，只把 blocker 回到主上下文，完整结果写盘：
 
 ```bash
@@ -120,6 +120,8 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 ```
 
 Windows 下优先用这个 python 形式；`run_gates.sh` 只是定位解释器的包装，在 `sh` 解析到 WSL 的机器上打不开 `C:/...` 路径（2026-09-17 live：exit 127，白跑一轮）。`edit_ooxml` 直接走原 OOXML 路径；create/rebuild 只有在所有页面 scaffold marker 都删除后才调用 `ppt_pipeline.py build --work-dir <wd> --entry <deck.js>`。任何未实现页仍会被正式 build 机械拒绝。Calibration PPTX 不是可交付物，也不能替代正式 build。
+
+该 orchestrator 会把 delivery 所需的 canonical `visual-generation-report.json` 自动写入 work-dir，QA 会自动绑定；不得直调内部 visual-generation gate 或手写报告。校准预览和正式 `rendered` gate 都会从 PPTX 成品核对所选 style 的浅/深六角色 palette，越位色值直接回到对应页面修复。
 11. **Render**：调用 `ppt_pipeline.py render --work-dir <wd>`。Pipeline 一次渲染全部页面并生成 `contact-sheet.png` / 缩略图；相同 PPTX hash 复用。build 后旧渲染证据被归档，repair 后必须重新 render。**render 只接受确定性预检全绿的 deck**：build 打包后会立即在本地跑 `rendered` + `actual-content` + `quality` 的确定性部分（evidence/timing/lock，只读 PPTX 与 spec、不依赖 critic）；不绿时 `render` 直接拒绝，`next --json` 会指向免 repair 轮的修法——spawn builder `mode=repair` 读 `pre-qa-*.json` 报告改页后重建（连续失败上限 `max_pre_qa_rebuilds`，超过即转正式 render/critic 流程）。critic 从此只评审确定性门全绿的 deck，不再为一个注定返工的 deck 花一整轮评审。
 12. **Visual Critique**：Agent `student-presentation-suite:visual-critic`，不传 `name`，独立读取当前 contact sheet 和所有页图，写绑定当前 SHA256 的 `visual-review.json`；最终 critic 仍负责全 deck rhythm，Calibration 不能替代它。
 13. **QA DAG**：必须已有 `critic-execution.json`；`ppt_pipeline.py qa --work-dir <wd> --visual-review <visual-review.json>` 按 `package → rendered → actual-content → quality → delivery` 执行并绑定本轮输入。**产物可用性门（package/rendered）失败即停；内容质量门（actual-content/quality/delivery）全部跑完再汇总**——一轮 repair 必须拿到完整 blocker 清单，而不是每轮只发现一层门（2026-09-17 live 因此耗掉 6 轮 repair、约 199M token）。`pipeline-qa.json` 的 `failed_stages` 与 `blockers_by_gate` 就是给 repair 的清单：传报告路径给 builder 让它自己读，不要转抄；`derived_problems` 是上游失败的派生结论，不要当成独立任务去修。

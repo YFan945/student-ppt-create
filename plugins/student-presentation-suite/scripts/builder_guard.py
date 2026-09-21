@@ -37,6 +37,7 @@ Three boundaries, one owner:
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import json
 import os
 import re
@@ -184,6 +185,14 @@ def _norm(name: str) -> str:
     return name.lower().replace("_", "-")
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _matches_no_reread(path: Path) -> bool:
     name = _norm(path.name)
     return any(_norm(fragment) in name for fragment in _contract_packet_policy().get("no_reread_files") or [])
@@ -274,11 +283,19 @@ def _enforce_packet_scope(event: dict, path: Path, work_dir: Path) -> str | None
             except (OSError, ValueError):
                 continue
             if is_own:
+                expected = str(item.get("packet_sha256") or "")
+                if expected and _sha256(path) != expected:
+                    return (
+                        "builder_guard: refused — Builder Packet bytes changed after the active "
+                        "round was published. The main session must run `ppt_pipeline.py next "
+                        "--work-dir <wd> --json` to publish a fresh hash-bound round."
+                    )
                 _write_binding(project, event_agent, {
                     "work_id": work_dir.name,
                     "packet": item.get("packet"),
                     "allowed_slides": item.get("assigned_slides"),
                     "round_at": round_at,
+                    "packet_sha256": item.get("packet_sha256"),
                 })
         return None
 

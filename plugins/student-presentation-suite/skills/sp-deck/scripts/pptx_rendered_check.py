@@ -11,7 +11,9 @@ rendered, so "declared compliant but rendered violating" cannot ship:
    demands on paper);
 3. ``chart-axis-auto``   – every chart value axis carries an explicit
    ``c:max``/``c:min`` (auto-scaling hides real data differences);
-4. ``dead-space``        – bottom whitespace per slide <= 25% of slide height.
+4. ``dead-space``        – bottom whitespace per slide <= 25% of slide height;
+5. ``off-palette-color`` – every rendered sRGB color belongs to the approved
+   light/dark role palettes when ``--art-direction`` is supplied.
 
 Exit codes follow the v0.8 gate contract: fail-closed by default (2 when the
 report is not ok), ``--lenient`` opts out, ``--strict`` is a deprecated no-op
@@ -191,6 +193,13 @@ def check_pptx(pptx: Path, tokens: dict[str, Any]) -> dict[str, Any]:
 def run(args: argparse.Namespace) -> int:
     """Run the rendered-artifact gate with pre-parsed arguments (shared by gate-all)."""
     report = check_pptx(args.pptx, _load_tokens(args.tokens))
+    if getattr(args, "art_direction", None):
+        import pptx_palette_check
+
+        palette = pptx_palette_check.check_pptx(args.pptx, args.art_direction)
+        report["palette"] = palette
+        report["issues"].extend(palette["issues"])
+        report["ok"] = not report["issues"]
     payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -206,6 +215,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pptx", type=Path, required=True)
     parser.add_argument("--tokens", type=Path, default=DEFAULT_TOKENS)
+    parser.add_argument("--art-direction", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict", action="store_true", help="deprecated no-op alias; gates are fail-closed by default")

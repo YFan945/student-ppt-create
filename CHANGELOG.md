@@ -2,6 +2,14 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.15.6 — 2026-09-21 · Pipeline contract hardening
+
+- 修复 `page_copy_fidelity_check.py` 把 ASCII 千分位逗号误当成 JavaScript 语法删除、导致冻结文案永远无法匹配的问题。
+- `plan --force` 在尚未生产的 `planned` work-id 内改走 `slide_spec_guard revise`，保留 revision/parent 链，不再要求 reset intake 或搬走旧锁。
+- `run_gates.py` 自动产出并由 QA 绑定 canonical `visual-generation-report.json`，关闭 delivery 依赖无合规产出路径的死锁。
+- 校准预览与正式 rendered gate 从 PPTX 成品核对所选 style 的浅/深六角色 palette；越位色按页阻断。
+- Builder Packet active round 新增 packet SHA-256，避免同路径 packet 改写后沿用旧绑定；讲稿分片按页去重，较新的 repair 内容替换旧稿。
+
 ## 0.15.5 — 2026-09-20 · Calibration critic runtime closure
 
 - **P0 · 校准 visual-critic 运行链闭环**：`critic_preview.py` 现在可从生产 render 或

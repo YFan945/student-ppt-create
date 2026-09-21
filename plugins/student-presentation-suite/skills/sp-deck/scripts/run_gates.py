@@ -352,6 +352,12 @@ def collect_visual_generation(args: argparse.Namespace, gates: dict[str, Any], p
         evidence_dir=Path(args.evidence_dir),
         quality=args.quality,
     )
+    # This is the canonical v0.8 report consumed by delivery.  Previously the
+    # orchestrator calculated the full report and then discarded it, leaving no
+    # guard-approved way to produce the required delivery input.
+    report_path = Path(args.evidence_dir) / "visual-generation-report.json"
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     gates["visual_generation"] = {
         "ok": bool(report.get("ok")),
         "checked": True,
@@ -361,6 +367,7 @@ def collect_visual_generation(args: argparse.Namespace, gates: dict[str, Any], p
         "slide_spec_sha256": report.get("slide_spec_sha256"),
         "art_direction_sha256": report.get("art_direction_sha256"),
         "evidence": report.get("evidence") or [],
+        "report": str(report_path.resolve()),
     }
     for item in report.get("issues") or []:
         nested = item.get("candidate_issues")

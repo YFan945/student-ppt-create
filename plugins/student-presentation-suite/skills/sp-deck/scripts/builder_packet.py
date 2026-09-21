@@ -395,13 +395,18 @@ def record_active_round(work_dir: Path, mode: str, packets: list[dict[str, Any]]
             "packet": str(item["packet"]),
             "assigned_slides": item["slides"],
             "speaker_notes_target": item.get("speaker_notes_target"),
+            "packet_sha256": actual_check.sha256_file(Path(str(item["packet"]))),
         }
         for item in packets
     ]
 
     def scope(entry: dict[str, Any]) -> tuple:
         slides = entry.get("assigned_slides") or []
-        return (entry.get("packet") or "", tuple(slides))
+        return (
+            entry.get("packet") or "",
+            tuple(slides),
+            entry.get("packet_sha256") or "",
+        )
 
     existing = load_optional(path)
     if (
@@ -458,6 +463,10 @@ def active_packet_descriptors(work_dir: Path, mode: str) -> list[dict[str, Any]]
             or Path(str(packet.get("work_dir") or "")).resolve() != work_dir.resolve()
             or packet.get("assigned_slides") != slides
             or not slides
+            or (
+                item.get("packet_sha256")
+                and actual_check.sha256_file(path) != item.get("packet_sha256")
+            )
         ):
             return []
         descriptors.append(
@@ -466,6 +475,7 @@ def active_packet_descriptors(work_dir: Path, mode: str) -> list[dict[str, Any]]
                 "slides": slides,
                 "speaker_notes_target": packet.get("speaker_notes_target"),
                 "packet": str(path.resolve()),
+                "packet_sha256": item.get("packet_sha256"),
             }
         )
     return descriptors

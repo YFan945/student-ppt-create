@@ -91,7 +91,9 @@ class FakeRunner:
             if out:
                 ok_report(Path(out))
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
-        if "slide_spec_guard.py" in joined and " freeze " in f" {joined} ":
+        if "slide_spec_guard.py" in joined and any(
+            f" {action} " in f" {joined} " for action in ("freeze", "revise")
+        ):
             Path(flag_value("--lock-file")).write_text("{}", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         if "slide_spec_guard.py" in joined and " check " in f" {joined} ":
@@ -419,17 +421,38 @@ class PlanTests(PipelineTestCase):
                 slide_spec=files["spec"], validation_report=files["spec_report"], art_direction=files["art"],
             ))
 
-    def test_force_replan_requires_reconfirmed_intake(self) -> None:
+    def test_force_replan_after_production_started_is_refused(self) -> None:
         files = self.write_inputs()
         self.plan(files)
-        self.confirm_intake()
-        pp._core._runner = FakeRunner(self.work)
+        manifest = self.manifest()
+        manifest["state"] = "producing"
+        (self.work / "build-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+        state = json.loads(self.workflow_state.read_text(encoding="utf-8"))
+        state["state"] = "producing"
+        self.workflow_state.write_text(json.dumps(state), encoding="utf-8")
+        with self.assertRaises(pp.RefusedError):
+            pp.cmd_plan(ns(
+                "plan", self.work, workflow_state=self.workflow_state, force=True,
+                slide_spec=files["spec"], validation_report=files["spec_report"],
+                art_direction=files["art"],
+            ))
+
+    def test_force_replan_revises_existing_lock_without_resetting_intake(self) -> None:
+        files = self.write_inputs()
+        self.plan(files)
+        runner = FakeRunner(self.work)
+        pp._core._runner = runner
         rc = pp.main([
             "plan", "--work-dir", str(self.work), "--workflow-state", str(self.workflow_state), "--force",
             "--slide-spec", str(files["spec"]), "--validation-report", str(files["spec_report"]),
             "--art-direction", str(files["art"]),
         ])
         self.assertEqual(rc, 0)
+        self.assertTrue(any(
+            "slide_spec_guard.py" in " ".join(call)
+            and " revise " in f" {' '.join(call)} "
+            for call in runner.calls
+        ))
 
 
 class PreQaGateTests(PipelineTestCase):
@@ -1597,6 +1620,24 @@ class ParallelBuilderShardTests(PipelineTestCase):
         merged = (self.work / "speaker-notes.md").read_text(encoding="utf-8")
         self.assertTrue(merged.startswith("FIRST half"), merged)
         self.assertIn("SECOND half", merged)
+
+    def test_speaker_note_repair_shard_replaces_older_page_section(self) -> None:
+        old = self.work / "speaker-notes-shard-1.md"
+        new = self.work / "speaker-notes-shard-3.md"
+        old.write_text(
+            "# old\n\n## 第 1 页 · 开场\n\n第一页。\n\n## 第 10 页 · 环境\n\n旧讲稿。\n",
+            encoding="utf-8",
+        )
+        new.write_text("## 第 10 页 · 环境\n\n新讲稿。\n", encoding="utf-8")
+        old_time = old.stat().st_mtime_ns
+        new_time = max(new.stat().st_mtime_ns, old_time + 1_000_000)
+        os.utime(new, ns=(new_time, new_time))
+        pp.merge_speaker_note_shards(self.work)
+        merged = (self.work / "speaker-notes.md").read_text(encoding="utf-8")
+        self.assertEqual(merged.count("## 第 10 页"), 1)
+        self.assertIn("新讲稿。", merged)
+        self.assertNotIn("旧讲稿。", merged)
+        self.assertLess(merged.index("## 第 1 页"), merged.index("## 第 10 页"))
 
     def test_a_single_builder_run_writes_no_merge(self) -> None:
         self.write_spec(4)
