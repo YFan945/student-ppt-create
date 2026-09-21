@@ -253,6 +253,13 @@ class RuntimeEvidenceTests(unittest.TestCase):
             self.assertTrue(preview.is_file())
             self.assertEqual(runtime.digest(preview), entry["preview_sha256"])
 
+    def test_critic_spawn_records_work_id_without_researcher(self):
+        self.prepare_render()
+        self.assertEqual(self.critic_spawn(), 0)
+        active = runtime.pipeline_context.research_active_path(self.project, "parent")
+        data = json.loads(active.read_text(encoding="utf-8"))
+        self.assertEqual(data.get("work_ids"), [self.work.name])
+
     def test_critic_spawn_without_absolute_work_dir_is_refused(self):
         self.prepare_render()
         self.assertEqual(self.critic_spawn(prompt="Review the current deck"), 2)

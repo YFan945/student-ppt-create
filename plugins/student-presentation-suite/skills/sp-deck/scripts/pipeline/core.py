@@ -267,7 +267,15 @@ def validate_manifest_authorization(manifest: dict[str, Any]) -> None:
     source = manifest.get("source")
     if source and not binding_is_current(source):
         raise RefusedError("source deck changed after plan; restore source or re-confirm and re-plan")
-    if any(not binding_is_current(item) for item in (manifest.get("inputs") or {}).values()):
+    # visual-generation-report is repair-round output, not a frozen planning
+    # input. Older 0.15.6 manifests may still carry it under inputs; ignore that
+    # legacy slot so QA can migrate it to generation_evidence below.
+    planned_inputs = {
+        key: value
+        for key, value in (manifest.get("inputs") or {}).items()
+        if key != "visual_generation_report"
+    }
+    if any(not binding_is_current(item) for item in planned_inputs.values()):
         raise RefusedError("planned input changed or disappeared; re-plan")
     research = manifest.get("research") or {}
     research_execution = research.get("execution")
@@ -406,12 +414,16 @@ def _gate_inputs(manifest: dict[str, Any]) -> dict[str, str]:
     """The gate input map shared by the QA and pre-QA stage builders."""
     inputs = manifest.get("inputs") or {}
     build = manifest.get("build") or {}
+    generation = manifest.get("generation_evidence") or {}
+    visual_generation = generation.get("visual_generation_report") or inputs.get(
+        "visual_generation_report"
+    ) or {}
     return {
         "pptx": str((build.get("pptx") or {}).get("path") or ""),
         "slide_spec": str((inputs.get("slide_spec") or {}).get("path") or ""),
         "spec_lock": str((inputs.get("spec_lock") or {}).get("path") or ""),
         "art_direction": str((inputs.get("art_direction") or {}).get("path") or ""),
-        "visual_generation_report": str((inputs.get("visual_generation_report") or {}).get("path") or ""),
+        "visual_generation_report": str(visual_generation.get("path") or ""),
         "slide_spec_report": str((inputs.get("slide_spec_report") or {}).get("path") or ""),
     }
 

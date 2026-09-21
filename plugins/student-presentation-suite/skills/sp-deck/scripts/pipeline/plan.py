@@ -291,7 +291,10 @@ def cmd_plan(args: argparse.Namespace) -> int:
             resolved = path.resolve()
             if not resolved.is_file():
                 raise RefusedError(f"{key} does not exist: {resolved}")
-            fresh["inputs"][key] = bind(resolved)
+            if key == "visual_generation_report":
+                fresh.setdefault("generation_evidence", {})[key] = bind(resolved)
+            else:
+                fresh["inputs"][key] = bind(resolved)
 
     fresh["state"] = "planned"
     record(fresh, "plan", "(absent)", "planned")

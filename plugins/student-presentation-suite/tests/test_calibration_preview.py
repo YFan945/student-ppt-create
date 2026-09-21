@@ -17,6 +17,27 @@ class CalibrationPreviewTests(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.work = Path(self.tmp.name)
         (self.work / "pages").mkdir()
+        spec = self.work / "slide-spec.json"
+        art = self.work / "art-direction.yaml"
+        spec.write_text('{"slides": []}\n', encoding="utf-8")
+        art.write_text('style_seed: "Data Driven"\n', encoding="utf-8")
+        (self.work / "build-manifest.json").write_text(
+            json.dumps(
+                {
+                    "inputs": {
+                        "slide_spec": {
+                            "path": str(spec.resolve()),
+                            "sha256": calibration.sha256_file(spec),
+                        },
+                        "art_direction": {
+                            "path": str(art.resolve()),
+                            "sha256": calibration.sha256_file(art),
+                        },
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
 
     def write_page(self, number: int, *, scaffold: bool = False) -> Path:
         path = self.work / "pages" / f"p{number:02d}-test.js"

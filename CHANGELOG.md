@@ -2,6 +2,20 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.15.7 — 2026-09-21 · Evidence freshness & delivery correctness
+
+- 交付门按 Production Summary 中的类型逐项验收：仅 `speaker-notes` 要求独立 Markdown，
+  `full-script` / `teleprompter` 不再误触发讲稿门；PDF 必须是实际存在且带 `%PDF-` 签名的
+  `.pdf`，PNG 预览或改后缀文件不能替代；仅请求 PPTX 时无需额外 notes 即可完成。
+- Calibration green 改为持续校验 Slide Spec、Art Direction、页面源码、校准 PPTX、每张 PNG、
+  palette 报告与 render manifest 的路径及 SHA-256；任一证据变化都会回到 preview / critic，
+  不再沿用陈旧绿灯。Builder Packet 也在已登记后的每次页面访问前复核 hash，篡改即撤销授权。
+- `visual-generation-report.json` 从冻结输入中分离为可重绑定的生成证据：repair 后可合法更新，
+  QA 绑定当轮文件，complete 仍拒绝 QA 后再次变化的报告。
+- palette 检查扩展到 slide、chart 与 diagram XML，并解析 theme `schemeClr`；raster 图片继续由
+  provenance 与视觉评审约束。讲稿合并以已有 `speaker-notes.md` 为逐页基线，repair 覆盖同名
+  shard 时不会丢失未修改页面；无 researcher 的 critic 会话也按当前 work-id 限定发布扫描范围。
+
 ## 0.15.6 — 2026-09-21 · Pipeline contract hardening
 
 - 修复 `page_copy_fidelity_check.py` 把 ASCII 千分位逗号误当成 JavaScript 语法删除、导致冻结文案永远无法匹配的问题。

@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.15.6
+version: 0.15.7
 ---
 
 # Student Presentation PPT
@@ -102,13 +102,13 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/calibration_preview.py" \
   --work-dir <wd> --slides <id1> <id2> <id3> --json
 ```
 
-helper 只把这些已实现页面组装成临时 `calibration/calibration.pptx`，渲染到 `calibration/render/`，并写绑定页面/PPTX/PNG SHA256 的 `calibration-manifest.json`；**不触碰生产 manifest/state**。
+helper 只把这些已实现页面组装成临时 `calibration/calibration.pptx`，渲染到 `calibration/render/`，并写绑定 Slide Spec、Art Direction、页面源码、PPTX、PNG、palette 与 render manifest SHA256 的 `calibration-manifest.json`；**不触碰生产 manifest/state**。后续每次读取 green 都会重验这些绑定；任一变化都会回到 preview / critic，不能沿用陈旧绿灯。
 
 **校准必须由独立 critic 评审，不能由主会话自己看图**。主会话是这份 spec 与 art direction 的作者，检查 hierarchy/密度/配色时会全部通过，唯独看不见自己选的视觉语言是否在每一页重复。2026-09-18 live 就是这样：主会话接受了 3 张校准图，独立 critic 随后判定"13 页套同一个带边框通栏面板"要求全 deck 重做，代价 76.4M token（该次会话的 58.8%），而 3 页规模的评审只需 1.4M。
 
 `next --json` 这时给出 critic 的 spawn 参数与 `calibration/calibration-visual-review.json` 的写入路径：spawn `student-presentation-suite:visual-critic`（不传 `name`）。runtime hook 会从当前 `calibration-manifest.json` 生成 `critic-preview-map.json`（`scope=calibration`），critic 只读 map 列出的压缩预览、只写 map 指定的 `review_output`；正常停止后 hook 写 `calibration/calibration-critic-execution.json`。生产 build 会同时校验报告的 PPTX/PNG 绑定和该 receipt 对所有校准预览的读取覆盖；`receipt_policy=allow-missing` 只允许 receipt **缺席**时降级，已经存在但损坏或不匹配仍然硬失败。critic **只判会扩散到全 deck 的形态**——不同页型是否套用了同一结构、Art Direction 是否一致、页型之间是否还看得出区别；细则打磨留给最终 critic。评审带 Major/Critical 就 spawn builder `mode=calibration` 只修这些页并重跑 helper；**评审全绿之前正式 `build` 会被机械拒绝**。不要先生成剩余 10–20 页再发现基础风格错误。
 
-显式改校准样本时，`builder_packet.py --mode calibration --slides <ids>` 会把 packet 与 `builder-active-round.json` **原子地一起更新**；随后 `next` / `advance` 复用这组 slide ids，不会重新落回默认校准集。不要手改 packet 或只改其中一个文件。
+显式改校准样本时，`builder_packet.py --mode calibration --slides <ids>` 会把 packet 与 `builder-active-round.json` **原子地一起更新**；随后 `next` / `advance` 复用这组 slide ids，不会重新落回默认校准集。不要手改 packet 或只改其中一个文件；builder 对每次页面访问都会重验已登记 packet 的 SHA-256，登记后篡改会立即撤销授权。
 9. **Full Isolated Page Build**：Calibration 视觉系统经独立评审可接受后，再 spawn `presentation-builder`，传绝对 work-dir 与 `mode=initial`。Builder 保留已校准页面，按它们已建立的 typography/spacing/surface/image language 实现**所有剩余 scaffold 页面**。主会话不得打开逐页源码复核，只接受紧凑信封。
 
    **页数够多时并行分片（`next --json` 会给出 `builder_shards`）**：墙钟 = 回合数 × 每回合往返延迟，而全套门实测只花 150 秒（占全程 1.7%）——**唯一不碰门、又能压缩墙钟的杠杆就是让页面工作并发**。给出 `builder_shards` 时，在**同一条消息里 spawn 全部 shard**（每个都不传 `name`），每个只做自己的 slide ids、只写自己的 `speaker-notes-shard-<N>.md`，绝不碰别人的页面；`build` 会按页号合并，并让较新的 repair 分片替换同页旧稿，不会因重分片产生重复讲稿。分片由管线按页号轮转计算，天然互斥且页数均衡。少于 `parallel_builder_min_pages`（默认 4）页时不拆——启动与读取开销不划算。
@@ -121,7 +121,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 
 Windows 下优先用这个 python 形式；`run_gates.sh` 只是定位解释器的包装，在 `sh` 解析到 WSL 的机器上打不开 `C:/...` 路径（2026-09-17 live：exit 127，白跑一轮）。`edit_ooxml` 直接走原 OOXML 路径；create/rebuild 只有在所有页面 scaffold marker 都删除后才调用 `ppt_pipeline.py build --work-dir <wd> --entry <deck.js>`。任何未实现页仍会被正式 build 机械拒绝。Calibration PPTX 不是可交付物，也不能替代正式 build。
 
-该 orchestrator 会把 delivery 所需的 canonical `visual-generation-report.json` 自动写入 work-dir，QA 会自动绑定；不得直调内部 visual-generation gate 或手写报告。校准预览和正式 `rendered` gate 都会从 PPTX 成品核对所选 style 的浅/深六角色 palette，越位色值直接回到对应页面修复。
+该 orchestrator 会把 delivery 所需的 canonical `visual-generation-report.json` 自动写入 work-dir；它是 repair 后可更新的生成证据，不是冻结输入，QA 会绑定当轮版本，complete 会拒绝 QA 后再次变化；不得直调内部 visual-generation gate 或手写报告。校准预览和正式 `rendered` gate 都会从 PPTX 成品的 slide、chart、diagram XML 核对所选 style 的浅/深六角色 palette，并解析 theme scheme colors；越位色值直接回到对应页面修复，raster 图片由 provenance 与视觉评审负责。
 11. **Render**：调用 `ppt_pipeline.py render --work-dir <wd>`。Pipeline 一次渲染全部页面并生成 `contact-sheet.png` / 缩略图；相同 PPTX hash 复用。build 后旧渲染证据被归档，repair 后必须重新 render。**render 只接受确定性预检全绿的 deck**：build 打包后会立即在本地跑 `rendered` + `actual-content` + `quality` 的确定性部分（evidence/timing/lock，只读 PPTX 与 spec、不依赖 critic）；不绿时 `render` 直接拒绝，`next --json` 会指向免 repair 轮的修法——spawn builder `mode=repair` 读 `pre-qa-*.json` 报告改页后重建（连续失败上限 `max_pre_qa_rebuilds`，超过即转正式 render/critic 流程）。critic 从此只评审确定性门全绿的 deck，不再为一个注定返工的 deck 花一整轮评审。
 12. **Visual Critique**：Agent `student-presentation-suite:visual-critic`，不传 `name`，独立读取当前 contact sheet 和所有页图，写绑定当前 SHA256 的 `visual-review.json`；最终 critic 仍负责全 deck rhythm，Calibration 不能替代它。
 13. **QA DAG**：必须已有 `critic-execution.json`；`ppt_pipeline.py qa --work-dir <wd> --visual-review <visual-review.json>` 按 `package → rendered → actual-content → quality → delivery` 执行并绑定本轮输入。**产物可用性门（package/rendered）失败即停；内容质量门（actual-content/quality/delivery）全部跑完再汇总**——一轮 repair 必须拿到完整 blocker 清单，而不是每轮只发现一层门（2026-09-17 live 因此耗掉 6 轮 repair、约 199M token）。`pipeline-qa.json` 的 `failed_stages` 与 `blockers_by_gate` 就是给 repair 的清单：传报告路径给 builder 让它自己读，不要转抄；`derived_problems` 是上游失败的派生结论，不要当成独立任务去修。
@@ -138,7 +138,7 @@ Windows 下优先用这个 python 形式；`run_gates.sh` 只是定位解释器�
    收到 `BUILDER_DONE` 后重新 `build → render → critique → qa`（重建后若确定性预检不绿，仍先走免 repair 轮的预检修法）。generator hash 未变化时 build 拒绝；超过预算转 `incomplete`。
 
    **续轮与否由数据判定，不问用户**：`next --json` 的 `repair_convergence` 给出逐轮 blocker 数与趋势（`improving` 才值得继续，`flat` 要换做法，`worse` 必须先恢复被弄坏的回归），`repair_budget` 给出 `base`/`granted`/`effective`/`hard_cap`。**若 `repair_convergence.suspect_gate_defect` 出现**（某组 blocker 连续两轮逐字相同、其余在动），说明这组不是页面能修的：对着产物核对一次，要么它有页面级修法（写进 `--extend-reason`），要么它是门的误报——记为已知门限、继续修剩下的，**不要为它问用户交付策略**，提额也会被拒绝。需要提额时用 `ppt_pipeline.py repair --extend N --extend-reason "<本轮与上轮的 blocker 差异>"`——授权写进 `build-manifest.json`，**不要改已安装插件里的 `pipeline-contract.json`**（升级即失效、不可审计）；硬顶由契约 `max_repairs_hard_cap` 强制，到顶就如实交付 `incomplete`。
-15. **Complete**：`ppt_pipeline.py complete --work-dir <wd>`；QA 全绿且 delivery 真正通过才允许完成。
+15. **Complete**：`ppt_pipeline.py complete --work-dir <wd>`；QA 全绿且 Production Summary 请求的每类 delivery 都真正通过才允许完成。`full-script` / `teleprompter` 不隐含 `speaker-notes`，请求 PDF 时必须是带 PDF 签名的真实 `.pdf`，PNG 预览不能替代。
 
 ## Generation core contract
 
@@ -161,7 +161,7 @@ Production Summary confirmation
 
 仅写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目 `outputs/`。
 
-**交付物**由 Production Summary 里确认的 `deliverables` 决定，不多不少。用户只选 `pptx` 时，最终交付就是 PPTX 本身。PPTX 备注窗格里有没有讲稿由 Slide Spec 的 `meta.include_speaker_notes` 决定，与 `deliverables` 无关——不要因为"10 分钟汇报没讲稿会吃力"就私自把 `speaker-notes` 加进交付清单，在最终确认轮提示用户即可。
+**交付物**由 Production Summary 里确认的 `deliverables` 决定，不多不少。每种类型独立验收：`full-script` / `teleprompter` 不会触发独立 `speaker-notes` 文件要求，PDF 必须是带 `%PDF-` 签名的真实 `.pdf`，PNG 预览不能代替。用户只选 `pptx` 时，最终交付就是 PPTX 本身。PPTX 备注窗格里有没有讲稿由 Slide Spec 的 `meta.include_speaker_notes` 决定，与 `deliverables` 无关——不要因为"10 分钟汇报没讲稿会吃力"就私自把 `speaker-notes` 加进交付清单，在最终确认轮提示用户即可。
 
 **管线证据**始终写入 work dir，但**不是交付物**：`build-manifest.json`、Slide Spec lock、Art Direction、calibration preview evidence、research provenance、正式 render/contact sheet、visual review、package/readback/quality/delivery reports。visual critic 与 QA 门禁依赖它们，所以 `deliverables` 只有 `pptx` 时它们依然会存在——呈报时标注为"质检留痕"，不要列进交付清单，也不要因为"用户没选 preview 却产出了预览图"而判定自己违约。`pptx_delivery_check` 已从 Slide Spec 的 `meta.deliverables` 推导 notes/preview 是否必需，无需手工传 `--allow-missing-*`。
 

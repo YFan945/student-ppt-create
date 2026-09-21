@@ -122,7 +122,11 @@ def parse_deliverables(raw: str | None) -> list[str] | None:
 #: Markdown and an HTML teleprompter), so a single "notes owed" boolean cannot
 #: represent them: a user who confirmed `teleprompter` was still asked for
 #: `*-speaker-notes.md`, while a missing teleprompter HTML went unreported.
-NOTES_DELIVERABLES = {"speaker-notes", "full-script", "teleprompter"}
+# Only the dedicated speaker-notes Markdown participates in the legacy
+# ``require_notes`` switch. Full scripts and teleprompters are independent
+# deliverables and are checked by name below; grouping them here made either
+# one spuriously demand ``*-speaker-notes.md`` as well.
+NOTES_DELIVERABLES = {"speaker-notes"}
 PREVIEW_DELIVERABLES = {"preview", "contact-sheet"}
 #: Deliverables whose artifact is a per-slide raster/PDF, so several files may
 #: satisfy one name (`preview` and `contact-sheet` share the discovery glob).
@@ -201,7 +205,25 @@ def apply_export_evidence(
     evidence: dict[str, Any], candidate_paths: list[Path | None]
 ) -> None:
     """Mark one deliverable satisfied when any of its candidate files exists."""
-    matched = sorted({str(Path(p).resolve()) for p in candidate_paths if p and file_has_content(Path(p))})
+    deliverable = str(evidence.get("deliverable") or "")
+
+    def valid(path: Path) -> bool:
+        if not file_has_content(path):
+            return False
+        if deliverable != "pdf":
+            return True
+        # A rendered PNG used as QA preview must never satisfy a requested PDF
+        # export. Check both the declared type and the file signature so a
+        # renamed raster/placeholder cannot pass the delivery contract.
+        if path.suffix.lower() != ".pdf":
+            return False
+        try:
+            with path.open("rb") as stream:
+                return stream.read(5) == b"%PDF-"
+        except OSError:
+            return False
+
+    matched = sorted({str(Path(p).resolve()) for p in candidate_paths if p and valid(Path(p))})
     evidence["matched"] = matched
     evidence["satisfied"] = bool(matched)
 
@@ -619,8 +641,10 @@ def inspect_delivery(
         if name in {"preview", "contact-sheet"}:
             candidates = list(previews)
         elif name == "pdf":
-            # A PDF handed in as preview evidence already proves the export.
-            candidates = [*handed_in.get("pdf", []), *previews]
+            # Only the explicit PDF artifact (or a correctly named discovered
+            # export below) may satisfy this name. Per-page PNG previews are QA
+            # evidence, not an exported document.
+            candidates = list(handed_in.get("pdf", []))
         else:
             candidates = handed_in.get(name, [])
         # Whatever was not handed in explicitly is looked up by its expected name.

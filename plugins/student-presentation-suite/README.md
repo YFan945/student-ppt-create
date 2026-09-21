@@ -181,6 +181,11 @@ project's `outputs/` directory when the environment variable is unavailable:
 - requested PDF, HTML teleprompter, training cards, references, quality report,
   and revision manifest
 
+Each requested deliverable is validated independently. `full-script` and
+`teleprompter` do not imply a separate speaker-notes file; a requested PDF must
+be a real `.pdf` with a PDF signature, and preview PNGs cannot satisfy it. A
+PPTX-only request can therefore complete without a notes file.
+
 The plugin installation directory is read-only for user deliverables.
 
 ## Visual System
@@ -254,6 +259,9 @@ python skills/sp-deck/scripts/run_gates.py --art-direction <a.yaml> --slide-spec
 
 Full detail lands in `gates-report.json`, while the canonical delivery input
 `visual-generation-report.json` is written alongside it automatically. Production sessions do
+not freeze that report as a planning input: repair rounds may regenerate it,
+QA binds the current copy, and completion rejects any later change.
+Production sessions do
 not invoke individual gate internals directly; production after intake is dispatched by
 `skills/sp-deck/scripts/ppt_pipeline.py next --work-dir <wd> --json` (plan scaffolds
 `deck.js` + `pages/pNN-*.js`; build refuses a monolithic generator). The working habits
@@ -295,8 +303,13 @@ paths are rejected before review. An explicit calibration sample created with
 `builder_packet.py --mode calibration --slides ...` is recorded atomically as
 the active round, so `next` and `advance` preserve it instead of silently
 restoring the default sample.
-Calibration preview and the final rendered gate also inspect the PPTX itself and reject every
-sRGB color outside the selected style's light/dark six-role palettes.
+Every calibration green result remains valid only while the bound Slide Spec,
+Art Direction, page sources, calibration PPTX, preview PNGs, palette report,
+and render manifest still match their recorded hashes; stale evidence routes
+back to preview or critic. Calibration preview and the final rendered gate also
+inspect slide, chart, and diagram XML in the PPTX, resolve theme scheme colors,
+and reject colors outside the selected style's light/dark six-role palettes.
+Raster-image colors are handled by provenance and visual review instead.
 
 Each repair round spawns a **new** builder instance instead of continuing the
 previous one: a builder instance that served several rounds reached 699K resident
@@ -315,7 +328,9 @@ the whole suite measured **150 seconds** across a 147-minute run (1.7%), against
 work runs concurrently — shards are mutually exclusive by construction, each
 writes its own `speaker-notes-shard-<N>.md` (build assembles sections by slide number and lets a
 newer repair shard replace the older copy of that slide), and no gate
-changes. `session_cost.py` reports `turns`, `tool_calls_per_turn` and
+changes. The previously merged `speaker-notes.md` remains the per-slide baseline,
+so overwriting a same-named repair shard cannot erase untouched pages.
+`session_cost.py` reports `turns`, `tool_calls_per_turn` and
 `turns_under_20min` so a run's time budget can be judged from data; its request
 count now keeps one row per API call (by message id, max context) — the older
 rule read a subagent as 480 requests where 261 were sent.

@@ -21,7 +21,17 @@ if str(ROOT) not in sys.path:
 from shared.design_tokens import PALETTE_ROLES, resolve_design_tokens  # noqa: E402
 
 SLIDE_PART = re.compile(r"^ppt/slides/slide(\d+)\.xml$")
-SRGB = re.compile(r'<a:srgbClr\s+val="([0-9A-Fa-f]{6})"')
+VISIBLE_PART = re.compile(
+    r"^ppt/(?:slides/slide\d+|charts/chart\d+|diagrams/(?:data|drawing)\d+)\.xml$"
+)
+SRGB = re.compile(r"<a:srgbClr\b[^>]*\bval=['\"]([0-9A-Fa-f]{6})['\"]")
+SCHEME = re.compile(r"<a:schemeClr\b[^>]*\bval=['\"]([A-Za-z0-9]+)['\"]")
+THEME_COLOR = re.compile(
+    r"<a:(?P<role>dk1|lt1|dk2|lt2|accent[1-6]|hlink|folHlink)>.*?"
+    r"<a:(?:srgbClr\b[^>]*\bval|sysClr\b[^>]*\blastClr)=['\"](?P<value>[0-9A-Fa-f]{6})['\"]",
+    re.DOTALL,
+)
+SCHEME_ALIASES = {"tx1": "dk1", "bg1": "lt1", "tx2": "dk2", "bg2": "lt2"}
 
 
 def load_structured(path: Path) -> dict[str, Any]:
@@ -46,33 +56,53 @@ def approved_colors(art_direction: Path) -> tuple[str, dict[str, str], dict[str,
     return str(tokens.get("style_name") or style), light, dark
 
 
+def theme_colors(archive: zipfile.ZipFile) -> dict[str, str]:
+    """Resolve the theme roles referenced by ``a:schemeClr`` values."""
+    names = sorted(name for name in archive.namelist() if name.startswith("ppt/theme/theme") and name.endswith(".xml"))
+    if not names:
+        return {}
+    text = archive.read(names[0]).decode("utf-8", "replace")
+    return {
+        match.group("role"): match.group("value").upper()
+        for match in THEME_COLOR.finditer(text)
+    }
+
+
 def check_pptx(pptx: Path, art_direction: Path) -> dict[str, Any]:
     style, light, dark = approved_colors(art_direction)
     allowed = set(light.values()) | set(dark.values())
     counts: Counter[str] = Counter()
-    per_slide: dict[int, Counter[str]] = {}
+    per_part: dict[str, Counter[str]] = {}
+    scheme_counts: Counter[str] = Counter()
     with zipfile.ZipFile(pptx, "r") as archive:
+        theme = theme_colors(archive)
         for name in archive.namelist():
-            match = SLIDE_PART.match(name)
-            if not match:
+            if not VISIBLE_PART.match(name):
                 continue
-            slide = int(match.group(1))
-            colors = Counter(value.upper() for value in SRGB.findall(
-                archive.read(name).decode("utf-8", "replace")
-            ))
-            per_slide[slide] = colors
+            text = archive.read(name).decode("utf-8", "replace")
+            colors = Counter(value.upper() for value in SRGB.findall(text))
+            for role in SCHEME.findall(text):
+                canonical = SCHEME_ALIASES.get(role, role)
+                resolved = theme.get(canonical)
+                scheme_counts[role] += 1
+                if resolved:
+                    colors[resolved] += 1
+            per_part[name] = colors
             counts.update(colors)
 
     issues: list[dict[str, Any]] = []
-    for slide, colors in sorted(per_slide.items()):
+    for part, colors in sorted(per_part.items()):
         outside = {color: count for color, count in sorted(colors.items()) if color not in allowed}
         if outside:
+            slide_match = SLIDE_PART.match(part)
+            slide = int(slide_match.group(1)) if slide_match else None
             issues.append({
                 "slide": slide,
+                "part": part,
                 "severity": "major",
                 "code": "off-palette-color",
                 "message": (
-                    "PPTX contains colors outside the approved light/dark role palettes: "
+                    f"{part} contains colors outside the approved light/dark role palettes: "
                     + ", ".join(f"{color} x{count}" for color, count in outside.items())
                 ),
                 "colors": outside,
@@ -84,6 +114,11 @@ def check_pptx(pptx: Path, art_direction: Path) -> dict[str, Any]:
         "style": style,
         "allowed": {"light": light, "dark": dark},
         "used": dict(sorted(counts.items())),
+        "scheme_references": dict(sorted(scheme_counts.items())),
+        "coverage": {
+            "parts": sorted(per_part),
+            "images": "exempt; provenance and visual review govern raster imagery",
+        },
         "issues": issues,
     }
 

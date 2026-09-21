@@ -58,8 +58,13 @@ def cmd_qa(args: argparse.Namespace) -> int:
         raise RefusedError("no built PPTX in manifest")
     visual_review = args.visual_review.resolve() if args.visual_review else None
     vgr = work_dir / "visual-generation-report.json"
-    if not (manifest.get("inputs") or {}).get("visual_generation_report") and vgr.is_file():
-        manifest.setdefault("inputs", {})["visual_generation_report"] = bind(vgr)
+    if vgr.is_file():
+        # This report is regenerated after every repair round. Keep it outside
+        # frozen plan inputs and refresh the binding under pipeline control.
+        manifest.setdefault("inputs", {}).pop("visual_generation_report", None)
+        manifest.setdefault("generation_evidence", {})[
+            "visual_generation_report"
+        ] = bind(vgr)
     notes = args.notes.resolve() if args.notes else None
     previews = [Path(p).resolve() for p in (args.preview or [])]
     if not render_is_current(manifest):
@@ -173,6 +178,7 @@ def cmd_qa(args: argparse.Namespace) -> int:
         "ok": qa_report["ok"], "blockers": blockers, "input_fingerprint": fingerprint,
         "report": bind(qa_report_path), "stages": reports,
         "visual_review": bind(visual_review) if visual_review and visual_review.is_file() else None,
+        "visual_generation_report": bind(vgr) if vgr.is_file() else None,
         "previews": [bind(path) for path in previews if path.is_file()] or None,
         "notes": bind(notes) if notes and notes.is_file() else None,
         "critic_execution": receipt_binding,

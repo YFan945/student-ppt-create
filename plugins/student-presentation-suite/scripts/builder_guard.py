@@ -229,6 +229,19 @@ def _load_binding(project: Path, agent_id: str, work_dir: Path, round_at: str) -
         with contextlib.suppress(OSError):
             binding_path.unlink(missing_ok=True)
         return None
+    packet = Path(str(loaded.get("packet") or ""))
+    expected = str(loaded.get("packet_sha256") or "")
+    try:
+        packet_current = packet.is_file() and bool(expected) and _sha256(packet) == expected
+    except OSError:
+        packet_current = False
+    if not packet_current:
+        # Registration is not a one-time waiver. The packet remains the
+        # builder's authority for its whole lifetime, so changing it revokes an
+        # already registered instance before its next page read/edit.
+        with contextlib.suppress(OSError):
+            binding_path.unlink(missing_ok=True)
+        return None
     return loaded
 
 

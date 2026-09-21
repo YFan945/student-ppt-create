@@ -100,6 +100,12 @@ class DeliveryRequirementTests(unittest.TestCase):
         delivery = load_delivery()
         self.assertEqual((True, False), delivery.resolve_requirements(["pptx", "speaker-notes"]))
 
+    def test_script_and_teleprompter_do_not_trigger_speaker_notes(self) -> None:
+        delivery = load_delivery()
+        for name in ("full-script", "teleprompter"):
+            with self.subTest(deliverable=name):
+                self.assertEqual((False, False), delivery.resolve_requirements(["pptx", name]))
+
     def test_preview_and_contact_sheet_owe_preview(self) -> None:
         delivery = load_delivery()
         for name in ("preview", "contact-sheet"):
@@ -250,7 +256,7 @@ class PerTypeDeliverableTests(unittest.TestCase):
         """`--pdf` doubles as exported-preview evidence; counting it under both
         `preview` and `pdf` reported a phantom gap for a file that was present."""
         delivery = load_delivery()
-        pdf = self.touch("demo-preview.pdf", ".pdf-bytes")
+        pdf = self.touch("demo-preview.pdf", "%PDF-1.4\n")
         result = delivery.inspect_delivery(
             self.pptx,
             None,
@@ -261,6 +267,34 @@ class PerTypeDeliverableTests(unittest.TestCase):
         )
         self.assertEqual([], result["missing_expected_files"])
         self.assertTrue(result["deliverable_evidence"]["pdf"]["satisfied"])
+
+    def test_png_preview_cannot_satisfy_a_pdf_deliverable(self) -> None:
+        delivery = load_delivery()
+        png = self.touch("demo-preview.png", "not-a-pdf")
+        result = delivery.inspect_delivery(
+            self.pptx,
+            None,
+            [png],
+            require_notes=False,
+            require_preview=True,
+            owed_deliverables=["pdf"],
+        )
+        self.assertIn("pdf", result["missing_expected_files"])
+        self.assertFalse(result["deliverable_evidence"]["pdf"]["satisfied"])
+
+    def test_renamed_non_pdf_file_cannot_satisfy_pdf(self) -> None:
+        delivery = load_delivery()
+        fake = self.touch("demo-export.pdf", "PNG bytes")
+        result = delivery.inspect_delivery(
+            self.pptx,
+            None,
+            [],
+            require_notes=False,
+            require_preview=False,
+            owed_deliverables=["pdf"],
+            extra_files={"pdf": fake},
+        )
+        self.assertIn("pdf", result["missing_expected_files"])
 
     def test_allow_missing_drops_only_the_named_kind(self) -> None:
         delivery = load_delivery()
@@ -321,7 +355,7 @@ class DeliverableGateIntegrationTests(unittest.TestCase):
         pptx = self.root / "demo-presentation.pptx"
         self.write_pptx(pptx)
         pdf = self.root / "demo-export.pdf"
-        pdf.write_text("pdf", encoding="utf-8")
+        pdf.write_text("%PDF-1.4\n", encoding="utf-8")
         script = self.root / "demo-full-script.md"
         script.write_text("script", encoding="utf-8")
 

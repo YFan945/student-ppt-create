@@ -218,7 +218,18 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             "critic_preview_map": str(work_dir / "critic-preview-map.json"),
                             "status": review["reason"],
                         }
-                        if review.get("action") == "builder":
+                        if review.get("action") == "preview":
+                            slide_args = " ".join(str(slide) for slide in review["slides"])
+                            payload["next_command"] = (
+                                f'{python} "{HERE / "calibration_preview.py"}" '
+                                f'--work-dir "{work_dir}" --slides {slide_args} --json'
+                            )
+                            payload["notes"] = (
+                                f"Calibration evidence is stale: {review['reason']}. Rerun the exact "
+                                "preview command above before spawning another critic; an old green "
+                                "review cannot authorize the current page bytes."
+                            )
+                        elif review.get("action") == "builder":
                             repair_slides = review.get("repair_slides") or review["slides"]
                             payload["agent"] = "student-presentation-suite:presentation-builder"
                             payload["builder_mode"] = "calibration"

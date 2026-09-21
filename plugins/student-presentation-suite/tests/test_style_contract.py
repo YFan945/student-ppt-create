@@ -148,6 +148,60 @@ class StyleContractTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("identity is invalid", result["reason"])
 
+    def test_green_review_is_invalidated_when_a_calibration_page_changes(self) -> None:
+        calibration = self.work / "calibration"
+        render_dir = calibration / "render"
+        render_dir.mkdir(parents=True)
+        page = self.work / "p01-cover.js"
+        pptx = calibration / "calibration.pptx"
+        preview = render_dir / "calibration-1.png"
+        palette = calibration / "palette-report.json"
+        spec = self.work / "slide-spec.json"
+        art = self.work / "art-direction.yaml"
+        page.write_text("module.exports = () => {};", encoding="utf-8")
+        pptx.write_bytes(b"pptx")
+        preview.write_bytes(b"png")
+        palette.write_text(json.dumps({"ok": True}), encoding="utf-8")
+        spec.write_text(json.dumps({"slides": [{"id": 1}]}), encoding="utf-8")
+        art.write_text("style_seed: Modern Minimal\n", encoding="utf-8")
+        manifest = {
+            "version": "1.1",
+            "slides": [1],
+            "inputs": {"slide_spec": cr._binding(spec), "art_direction": cr._binding(art)},
+            "pages": [{"slide": 1, **cr._binding(page)}],
+            "pptx": cr._binding(pptx),
+            "palette": {**cr._binding(palette), "ok": True},
+            "render": [{"slide": 1, **cr._binding(preview)}],
+        }
+        (calibration / "calibration-manifest.json").write_text(
+            json.dumps(manifest), encoding="utf-8"
+        )
+        review = calibration / "calibration-visual-review.json"
+        review.write_text(
+            json.dumps({"pptx_sha256": cr._sha256(pptx), "slides": [{"slide": 1}]}),
+            encoding="utf-8",
+        )
+        (calibration / "calibration-critic-execution.json").write_text(
+            json.dumps(
+                {
+                    "agent": "student-presentation-suite:visual-critic",
+                    "agent_id": "critic",
+                    "spawn_verified": True,
+                    "work_id": self.work.name,
+                    "artifact": cr._binding(review),
+                    "reads": {str(preview.resolve()): cr._sha256(preview)},
+                }
+            ),
+            encoding="utf-8",
+        )
+        self.write_summary()
+        self.assertTrue(cr.calibration_review(self.work)["ok"])
+        page.write_text("module.exports = changed;", encoding="utf-8")
+        result = cr.calibration_review(self.work)
+        self.assertFalse(result["ok"])
+        self.assertEqual("preview", result["action"])
+        self.assertIn("changed after calibration preview", result["reason"])
+
     def test_green_calibration_projects_style_and_archetypes(self) -> None:
         self.green_calibration([1, 4])
         self.write_spec(

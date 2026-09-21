@@ -237,7 +237,11 @@ class BuilderPacketScopeTests(ScopeFixture):
                 {
                     "at": "2026-09-19T00:00:00+00:00",
                     "packets": [
-                        {"packet": str(self.packet), "assigned_slides": [1]},
+                        {
+                            "packet": str(self.packet),
+                            "packet_sha256": builder_guard._sha256(self.packet),
+                            "assigned_slides": [1],
+                        },
                     ],
                 }
             ),

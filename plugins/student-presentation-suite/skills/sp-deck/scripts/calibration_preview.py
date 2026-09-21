@@ -40,6 +40,10 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def binding(path: Path) -> dict[str, str]:
+    return {"path": str(path.resolve()), "sha256": sha256_file(path)}
+
+
 def load_structured(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
     value = json.loads(text) if path.suffix.lower() == ".json" else yaml.safe_load(text)
@@ -164,14 +168,25 @@ def build_preview(work_dir: Path, slides: list[int]) -> dict[str, Any]:
     palette_report.write_text(
         json.dumps(palette, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    plan_manifest = load_structured(work_dir / "build-manifest.json")
+    plan_inputs = plan_manifest.get("inputs") or {}
+    calibration_inputs: dict[str, dict[str, str]] = {}
+    for key, fallback in (
+        ("slide_spec", work_dir / "slide-spec.json"),
+        ("art_direction", work_dir / "art-direction.yaml"),
+    ):
+        candidate = Path(str((plan_inputs.get(key) or {}).get("path") or fallback))
+        if candidate.is_file():
+            calibration_inputs[key] = binding(candidate)
     manifest = {
-        "version": "1.0",
+        "version": "1.1",
         "slides": slides,
+        "inputs": calibration_inputs,
         "pages": [
-            {"slide": number, "path": str(path), "sha256": sha256_file(path)}
+            {"slide": number, **binding(path)}
             for number, path in zip(slides, pages, strict=True)
         ],
-        "pptx": {"path": str(pptx), "sha256": sha256_file(pptx)},
+        "pptx": binding(pptx),
         "palette": {
             "path": str(palette_report.resolve()),
             "sha256": sha256_file(palette_report),

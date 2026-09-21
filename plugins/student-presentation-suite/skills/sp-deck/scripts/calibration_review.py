@@ -77,6 +77,55 @@ def _binding(path: Path) -> dict[str, str]:
     return {"path": str(path.resolve()), "sha256": _sha256(path)}
 
 
+def calibration_evidence_is_current(
+    calibration: dict[str, Any],
+) -> tuple[bool, str]:
+    """Revalidate every byte used to produce the accepted calibration.
+
+    v0.15.6 compared the review with the manifest's recorded PPTX hash but did
+    not compare the manifest bindings with disk. A page, preview, palette
+    report, spec or Art Direction could therefore change while the old green
+    review remained accepted.
+    """
+    bindings: list[tuple[str, dict[str, Any]]] = []
+    strict = str(calibration.get("version") or "1.0") != "1.0"
+
+    def add(label: str, item: dict[str, Any]) -> None:
+        # v1.0 test/legacy manifests sometimes carried only the review-facing
+        # digest and no path. Real v0.15.6 manifests already contain paths for
+        # pages/PPTX/renders/palette, so those are still revalidated. v1.1 makes
+        # every binding mandatory, including spec and Art Direction.
+        if strict or item.get("path"):
+            bindings.append((label, item))
+
+    for key, item in (calibration.get("inputs") or {}).items():
+        if isinstance(item, dict):
+            add(f"input {key}", item)
+    for item in calibration.get("pages") or []:
+        if isinstance(item, dict):
+            add(f"page {item.get('slide')}", item)
+    if isinstance(calibration.get("pptx"), dict):
+        add("calibration PPTX", calibration["pptx"])
+    if isinstance(calibration.get("palette"), dict):
+        add("palette report", calibration["palette"])
+    for item in calibration.get("render") or []:
+        if isinstance(item, dict):
+            add(f"render {item.get('slide')}", item)
+
+    for label, item in bindings:
+        path = Path(str(item.get("path") or ""))
+        expected = str(item.get("sha256") or "")
+        if not path.is_file() or not expected:
+            return False, f"{label} binding is missing; rerun calibration_preview.py"
+        try:
+            current = _sha256(path)
+        except OSError:
+            return False, f"{label} cannot be read; rerun calibration_preview.py"
+        if current != expected:
+            return False, f"{label} changed after calibration preview; rerun calibration_preview.py"
+    return True, ""
+
+
 def _receipt_policy(work_dir: Path) -> str:
     manifest_path = work_dir / "build-manifest.json"
     try:
@@ -205,6 +254,14 @@ def calibration_review(work_dir: Path) -> dict[str, Any]:
     slides = [int(value) for value in calibration.get("slides") or [] if isinstance(value, int)]
     status["slides"] = slides
     expected_pptx = str((calibration.get("pptx") or {}).get("sha256") or "")
+
+    current, current_reason = calibration_evidence_is_current(calibration)
+    if not current:
+        status["action"] = "preview"
+        status["repair_slides"] = slides
+        status["blockers"] = 1
+        status["reason"] = current_reason
+        return status
 
     palette_path = target / PALETTE_REPORT_NAME
     palette = None

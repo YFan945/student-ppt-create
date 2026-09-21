@@ -42,7 +42,19 @@ def cmd_complete(args: argparse.Namespace) -> int:
     # design; treating that None as "evidence disappeared" dead-ended delivery —
     # a degraded run could plan, build and pass QA but never complete.
     degraded_receipt = qa.get("critic_receipt") == "missing-allowed"
-    evidence = [qa.get("report"), qa.get("visual_review"), qa.get("notes"), *(qa.get("previews") or []), *(qa.get("stages") or {}).values()]
+    # Optional deliverables are already enforced by the delivery stage. A
+    # PPTX-only run legitimately records ``notes=None``; treating that absence
+    # as vanished QA evidence made a green delivery impossible to complete.
+    evidence = [
+        qa.get("report"),
+        qa.get("visual_review"),
+        *(qa.get("previews") or []),
+        *(qa.get("stages") or {}).values(),
+    ]
+    if qa.get("visual_generation_report") is not None:
+        evidence.append(qa.get("visual_generation_report"))
+    if qa.get("notes") is not None:
+        evidence.append(qa.get("notes"))
     if not degraded_receipt:
         evidence.append(qa.get("critic_execution"))
     if not render_is_current(manifest) or any(not item or not binding_is_current(item) for item in evidence):

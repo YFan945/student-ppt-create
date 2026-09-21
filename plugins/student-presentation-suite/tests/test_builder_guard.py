@@ -219,8 +219,16 @@ class BuilderPacketScopeTests(BuilderGuardFixture, unittest.TestCase):
                 "at": at,
                 "mode": "initial",
                 "packets": [
-                    {"packet": str(self.own_packet), "assigned_slides": [1, 4, 7]},
-                    {"packet": str(self.other_packet), "assigned_slides": [2, 5, 8]},
+                    {
+                        "packet": str(self.own_packet),
+                        "assigned_slides": [1, 4, 7],
+                        "packet_sha256": guard._sha256(self.own_packet),
+                    },
+                    {
+                        "packet": str(self.other_packet),
+                        "assigned_slides": [2, 5, 8],
+                        "packet_sha256": guard._sha256(self.other_packet),
+                    },
                 ],
             }),
             encoding="utf-8",
@@ -335,6 +343,15 @@ class BuilderPacketScopeTests(BuilderGuardFixture, unittest.TestCase):
         builder_packet.record_active_round(self.work, "initial", packets)
         self.own_packet.write_text('{"revision": 2}', encoding="utf-8")
         self.assertEqual(2, guard.handle(self.builder(self.own_packet, "Read")))
+        self.assertIsNone(self.binding())
+
+    def test_registered_builder_loses_authority_when_packet_is_tampered(self) -> None:
+        packets = [{"packet": str(self.own_packet), "slides": [1, 4, 7]}]
+        builder_packet.record_active_round(self.work, "initial", packets)
+        self.assertEqual(0, guard.handle(self.builder(self.own_packet, "Read")))
+        self.assertEqual(0, guard.handle(self.builder(self.page, "Edit")))
+        self.own_packet.write_text('{"tampered": true}', encoding="utf-8")
+        self.assertEqual(2, guard.handle(self.builder(self.page, "Edit")))
         self.assertIsNone(self.binding())
 
     def test_a_genuine_reshard_still_rotates_the_round(self) -> None:

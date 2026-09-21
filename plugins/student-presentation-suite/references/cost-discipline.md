@@ -320,7 +320,8 @@ Claude Code 把一条消息的 content blocks 拆成多行，逐行数就永远�
 **并行分片**：`next --json` 在 `initial` / `repair` 给出 `builder_shards` 时，在**同一条消息里
 spawn 全部 shard**（各自不传 `name`、只做自己的 slide ids、只写自己的
 `speaker-notes-shard-<N>.md`）。分片由管线按页号轮转计算，**天然互斥且页数均衡**；
-`build` 把碎片拼成 `speaker-notes.md`。少于 `parallel_builder_min_pages`（默认 4）页不拆。
+`build` 以已有 `speaker-notes.md` 为逐页基线再合并碎片，repair 覆盖同名 shard 时仍保留
+未修改页面。少于 `parallel_builder_min_pages`（默认 4）页不拆。
 **没有页号的 deck 级 blocker 不分片**——那说明整 deck 在范围内。
 
 **不要用并行换质量**：分片只改变谁在何时写哪个文件，不改判定。评审、QA、delivery 全部照旧。

@@ -151,6 +151,10 @@ Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 
 - 已有 deck 改进时的 `<topic>-change-summary.md`
 - 按需输出 PDF、HTML 提词版、训练卡、引用清单、质量报告和 revision manifest
 
+每类交付物独立验收：`full-script` / `teleprompter` 不会隐含要求一份 speaker-notes；
+请求 PDF 时必须存在带 PDF 文件签名的真实 `.pdf`，PNG 预览不能替代。因而只请求 PPTX
+时，即使没有独立讲稿文件也可以完成。
+
 用户文件不得写入插件安装目录。
 
 ## 视觉系统
@@ -211,6 +215,8 @@ python skills/sp-deck/scripts/run_gates.py --art-direction <a.yaml> --slide-spec
 
 通过时只回显 1 行，完整明细写入 `gates-report.json`，delivery 需要的 canonical
 `visual-generation-report.json` 同时自动落到 work-dir。生产会话不直调内部 gate 脚本。
+该报告不是冻结的计划输入：repair 后允许重新生成，QA 绑定当轮文件，complete 会拒绝
+QA 之后再次变化的报告。
 生产段用 `skills/sp-deck/scripts/ppt_pipeline.py next --work-dir <wd> --json` 发现下一步
 （`plan` 会 scaffold `deck.js` + `pages/pNN-*.js`，整文件生成器会被 `build` 拒绝）。
 工作方式约束（并行调用、定点编辑、写盘即弃、阶段小结、检索走 `sp-research` 显式 spawn、
@@ -240,8 +246,11 @@ critical/major 之前，正式 `build` 会被机械拒绝。runtime hook 会按 
 陈旧 render、错误报告路径和损坏/错绑 receipt 都会在放行前被拒绝。通过
 `builder_packet.py --mode calibration --slides ...` 指定的校准样本会与 active round 原子记录，
 后续 `next` / `advance` 会保持这组页面，不会静默退回默认样本。
-校准预览与最终 `rendered` gate 还会直接检查 PPTX 成品，只允许所选 style 的浅/深两套
-六角色 palette；任何越位 sRGB 色值都会按页面返回修复。
+校准绿灯仅在其绑定的 Slide Spec、Art Direction、页面源码、校准 PPTX、每张预览 PNG、
+palette 报告与 render manifest 的路径和 SHA-256 均未变化时有效；陈旧证据会回到 preview
+或 critic。校准预览与最终 `rendered` gate 还会检查 PPTX 的 slide、chart 与 diagram XML，
+解析 theme `schemeClr`，只允许所选 style 的浅/深两套六角色 palette；raster 图片颜色仍由
+来源记录与视觉评审约束。
 
 **每轮 repair 都 spawn 一个新的 builder 实例**，不要继续上一个：一个扛了多轮的实例
 常驻上下文涨到 699K，96% 的成本花在 200K 以上；`next --json` 检出跨轮实例时会报
@@ -254,7 +263,8 @@ JSON / 改页面模块"的各种写法。
 **150 秒（1.7%）**，其余是 **519 个模型回合**、每个回合只带一个工具调用。`next --json`
 给出 `builder_shards` 时，主会话**在同一条消息里 spawn 全部 shard** 让页面工作并发——
 分片天然互斥，每个只写自己的 `speaker-notes-shard-<N>.md`（`build` 按页号合并，repair
-分片中较新的同页讲稿会替换旧稿，不会重复），任何一道门都没有改动。`session_cost.py` 现在输出 `turns`、
+分片中较新的同页讲稿会替换旧稿，不会重复），并以已有 `speaker-notes.md` 作为逐页基线，
+所以覆盖同名 repair shard 不会丢失未修改页面。任何一道门都没有改动。`session_cost.py` 现在输出 `turns`、
 `tool_calls_per_turn` 与 `turns_under_20min`，让时间预算可以对着数据判断；它的请求计数
 也改为"每个 API 调用一行"（按 message id 取最大 ctx）——旧规则把一个子代理读成 480 个
 请求，实际只发了 261 个。

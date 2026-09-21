@@ -128,6 +128,7 @@ def merge_speaker_note_shards(work_dir: Path) -> list[str]:
     fragments = sorted(work_dir.glob("speaker-notes-shard-*.md"))
     if not fragments:
         return []
+    target = work_dir / "speaker-notes.md"
     parts: list[str] = []
     # Repair rounds may re-shard pages.  Concatenating files by shard name then
     # duplicates a page whenever its new shard differs from the initial round.
@@ -136,14 +137,20 @@ def merge_speaker_note_shards(work_dir: Path) -> list[str]:
     section_re = re.compile(
         r"(?m)^##\s+(?:第\s*)?(?P<slide>\d+)(?:\s*页|\s*[-—:.])[^\n]*\n"
     )
-    by_slide: dict[int, tuple[int, str, str]] = {}
+    by_slide: dict[int, tuple[int, int, str, str]] = {}
     parsed_any = False
-    for path in fragments:
+    # The previous merged file is the durable per-page baseline. If a repair
+    # builder overwrites an existing shard with only its target page, pages that
+    # used to share that shard still survive here. Fresh fragments win by mtime.
+    sources = ([target] if target.is_file() else []) + fragments
+    for path in sources:
         text = path.read_text(encoding="utf-8").strip()
         if not text:
             continue
         matches = list(section_re.finditer(text))
         if not matches:
+            if path == target:
+                continue
             parts.append(text)
             continue
         parsed_any = True
@@ -153,15 +160,15 @@ def merge_speaker_note_shards(work_dir: Path) -> list[str]:
             slide = int(match.group("slide"))
             section = text[match.start():end].strip()
             previous = by_slide.get(slide)
-            marker = (stamp, path.name)
-            if previous is None or marker > (previous[0], previous[1]):
-                by_slide[slide] = (stamp, path.name, section)
+            priority = 1 if path != target else 0
+            marker = (stamp, priority, path.name)
+            if previous is None or marker > (previous[0], previous[1], previous[2]):
+                by_slide[slide] = (stamp, priority, path.name, section)
     if parsed_any:
-        ordered = [by_slide[slide][2] for slide in sorted(by_slide)]
+        ordered = [by_slide[slide][3] for slide in sorted(by_slide)]
         parts = ["# 演讲稿", *ordered, *parts]
     if not parts:
         return []
-    target = work_dir / "speaker-notes.md"
     target.write_text("\n\n".join(parts) + "\n", encoding="utf-8")
     return [str(path) for path in fragments]
 

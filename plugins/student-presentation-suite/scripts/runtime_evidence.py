@@ -275,6 +275,14 @@ def handle(event: dict) -> int:
                 if work_dir is None:
                     print(CRITIC_WORKDIR_REFUSAL, file=sys.stderr)
                     return 2
+                # A deck may legitimately skip external research. Its critic
+                # spawn still identifies the exact work-id owned by this main
+                # session, so record it before arming/refreshing scope. This
+                # prevents an unrelated historical incomplete deck from keeping
+                # WebSearch blocked after the current deck completes.
+                pipeline_context.mark_research_active(
+                    project, event, work_ids=[work_dir.name]
+                )
                 try:
                     critic_preview.materialize(work_dir)
                 except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:

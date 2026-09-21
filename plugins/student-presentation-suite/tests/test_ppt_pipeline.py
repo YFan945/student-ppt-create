@@ -990,6 +990,29 @@ class QaDagTests(PipelineTestCase):
         self.assertEqual(pp.main(argv), 0)
         self.assertEqual(len(runner.calls), first_calls)
 
+    def test_visual_generation_report_refreshes_as_round_evidence(self) -> None:
+        self.producing_manifest()
+        self.files["vgr"].write_text('{"round": 2}', encoding="utf-8")
+        manifest = self.manifest()
+        # Repair-round evidence may change without invalidating frozen plan
+        # inputs; QA owns the controlled rebinding.
+        pp.validate_manifest_authorization(manifest)
+        runner = FakeRunner(self.work)
+        pp._core._runner = runner
+        self.assertEqual(
+            pp.main([
+                "qa", "--work-dir", str(self.work),
+                "--visual-review", str(self.files["visual_review"]),
+            ]),
+            0,
+        )
+        refreshed = self.manifest()
+        self.assertNotIn("visual_generation_report", refreshed["inputs"])
+        self.assertEqual(
+            pp.sha256_file(self.files["vgr"]),
+            refreshed["generation_evidence"]["visual_generation_report"]["sha256"],
+        )
+
     def test_previews_and_visual_review_are_hash_bound(self) -> None:
         self.producing_manifest()
         previews = self.work / "preview-01.png", self.work / "preview-02.png"
@@ -1063,7 +1086,7 @@ class QaDagTests(PipelineTestCase):
     def test_incomplete_plan_inputs_skip_delivery_and_block_completion(self) -> None:
         self.producing_manifest()
         manifest = self.manifest()
-        del manifest["inputs"]["visual_generation_report"]
+        (manifest.get("generation_evidence") or {}).pop("visual_generation_report", None)
         self.files["vgr"].unlink()
         pp.save_manifest(self.work, manifest)
         pp.mirror_workflow_state(manifest, manifest["state"])
@@ -1267,6 +1290,20 @@ class CompleteTests(PipelineTestCase):
         mirrored = json.loads(self.workflow_state.read_text(encoding="utf-8"))
         self.assertEqual(mirrored["state"], "complete")
 
+    def test_pptx_only_complete_does_not_invent_speaker_notes(self) -> None:
+        self.plan(self.files)
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        self.render_evidence(self.files)
+        (self.work / "speaker-notes.md").unlink()
+        pp.main([
+            "qa", "--work-dir", str(self.work),
+            "--visual-review", str(self.files["visual_review"]),
+        ])
+        manifest = self.manifest()
+        self.assertIsNone(manifest["qa"]["notes"])
+        self.assertFalse((self.work / "speaker-notes.md").exists())
+        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 0)
+
     def test_complete_with_degraded_critic_receipt_succeeds(self) -> None:
         self.state_qa(ok=True, delivery_checked=True)
         manifest = self.manifest()
@@ -1289,6 +1326,11 @@ class CompleteTests(PipelineTestCase):
 
     def test_complete_without_delivery_is_refused(self) -> None:
         self.state_qa(ok=True, delivery_checked=False)
+        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)
+
+    def test_complete_rejects_changed_dynamic_visual_report(self) -> None:
+        self.state_qa(ok=True, delivery_checked=True)
+        self.files["vgr"].write_text('{"round": 2}', encoding="utf-8")
         self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)
 
 
@@ -1638,6 +1680,27 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.assertIn("新讲稿。", merged)
         self.assertNotIn("旧讲稿。", merged)
         self.assertLess(merged.index("## 第 1 页"), merged.index("## 第 10 页"))
+
+    def test_overwritten_repair_shard_preserves_untouched_pages_from_previous_merge(self) -> None:
+        shard = self.work / "speaker-notes-shard-1.md"
+        shard.write_text(
+            "## 第 1 页 · 开场\n\n第一页。\n\n"
+            "## 第 5 页 · 数据\n\n旧第五页。\n\n"
+            "## 第 9 页 · 结尾\n\n第九页。\n",
+            encoding="utf-8",
+        )
+        pp.merge_speaker_note_shards(self.work)
+        previous = (self.work / "speaker-notes.md").stat().st_mtime_ns
+        shard.write_text("## 第 5 页 · 数据\n\n新第五页。\n", encoding="utf-8")
+        fresh = max(shard.stat().st_mtime_ns, previous + 1_000_000)
+        os.utime(shard, ns=(fresh, fresh))
+        pp.merge_speaker_note_shards(self.work)
+        merged = (self.work / "speaker-notes.md").read_text(encoding="utf-8")
+        self.assertIn("第一页。", merged)
+        self.assertIn("第九页。", merged)
+        self.assertIn("新第五页。", merged)
+        self.assertNotIn("旧第五页。", merged)
+        self.assertEqual(merged.count("## 第 5 页"), 1)
 
     def test_a_single_builder_run_writes_no_merge(self) -> None:
         self.write_spec(4)
