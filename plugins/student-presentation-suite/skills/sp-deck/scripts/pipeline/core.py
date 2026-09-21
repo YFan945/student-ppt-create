@@ -156,10 +156,14 @@ def render_is_current(manifest: dict[str, Any]) -> bool:
     if not pptx.is_file() or recorded != sha256_file(pptx):
         return False
     contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
+    pdf = Path(str((render.get("pdf") or {}).get("path") or ""))
     pages = [Path(str(item.get("path"))) for item in render.get("pages") or []]
-    if not contact.is_file() or not pages:
+    if not contact.is_file() or not pdf.is_file() or not pages:
         return False
-    return all(binding_is_current(item) for item in [render["contact_sheet"], *render["pages"]])
+    return all(
+        binding_is_current(item)
+        for item in [render["contact_sheet"], render["pdf"], *render["pages"]]
+    )
 
 
 def archive_stale_render(work_dir: Path, manifest: dict[str, Any]) -> list[str]:
@@ -177,6 +181,9 @@ def archive_stale_render(work_dir: Path, manifest: dict[str, Any]) -> list[str]:
     thumb = (render.get("contact_sheet_thumb") or {}).get("path")
     if thumb:
         candidates.append(Path(str(thumb)))
+    pdf = (render.get("pdf") or {}).get("path")
+    if pdf:
+        candidates.append(Path(str(pdf)))
     candidates.extend(Path(str(item.get("path"))) for item in render.get("pages") or [])
     existing = [path for path in candidates if path.is_file()]
     if any(not path.resolve().is_relative_to(work_dir.resolve()) for path in existing):
@@ -410,7 +417,7 @@ class Stage:
     issues_key: str = "issues"
 
 
-def _gate_inputs(manifest: dict[str, Any]) -> dict[str, str]:
+def _gate_inputs(manifest: dict[str, Any]) -> dict[str, Any]:
     """The gate input map shared by the QA and pre-QA stage builders."""
     inputs = manifest.get("inputs") or {}
     build = manifest.get("build") or {}
@@ -418,6 +425,7 @@ def _gate_inputs(manifest: dict[str, Any]) -> dict[str, str]:
     visual_generation = generation.get("visual_generation_report") or inputs.get(
         "visual_generation_report"
     ) or {}
+    prepared = manifest.get("deliverables") or {}
     return {
         "pptx": str((build.get("pptx") or {}).get("path") or ""),
         "slide_spec": str((inputs.get("slide_spec") or {}).get("path") or ""),
@@ -425,6 +433,10 @@ def _gate_inputs(manifest: dict[str, Any]) -> dict[str, str]:
         "art_direction": str((inputs.get("art_direction") or {}).get("path") or ""),
         "visual_generation_report": str(visual_generation.get("path") or ""),
         "slide_spec_report": str((inputs.get("slide_spec_report") or {}).get("path") or ""),
+        "deliverables": {
+            name: str((item or {}).get("path") or "")
+            for name, item in (prepared.get("outputs") or {}).items()
+        },
     }
 
 
@@ -495,6 +507,14 @@ def _gate_stage(
             argv += ["--preview", str(preview)]
         if allow_missing_preview:
             argv.append("--allow-missing-preview")
+        prepared = gate_inputs.get("deliverables") or {}
+        for deliverable, flag in (
+            ("pdf", "--pdf"),
+            ("full-script", "--full-script"),
+            ("teleprompter", "--teleprompter"),
+        ):
+            if prepared.get(deliverable):
+                argv += [flag, prepared[deliverable]]
     else:  # pragma: no cover - registry and this switch must move together
         raise RefusedError(f"gate {name} has no stage builder (update _gate_stage + qa_gates)")
     return Stage(stage_name, argv, report, artifact)

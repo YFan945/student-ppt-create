@@ -264,6 +264,7 @@ class PerTypeDeliverableTests(unittest.TestCase):
             require_notes=False,
             require_preview=True,
             owed_deliverables=["pdf"],
+            extra_files={"pdf": pdf},
         )
         self.assertEqual([], result["missing_expected_files"])
         self.assertTrue(result["deliverable_evidence"]["pdf"]["satisfied"])
@@ -295,6 +296,24 @@ class PerTypeDeliverableTests(unittest.TestCase):
             extra_files={"pdf": fake},
         )
         self.assertIn("pdf", result["missing_expected_files"])
+
+    def test_unrelated_pdf_in_work_dir_cannot_satisfy_pdf(self) -> None:
+        delivery = load_delivery()
+        self.touch("source-paper.pdf", "%PDF-1.4\n")
+        result = delivery.inspect_delivery(
+            self.pptx,
+            None,
+            [],
+            require_notes=False,
+            require_preview=False,
+            owed_deliverables=["pdf"],
+        )
+        self.assertIn("pdf", result["missing_expected_files"])
+        self.assertFalse(result["deliverable_evidence"]["pdf"]["satisfied"])
+        self.assertEqual(
+            [str(self.pptx.with_suffix(".pdf"))],
+            result["deliverable_evidence"]["pdf"]["expected"],
+        )
 
     def test_allow_missing_drops_only_the_named_kind(self) -> None:
         delivery = load_delivery()

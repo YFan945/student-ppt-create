@@ -8,7 +8,8 @@ used only as the intake authorization source and is mirrored automatically.
 
     plan      verify intake, freeze, preflight, scaffold pages/  -> planned
     build     run the generator; refuses unsplitted deck.js      -> producing
-    render    raster pages + contact-sheet.png (hash-cached)
+    render    raster pages + PDF + contact-sheet.png (hash-cached)
+    prepare-deliverables  generate confirmed support/export files
     qa        QA DAG: artifact gates stop, content gates all run -> qa
     repair    QA blockers -> producing (budget from contract)
     complete  qa + delivery ok                                   -> complete
@@ -113,6 +114,11 @@ from pipeline.core import (  # noqa: E402,F401
     validate_work_dir,
     write_stage_summary,
 )
+from pipeline.deliverables import (  # noqa: E402,F401
+    cmd_prepare_deliverables,
+    deliverables_are_current,
+    requested_prepared_deliverables,
+)
 from pipeline.dispatch import build_next_payload, cmd_next  # noqa: E402,F401
 from pipeline.doctor import cmd_doctor  # noqa: E402,F401
 from pipeline.plan import _research_budget, cmd_plan, compile_research_for_plan  # noqa: E402,F401
@@ -174,6 +180,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     render.add_argument("--prefix", default="slide")
     render.add_argument("--cols", type=int, default=3)
     render.set_defaults(func=cmd_render)
+
+    prepare = sub.add_parser(
+        "prepare-deliverables",
+        help="generate and hash-bind confirmed support outputs and PDF export",
+    )
+    prepare.add_argument("--work-dir", type=Path, required=True)
+    prepare.set_defaults(func=cmd_prepare_deliverables)
 
     qa = sub.add_parser("qa", help="run QA DAG (content gates all run, then one blocker set); identical inputs reuse prior result")
     qa.add_argument("--work-dir", type=Path, required=True)

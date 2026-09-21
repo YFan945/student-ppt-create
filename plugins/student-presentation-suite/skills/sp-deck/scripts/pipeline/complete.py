@@ -24,6 +24,11 @@ from pipeline.core import (  # noqa: E402
     validate_manifest_authorization,
     write_stage_summary,
 )
+from pipeline.deliverables import (  # noqa: E402
+    deliverable_bindings,
+    deliverables_are_current,
+    requested_prepared_deliverables,
+)
 
 
 def cmd_complete(args: argparse.Namespace) -> int:
@@ -55,9 +60,17 @@ def cmd_complete(args: argparse.Namespace) -> int:
         evidence.append(qa.get("visual_generation_report"))
     if qa.get("notes") is not None:
         evidence.append(qa.get("notes"))
+    evidence.extend(deliverable_bindings(qa.get("deliverables")))
     if not degraded_receipt:
         evidence.append(qa.get("critic_execution"))
-    if not render_is_current(manifest) or any(not item or not binding_is_current(item) for item in evidence):
+    if (
+        not render_is_current(manifest)
+        or (
+            requested_prepared_deliverables(manifest)
+            and not deliverables_are_current(manifest)
+        )
+        or any(not item or not binding_is_current(item) for item in evidence)
+    ):
         raise RefusedError("QA evidence changed or disappeared after QA; run QA again")
     if manifest.get("mode") != "create":
         change_summary = work_dir / "change-summary.md"

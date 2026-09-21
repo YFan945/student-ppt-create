@@ -217,6 +217,10 @@ python skills/sp-deck/scripts/run_gates.py --art-direction <a.yaml> --slide-spec
 `visual-generation-report.json` 同时自动落到 work-dir。生产会话不直调内部 gate 脚本。
 该报告不是冻结的计划输入：repair 后允许重新生成，QA 绑定当轮文件，complete 会拒绝
 QA 之后再次变化的报告。
+render 之后，`ppt_pipeline.py prepare-deliverables` 只按冻结 Slide Spec 中已确认的类型
+确定性生成支持/导出文件。PDF 直接采用本轮 render 产出的 PDF，不会扫描同目录的无关
+PDF；每个产物在 critic 和 QA 前绑定哈希。QA 后任一产物变化都会阻断 complete，管线回到
+生产态重新生成并重跑 QA。
 生产段用 `skills/sp-deck/scripts/ppt_pipeline.py next --work-dir <wd> --json` 发现下一步
 （`plan` 会 scaffold `deck.js` + `pages/pNN-*.js`，整文件生成器会被 `build` 拒绝）。
 工作方式约束（并行调用、定点编辑、写盘即弃、阶段小结、检索走 `sp-research` 显式 spawn、
@@ -250,7 +254,9 @@ critical/major 之前，正式 `build` 会被机械拒绝。runtime hook 会按 
 palette 报告与 render manifest 的路径和 SHA-256 均未变化时有效；陈旧证据会回到 preview
 或 critic。校准预览与最终 `rendered` gate 还会检查 PPTX 的 slide、chart 与 diagram XML，
 解析 theme `schemeClr`，只允许所选 style 的浅/深两套六角色 palette；raster 图片颜色仍由
-来源记录与视觉评审约束。
+来源记录与视觉评审约束。该静态检查会解析 scheme 的基础色与 XML 中的直接色值，但不声称
+完整复现所有 OOXML `tint`、`shade`、`alpha` 等颜色变换；最终呈现仍以渲染图和 visual-critic
+判断为准。
 
 **每轮 repair 都 spawn 一个新的 builder 实例**，不要继续上一个：一个扛了多轮的实例
 常驻上下文涨到 699K，96% 的成本花在 200K 以上；`next --json` 检出跨轮实例时会报

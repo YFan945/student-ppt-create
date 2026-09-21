@@ -173,7 +173,11 @@ def expected_artifact_paths(pptx: Path, deliverable: str) -> list[Path]:
     prefix = output_prefix(pptx)
     parent = pptx.parent
     if deliverable == "pdf":
-        return sorted({*parent.glob(f"{prefix}*.pdf"), *parent.glob("*.pdf")})
+        # Discovery is deliberately exact. Reference papers, rubrics, and
+        # source PDFs in the work directory are inputs, not proof that the
+        # current presentation was exported. A differently named PDF is valid
+        # only when the caller explicitly supplies it through ``--pdf``.
+        return [pptx.with_suffix(".pdf")]
     suffixes = _ARTIFACT_SUFFIXES.get(deliverable)
     if not suffixes:
         return []

@@ -104,6 +104,25 @@ class FakeRunner:
         if "run_with_pptxgenjs.js" in joined:
             Path(flag_value("--output")).write_bytes(b"PK\x03\x04 fake pptx")
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        if "build_support_outputs.py" in joined:
+            output_dir = Path(flag_value("--output-dir"))
+            prefix = flag_value("--prefix")
+            suffixes = {
+                "speaker-notes": "speaker-notes.md",
+                "full-script": "full-script.md",
+                "teleprompter": "teleprompter.html",
+                "training-cards": "training-cards.md",
+                "references": "references.md",
+            }
+            requested = [argv[index + 1] for index, item in enumerate(argv[:-1]) if item == "--only"]
+            outputs = {}
+            for name in requested:
+                path = output_dir / f"{prefix}-{suffixes[name]}"
+                path.write_text(f"generated {name}", encoding="utf-8")
+                outputs[name] = str(path.resolve())
+            return subprocess.CompletedProcess(
+                argv, 0, stdout=json.dumps({"ok": True, "outputs": outputs}), stderr=""
+            )
         if "research_pack_to_evidence.py" in joined:
             out = flag_value("--output")
             if out:
@@ -245,7 +264,15 @@ class PipelineTestCase(unittest.TestCase):
         preview.save(page)
         contact = self.work / "contact-sheet.png"
         pp.make_contact_sheet([page], contact)
-        manifest["render"] = {"pptx_sha256": pp.sha256_file(files["pptx"]), "pages": [pp.bind(page)], "contact_sheet": pp.bind(contact), "page_count": 1}
+        pdf = self.work / "render" / "slide.pdf"
+        pdf.write_bytes(b"%PDF-1.4\n")
+        manifest["render"] = {
+            "pptx_sha256": pp.sha256_file(files["pptx"]),
+            "pages": [pp.bind(page)],
+            "contact_sheet": pp.bind(contact),
+            "pdf": pp.bind(pdf),
+            "page_count": 1,
+        }
         pp.save_manifest(self.work, manifest)
         review = {"pptx_sha256": pp.sha256_file(files["pptx"]), "contact_sheet_sha256": pp.sha256_file(contact), "page_sha256": {"1": pp.sha256_file(page)}}
         files["visual_review"].write_text(json.dumps(review), encoding="utf-8")
@@ -1012,6 +1039,92 @@ class QaDagTests(PipelineTestCase):
             pp.sha256_file(self.files["vgr"]),
             refreshed["generation_evidence"]["visual_generation_report"]["sha256"],
         )
+
+    def test_vgr_change_invalidates_qa_cache(self) -> None:
+        self.producing_manifest()
+        runner = FakeRunner(self.work)
+        pp._core._runner = runner
+        argv = [
+            "qa", "--work-dir", str(self.work),
+            "--visual-review", str(self.files["visual_review"]),
+        ]
+        self.assertEqual(pp.main(argv), 0)
+        first_calls = len(runner.calls)
+        first_hash = self.manifest()["qa"]["visual_generation_report"]["sha256"]
+
+        self.files["vgr"].write_text('{"round": 3}', encoding="utf-8")
+        self.assertEqual(pp.main(argv), 0)
+
+        refreshed = self.manifest()["qa"]["visual_generation_report"]
+        self.assertGreater(len(runner.calls), first_calls)
+        self.assertNotEqual(first_hash, refreshed["sha256"])
+        self.assertEqual(pp.sha256_file(self.files["vgr"]), refreshed["sha256"])
+
+    def test_prepare_deliverables_generates_and_hash_binds_confirmed_outputs(self) -> None:
+        spec = json.loads(self.files["spec"].read_text(encoding="utf-8"))
+        spec["meta"]["deliverables"] = [
+            "pptx",
+            "speaker-notes",
+            "full-script",
+            "teleprompter",
+            "training-cards",
+            "references",
+            "pdf",
+        ]
+        self.files["spec"].write_text(json.dumps(spec), encoding="utf-8")
+        self.producing_manifest()
+        render_pdf = self.work / "render" / "slide.pdf"
+        render_pdf.write_bytes(b"%PDF-1.4\n")
+        manifest = self.manifest()
+        manifest["render"]["pdf"] = pp.bind(render_pdf)
+        pp.save_manifest(self.work, manifest)
+
+        runner = FakeRunner(self.work)
+        pp._core._runner = runner
+        self.assertEqual(
+            pp.main(["prepare-deliverables", "--work-dir", str(self.work)]),
+            0,
+        )
+        prepared = self.manifest()["deliverables"]
+        self.assertEqual(
+            prepared["requested"],
+            [
+                "full-script",
+                "pdf",
+                "references",
+                "speaker-notes",
+                "teleprompter",
+                "training-cards",
+            ],
+        )
+        self.assertTrue(
+            all(Path(binding["path"]).is_file() for binding in prepared["outputs"].values())
+        )
+        self.assertEqual(Path(prepared["outputs"]["pdf"]["path"]), self.files["pptx"].with_suffix(".pdf"))
+        self.assertTrue(pp.binding_is_current(prepared["report"]))
+
+        argv = [
+            "qa", "--work-dir", str(self.work),
+            "--visual-review", str(self.files["visual_review"]),
+        ]
+        self.assertEqual(pp.main(argv), 0)
+        self.assertEqual(
+            self.manifest()["qa"]["deliverables"]["outputs"],
+            prepared["outputs"],
+        )
+
+        full_script = Path(prepared["outputs"]["full-script"]["path"])
+        full_script.write_text("changed after QA", encoding="utf-8")
+        dispatch = pp.build_next_payload(self.work)
+        self.assertIn(" prepare-deliverables ", dispatch["next_command"])
+        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)
+        self.assertEqual(
+            pp.main(["prepare-deliverables", "--work-dir", str(self.work)]),
+            0,
+        )
+        refreshed = self.manifest()
+        self.assertEqual(refreshed["state"], "producing")
+        self.assertEqual(refreshed["qa"], {})
 
     def test_previews_and_visual_review_are_hash_bound(self) -> None:
         self.producing_manifest()
@@ -1825,8 +1938,13 @@ class AdvanceTests(PipelineTestCase):
                 out_dir.mkdir(parents=True, exist_ok=True)
                 page = out_dir / "slide-1.png"
                 Image.new("RGB", (64, 48), "white").save(page)
+                pdf = out_dir / "slide.pdf"
+                pdf.write_bytes(b"%PDF-1.4\n")
                 return subprocess.CompletedProcess(
-                    argv, 0, stdout=json.dumps({"pages": [str(page)]}), stderr=""
+                    argv,
+                    0,
+                    stdout=json.dumps({"pages": [str(page)], "pdf": str(pdf)}),
+                    stderr="",
                 )
             if "calibration_preview.py" in joined:
                 render_dir = self.work / "calibration" / "render"

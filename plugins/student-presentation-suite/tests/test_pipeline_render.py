@@ -39,9 +39,17 @@ class RenderRunner:
             page = out_dir / f"{prefix}-{index}.png"
             Image.new("RGB", (160, 90), "white").save(page)
             pages.append(str(page))
+        pdf = out_dir / f"{prefix}.pdf"
+        pdf.write_bytes(b"%PDF-1.4\n")
         return subprocess.CompletedProcess(
             argv, 0,
-            stdout=json.dumps({"ok": True, "pages": pages, "slide_count": 2, "rendered_page_count": 2}),
+            stdout=json.dumps({
+                "ok": True,
+                "pages": pages,
+                "pdf": str(pdf),
+                "slide_count": 2,
+                "rendered_page_count": 2,
+            }),
             stderr="",
         )
 
@@ -98,6 +106,7 @@ class PipelineRenderTests(unittest.TestCase):
         render = manifest["render"]
         self.assertEqual(render["page_count"], 2)
         self.assertEqual(len(render["pages"]), 2)
+        self.assertTrue(Path(render["pdf"]["path"]).is_file())
         self.assertTrue(Path(render["contact_sheet"]["path"]).is_file())
         self.assertTrue(render["contact_sheet"]["sha256"])
         # 廉价概览缩略图：主会话看它，全尺寸页图留给隔离 critic
@@ -121,6 +130,16 @@ class PipelineRenderTests(unittest.TestCase):
         self.assertEqual(pp.cmd_render(self.args()), 0)
         self.assertEqual(pp.cmd_render(self.args()), 0)
         self.assertEqual(runner.calls, 1)
+
+    def test_missing_pdf_invalidates_render_cache(self) -> None:
+        runner = RenderRunner(self.work)
+        pp._core._runner = runner
+        self.assertEqual(pp.cmd_render(self.args()), 0)
+        manifest = pp.load_manifest(self.work)
+        assert manifest is not None
+        Path(manifest["render"]["pdf"]["path"]).unlink()
+        self.assertEqual(pp.cmd_render(self.args()), 0)
+        self.assertEqual(runner.calls, 2)
 
     def test_changed_pptx_invalidates_render_cache(self) -> None:
         runner = RenderRunner(self.work)
@@ -242,7 +261,7 @@ class NextRoutingTests(unittest.TestCase):
         assert manifest is not None
 
         moved = pp.archive_stale_render(self.work, manifest)
-        self.assertEqual(4, len(moved))  # 2 page PNGs + contact sheet + thumb
+        self.assertEqual(5, len(moved))  # 2 page PNGs + PDF + contact sheet + thumb
         self.assertFalse(contact.is_file())
         for path in moved:
             self.assertTrue(Path(path).is_file())

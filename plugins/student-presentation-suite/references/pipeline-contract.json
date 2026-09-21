@@ -181,6 +181,11 @@
       "Do not reuse previous-build images. Pipeline archives stale evidence.",
       "Render only after the pre-QA gates are green: `next --json` will not route to render while pre-QA blockers exist (do not bypass it by calling render directly)."
     ],
+    "prepare_deliverables": [
+      "After a current render and before critic/QA, generate only support/export deliverables confirmed in the frozen Slide Spec.",
+      "Bind every output to the current PPTX and Slide Spec; reuse only while all hashes remain current.",
+      "Use the render-owned PDF export and build_support_outputs.py; do not discover arbitrary work-dir PDFs."
+    ],
     "qa": [
       "Spawn student-presentation-suite:visual-critic WITHOUT a name. Pass the absolute work-dir in its prompt. Never nest the critic inside another agent.",
       "The runtime hook materializes hash-bound critic-preview/*.jpg images. Critic Reads the overview and every page preview, not the full-size render PNGs; the hook maps those reads back to the current original contact/page SHA256 values.",

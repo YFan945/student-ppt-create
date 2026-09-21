@@ -25,6 +25,7 @@ from pipeline.core import (  # noqa: E402
     record,
     save_manifest,
 )
+from pipeline.deliverables import cmd_prepare_deliverables  # noqa: E402
 from pipeline.dispatch import (  # noqa: E402
     build_next_payload,
 )
@@ -149,6 +150,10 @@ def cmd_advance(args: argparse.Namespace) -> int:
             if " render " in bordered:
                 _run_quietly(cmd_render, argparse.Namespace(work_dir=work_dir, cols=3, prefix="slide"))
                 actions.append("render")
+                continue
+            if " prepare-deliverables " in bordered:
+                _run_quietly(cmd_prepare_deliverables, argparse.Namespace(work_dir=work_dir))
+                actions.append("prepare-deliverables")
                 continue
             if " repair " in bordered:
                 _run_quietly(cmd_repair, argparse.Namespace(

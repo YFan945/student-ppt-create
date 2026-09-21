@@ -45,6 +45,11 @@ from pipeline.core import (  # noqa: E402
     work_id_receipt_policy,
     write_stage_summary,
 )
+from pipeline.deliverables import (  # noqa: E402
+    deliverable_bindings,
+    deliverables_are_current,
+    requested_prepared_deliverables,
+)
 
 
 def cmd_qa(args: argparse.Namespace) -> int:
@@ -69,6 +74,14 @@ def cmd_qa(args: argparse.Namespace) -> int:
     previews = [Path(p).resolve() for p in (args.preview or [])]
     if not render_is_current(manifest):
         raise RefusedError("QA requires current, hash-verified render evidence; run render")
+    if requested_prepared_deliverables(manifest) and not deliverables_are_current(manifest):
+        raise RefusedError(
+            "requested support/export deliverables are stale or missing; run prepare-deliverables"
+        )
+    prepared_outputs = (manifest.get("deliverables") or {}).get("outputs") or {}
+    prepared_notes = prepared_outputs.get("speaker-notes") or {}
+    if notes is None and prepared_notes.get("path"):
+        notes = Path(str(prepared_notes["path"]))
     if notes is None and (work_dir / "speaker-notes.md").is_file():
         notes = work_dir / "speaker-notes.md"
     if not previews:
@@ -91,10 +104,27 @@ def cmd_qa(args: argparse.Namespace) -> int:
                 raise RefusedError("independent critic did not read every current render image")
     fingerprint = qa_input_fingerprint(pptx, visual_review, notes, previews)
     receipt_binding = None if degraded_receipt else bind(work_dir / "critic-execution.json")
-    fingerprint = stable_hash([fingerprint, manifest.get("inputs"), receipt_binding, args.allow_missing_preview])
+    # Generation evidence is repair-round state, not a frozen plan input, but
+    # it is still a QA input. Without this binding a regenerated VGR could hit
+    # the previous QA cache forever while complete correctly rejected the old
+    # QA-side hash as stale.
+    vgr_binding = (manifest.get("generation_evidence") or {}).get(
+        "visual_generation_report"
+    )
+    fingerprint = stable_hash([
+        fingerprint,
+        manifest.get("inputs"),
+        ("visual_generation_report", vgr_binding),
+        ("prepared_deliverables", manifest.get("deliverables")),
+        receipt_binding,
+        args.allow_missing_preview,
+    ])
     old_qa = manifest.get("qa") or {}
     old_report = Path(str((old_qa.get("report") or {}).get("path") or ""))
     cached_bindings = [old_qa.get("report") or {}, *(old_qa.get("stages") or {}).values()]
+    if old_qa.get("visual_generation_report") is not None:
+        cached_bindings.append(old_qa["visual_generation_report"])
+    cached_bindings.extend(deliverable_bindings(old_qa.get("deliverables")))
     if manifest.get("state") == "qa" and old_qa.get("input_fingerprint") == fingerprint and old_report.is_file() and all(binding_is_current(item) for item in cached_bindings):
         ok = bool(old_qa.get("ok"))
         record(manifest, "qa", "qa", "qa", reused=True, blockers=int(old_qa.get("blockers") or 0))
@@ -179,6 +209,7 @@ def cmd_qa(args: argparse.Namespace) -> int:
         "report": bind(qa_report_path), "stages": reports,
         "visual_review": bind(visual_review) if visual_review and visual_review.is_file() else None,
         "visual_generation_report": bind(vgr) if vgr.is_file() else None,
+        "deliverables": manifest.get("deliverables") or None,
         "previews": [bind(path) for path in previews if path.is_file()] or None,
         "notes": bind(notes) if notes and notes.is_file() else None,
         "critic_execution": receipt_binding,

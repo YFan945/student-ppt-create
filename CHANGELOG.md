@@ -2,6 +2,17 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.15.8 — 2026-09-21 · Deterministic deliverable preparation
+
+- 修复 QA 缓存未纳入 `visual-generation-report.json` 当前哈希的问题，repair 后生成证据变化会
+  强制重跑 QA，不再出现 QA 复用旧结果而 complete 持续拒绝的循环。
+- 新增确定性的 `prepare-deliverables` 阶段：render 后按冻结 Slide Spec 生成并绑定支持产物，
+  PDF 只采用本轮 render 输出；QA/complete 会复核全部产物，QA 后漂移则回到 producing 重建。
+- PDF 自动发现收紧为与 PPTX 同名的 canonical PDF；其他文件名只有显式传入 `--pdf` 才参与
+  交付验收，避免无关参考 PDF 误通过。
+- 明确 palette XML 门的能力边界：校验直接色值和 theme scheme 基础色，`tint` / `shade` /
+  `alpha` 等变换后的最终观感由渲染图与 visual-critic 兜底。
+
 ## 0.15.7 — 2026-09-21 · Evidence freshness & delivery correctness
 
 - 交付门按 Production Summary 中的类型逐项验收：仅 `speaker-notes` 要求独立 Markdown，

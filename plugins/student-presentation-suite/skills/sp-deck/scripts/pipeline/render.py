@@ -143,9 +143,13 @@ def cmd_render(args: argparse.Namespace) -> int:
     with contextlib.suppress(json.JSONDecodeError):
         payload = json.loads(proc.stdout)
     page_values = payload.get("pages") if isinstance(payload, dict) else None
+    pdf_value = payload.get("pdf") if isinstance(payload, dict) else None
     pages = [Path(str(path)) for path in page_values] if isinstance(page_values, list) else sorted(render_dir.glob(f"{args.prefix}*.png"))
     if not pages or not all(path.is_file() for path in pages):
         raise RefusedError("render reported success but page images are missing")
+    rendered_pdf = Path(str(pdf_value)) if pdf_value else render_dir / f"{args.prefix}.pdf"
+    if not rendered_pdf.is_file():
+        raise RefusedError("render reported success but the PDF export is missing")
     contact = work_dir / "contact-sheet.png"
     thumb = work_dir / "contact-sheet-thumb.jpg"
     make_contact_sheet(pages, contact, args.cols, thumb_output=thumb)
@@ -154,6 +158,7 @@ def cmd_render(args: argparse.Namespace) -> int:
         "pages": [bind(path) for path in pages],
         "contact_sheet": bind(contact),
         "contact_sheet_thumb": bind(thumb),
+        "pdf": bind(rendered_pdf),
         "page_count": len(pages),
         "rendered_at": now(),
     }

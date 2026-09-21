@@ -32,10 +32,17 @@ class PipelineIntegrityTests(PipelineTestCase):
         def render_runner(argv):
             from PIL import Image
             page = self.work / "render/slide-1.png"
+            pdf = self.work / "render/slide.pdf"
             image = Image.new("RGB", (640, 360), "white")
             image.paste("navy", (0, 0, 640, 80))
             image.save(page)
-            return subprocess.CompletedProcess(argv, 0, stdout=json.dumps({"pages": [str(page)]}), stderr="")
+            pdf.write_bytes(b"%PDF-1.4\n")
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                stdout=json.dumps({"pages": [str(page)], "pdf": str(pdf)}),
+                stderr="",
+            )
 
         pp._core._runner = render_runner
         self.assertEqual(pp.main(["render", "--work-dir", str(self.work)]), 0)

@@ -261,6 +261,11 @@ Full detail lands in `gates-report.json`, while the canonical delivery input
 `visual-generation-report.json` is written alongside it automatically. Production sessions do
 not freeze that report as a planning input: repair rounds may regenerate it,
 QA binds the current copy, and completion rejects any later change.
+After render, `ppt_pipeline.py prepare-deliverables` deterministically creates only the
+support/export files confirmed in the frozen Slide Spec. It uses the render-owned PDF,
+never an unrelated PDF found beside the deck, and hash-binds every generated file before
+the critic and QA run. If one changes after QA, completion is refused and the pipeline
+returns to production to regenerate the file and rerun QA.
 Production sessions do
 not invoke individual gate internals directly; production after intake is dispatched by
 `skills/sp-deck/scripts/ppt_pipeline.py next --work-dir <wd> --json` (plan scaffolds
@@ -309,7 +314,10 @@ and render manifest still match their recorded hashes; stale evidence routes
 back to preview or critic. Calibration preview and the final rendered gate also
 inspect slide, chart, and diagram XML in the PPTX, resolve theme scheme colors,
 and reject colors outside the selected style's light/dark six-role palettes.
-Raster-image colors are handled by provenance and visual review instead.
+This static check resolves the base scheme color and literal XML colors; it does not
+claim to reproduce every OOXML tint, shade, alpha, or other color transform. Rendered
+appearance remains the visual critic's authority. Raster-image colors are handled by
+provenance and visual review instead.
 
 Each repair round spawns a **new** builder instance instead of continuing the
 previous one: a builder instance that served several rounds reached 699K resident

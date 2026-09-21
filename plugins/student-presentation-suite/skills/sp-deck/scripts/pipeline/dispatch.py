@@ -37,6 +37,10 @@ from pipeline.core import (  # noqa: E402
     sha256_file,
     work_id_receipt_policy,
 )
+from pipeline.deliverables import (  # noqa: E402
+    deliverables_are_current,
+    requested_prepared_deliverables,
+)
 from pipeline.plan import (  # noqa: E402
     _research_budget,
 )
@@ -384,6 +388,19 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             )
                 except Exception as exc:
                     observe_packet_failure(work_dir, payload, "repair", exc)
+            elif (
+                render_is_current(manifest)
+                and requested_prepared_deliverables(manifest)
+                and not deliverables_are_current(manifest)
+            ):
+                payload["next_command"] = (
+                    f'{python} "{pipeline}" prepare-deliverables --work-dir "{work_dir}"'
+                )
+                payload["notes"] = (
+                    "Generate and hash-bind every confirmed support/export deliverable before "
+                    "spawning the critic. advance executes this deterministic step automatically."
+                )
+                payload["prepare_deliverables"] = requested_prepared_deliverables(manifest)
             elif render_is_current(manifest):
                 render = manifest.get("render") or {}
                 contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
@@ -429,7 +446,20 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 )
         elif state == "qa":
             qa = manifest.get("qa") or {}
-            if qa.get("ok"):
+            if (
+                qa.get("ok")
+                and requested_prepared_deliverables(manifest)
+                and not deliverables_are_current(manifest)
+            ):
+                payload["next_command"] = (
+                    f'{python} "{pipeline}" prepare-deliverables --work-dir "{work_dir}"'
+                )
+                payload["notes"] = (
+                    "A confirmed deliverable changed or disappeared after QA. Recreate and bind it; "
+                    "this invalidates the old QA result and returns the pipeline to producing."
+                )
+                payload["prepare_deliverables"] = requested_prepared_deliverables(manifest)
+            elif qa.get("ok"):
                 payload["next_command"] = f'{python} "{pipeline}" complete --work-dir "{work_dir}"'
             else:
                 payload["next_command"] = (
@@ -480,9 +510,9 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
         # the pre-QA fix path is a build-stage rule set: builder edits, rebuild, no repair
         action = "build"
     else:
-        for candidate in ("build", "render", "qa", "repair", "complete"):
+        for candidate in ("build", "render", "prepare-deliverables", "qa", "repair", "complete"):
             if f" {candidate} " in payload["next_command"]:
-                action = candidate
+                action = candidate.replace("-", "_")
                 break
     payload["contract"] = {
         "stage": action, "rules": CONTRACT["stage_contracts"][action],
