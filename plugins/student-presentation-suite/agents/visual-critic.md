@@ -29,10 +29,12 @@ Evaluate every page honestly: hierarchy, focal point, composition, visual
 interest, whitespace, reference intent, consistency and deck rhythm. Record
 specific unresolved issues instead of raising scores to pass a threshold.
 
-A **blocker is `critical` + `major`** — the quality gate promotes majors exactly
-like the spec does (`BLOCKING_SEVERITIES`), so report `blocker_count` and the
-count you hand back with that definition. A report that says "blocker count: 0"
-while carrying 8 majors reads as "deliverable" to the caller and blocks in QA.
+Read `quality_level` from the frozen Slide Spec. For `high-score`, a blocker is
+`critical` + `major`. For `basic`, report style and composition concerns as
+`minor`; reserve `critical` for an unusable page (for example illegible content).
+Basic QA treats subjective `major` findings and visual scores as advisory, so
+do not request a Builder round for them. Set `blocker_count` to the count that
+blocks that quality level and return the same count to the caller.
 
 Frozen numbers are not redundancy. Every planned number (the `numbers` list
 `page_brief.py` prints, same source as the actual-content gate) needs one visible

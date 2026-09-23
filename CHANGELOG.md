@@ -2,6 +2,15 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.15.11 — 2026-09-23 · Full-flow cost and delivery closure
+
+- 独立讲稿从最终 PPTX 备注区按页导出；`complete` 发布并核验已确认文件，避免 QA 全绿后仍缺页或未交付。
+- `basic` 跳过前置校准，`high-score` 强制校准；两档均保留最终独立视觉评审及确定性门禁。
+- `basic` 的初建和返工改为单 Builder Packet；主观视觉分数与版式意见只记建议，避免 critic 与 Builder 围绕风格评分反复返工，critical 和确定性门仍阻塞。
+- 新增 `advance --brief-json` 和 model-io 成本统计；研究检索增加页面抓取预算与回执计数。
+- 完整 `high-score` 流程在已有当前 critic 报告时由 `advance` 直接跑 QA、登记返工或完成交付，避免同一渲染重复派 critic 和主会话手工过站。
+- 最终渲染图由独立 Critic 统一读取，主会话仅在处理具体争议页时按需看图，去掉重复视觉上下文。
+
 ## 0.15.10 — 2026-09-22 · Speaker notes parsing and dependency binding
 
 - 修复讲稿解析器不支持 `·`（中间点）分隔符格式的问题，`## 第 N 页 · 标题` 现在可被正确解析；

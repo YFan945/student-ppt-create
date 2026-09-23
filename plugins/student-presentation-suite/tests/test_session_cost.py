@@ -73,6 +73,26 @@ def build_transcript(path: Path) -> None:
 
 
 class SessionCostTests(unittest.TestCase):
+    def test_model_io_stream_reports_cache_and_tool_counts(self) -> None:
+        with TemporaryDirectory() as directory:
+            path = Path(directory) / "model-io.jsonl"
+            rows = [
+                {"startedAt": "2026-09-22T08:00:00Z", "completedAt": "2026-09-22T08:00:05Z",
+                 "model": {"modelId": "test"}, "response": {"usage": {
+                     "inputTokens": 100, "cacheReadTokens": 80, "outputTokens": 10, "totalTokens": 110,
+                 }, "toolCalls": [{"name": "WebFetch"}]}},
+                {"startedAt": "2026-09-22T08:00:05Z", "completedAt": "2026-09-22T08:00:10Z",
+                 "model": {"modelId": "test"}, "response": {"usage": {
+                     "inputTokens": 120, "cacheReadTokens": 100, "outputTokens": 5, "totalTokens": 125,
+                 }, "toolCalls": []}},
+            ]
+            path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+            summary = SESSION_COST.profile_model_io(path)
+            self.assertEqual(235, summary["usage"]["totalTokens"])
+            self.assertEqual(180, summary["usage"]["cacheReadTokens"])
+            self.assertEqual(120, summary["peak_input_tokens"])
+            self.assertEqual(10.0, summary["elapsed_seconds"])
+            self.assertEqual(1, summary["tool_calls"]["WebFetch"])
     def setUp(self) -> None:
         self._tmp = TemporaryDirectory()
         self.addCleanup(self._tmp.cleanup)

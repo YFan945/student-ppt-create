@@ -158,8 +158,8 @@ class PipelineContractTests(unittest.TestCase):
         self.assertIn("pipeline-contract.json", self.skill)
         self.assertIn("build-manifest.json", self.skill)
         self.assertIn("不得再手工调用 `workflow_guard.py transition`", self.skill)
-        self.assertIn("ppt_pipeline.py render", self.skill)
-        self.assertIn("contact-sheet.png", self.skill)
+        self.assertIn("advance --brief-json", self.skill)
+        self.assertIn("独立视觉", self.skill)
 
     def test_docs_do_not_teach_manual_production_transitions(self) -> None:
         """Agents follow README/intake; those must not revive workflow_guard production hops."""

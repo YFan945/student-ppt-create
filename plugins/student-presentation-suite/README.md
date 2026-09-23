@@ -168,25 +168,31 @@ confirmed deliverable set.
 
 ## Outputs
 
-Deliverables are written under `${CLAUDE_PROJECT_DIR}/outputs`, or the current
-project's `outputs/` directory when the environment variable is unavailable:
+After QA, `complete` publishes only confirmed deliverables to `${CLAUDE_PROJECT_DIR}/outputs`, or the current project's `outputs/` fallback, and checks their hashes before declaring completion. Existing files with different bytes are never overwritten. Examples:
 
 - `<topic>-presentation.pptx` (speaker notes live in the PPTX notes pane; the
   quality gate reads the delivered artifact, not the frozen spec field)
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` or contact sheet
-- `<topic>-presentation-package-report.json` from suite validation and reused
-- `<topic>-delivery-report.json` with final gate evidence
 - `<topic>-change-summary.md` for existing-deck improvements
 - requested PDF, HTML teleprompter, training cards, references, quality report,
   and revision manifest
+
+During production, `ppt_pipeline.py advance --brief-json --work-dir <wd>` returns
+the next action and artifact paths without repeating the full stage contract;
+`next --json` remains available for diagnosis. After a current independent
+critic report and receipt exist, the next `advance` runs QA and either completes
+delivery or records the repair and returns one Builder boundary; it does not
+spawn another critic for the same render.
+The independent critic reads the rendered pages; the main session opens images
+only when resolving a specific blocker or disputed page.
 
 Each requested deliverable is validated independently. `full-script` and
 `teleprompter` do not imply a separate speaker-notes file; a requested PDF must
 be a real `.pdf` with a PDF signature, and preview PNGs cannot satisfy it. A
 PPTX-only request can therefore complete without a notes file. Full-script and
-teleprompter content comes from the Builder-authored merged notes or the actual
-PPTX notes panes; planning-only `note_goal` text cannot pass as a complete script.
+teleprompter content, and the standalone speaker-notes Markdown, come from the actual
+PPTX notes panes in slide order; planning-only `note_goal` text cannot pass as a complete script.
 
 The plugin installation directory is read-only for user deliverables.
 
@@ -298,6 +304,8 @@ locally — they read the PPTX and the spec and need no critic; while they fail,
 `render` is refused and `next` routes to a budget-free builder fix-and-rebuild —
 the critic never reviews a doomed deck.
 
+`quality_level: basic` uses one Builder for the whole deck and one final independent review. Subjective visual scores and style suggestions remain visible advisories; unusable pages and deterministic failures still block delivery.
+`quality_level: high-score` first calibrates representative pages.
 Calibration is reviewed by the independent `visual-critic`, not by the main
 session. The main session authors the Slide Spec and the Art Direction, so it
 cannot see that its own treatment repeats on every page; its own reading of the
@@ -335,7 +343,7 @@ inline-script forms of reading work-dir JSON or rewriting page modules.
 
 Wall clock is turns × round-trip latency, and the gates are not what costs it:
 the whole suite measured **150 seconds** across a 147-minute run (1.7%), against
-**519 model round-trips** at one tool call each. When `next --json` supplies
+**519 model round-trips** at one tool call each. For `high-score`, when `next --json` supplies
 `builder_shards`, the main session spawns ALL shards in one message so the page
 work runs concurrently — shards are mutually exclusive by construction, each
 writes its own `speaker-notes-shard-<N>.md` (build assembles sections by slide number and lets a
@@ -398,6 +406,7 @@ python scripts/manage_versions.py snapshot --output-root <project>\outputs --rev
 python scripts/slide_spec_to_pptx_brief.py path\to\spec.yaml --output-dir <project>\outputs
 python scripts/bump_version.py <version> --dry-run  # 统一版本升级
 python scripts/session_cost.py --last 1  # session cost review (same as /sp-cost-report)
+python scripts/session_cost.py --model-io <model-io.jsonl> --agent-metadata-dir <agents-dir> --json
 node scripts/run_with_pptxgenjs.js --probe
 python scripts/smoke_pptx.py
 ```

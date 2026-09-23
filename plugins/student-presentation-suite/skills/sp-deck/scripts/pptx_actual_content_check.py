@@ -20,6 +20,7 @@ from typing import Any
 from xml.etree import ElementTree as ET
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
 
 def sha256_file(path: Path) -> str:
@@ -93,7 +94,15 @@ def extract_pptx_notes(pptx: Path) -> dict[int, str]:
                 if notes_path not in names:
                     continue
                 root = ET.fromstring(zf.read(notes_path))
-                pieces = [node.text or "" for node in root.iter(f"{{{A_NS}}}t")]
+                # Notes slides also contain a slide-number placeholder. Only the
+                # body placeholder is the speaker's script.
+                pieces = []
+                for shape in root.iter(f"{{{P_NS}}}sp"):
+                    placeholder = shape.find(
+                        f"./{{{P_NS}}}nvSpPr/{{{P_NS}}}nvPr/{{{P_NS}}}ph"
+                    )
+                    if placeholder is not None and placeholder.get("type") == "body":
+                        pieces.extend(node.text or "" for node in shape.iter(f"{{{A_NS}}}t"))
                 break  # one notesSlide per slide
             notes[slide_no] = "\n".join(pieces).strip()
     return notes

@@ -31,12 +31,12 @@
     "page_count": {"type": "integer", "minimum": 1},
     "verdict": {
       "enum": ["pass", "pass_with_issues", "needs_repair"],
-      "description": "needs_repair 当且仅当 blocker_count > 0；pass_with_issues 只能是'有 minor、无 blocker'"
+      "description": "needs_repair 当且仅当按 quality_level 计算的 blocker_count > 0；basic 的主观风格意见可以 pass_with_issues"
     },
     "blocker_count": {
       "type": "integer",
       "minimum": 0,
-      "description": "critical + major。质量门（pptx_quality_gate_v071.py 的 BLOCKING_SEVERITIES）就是这么算的，critic 的汇总必须是同一口径——2026-09-17 live：critic 只把 critical 当 blocker，回报 'blocker 0 / major 8'，主会话据此认为独立复核判定可交付，而门对同一份报告算出 23 个 blocker"
+      "description": "high-score 为 critical + major；basic 的主观 major 转为 advisory，仅 critical 阻塞。须与 pptx_quality_gate_v071.py 的实际口径一致"
     },
     "severity_counts": {
       "type": "object",
@@ -76,7 +76,7 @@
           "visual_structure": {
             "type": "string",
             "minLength": 1,
-            "description": "稳定词汇：cover / statement / typography / split / editorial / image-led / chart / diagram / flow / timeline / comparison / matrix / table / dashboard / quote / reference / equal-cards / card-grid / three-column / numbered-list / plain-list / other；equal-cards 等弱结构连续两页即 Major"
+            "description": "稳定词汇：cover / statement / typography / split / editorial / image-led / chart / diagram / flow / timeline / comparison / matrix / table / dashboard / quote / reference / equal-cards / card-grid / three-column / numbered-list / plain-list / other；弱结构连续两页在 high-score 为 Major，在 basic 为 advisory"
           },
           "reference_ids": {"type": "array", "items": {"type": "string"}},
           "selected_candidate_id": {"type": "string"},

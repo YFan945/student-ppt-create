@@ -17,14 +17,14 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 
 ## blocker 口径必须与质量门一致
 
-**blocker = `critical` + `major`。** QA 质量门（`pptx_quality_gate_v071.py` 的
-`BLOCKING_SEVERITIES`）把 major 也当 blocker，`minor` 不阻塞；你的 `blocker_count` 与回给
-主会话的计数都必须用这个口径。
+`high-score` 的 blocker = `critical` + `major`。`basic` 的主观视觉分数、重复版式和
+`major` 风格意见只作 advisory；只有无法使用的页面（例如文字无法辨认）报 `critical` 并
+阻塞。Critic 应把基础档的风格建议写成 `minor`，`blocker_count` 与回给主会话的计数按
+当前质量档计算。QA 保留这些建议，但不会因此要求 Builder 反复改版。
 
 2026-09-17 live：critic 按自己的习惯回报"blocker 数：0（critical 0 / major 8 / minor 12）"，
-主会话据此判断"独立复核已判定可交付"，而质量门同一份报告算出 23 个 blocker——两边对同一个
-词的含义不同，主会话在报告里反复写"差一口气"，并把这种不确定性带进了提额决策。分 severity
-逐条给分是对的，汇总口径必须统一。
+主会话据此判断"独立复核已判定可交付"，而质量门同一份报告算出 23 个 blocker。现在必须
+先读质量档，再按该档统一汇总口径。
 
 ## visual-review.json
 
@@ -107,7 +107,8 @@ direction 在生产时被丢失。
 
 优先使用稳定名称：`cover`、`statement`、`typography`、`split`、`editorial`、`image-led`、`chart`、`diagram`、`flow`、`timeline`、`comparison`、`matrix`、`table`、`dashboard`、`quote`、`reference`、`equal-cards`、`card-grid`、`three-column`、`numbered-list`、`plain-list`、`other`。
 
-`equal-cards / card-grid / three-column / numbered-list / plain-list` 是高复用风险结构。连续两页同类即 Major；任意结构连续三页也 Major。
+`equal-cards / card-grid / three-column / numbered-list / plain-list` 是高复用风险结构。
+连续两页同类、任意结构连续三页，在 `high-score` 属 Major；在 `basic` 留作改进建议。
 
 ## AI-template feel
 

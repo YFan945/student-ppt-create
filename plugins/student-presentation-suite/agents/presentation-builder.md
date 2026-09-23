@@ -48,21 +48,17 @@ For `initial` mode:
 
 For `repair` mode:
 
-- *(fallback-only — a repair packet projects the blockers, deck-level findings and
-  `must_not_regress` scores)* read the caller-provided blocker summary and current manifest;
-- the blocker report is either `pre-qa-actual-content.json` / `pre-qa-rendered.json`
-  (deterministic pre-QA misses: fixed by editing the reported pages and rebuilding —
-  no repair round, no critic has run yet) or the main session's `pipeline-qa.json`
-  (full QA blockers). Read the report file yourself — *(fallback-only: with a repair
-  packet, its `slides[].blockers` / `deck_blockers` ARE the report projection; do not
-  re-read the reports it lists)* — and never rely on transcribed blockers;
+- with a repair Packet, its `slides[].blockers` / `deck_blockers` ARE the report projection;
+  use only those and the
+  `must_not_regress` fields; do not re-read reports projected into the Packet;
+- only if no Packet is available, read the named `pre-qa-*.json` or
+  `pipeline-qa.json` report yourself. Pre-QA fixes rebuild without consuming a
+  repair round; never work from a blocker list transcribed in the spawn prompt;
 - edit only the blocker pages plus any directly shared helper/page module that must change to fix them;
 - do not opportunistically redesign unrelated pages;
-- **never make an accepted page worse.** The quality gate compares this round's per-slide
-  visual scores with the previous review and reports `visual_regression` for any page that
-  drops 1.5 or more (2026-09-17 live: a "raise scores" round made pages worse and the next
-  round cost 40M tokens purely undoing it). Adding structure is fine; treating a passing
-  page as a test bed is not;
+- **never make an accepted page worse.** `high-score` blocks a per-slide visual
+  regression of 1.5 or more; `basic` records it as advisory. Do not redesign
+  passing pages to chase a subjective score;
 - never claim a blocker is fixed without changing the relevant generator artifact.
 
 ## Hard boundaries
@@ -100,7 +96,7 @@ Use `Edit` for existing page modules and `Write` only for allowed new work-dir a
 
 Implement the frozen copy faithfully; do not paraphrase slide copy simply to make layout easier. Preserve evidence markers and source references. Use the selected composition intent rather than falling back to repetitive card grids. Respect the Art Direction typography, spacing, palette roles, image treatment, and high-leverage slide intent. Prefer a deterministic fallback over a clever but fragile layout.
 
-Calibration establishes the visual thesis for the rest of the deck. In `initial` / `repair` mode, follow the packet's `calibration_style` contract (`calibration-style-contract.json`) as the reference system instead of inventing a second style — and never read calibration page modules to infer style: they belong to another builder or the archive, and the contract already projects the established system. In `calibration` mode, record what you actually established in `calibration/style-summary.json`; the pipeline assembles later builders' style contract from those bytes.
+Calibration establishes the visual thesis for `high-score` decks. In `initial` / `repair` mode, follow the packet's `calibration_style` contract when present; a `basic` deck has no calibration, so use the packet's Art Direction instead. You must never read calibration page modules to infer style: they belong to another builder or the archive. In `calibration` mode, record what you actually established in `calibration/style-summary.json`; the pipeline assembles later builders' style contract from those bytes.
 
 Before returning, verify every target page has no scaffold marker and that all edited files remain inside the work directory. Do not build the production deck yourself.
 

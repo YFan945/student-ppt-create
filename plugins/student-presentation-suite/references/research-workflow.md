@@ -146,6 +146,11 @@ Source C  35 亿   → 量级不一致 → confidence: low，conflict: true，
 | `standard` | 8 | 12 | 课程答辩、结题答辩 |
 | `deep` | 15 | 25 | 论文汇报、竞赛答辩、毕业答辩 |
 
+检索还要限制页面抓取次数：`simple` 12 次、`standard` 30 次、`deep` 50 次
+`WebFetch`。同一 URL 复用已抓取结果，失败最多重试一次。达到上限后，优先保留
+会上屏的关键论断；其余记入 `unresolved`，不得把未经核实的数字写成已验证。
+`research-execution.json` 记录实际 `WebSearch` / `WebFetch` 次数，供成本复盘。
+
 默认由 `scenario` 推导，用户可覆盖。硬约束是：**不要为了某一页的一句话搜索二十个网页。**
 超限由 `validate_research_pack.py` 拦截。
 

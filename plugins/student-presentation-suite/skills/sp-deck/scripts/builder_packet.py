@@ -514,6 +514,8 @@ def prepare_packets(
     mode: str,
     slides: list[int] | None = None,
     qa_reports: list[Path] | None = None,
+    *,
+    single_builder: bool = False,
 ) -> list[dict[str, Any]]:
     """Generate one packet per builder instance for a spawn, disjoint by shard.
 
@@ -523,7 +525,7 @@ def prepare_packets(
     targets = [int(slide) for slide in (slides or [])]
     if not targets:
         return []
-    shards = split_shards(targets, work_dir) if mode != "calibration" else []
+    shards = split_shards(targets, work_dir) if mode != "calibration" and not single_builder else []
     out: list[dict[str, Any]] = []
     if shards:
         for shard in shards:

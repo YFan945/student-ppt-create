@@ -185,6 +185,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "work_id": work_dir.name,
         "work_dir": str(work_dir),
         "mode": mode,
+        "quality_level": str((spec_data.get("meta") or {}).get("quality_level") or "unspecified"),
         # Policy is work-id state, not research state: a scope-C deck with no
         # researcher never creates manifest["research"], so hanging the flag
         # there lost the degrade decision for no-research decks entirely.

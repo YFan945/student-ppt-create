@@ -29,10 +29,12 @@ from pipeline.core import (  # noqa: E402
     MAX_REPAIRS,
     QA_ORDER,
     ROOT,
-    binding_is_current,
+    RefusedError,
+    execution_receipt,
     generator_changed_since_build,
     load_json,
     load_manifest,
+    pptx_path,
     pre_qa_failed_current,
     render_is_current,
     sha256_file,
@@ -53,6 +55,38 @@ from pipeline.scheduler import (  # noqa: E402
     remaining_scaffold_slides,
     slides_named_in_reports,
 )
+
+
+def _current_critic_review(work_dir: Path, manifest: dict[str, Any]) -> bool:
+    """True only when the existing independent review covers this exact render."""
+    review_path = work_dir / "visual-review.json"
+    if not review_path.is_file():
+        return False
+    try:
+        review = load_json(review_path)
+        if not isinstance(review, dict):
+            return False
+        render = manifest.get("render") or {}
+        pages = render.get("pages") or []
+        contact = render.get("contact_sheet") or {}
+        if (
+            review.get("pptx_sha256") != sha256_file(pptx_path(manifest))
+            or review.get("contact_sheet_sha256") != contact.get("sha256")
+            or review.get("page_sha256") != {
+                str(index): item.get("sha256") for index, item in enumerate(pages, 1)
+            }
+        ):
+            return False
+        receipt = execution_receipt(
+            work_dir, "critic", review_path, policy=work_id_receipt_policy(manifest)
+        )
+        if not receipt.get("degraded"):
+            for binding in [contact, *pages]:
+                if receipt.get("reads", {}).get(binding.get("path")) != binding.get("sha256"):
+                    return False
+        return True
+    except (OSError, ValueError, KeyError, TypeError, AttributeError, RefusedError):
+        return False
 
 
 def build_next_payload(work_dir: Path) -> dict[str, Any]:
@@ -106,6 +140,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
             )
     else:
         state = str(manifest.get("state") or "(absent)")
+        basic = manifest.get("quality_level") == "basic"
         summary = work_dir / f"stage-{state}-summary.md"
         read = [str(summary)] if summary.is_file() else []
         forbidden = ["slide-spec.yaml", "art-direction.yaml", "research-pack.json"]
@@ -129,6 +164,26 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
                 payload["allowed_writes"] = [str(work_dir / "ooxml"), str(work_dir / "change-summary.md")]
                 payload["notes"] = "Edit unpacked OOXML preserving the source and preserve contract, then build (pack)."
+            elif manifest.get("quality_level") == "basic":
+                remaining = remaining_scaffold_slides(work_dir)
+                if not remaining:
+                    payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
+                    payload["notes"] = "basic: all pages implemented; run the deterministic build."
+                else:
+                    payload["agent"] = "student-presentation-suite:presentation-builder"
+                    payload["builder_mode"] = "initial"
+                    payload["notes"] = (
+                        "basic: implement all scaffolded pages from the Art Direction; "
+                        "final independent visual review remains required."
+                    )
+                    try:
+                        packets = _packet.prepare_packets(
+                            work_dir, "initial", remaining, single_builder=True
+                        )
+                        if packets:
+                            payload["builder_packets"] = packets
+                    except Exception as exc:
+                        observe_packet_failure(work_dir, payload, "initial", exc)
             else:
                 # Resume-safe calibration dispatch (2026-09-17): a live session was
                 # cut mid calibration-fix round and `next` answered a raw `build`,
@@ -342,7 +397,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 fixable = slides_named_in_reports(
                     work_dir, ("pre-qa-quality.json", "pre-qa-actual-content.json", "pre-qa-rendered.json")
                 )
-                shards = builder_shards(fixable, work_dir)
+                shards = builder_shards(fixable, work_dir) if not basic else None
                 if shards:
                     payload["builder_shards"] = shards
                 # Builder Packet (v0.15 Batch 2): repair packet per instance, blockers
@@ -354,7 +409,8 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         if (work_dir / name).is_file()
                     ]
                     packets = _packet.prepare_packets(
-                        work_dir, "repair", fixable or None, pre_qa_reports
+                        work_dir, "repair", fixable or None, pre_qa_reports,
+                        single_builder=basic,
                     ) if fixable else []
                     if packets:
                         payload["builder_packets"] = packets
@@ -379,7 +435,10 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         ("pipeline-qa.json", "pre-qa-quality.json", "pre-qa-actual-content.json", "pre-qa-rendered.json"),
                     )
                     if blocker_slides and (work_dir / "pipeline-qa.json").is_file():
-                        packets = _packet.prepare_packets(work_dir, "repair", blocker_slides, ["pipeline-qa.json"])
+                        packets = _packet.prepare_packets(
+                            work_dir, "repair", blocker_slides, ["pipeline-qa.json"],
+                            single_builder=basic,
+                        )
                         if packets:
                             payload["builder_packets"] = packets
                             payload["notes"] += (
@@ -403,11 +462,10 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 )
                 payload["prepare_deliverables"] = requested_prepared_deliverables(manifest)
             elif render_is_current(manifest):
-                render = manifest.get("render") or {}
-                contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
-                thumb = Path(str((render.get("contact_sheet_thumb") or {}).get("path") or ""))
-                overview = thumb if (thumb and thumb.is_file()) else contact
-                payload["read_images"] = [str(overview), str(work_dir / "render")]
+                # The isolated critic reads the contact sheet and every page.
+                # Sending the same images to the orchestrating session doubles
+                # visual context without adding an independent judgment.
+                payload["read_images"] = []
                 qa_command = (
                     f'{python} "{pipeline}" qa --work-dir "{work_dir}" '
                     f'--visual-review "{work_dir / "visual-review.json"}"'
@@ -417,23 +475,11 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     # following the command verbatim cannot re-hit the refusal
                     qa_command += " --receipt-policy allow-missing"
                 payload["next_command"] = qa_command
-                previous_qa = manifest.get("qa") or {}
-                reusable_review = previous_qa.get("visual_review") or {}
-                reusable_receipt = previous_qa.get("critic_execution") or {}
-                can_reuse_visual = bool(
-                    previous_qa.get("ok")
-                    and binding_is_current(reusable_review)
-                    and (
-                        previous_qa.get("critic_receipt") == "missing-allowed"
-                        or binding_is_current(reusable_receipt)
-                    )
-                )
-                if can_reuse_visual:
+                if _current_critic_review(work_dir, manifest):
                     payload["read_images"] = []
                     payload["notes"] = (
-                        "Only confirmed support/export deliverable bytes changed. Reuse the "
-                        "still-current visual review and rerun deterministic QA + Delivery; "
-                        "do not spawn another Visual Critic."
+                        "A current independent visual review and receipt already cover this render. "
+                        "Run QA using that report; do not spawn another Visual Critic."
                     )
                     payload["visual_evidence_reused"] = True
                 else:
@@ -491,7 +537,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     work_dir, ("pipeline-qa.json", "pre-qa-quality.json", "pre-qa-actual-content.json",
                                "pre-qa-rendered.json")
                 )
-                shards = builder_shards(blocker_slides, work_dir)
+                shards = builder_shards(blocker_slides, work_dir) if not basic else None
                 if shards:
                     payload["builder_shards"] = shards
                     payload["notes"] += (
@@ -505,7 +551,8 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 try:
                     if blocker_slides and (work_dir / "pipeline-qa.json").is_file():
                         packets = _packet.prepare_packets(
-                            work_dir, "repair", blocker_slides, ["pipeline-qa.json"]
+                            work_dir, "repair", blocker_slides, ["pipeline-qa.json"],
+                            single_builder=basic,
                         )
                         if packets:
                             payload["builder_packets"] = packets

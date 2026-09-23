@@ -239,9 +239,10 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 DeepSeek Flash 视觉按约 1300×1300 缩放，**每张图封顶 1024 token**。禁止的是
 **串行** Read 和 **同一 sha256 再读**，不是 Read PNG 本身。
 
-视觉 QA 与 wireframe 选择**必须看图**：contact sheet 与全部 blocker 页 PNG 在
-**同一轮并行 Read**。hash 变了（新的 render）才允许再读。`ppt_pipeline.py next`
-在 `producing` 状态会列出本轮 `read_images`。
+视觉 QA 与 wireframe 选择**必须看图**：隔离的 visual-critic 读取当前 contact sheet
+和所有页面；主会话不重复读取。主会话仅在处理具体 blocker 或争议页时，并行读取所需
+PNG。hash 变了（新的 render）才允许再读。`ppt_pipeline.py next` 的
+`read_images` 只列主会话当前必须读的图，因此最终 Critic 阶段为空。
 
 **读图前先确认图属于当前 PPTX**：`build` 会把上一版渲染证据归档到
 `stale/render-<sha8>/`，因此 repair 后 `contact-sheet.png` 一定不存在，直到重新 render。
@@ -318,7 +319,7 @@ Claude Code 把一条消息的 content blocks 拆成多行，逐行数就永远�
 所以并行调用必须由**插件自己的指令面**要求——agent 定义确实会进 prompt
 （实测 22 份快照含其正文），这里写的每一句都是到达模型的。
 
-**并行分片**：`next --json` 在 `initial` / `repair` 给出 `builder_shards` 时，在**同一条消息里
+**并行分片仅用于 `high-score`**：`basic` 全程使用一个 Builder Packet，省掉多实例读取、协调和讲稿合并。`next --json` 在 `high-score` 的 `initial` / `repair` 给出 `builder_shards` 时，在**同一条消息里
 spawn 全部 shard**（各自不传 `name`、只做自己的 slide ids、只写自己的
 `speaker-notes-shard-<N>.md`）。分片由管线按页号轮转计算，**天然互斥且页数均衡**；
 `build` 以已有 `speaker-notes.md` 为逐页基线再合并碎片，repair 覆盖同名 shard 时仍保留

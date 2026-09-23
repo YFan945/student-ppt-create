@@ -833,6 +833,28 @@ class BuildTests(PipelineTestCase):
         # planned create/rebuild keeps the build stage contract (calibration flow)
         self.assertEqual("build", payload["contract"]["stage"])
 
+    def test_basic_dispatches_initial_builder_without_calibration(self) -> None:
+        spec = json.loads(self.files["spec"].read_text(encoding="utf-8"))
+        spec["meta"]["quality_level"] = "basic"
+        self.files["spec"].write_text(json.dumps(spec), encoding="utf-8")
+        self.plan(self.files)
+        payload = self.next_dispatch_payload()
+        self.assertEqual("basic", self.manifest()["quality_level"])
+        self.assertEqual("initial", payload["builder_mode"])
+        self.assertNotIn("calibration", payload)
+        self.assertEqual(1, len(payload["builder_packets"]))
+        self.assertNotIn("builder_shards", payload)
+        self.implement_scaffolded_pages()
+        self.assertEqual(0, pp.main(["build", "--work-dir", str(self.work)]))
+
+    def test_high_score_cannot_build_without_calibration(self) -> None:
+        spec = json.loads(self.files["spec"].read_text(encoding="utf-8"))
+        spec["meta"]["quality_level"] = "high-score"
+        self.files["spec"].write_text(json.dumps(spec), encoding="utf-8")
+        self.plan(self.files)
+        self.implement_scaffolded_pages()
+        self.assertEqual(2, pp.main(["build", "--work-dir", str(self.work)]))
+
     def test_next_with_calibration_manifest_but_no_render_points_at_preview(self) -> None:
         self.plan(self.files)
         calibration = self.work / "calibration"
@@ -1061,6 +1083,9 @@ class QaDagTests(PipelineTestCase):
         self.assertEqual(pp.sha256_file(self.files["vgr"]), refreshed["sha256"])
 
     def test_prepare_deliverables_generates_and_hash_binds_confirmed_outputs(self) -> None:
+        notes_stub = patch("pptx_actual_content_check.extract_pptx_notes", return_value={1: "第一页讲稿。"})
+        notes_stub.start()
+        self.addCleanup(notes_stub.stop)
         spec = json.loads(self.files["spec"].read_text(encoding="utf-8"))
         spec["meta"]["deliverables"] = [
             "pptx",
@@ -1081,10 +1106,11 @@ class QaDagTests(PipelineTestCase):
 
         runner = FakeRunner(self.work)
         pp._core._runner = runner
-        self.assertEqual(
-            pp.main(["prepare-deliverables", "--work-dir", str(self.work)]),
-            0,
-        )
+        with patch("pptx_actual_content_check.extract_pptx_notes", return_value={1: "第一页讲稿。"}):
+            self.assertEqual(
+                pp.main(["prepare-deliverables", "--work-dir", str(self.work)]),
+                0,
+            )
         prepared = self.manifest()["deliverables"]
         self.assertEqual(
             prepared["requested"],
@@ -1118,10 +1144,11 @@ class QaDagTests(PipelineTestCase):
         dispatch = pp.build_next_payload(self.work)
         self.assertIn(" prepare-deliverables ", dispatch["next_command"])
         self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)
-        self.assertEqual(
-            pp.main(["prepare-deliverables", "--work-dir", str(self.work)]),
-            0,
-        )
+        with patch("pptx_actual_content_check.extract_pptx_notes", return_value={1: "第一页讲稿。"}):
+            self.assertEqual(
+                pp.main(["prepare-deliverables", "--work-dir", str(self.work)]),
+                0,
+            )
         refreshed = self.manifest()
         self.assertEqual(refreshed["state"], "producing")
         self.assertTrue(refreshed["qa"]["ok"])
@@ -1404,8 +1431,31 @@ class CompleteTests(PipelineTestCase):
         self.state_qa(ok=True, delivery_checked=True)
         self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 0)
         self.assertEqual(self.manifest()["state"], "complete")
+        published = self.manifest()["published"]["pptx"]
+        self.assertEqual(Path(published["path"]), self.work.parent.parent / "work-01-presentation.pptx")
+        self.assertTrue(pp.binding_is_current(published))
         mirrored = json.loads(self.workflow_state.read_text(encoding="utf-8"))
         self.assertEqual(mirrored["state"], "complete")
+
+    def test_complete_refuses_conflicting_published_filename(self) -> None:
+        self.state_qa(ok=True, delivery_checked=True)
+        destination = self.work.parent.parent / "work-01-presentation.pptx"
+        destination.write_bytes(b"someone else's file")
+        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)
+        self.assertEqual(self.manifest()["state"], "qa")
+        self.assertEqual(destination.read_bytes(), b"someone else's file")
+
+    def test_complete_publishes_requested_revision_manifest(self) -> None:
+        spec = json.loads(self.files["spec"].read_text(encoding="utf-8"))
+        spec["meta"]["deliverables"] = ["pptx", "revision-manifest"]
+        spec["revision"] = {"revision_id": "r1"}
+        self.files["spec"].write_text(json.dumps(spec), encoding="utf-8")
+        self.state_qa(ok=True, delivery_checked=True)
+        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 0)
+        published = self.manifest()["published"]["revision-manifest"]
+        payload = json.loads(Path(published["path"]).read_text(encoding="utf-8"))
+        self.assertEqual(payload["revision"]["revision_id"], "r1")
+        self.assertEqual(payload["delivered_pptx"]["sha256"], pp.bind(self.files["pptx"])["sha256"])
 
     def test_pptx_only_complete_does_not_invent_speaker_notes(self) -> None:
         self.plan(self.files)
@@ -1977,6 +2027,17 @@ class AdvanceTests(PipelineTestCase):
         self.assertEqual(rc, 0)
         return json.loads(buffer.getvalue())
 
+    def test_brief_advance_omits_repeated_stage_rules(self) -> None:
+        self.plan(self.files)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            self.assertEqual(0, pp.main(["advance", "--work-dir", str(self.work), "--brief-json"]))
+        result = json.loads(buffer.getvalue())
+        self.assertEqual("needs_agent", result["status"])
+        self.assertNotIn("dispatch", result)
+        self.assertNotIn("contract", result)
+        self.assertIn("packet", result)
+
     def test_without_a_manifest_it_needs_the_user(self) -> None:
         result = self.advance()
         self.assertEqual("needs_user", result["status"])
@@ -2020,14 +2081,36 @@ class AdvanceTests(PipelineTestCase):
         self.assertEqual(["render"], result["actions"])
         self.assertEqual(pp.CRITIC_AGENT, result["dispatch"]["agent"])
 
-    def test_advance_with_a_current_render_needs_the_critic_without_actions(self) -> None:
+    def test_advance_consumes_current_critic_review_once_then_runs_qa(self) -> None:
         self.plan(self.files)
         pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
         self.render_evidence(self.files)
         result = self.advance()
+        self.assertEqual("complete", result["status"])
+        self.assertIn("qa", result["actions"])
+        self.assertEqual(1, result["actions"].count("qa"))
+        self.assertNotIn("agent", result["dispatch"])
+
+    def test_advance_waits_for_critic_receipt(self) -> None:
+        self.plan(self.files)
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        self.render_evidence(self.files, write_receipt=False)
+        result = self.advance()
         self.assertEqual("needs_agent", result["status"])
-        self.assertEqual([], result["actions"])
-        self.assertEqual(pp.CRITIC_AGENT, result["dispatch"]["agent"])
+        self.assertEqual(pp.CRITIC_AGENT, result["agent"])
+
+    def test_advance_waits_when_critic_review_binds_old_render(self) -> None:
+        self.plan(self.files)
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        self.render_evidence(self.files)
+        review_path = self.files["visual_review"]
+        review = json.loads(review_path.read_text(encoding="utf-8"))
+        review["pptx_sha256"] = "old-render"
+        review_path.write_text(json.dumps(review), encoding="utf-8")
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual(pp.CRITIC_AGENT, result["agent"])
+        self.assertNotIn("qa", result["actions"])
 
     def test_advance_records_the_repair_and_needs_the_repair_builder(self) -> None:
         self.state_qa(ok=False)
@@ -2312,8 +2395,8 @@ class ReceiptPolicyTests(PipelineTestCase):
             pp.cmd_next(ns("next", self.work, json=True))
         payload = json.loads(buffer.getvalue())
         self.assertIn("--receipt-policy allow-missing", payload["next_command"])
-        self.assertIn("do NOT wait for critic-execution.json", payload["notes"])
-        self.assertNotIn("Wait for critic-execution.json before QA.", payload["notes"])
+        self.assertTrue(payload["visual_evidence_reused"])
+        self.assertNotIn("agent", payload)
         pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(files["visual_review"])])
         manifest = self.manifest()
         self.assertEqual(manifest["state"], "qa")

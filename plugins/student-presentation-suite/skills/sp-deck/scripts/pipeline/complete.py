@@ -29,6 +29,7 @@ from pipeline.deliverables import (  # noqa: E402
     deliverables_are_current,
     requested_prepared_deliverables,
 )
+from pipeline.publish import publish_deliverables  # noqa: E402
 
 
 def cmd_complete(args: argparse.Namespace) -> int:
@@ -76,7 +77,9 @@ def cmd_complete(args: argparse.Namespace) -> int:
         change_summary = work_dir / "change-summary.md"
         if not change_summary.is_file() or not change_summary.read_text(encoding="utf-8").strip():
             raise RefusedError("source-based delivery requires change-summary.md")
+    published = publish_deliverables(work_dir, manifest)
     before = str(manifest.get("state"))
+    manifest["published"] = published
     manifest["state"] = "complete"
     record(manifest, "complete", before, "complete")
     save_manifest(work_dir, manifest)
@@ -86,6 +89,7 @@ def cmd_complete(args: argparse.Namespace) -> int:
         [
             "- QA green; delivery stage ran and was hash-bound.",
             f"- pptx: `{((manifest.get('build') or {}).get('pptx') or {}).get('path')}`",
+            *[f"- published {name}: `{item['path']}`" for name, item in published.items()],
             *(
                 []
                 if not degraded_receipt

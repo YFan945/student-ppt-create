@@ -204,7 +204,7 @@ class GenerationCoreV071Tests(unittest.TestCase):
             advisory = {item["code"] for item in result["issues"] if item["severity"] == "advisory"}
             self.assertEqual({"visual_score_low", "visual_average_low"}, advisory)
 
-    def test_structural_scores_below_floor_still_block(self) -> None:
+    def test_basic_structural_scores_are_advisory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             pptx = root / "deck.pptx"
@@ -234,10 +234,38 @@ class GenerationCoreV071Tests(unittest.TestCase):
                 encoding="utf-8",
             )
             result = self.quality.validate_visual_report(report, pptx, 1, high_score=False)
-            self.assertFalse(result["ok"])
+            self.assertTrue(result["ok"])
             low = [item for item in result["issues"] if item["code"] == "visual_score_low"]
-            self.assertEqual(["major"], [item["severity"] for item in low])
-            self.assertEqual(0, result["advisory_count"])
+            self.assertEqual(["advisory"], [item["severity"] for item in low])
+            self.assertEqual(1, result["advisory_count"])
+
+    def test_basic_style_major_is_advisory_but_critical_still_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            pptx.write_bytes(b"pptx")
+            report = root / "visual.json"
+            slide = {
+                "visual_structure": "card-grid",
+                "scores": {field: 8 for field in self.quality.SCORE_FIELDS},
+                "ai_template_feel": "major",
+                "issues": [{"code": "style", "severity": "major", "message": "repetitive"}],
+            }
+            report.write_text(json.dumps({
+                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                "slides": [{"slide": number, **slide} for number in (1, 2, 3)],
+            }), encoding="utf-8")
+            result = self.quality.validate_visual_report(report, pptx, 3, high_score=False)
+            self.assertTrue(result["ok"])
+            self.assertTrue(all(item["severity"] == "advisory" for item in result["issues"]))
+            payload = json.loads(report.read_text(encoding="utf-8"))
+            payload["slides"][0]["issues"].append(
+                {"code": "unreadable", "severity": "critical", "message": "text cannot be read"}
+            )
+            report.write_text(json.dumps(payload), encoding="utf-8")
+            blocked = self.quality.validate_visual_report(report, pptx, 3, high_score=False)
+            self.assertFalse(blocked["ok"])
+            self.assertIn("unreadable", {item["code"] for item in blocked["issues"] if item["severity"] == "critical"})
 
     def test_evidence_closure_blocks_missing_final_reference(self) -> None:
         spec = {
@@ -461,9 +489,11 @@ class GenerationCoreV071Tests(unittest.TestCase):
                 ' Target="../notesSlides/notesSlide1.xml"/></Relationships>'
             )
             notes = (
-                '<?xml version="1.0"?><p:notes xmlns:p="p" xmlns:a="http://schemas.'
-                'openxmlformats.org/drawingml/2006/main"><a:t>备注区讲稿</a:t>'
-                "<a:t>第二段</a:t></p:notes>"
+                '<?xml version="1.0"?><p:notes xmlns:p="http://schemas.openxmlformats.org/'
+                'presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/'
+                'drawingml/2006/main"><p:sp><p:nvSpPr><p:nvPr><p:ph type="body"/>'
+                '</p:nvPr></p:nvSpPr><p:txBody><a:t>备注区讲稿</a:t><a:t>第二段</a:t>'
+                '</p:txBody></p:sp></p:notes>'
             )
             with zipfile.ZipFile(pptx, "w") as zf:
                 zf.writestr("ppt/slides/slide1.xml", slide)

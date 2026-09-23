@@ -149,6 +149,13 @@ class BuilderPacketTests(unittest.TestCase):
         self.assertEqual(sorted(seen), [1, 2, 3, 4], "shards must cover every page exactly once")
         self.assertEqual(len(set(notes)), len(notes), "shards must not share a notes fragment")
 
+    def test_basic_single_builder_packet_covers_all_pages(self) -> None:
+        descriptors = self.packet.prepare_packets(self.work, "initial", single_builder=True)
+        self.assertEqual(1, len(descriptors))
+        self.assertEqual([1, 2, 3, 4], descriptors[0]["slides"])
+        self.assertIsNone(descriptors[0]["shard"])
+        self.assertEqual("speaker-notes.md", descriptors[0]["speaker_notes_target"])
+
     # --- repair --------------------------------------------------------------
 
     def prepare_qa(self) -> None:

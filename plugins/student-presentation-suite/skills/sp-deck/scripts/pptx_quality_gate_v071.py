@@ -208,6 +208,7 @@ def validate_visual_report(
 ) -> dict[str, Any]:
     report = load_json(report_path)
     issues: list[dict[str, Any]] = visual_review_schema_issues(report)
+    style_severity = "major" if high_score else ADVISORY_SEVERITY
     pptx_digest = sha256_file(pptx)
     if report.get("pptx_sha256") != pptx_digest:
         issues.append(issue("critical", "visual_report_stale", "Visual review is not bound to the current PPTX."))
@@ -244,12 +245,12 @@ def validate_visual_report(
             score_values.append(score)
             minimum = 6.0 if high_score else 5.0
             if score < minimum:
-                severity = "major" if field in STRUCTURAL_SCORE_FIELDS else ADVISORY_SEVERITY
+                severity = style_severity if field in STRUCTURAL_SCORE_FIELDS else ADVISORY_SEVERITY
                 issues.append(issue(severity, "visual_score_low", f"Slide {slide_no} {field} score {score:g} is below the quality floor {minimum:g}.", slide=slide_no, field=field, score=score))
 
         ai_feel = str(item.get("ai_template_feel") or "none").strip().lower()
         if ai_feel == "major":
-            issues.append(issue("major", "ai_template_feel", f"Slide {slide_no} still has obvious AI-template/card-grid feel.", slide=slide_no))
+            issues.append(issue(style_severity, "ai_template_feel", f"Slide {slide_no} still has obvious AI-template/card-grid feel.", slide=slide_no))
 
         for finding in item.get("issues") or []:
             if not isinstance(finding, dict):
@@ -268,7 +269,8 @@ def validate_visual_report(
                         slide=slide_no,
                     )
                 )
-            issues.append(issue(sev, str(finding.get("code") or "visual_finding"), str(finding.get("message") or "Unresolved visual finding."), slide=slide_no))
+            effective = style_severity if sev == "major" else sev
+            issues.append(issue(effective, str(finding.get("code") or "visual_finding"), str(finding.get("message") or "Unresolved visual finding."), slide=slide_no))
 
     expected = set(range(1, slide_count + 1))
     missing = sorted(expected - set(by_slide))
@@ -289,7 +291,7 @@ def validate_visual_report(
         current = ordered_structures[idx]
         previous = ordered_structures[idx - 1]
         if current and current == previous and current in REPETITIVE_STRUCTURES:
-            issues.append(issue("major", "repetitive_structure_pair", f"Slides {idx} and {idx + 1} repeat the same weak structure: {current}.", slides=[idx, idx + 1], visual_structure=current))
+            issues.append(issue(style_severity, "repetitive_structure_pair", f"Slides {idx} and {idx + 1} repeat the same weak structure: {current}.", slides=[idx, idx + 1], visual_structure=current))
 
     run_start = 0
     while run_start < len(ordered_structures):
@@ -297,13 +299,13 @@ def validate_visual_report(
         while run_end < len(ordered_structures) and ordered_structures[run_end] == ordered_structures[run_start]:
             run_end += 1
         if ordered_structures[run_start] and run_end - run_start >= 3:
-            issues.append(issue("major", "repetitive_structure_run", f"Slides {run_start + 1}-{run_end} repeat visual structure {ordered_structures[run_start]} three or more times.", slides=list(range(run_start + 1, run_end + 1))))
+            issues.append(issue(style_severity, "repetitive_structure_run", f"Slides {run_start + 1}-{run_end} repeat visual structure {ordered_structures[run_start]} three or more times.", slides=list(range(run_start + 1, run_end + 1))))
         run_start = run_end
 
     distinct = {value for value in ordered_structures if value}
     min_distinct = 3 if slide_count >= 6 else 2 if slide_count >= 3 else 1
     if len(distinct) < min_distinct:
-        issues.append(issue("major", "low_visual_variety", f"Deck uses only {len(distinct)} distinct visual structures; expected at least {min_distinct} for this length."))
+        issues.append(issue(style_severity, "low_visual_variety", f"Deck uses only {len(distinct)} distinct visual structures; expected at least {min_distinct} for this length."))
 
     deck = report.get("deck")
     if isinstance(deck, dict):
@@ -323,7 +325,8 @@ def validate_visual_report(
                         f"Deck finding '{finding.get('code')}' claims resolved without sha256-bound evidence.",
                     )
                 )
-            issues.append(issue(sev, str(finding.get("code") or "deck_visual_finding"), str(finding.get("message") or "Unresolved deck-level visual finding.")))
+            effective = style_severity if sev == "major" else sev
+            issues.append(issue(effective, str(finding.get("code") or "deck_visual_finding"), str(finding.get("message") or "Unresolved deck-level visual finding.")))
 
     average_score = sum(score_values) / len(score_values) if score_values else 0.0
     target_average = 7.0 if high_score else 6.0
@@ -703,6 +706,9 @@ def run(args: argparse.Namespace) -> int:
     history_path = args.pptx.parent / SCORE_HISTORY_NAME
     if visual_only:
         regression, merged_scores = check_visual_regression(history_path, load_json(args.visual_report))
+        if not high_score:
+            for item in regression:
+                item["severity"] = ADVISORY_SEVERITY
     else:
         # No scores to record: writing the history from a deterministic-only run would
         # overwrite the critic's per-slide baseline with an empty map.

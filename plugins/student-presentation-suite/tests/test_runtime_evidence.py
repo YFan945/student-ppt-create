@@ -36,6 +36,16 @@ class RuntimeEvidenceTests(unittest.TestCase):
     def event_call(self, event, **extra):
         return runtime.handle({**self.event, "hook_event_name": event, **extra})
 
+    def test_research_receipt_ledger_counts_retrieval_calls(self):
+        self.event["agent_type"] = runtime.RESEARCHER
+        self.event_call("SubagentStart")
+        self.event_call("PostToolUse", tool_name="WebSearch")
+        self.event_call("PostToolUse", tool_name="WebFetch")
+        self.event_call("PostToolUse", tool_name="WebFetch")
+        ledger = self.project / "outputs/.pptx-work/.guard/agent-parent-child.json"
+        counts = json.loads(ledger.read_text(encoding="utf-8"))["retrieval"]
+        self.assertEqual({"WebSearch": 1, "WebFetch": 2}, counts)
+
     def prepare_render(self, page_count: int = 2) -> tuple[Path, list[Path]]:
         render_dir = self.work / "render"
         render_dir.mkdir(parents=True, exist_ok=True)

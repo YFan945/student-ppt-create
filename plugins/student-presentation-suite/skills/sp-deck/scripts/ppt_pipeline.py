@@ -246,6 +246,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     advance.add_argument("--work-dir", type=Path, required=True)
     advance.add_argument("--json", action="store_true")
+    advance.add_argument("--brief-json", action="store_true", help="print only the next action and artifact paths")
     advance.set_defaults(func=cmd_advance)
 
     return parser.parse_args(argv)

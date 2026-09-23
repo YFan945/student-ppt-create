@@ -349,6 +349,9 @@ def handle(event: dict) -> int:
         record_artifact_changes(data, root)
     elif kind == "PostToolUse" and tool in {"Bash", "PowerShell"}:
         record_artifact_changes(data, root)
+    elif kind == "PostToolUse" and agent == RESEARCHER and tool in {"WebSearch", "WebFetch"}:
+        retrieval = data.setdefault("retrieval", {"WebSearch": 0, "WebFetch": 0})
+        retrieval[tool] = int(retrieval.get(tool) or 0) + 1
     elif kind == "SubagentStop":
         for name, sha in data["writes"].items():
             artifact = Path(name)

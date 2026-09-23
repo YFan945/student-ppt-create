@@ -82,7 +82,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Read|Write|Edit|Bash|PowerShell",
+        "matcher": "Read|Write|Edit|Bash|PowerShell|WebSearch|WebFetch",
         "hooks": [
           {
             "type": "command",

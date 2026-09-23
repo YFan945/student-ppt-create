@@ -581,9 +581,43 @@ def resolve_sessions(args: argparse.Namespace) -> list[Path]:
     return candidates[: max(1, args.last)]
 
 
+def profile_model_io(path: Path) -> dict[str, Any]:
+    """Stream a model-io JSONL without loading repeated request bodies into RAM."""
+    usage: Counter[str] = Counter()
+    tools: Counter[str] = Counter()
+    requests = 0
+    peak_input = 0
+    first: str | None = None
+    last: str | None = None
+    model: str | None = None
+    with path.open("r", encoding="utf-8") as stream:
+        for line in stream:
+            item = json.loads(line)
+            response = item.get("response") or {}
+            current = response.get("usage") or {}
+            usage.update({key: int(value or 0) for key, value in current.items()})
+            requests += 1
+            peak_input = max(peak_input, int(current.get("inputTokens") or 0))
+            first = first or item.get("startedAt")
+            last = item.get("completedAt") or last
+            model = model or (item.get("model") or {}).get("modelId")
+            for call in response.get("toolCalls") or []:
+                tools[str(call.get("name") or "unknown")] += 1
+    start_time, end_time = parse_timestamp(first), parse_timestamp(last)
+    return {
+        "file": str(path), "model": model, "requests": requests,
+        "usage": dict(usage), "peak_input_tokens": peak_input,
+        "elapsed_seconds": round((end_time - start_time).total_seconds(), 1)
+        if start_time and end_time else None,
+        "tool_calls": dict(tools),
+    }
+
+
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--session", type=Path, help="explicit transcript path")
+    parser.add_argument("--model-io", type=Path, help="stream a model-io JSONL instead of a Claude transcript")
+    parser.add_argument("--agent-metadata-dir", type=Path, help="aggregate child agent usage metadata with --model-io")
     parser.add_argument("--project", help="filter by project directory name (e.g. E--test-ppt)")
     parser.add_argument("--last", type=int, default=1, help="how many recent sessions to report (default 1)")
     parser.add_argument("--list", action="store_true", help="list candidate transcripts and exit")
@@ -595,6 +629,30 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    if args.model_io:
+        parent = profile_model_io(args.model_io)
+        children = []
+        if args.agent_metadata_dir:
+            for path in sorted(args.agent_metadata_dir.glob("agent_*/metadata.json")):
+                item = json.loads(path.read_text(encoding="utf-8"))
+                children.append({
+                    "description": item.get("description"),
+                    "duration_ms": item.get("totalDurationMs"),
+                    "usage": item.get("usage") or {},
+                })
+        totals = Counter(parent["usage"])
+        for child in children:
+            totals.update(child["usage"])
+        report = {"parent": parent, "agents": children, "combined_usage": dict(totals)}
+        if args.json:
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+        else:
+            print(
+                f"model-io: {parent['requests']} requests, "
+                f"{parent['usage'].get('totalTokens', 0):,} parent tokens, "
+                f"{len(children)} agents, {totals.get('totalTokens', 0):,} combined tokens"
+            )
+        return 0
     sessions = resolve_sessions(args)
     if args.list or not sessions:
         if not sessions:

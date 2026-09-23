@@ -139,22 +139,26 @@ Evidence Ledger 引用、锁定页面及 revision 元数据；旧版 Slide Spec 
 
 ## 输出文件
 
-交付物写入 `${CLAUDE_PROJECT_DIR}/outputs`；环境变量不可用时，回退到当前
-项目的 `outputs/`：
+QA 通过后，`complete` 只把已确认的交付物发布到 `${CLAUDE_PROJECT_DIR}/outputs`，
+环境变量不可用时回退到当前项目的 `outputs/`，核对哈希后才标记完成；不同内容的同名文件不会被覆盖。示例：
 
 - `<topic>-presentation.pptx`（讲稿写入 PPTX 备注区；质量门按交付产物判定，
   不读冻结 spec 的 `speaker_notes` 字段）
 - `<topic>-speaker-notes.md`
 - `<topic>-preview.png` 或 contact sheet
-- `<topic>-presentation-package-report.json`（suite validation 产物，可复用）
-- `<topic>-delivery-report.json`（最终门禁证据）
 - 已有 deck 改进时的 `<topic>-change-summary.md`
 - 按需输出 PDF、HTML 提词版、训练卡、引用清单、质量报告和 revision manifest
 
+生产中用 `ppt_pipeline.py advance --brief-json --work-dir <wd>` 只取下一动作和产物路径；
+诊断时再用 `next --json` 查看完整阶段契约。当前独立评审报告和 receipt 到位后，下一次
+`advance` 自动执行 QA；全绿则交付，有 blocker 则登记 repair 并返回 Builder 边界，
+同一渲染不会再次派 critic。
+渲染图由独立 Critic 读取；主会话只在处理具体 blocker 或争议页时按需看图。
+
 每类交付物独立验收：`full-script` / `teleprompter` 不会隐含要求一份 speaker-notes；
 请求 PDF 时必须存在带 PDF 文件签名的真实 `.pdf`，PNG 预览不能替代。因而只请求 PPTX
-时，即使没有独立讲稿文件也可以完成。完整稿与提词器正文只读取 Builder 合并讲稿或
-PPTX 备注区的实际内容，规划性的 `note_goal` 不能冒充完整演讲稿。
+时，即使没有独立讲稿文件也可以完成。完整稿、提词器正文和独立讲稿按页号从最终
+PPTX 备注区导出，规划性的 `note_goal` 不能冒充完整演讲稿。
 
 用户文件不得写入插件安装目录。
 
@@ -242,7 +246,8 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 注定返工的 deck。QA 通过后 `complete` 使用 `ppt_pipeline.py complete --work-dir <wd>`。
 CI 继续渲染完整场景矩阵，但不会提交生成产物。
 
-**校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与
+`quality_level: basic` 由一个 Builder 完成全部页面，再做一次最终独立评审。主观视觉分数和风格建议保留为 advisory；页面不可用及确定性门失败仍阻止交付。
+`quality_level: high-score` 先校准代表页。**校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与
 Art Direction 的作者，看不见自己选的视觉语言在每页重复，所以它读预览 PNG 不算评审；
 在 `calibration/calibration-visual-review.json` 存在、绑定当前校准 PPTX、且无
 critical/major 之前，正式 `build` 会被机械拒绝。runtime hook 会按 production / calibration
@@ -269,7 +274,7 @@ JSON / 改页面模块"的各种写法。
 
 **墙钟 = 回合数 × 往返延迟，而门不占时间**：全套门在一次 147 分钟的运行里实测只有
 **150 秒（1.7%）**，其余是 **519 个模型回合**、每个回合只带一个工具调用。`next --json`
-给出 `builder_shards` 时，主会话**在同一条消息里 spawn 全部 shard** 让页面工作并发——
+`high-score` 给出 `builder_shards` 时，主会话**在同一条消息里 spawn 全部 shard** 让页面工作并发——
 分片天然互斥，每个只写自己的 `speaker-notes-shard-<N>.md`（`build` 按页号合并，repair
 分片中较新的同页讲稿会替换旧稿，不会重复），并以已有 `speaker-notes.md` 作为逐页基线，
 所以覆盖同名 repair shard 不会丢失未修改页面。任何一道门都没有改动。`session_cost.py` 现在输出 `turns`、
@@ -312,6 +317,7 @@ python scripts/manage_versions.py snapshot --output-root <project>\outputs --rev
 python scripts/slide_spec_to_pptx_brief.py path\to\spec.yaml --output-dir <project>\outputs
 python scripts/bump_version.py <version> --dry-run  # 统一版本升级
 python scripts/session_cost.py --last 1  # 会话成本复盘（/sp-cost-report 命令等价）
+python scripts/session_cost.py --model-io <model-io.jsonl> --agent-metadata-dir <agents-dir> --json
 node scripts/run_with_pptxgenjs.js --probe
 python scripts/smoke_pptx.py
 ```

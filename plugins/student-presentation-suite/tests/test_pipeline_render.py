@@ -231,9 +231,9 @@ class NextRoutingTests(unittest.TestCase):
         self.assertEqual(pp.cmd_render(self.args()), 0)
         payload = self.next_payload()
         self.assertIn(" qa", payload["next_command"])
-        self.assertEqual(2, len(payload["read_images"]))
-        # 概览优先指向廉价缩略图，而不是全尺寸 contact sheet
-        self.assertTrue(payload["read_images"][0].endswith("contact-sheet-thumb.jpg"))
+        # The independent critic reads the images; the main session does not
+        # duplicate that visual context.
+        self.assertEqual([], payload["read_images"])
         self.assertIn("session_segment", payload)
 
     def test_stale_contact_sheet_is_not_treated_as_render_evidence(self) -> None:

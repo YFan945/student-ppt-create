@@ -102,7 +102,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         # calibration; the doc-only version of this rule was already in SKILL.md
         # and was not followed in the 2026-09-18 live session.
         review = calibration_review(work_dir)
-        if review["required"] and not review["ok"]:
+        if (manifest.get("quality_level") == "high-score" or review["required"]) and not review["ok"]:
             raise RefusedError(
                 "full build refused: " + (review["reason"] or "calibration review is not green")
                 + f". Run `next --json`; the review is written to {review['path']}"

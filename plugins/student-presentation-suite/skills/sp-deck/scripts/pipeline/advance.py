@@ -29,6 +29,7 @@ from pipeline.deliverables import cmd_prepare_deliverables  # noqa: E402
 from pipeline.dispatch import (  # noqa: E402
     build_next_payload,
 )
+from pipeline.qa import cmd_qa  # noqa: E402
 from pipeline.render import (  # noqa: E402
     cmd_render,
 )
@@ -58,8 +59,8 @@ def cmd_advance(args: argparse.Namespace) -> int:
     """Run every deterministic step until a genuine agent/user boundary (Batch 3).
 
     The model used to drive mechanical transitions by hand — run the calibration
-    preview, then read the output, then run render, then read again, then record
-    the repair, then spawn. Each of those is a full model round-trip that adds no
+    preview, then read the output, then run render and QA, then record the
+    repair, then spawn. Each of those is a full model round-trip that adds no
     intelligence. `advance` performs the deterministic transitions itself —
     including the builds (first production build once calibration is green and no
     scaffold stubs remain; rebuild once a repair/pre-QA-fix builder's edits moved
@@ -155,6 +156,14 @@ def cmd_advance(args: argparse.Namespace) -> int:
                 _run_quietly(cmd_prepare_deliverables, argparse.Namespace(work_dir=work_dir))
                 actions.append("prepare-deliverables")
                 continue
+            if " qa " in bordered:
+                _run_quietly(cmd_qa, argparse.Namespace(
+                    work_dir=work_dir, visual_review=work_dir / "visual-review.json",
+                    notes=None, preview=[], allow_missing_preview=False,
+                    receipt_policy=None, max_items=0,
+                ))
+                actions.append("qa")
+                continue
             if " repair " in bordered:
                 _run_quietly(cmd_repair, argparse.Namespace(
                     work_dir=work_dir, reason="advance: recorded QA blockers",
@@ -199,7 +208,26 @@ def cmd_advance(args: argparse.Namespace) -> int:
             save_manifest(work_dir, manifest)
     except Exception as exc:  # the ledger must never turn a finished advance into a failure
         result["ledger_error"] = str(exc)[:160]
-    if getattr(args, "json", False):
+    if getattr(args, "brief_json", False):
+        dispatch = result.get("dispatch") or {}
+        brief = {key: result[key] for key in (
+            "status", "actions", "agent", "mode", "packet", "packets",
+            "reason", "error", "packet_fallback_count",
+        ) if key in result}
+        brief["work_dir"] = str(work_dir)
+        stage = str(dispatch.get("state") or "")
+        summary = work_dir / f"stage-{stage}-summary.md"
+        if summary.is_file():
+            brief["stage_summary"] = str(summary)
+        brief["resume_command"] = (
+            f'{sys.executable} "{HERE / "ppt_pipeline.py"}" advance '
+            f'--brief-json --work-dir "{work_dir}"'
+        )
+        for key in ("state", "next_command", "review_output", "repair_budget", "session_segment"):
+            if key in dispatch:
+                brief[key] = dispatch[key]
+        print(json.dumps(brief, ensure_ascii=False, separators=(",", ":")))
+    elif getattr(args, "json", False):
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
         line = f"ppt_pipeline: advance → {result['status']}"

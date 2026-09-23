@@ -23,6 +23,8 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - Deck 背景：<主题 / 场景 / 语言 / 时长与页数 / 核心论断，各一行>
 - 证据要求：<必须覆盖的 claims；每个数据点绑定年份与来源机构；宁缺毋滥，无法核实的标 unverified>
 - 检索预算：<band>（cap <N> 次）；当前已用 <X> 次，剩余 <Y> 次。
+  页面抓取预算：<F> 次 WebFetch（simple 12 / standard 30 / deep 50）；
+  同一 URL 复用已抓取结果，失败最多重试一次，超出预算的论断记入 unresolved。
   gap-fill 授权必须写明剩余次数，耗尽即停；超出档位上限只有用户批准的
   budget_extension 可用，禁止删除已执行的 queries 记录。
   上限以本槽填写的 <N> 为准，不必读取 validate_research_pack.py 源码确认

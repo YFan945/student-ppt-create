@@ -44,6 +44,11 @@ Confirm every item before production:
 | Visual style | Recommend three topic-fit styles; choose one only after confirmation | Controls visual direction |
 | Deliverables | PPTX only; speaker notes, preview, contact sheet, PDF, and full script appear only when the user selects them; add change summary for edits | Controls completion criteria |
 | Interaction/quality mode | Beginner + high-score | Controls guidance, evidence, and rehearsal depth |
+
+`quality_level` freezes the production path at plan: `basic` uses one Builder,
+deterministic pre-QA and one final independent visual review; the default
+`high-score` additionally requires independently reviewed calibration before
+the full build. Do not silently change this choice after confirmation.
 | Structure mode | Scenario default | Controls the narrative spine |
 | Content controls | 40 English words / 80 Chinese characters, balanced visual/text, notes on | Controls density and output layers |
 | Citation/export/versioning | Classroom citations; requested local exports; versioning on for edits | Controls traceability and rollback |

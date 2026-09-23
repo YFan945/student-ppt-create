@@ -8,6 +8,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 DELIVERABLES = ROOT / "skills" / "sp-deck" / "scripts" / "pipeline" / "deliverables.py"
@@ -117,7 +118,8 @@ class TestDeliverablesBinding(unittest.TestCase):
             }
 
             # Should be current even without source_speaker_notes
-            self.assertTrue(deliverables.deliverables_are_current(manifest))
+            with patch.object(deliverables, "speaker_notes_markdown", return_value=output_notes.read_text()):
+                self.assertTrue(deliverables.deliverables_are_current(manifest))
 
     def test_deliverable_bindings_includes_source_speaker_notes(self) -> None:
         """Test that deliverable_bindings returns source_speaker_notes when present."""
@@ -197,7 +199,8 @@ class TestDeliverablesBinding(unittest.TestCase):
 
             # When only speaker-notes is requested (not full-script/teleprompter),
             # source_speaker_notes should not be required
-            self.assertTrue(deliverables.deliverables_are_current(manifest))
+            with patch.object(deliverables, "speaker_notes_markdown", return_value=output_notes.read_text()):
+                self.assertTrue(deliverables.deliverables_are_current(manifest))
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import argparse
 import json
 import shutil
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -86,6 +87,15 @@ def deliverables_are_current(manifest: dict[str, Any]) -> bool:
     outputs = prepared.get("outputs") or {}
     if any(name not in outputs or not binding_is_current(outputs[name]) for name in requested):
         return False
+    if "speaker-notes" in requested:
+        try:
+            notes_path = Path(str(outputs["speaker-notes"]["path"]))
+            pptx = Path(str(prepared["source_pptx"]["path"]))
+            spec = Path(str(prepared["source_slide_spec"]["path"]))
+            if notes_path.read_text(encoding="utf-8") != speaker_notes_markdown(pptx, spec):
+                return False
+        except (OSError, ValueError, KeyError, RefusedError, zipfile.BadZipFile):
+            return False
     report = prepared.get("report")
     return bool(report and binding_is_current(report))
 
@@ -103,6 +113,30 @@ def deliverable_bindings(value: Any) -> list[dict[str, Any]]:
     if isinstance(outputs, dict):
         bindings.extend(item for item in outputs.values() if isinstance(item, dict))
     return bindings
+
+
+def speaker_notes_markdown(pptx: Path, spec: Path) -> str:
+    """Render readable notes from the delivered PPTX, in slide order."""
+    from pptx_actual_content_check import extract_pptx_notes  # noqa: PLC0415
+
+    data = _load_spec(spec)
+    slides = data.get("slides") or []
+    if not isinstance(slides, list) or not slides:
+        raise RefusedError("speaker-notes export requires a nonempty Slide Spec")
+    notes = extract_pptx_notes(pptx)
+    expected = list(range(1, len(slides) + 1))
+    if sorted(notes) != expected or any(not notes[number].strip() for number in expected):
+        raise RefusedError("speaker-notes export requires notes on every PPTX slide")
+    sections = ["# 演讲稿"]
+    for number, slide in enumerate(slides, 1):
+        title = str(slide.get("title") or "").strip() if isinstance(slide, dict) else ""
+        sections.append(f"## 第 {number} 页" + (f" · {title}" if title else ""))
+        sections.append(notes[number].strip())
+    return "\n\n".join(sections) + "\n"
+
+
+def export_speaker_notes(pptx: Path, spec: Path, target: Path) -> None:
+    target.write_text(speaker_notes_markdown(pptx, spec), encoding="utf-8")
 
 
 def cmd_prepare_deliverables(args: argparse.Namespace) -> int:
@@ -129,7 +163,11 @@ def cmd_prepare_deliverables(args: argparse.Namespace) -> int:
 
     support = sorted(set(requested) & SUPPORT_DELIVERABLES)
     merged_notes = work_dir / "speaker-notes.md"
-    if "speaker-notes" in support and merged_notes.is_file():
+    if "speaker-notes" in support or any(
+        name in requested for name in {"full-script", "teleprompter"}
+    ):
+        export_speaker_notes(pptx, spec, merged_notes)
+    if "speaker-notes" in support:
         outputs["speaker-notes"] = bind(merged_notes)
         support.remove("speaker-notes")
     if support:

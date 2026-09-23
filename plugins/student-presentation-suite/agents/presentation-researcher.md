@@ -41,6 +41,10 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
    - C: no external fact needed -> no search budget.
    - D: user restricted sources -> **no web retrieval**; `queries=[]`, every source is `user-file`.
 2. Choose budget from scenario: simple 3/5, standard 8/12, deep 15/25 queries/sources. Never exceed it.
+   Also budget page retrieval: simple 12, standard 30, deep 50 WebFetch calls.
+   Reuse an already fetched URL and retry a failed URL at most once. Prioritize
+   primary sources for claims that will appear on slides. At the fetch limit,
+   record remaining claims in `unresolved` instead of continuing exploratory reads.
    Gap-fill rounds: the authorization message must state the exact remaining query quota; stop
    once it is exhausted. Exceeding the band cap is only legal with a user-approved
    `budget_extension` (`extra_queries`, `approved_by: user`, `reason`) recorded in the pack —
