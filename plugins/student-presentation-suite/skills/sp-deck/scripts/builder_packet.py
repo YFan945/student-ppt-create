@@ -91,6 +91,80 @@ PARALLEL_MIN_PAGES = max(2, _contract_int("parallel_builder_min_pages", 4))
 MAX_PARALLEL_BUILDERS = max(1, _contract_int("max_parallel_builders", 3))
 
 
+def _contract_shard_policy() -> dict[str, Any]:
+    try:
+        value = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
+        policy = (value or {}).get("builder_shard_policy")
+        if isinstance(policy, dict):
+            return policy
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        pass
+    return {}
+
+
+PER_SHARD_COMPLEXITY = max(1, int(_contract_shard_policy().get("per_shard_complexity") or 6))
+
+_COMPLEX_VISUAL_TYPES = {"chart", "data", "dashboard", "graph"}
+_COMPLEX_LAYOUT_FAMILIES = {"comparison", "dashboard", "timeline", "matrix", "process-path", "data"}
+
+
+def slide_complexity(slide: dict[str, Any]) -> int:
+    """Page weight for shard balancing: chart/data/compare pages cost more to build."""
+    visual = slide.get("visual") if isinstance(slide.get("visual"), dict) else {}
+    kind = str(visual.get("type") or "").lower()
+    family = str(visual.get("layout_family") or "").lower()
+    layout = str(slide.get("layout") or "").lower()
+    weight = 1
+    if (
+        kind in _COMPLEX_VISUAL_TYPES
+        or family in _COMPLEX_LAYOUT_FAMILIES
+        or any(token in layout for token in ("comparison", "chart", "dashboard", "timeline", "matrix", "data", "process"))
+    ):
+        weight += 1
+    if slide.get("layout_lock"):
+        weight += 1
+    return weight
+
+
+def complexity_by_slide(work_dir: Path) -> dict[int, int]:
+    """Slide id -> complexity, from the frozen Slide Spec behind the manifest."""
+    manifest = load_optional(work_dir / "build-manifest.json") or {}
+    spec_value = str(((manifest.get("inputs") or {}).get("slide_spec") or {}).get("path") or "")
+    candidates = [Path(spec_value)] if spec_value else []
+    candidates += [
+        work_dir / "slide-spec-compiled.yaml",
+        work_dir / "slide-spec.yaml",
+        work_dir / "slide-spec.json",
+    ]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        try:
+            if path.suffix.lower() == ".json":
+                data = json.loads(path.read_text(encoding="utf-8"))
+            else:
+                import yaml  # noqa: PLC0415
+
+                data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, ImportError):
+            continue
+        slides = data.get("slides") if isinstance(data, dict) else None
+        if not isinstance(slides, list):
+            continue
+        out: dict[int, int] = {}
+        for position, slide in enumerate(slides, 1):
+            if not isinstance(slide, dict):
+                continue
+            try:
+                slide_id = int(slide.get("id") or position)
+            except (TypeError, ValueError):
+                slide_id = position
+            out[slide_id] = slide_complexity(slide)
+        if out:
+            return out
+    return {}
+
+
 def default_calibration_slides(work_dir: Path, limit: int = 3) -> list[int]:
     """Deterministic calibration default: maximum distinct archetypes (Batch 4.1).
 
@@ -145,18 +219,46 @@ def remaining_scaffold_slides(work_dir: Path) -> list[int]:
     return sorted(result)
 
 
-def split_shards(slides: list[int], work_dir: Path) -> list[dict[str, Any]]:
-    """Round-robin disjoint shards over the sorted slide list (mirrors the pipeline)."""
+def split_shards(
+    slides: list[int],
+    work_dir: Path,
+    *,
+    max_parallel: int | None = None,
+    weights: dict[int, int] | None = None,
+) -> list[dict[str, Any]]:
+    """Complexity-balanced disjoint shards (mirrors the pipeline's builder_shards).
+
+    Shard count = min(tier cap, MAX_PARALLEL_BUILDERS, ceil(total complexity /
+    PER_SHARD_COMPLEXITY), known pages): an ordinary 12-page deck lands on 1-2
+    builders instead of always three, while chart-heavy decks still parallelize.
+    """
     targets = sorted({int(slide) for slide in slides if int(slide) > 0})
     by_slide = page_modules(work_dir)
     known = [slide for slide in targets if slide in by_slide]
     if len(known) < PARALLEL_MIN_PAGES or MAX_PARALLEL_BUILDERS < 2:
         return []
-    shard_count = min(MAX_PARALLEL_BUILDERS, len(known))
+    cap = MAX_PARALLEL_BUILDERS if max_parallel is None else max(1, min(MAX_PARALLEL_BUILDERS, int(max_parallel)))
+    weight_of = weights if weights is not None else complexity_by_slide(work_dir)
+
+    def load(slide: int) -> int:
+        try:
+            return max(1, int(weight_of.get(slide) or 1))
+        except (TypeError, ValueError):
+            return 1
+
+    total = sum(load(slide) for slide in known)
+    shard_count = min(cap, -(-total // max(1, PER_SHARD_COMPLEXITY)), len(known))
+    if shard_count < 2:
+        return []
     shards: list[list[int]] = [[] for _ in range(shard_count)]
-    for position, slide in enumerate(known):
-        shards[position % shard_count].append(slide)
-    return [{"shard": index + 1, "slides": slides_} for index, slides_ in enumerate(shards)]
+    loads = [0] * shard_count
+    for slide in sorted(known, key=lambda item: (-load(item), item)):
+        index = loads.index(min(loads))
+        shards[index].append(slide)
+        loads[index] += load(slide)
+    for group in shards:
+        group.sort()
+    return [{"shard": index + 1, "slides": group} for index, group in enumerate(shards)]
 
 
 def score_history(work_dir: Path) -> dict[str, dict[str, Any]]:
@@ -516,6 +618,7 @@ def prepare_packets(
     qa_reports: list[Path] | None = None,
     *,
     single_builder: bool = False,
+    max_parallel: int | None = None,
 ) -> list[dict[str, Any]]:
     """Generate one packet per builder instance for a spawn, disjoint by shard.
 
@@ -525,7 +628,11 @@ def prepare_packets(
     targets = [int(slide) for slide in (slides or [])]
     if not targets:
         return []
-    shards = split_shards(targets, work_dir) if mode != "calibration" and not single_builder else []
+    shards = (
+        split_shards(targets, work_dir, max_parallel=max_parallel)
+        if mode != "calibration" and not single_builder
+        else []
+    )
     out: list[dict[str, Any]] = []
     if shards:
         for shard in shards:

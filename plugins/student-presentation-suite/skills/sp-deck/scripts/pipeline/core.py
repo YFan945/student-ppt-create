@@ -19,11 +19,14 @@ if str(HERE) not in sys.path:
 
 
 ROOT = HERE.parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 PPTX_TOOL = ROOT / "scripts" / "pptx_tool.py"
 BUILDER = ROOT / "scripts" / "run_with_pptxgenjs.js"
 EVIDENCE_COMPILER = ROOT / "scripts" / "research_pack_to_evidence.py"
 CONTRACT_PATH = ROOT / "references" / "pipeline-contract.json"
 MANIFEST_NAME = "build-manifest.json"
+RECEIPT_IMPORT_ID = "structured-import"
 
 
 class RefusedError(Exception):
@@ -60,6 +63,11 @@ MAX_PRE_QA_REBUILDS = max(1, int(CONTRACT.get("max_pre_qa_rebuilds") or 2))
 # 少于这个页数时不拆：一个 builder 更快也更省（启动与读取的开销不划算）。
 PARALLEL_MIN_PAGES = max(2, int(CONTRACT.get("parallel_builder_min_pages") or 4))
 MAX_PARALLEL_BUILDERS = max(1, int(CONTRACT.get("max_parallel_builders") or 3))
+# Shard sizing shares one formula with builder_packet.split_shards: complexity
+# per shard comes from the contract so both readers cannot drift.
+PER_SHARD_COMPLEXITY = max(
+    1, int((CONTRACT.get("builder_shard_policy") or {}).get("per_shard_complexity") or 6)
+)
 QA_ORDER = tuple(CONTRACT.get("qa_order") or ("package", "rendered", "actual_content", "quality", "delivery"))
 # QA 门分两类，这个区分决定了循环能不能提前停。
 #
@@ -295,8 +303,40 @@ def binding_is_current(binding: dict[str, Any]) -> bool:
     return path.is_file() and binding.get("sha256") == sha256_file(path)
 
 
+def research_import_receipt(work_dir: Path, artifact: Path) -> dict[str, Any] | None:
+    """D-class structured import receipt: no researcher spawn, files stay hash-bound.
+
+    `import_user_materials.py` writes research-import.json naming every user
+    material's hash and the pack binding. When that receipt is present and
+    current, plan accepts it in place of the researcher runtime receipt — the
+    source ledger and validation are preserved, only the theater subagent is not
+    required. A drifted material file is a hard refusal, not a degradation.
+    """
+    path = work_dir / "research-import.json"
+    if not path.is_file():
+        return None
+    data = load_json(path) or {}
+    if data.get("tool") != "import_user_materials.py" or data.get("pack") != bind(artifact):
+        return None
+    for entry in data.get("files") or []:
+        if not isinstance(entry, dict) or not binding_is_current(entry):
+            raise RefusedError(
+                "imported user material changed after import — re-run "
+                "import_user_materials.py so the source ledger matches the files"
+            )
+    return {
+        "agent": "import_user_materials",
+        "agent_id": RECEIPT_IMPORT_ID,
+        "spawn_verified": False,
+        "imported": True,
+        "work_id": work_dir.name,
+        "artifact": bind(artifact),
+        "reads": {},
+    }
+
+
 def execution_receipt(
-    work_dir: Path, role: str, artifact: Path, *, policy: str = "require",
+    work_dir: Path, role: str, artifact: Path, *, policy: str = "require"
 ) -> dict[str, Any]:
     """Hook-owned isolated-run receipt; policy="allow-missing" degrades openly.
 
@@ -310,6 +350,10 @@ def execution_receipt(
     """
     receipt_path = work_dir / f"{role}-execution.json"
     expected = "presentation-researcher" if role == "research" else "visual-critic"
+    if role == "research":
+        imported = research_import_receipt(work_dir, artifact)
+        if imported is not None:
+            return imported
     # Existence first: a PRESENT-but-empty/corrupt receipt file must not pass as
     # "missing" under allow-missing — only a truly absent file can degrade
     # (2026-09-20 review: load_json(...)" or {}" conflated the two).

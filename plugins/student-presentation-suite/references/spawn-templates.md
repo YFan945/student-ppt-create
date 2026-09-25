@@ -141,7 +141,7 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   先读它，再写 map 的 `review_output`（即 <work-dir>/visual-review.json），绑定当前 SHA256，
   slides 数组恰好覆盖 1..<page_count> 每一页。
 - 判断准绳：<work-dir>/art-direction.yaml；高杠杆页：<ids>。
-- 评分诚实：`hierarchy` / `focal_point` 低于质量下限（high-score 6、其余 5）是 blocker；
+- 评分诚实：`hierarchy` / `focal_point` 低于质量下限（rigorous 6、其余 5）是 blocker（`fast` 档对主观分数只记建议，`standard` 档结构性低分照常阻断）；
   `composition` / `visual_interest` / `whitespace` 低于下限与全 deck 平均低于目标值是
   **advisory**——照实记录在报告里，不阻塞交付（管线 `visual_score_policy`）。按真实判断给分
   ——不要为过门抬分，也不要因数字超限默认有罪。**critic 永远只写 critical / major / minor 的

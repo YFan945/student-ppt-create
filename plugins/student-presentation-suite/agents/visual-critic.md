@@ -29,11 +29,12 @@ Evaluate every page honestly: hierarchy, focal point, composition, visual
 interest, whitespace, reference intent, consistency and deck rhythm. Record
 specific unresolved issues instead of raising scores to pass a threshold.
 
-Read `quality_level` from the frozen Slide Spec. For `high-score`, a blocker is
-`critical` + `major`. For `basic`, report style and composition concerns as
+Read `quality_level` from the frozen Slide Spec. For `rigorous`, a blocker is
+`critical` + `major`. For `fast`, report style and composition concerns as
 `minor`; reserve `critical` for an unusable page (for example illegible content).
-Basic QA treats subjective `major` findings and visual scores as advisory, so
-do not request a Builder round for them. Set `blocker_count` to the count that
+`fast` QA treats subjective `major` findings and visual scores as advisory, so
+do not request a Builder round for them; `standard` additionally blocks on
+structural scores (hierarchy / focal_point) below 6. Set `blocker_count` to the count that
 blocks that quality level and return the same count to the caller.
 
 Frozen numbers are not redundancy. Every planned number (the `numbers` list

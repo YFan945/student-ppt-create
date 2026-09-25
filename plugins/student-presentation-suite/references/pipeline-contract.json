@@ -119,6 +119,17 @@
   "max_pre_qa_rebuilds": 2,
   "max_parallel_builders": 3,
   "parallel_builder_min_pages": 4,
+  "session_budget": {
+    "peak_context_tokens": 150000,
+    "session_minutes": 150,
+    "task_total_tokens": 25000000,
+    "on_breach": "handoff-and-rotate",
+    "default_minutes_per_agent_round": 8
+  },
+  "builder_shard_policy": {
+    "per_shard_complexity": 6,
+    "note": "shard_count = min(tier cap, max_parallel_builders, ceil(total slide complexity / per_shard_complexity), known pages); chart/data/compare pages weigh 2, layout_lock adds 1"
+  },
   "intake_confirmation_required": true,
   "repeat_policy": {
     "build_requires_changed_generator_after_repair": true,
@@ -136,7 +147,7 @@
     "one_builder_instance_per_round": true,
     "one_carryover_build_per_round": true,
     "parallel_builder_shards_allowed": true,
-    "parallel_builder_shards_scope": "high-score only; basic uses one builder packet"
+    "parallel_builder_shards_scope": "fast uses one builder packet; standard caps at 2 shards, rigorous at max_parallel_builders"
   },
   "calibration_sample_selection": "archetype_coverage_with_leverage_priority",
   "deck_rhythm_plan": "archetype_families_with_background_rhythm",
@@ -151,7 +162,7 @@
       "whitespace"
     ],
     "deck_average": "advisory",
-    "note": "basic treats subjective visual scores, style findings and rhythm as advisory; high-score retains structural score and style blockers; critical unusable pages and deterministic failures block both"
+    "note": "basic/fast treats subjective visual scores, style findings and rhythm as advisory; standard blocks structural lows only; rigorous (high-score) retains structural score and style blockers; critical unusable pages and deterministic failures block all tiers"
   },
   "production_modes": [
     "create",
@@ -159,12 +170,16 @@
     "rebuild_from_source"
   ],
   "quality_level_policy": {
-    "default": "high-score for new intake; legacy Slide Specs with missing quality_level retain unspecified behavior",
-    "basic": "one builder packet for all pages and repairs, deterministic pre-QA, render and one final independent critic; subjective style findings are advisory, critical and deterministic failures block; no calibration",
-    "high-score": "independently reviewed calibration before initial builder; final independent critic still required"
+    "default": "fast for new intake; legacy Slide Specs with missing quality_level also resolve to fast",
+    "fast": "one builder packet for all pages and repairs, deterministic pre-QA, render and one final independent critic; subjective style findings, style majors and regressions are advisory, critical and deterministic failures block; no calibration",
+    "standard": "one calibration sample (builder + one independent critic review), then full generation with shards <= 2; structural lows (hierarchy/focal_point) block, style majors and regressions advisory",
+    "rigorous": "the full high-score path: calibration <= 2 rounds until green (shards <= 3), structural + style-major + regression findings block, per-slide floor 6.0",
+    "aliases": { "basic": "fast", "high-score": "rigorous" },
+    "calibration_round_accounting": "one calibration_preview execution == one round; once the tier budget is spent, remaining review findings are carried as recorded risk and production proceeds"
   },
   "workflow_state": "outputs/.pptx-work/<work-id>/workflow-state.json",
   "research_requires_runtime_receipt": true,
+  "research_import_receipt_accepted": true,
   "visual_review_requires_independent_critic": true,
   "stage_contracts": {
     "intake": [
@@ -173,9 +188,9 @@
       "Classify research A/B/C/D and preserve existing-deck edit intent."
     ],
     "build": [
-      "high-score create/rebuild_from_source: pick the calibration sample for ARCHETYPE COVERAGE (calibration_archetypes.py classifies every spec slide and the packet projects the default set; high-leverage slides win group seats) and spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=calibration plus those slide ids. basic skips calibration and dispatches the initial builder for all scaffolded pages.",
+      "standard/rigorous create/rebuild_from_source: pick the calibration sample for ARCHETYPE COVERAGE (calibration_archetypes.py classifies every spec slide and the packet projects the default set; high-leverage slides win group seats) and spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=calibration plus those slide ids. fast skips calibration and dispatches the initial builder for all scaffolded pages.",
       "After BUILDER_DONE(calibration), the MAIN session calls advance --brief-json; it runs calibration_preview.py and stops at the critic boundary. Do not read those PNGs in the MAIN session: the independent critic judges the visual system. Spawn student-presentation-suite:visual-critic WITHOUT a name. The runtime hook materializes a scope=calibration critic-preview-map.json from the current calibration manifest; the critic reads every mapped preview, writes only its review_output (calibration/calibration-visual-review.json), and the hook writes calibration/calibration-critic-execution.json. Production build verifies both the report bindings and receipt coverage before accepting a green review.",
-      "For basic, spawn one presentation-builder mode=initial with the single packet covering all scaffold pages. For high-score, after calibration, use mode=initial with the Builder Packet; only if `next --json` supplies builder_shards, spawn those disjoint shards in one message. Each Builder writes only its assigned pages. Build assembles any shard notes fragments.",
+      "For fast, spawn one presentation-builder mode=initial with the single packet covering all scaffold pages. For standard/rigorous, after calibration, use mode=initial with the Builder Packet; only if `next --json` supplies builder_shards, spawn those disjoint shards in one message (standard caps at 2 shards, rigorous at max_parallel_builders). Each Builder writes only its assigned pages. Build assembles any shard notes fragments.",
       "The main session must not implement or read page modules itself and must not receive page source back from the builder; calibration is a temporary preview only and does not mutate production manifest/build state.",
       "After BUILDER_DONE(initial), run the normal exploration gates once, then call advance --brief-json for production build and render. Production build still refuses any remaining scaffold page.",
       "edit_ooxml remains pipeline-owned: edit ooxml/ only, keep source unchanged, write change-summary.md, build without --entry.",
@@ -191,6 +206,7 @@
     "prepare_deliverables": [
       "After a current render and before critic/QA, generate only support/export deliverables confirmed in the frozen Slide Spec.",
       "Bind every output to the current PPTX and Slide Spec; reuse only while all hashes remain current.",
+      "Every generated output is content-verified against the frozen Slide Spec before binding: page/section counts must cover all slides, and partial scripts refuse to write.",
       "Use the render-owned PDF export and build_support_outputs.py; do not discover arbitrary work-dir PDFs."
     ],
     "qa": [
@@ -203,7 +219,7 @@
       "Pre-QA deterministic misses are handled under the build stage contract (builder fix + rebuild, no repair round); this budget counts full QA rounds only.",
       "After advance records the QA blocker set, spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=repair and its Builder Packet; the main session must not edit page modules itself.",
       "The Builder Packet projects every failed content gate into one task. Only if packet generation fails, pass pipeline-qa.json as the fallback. Do not fix one gate per round.",
-      "Fix all blockers from one Builder Packet in a single repair round, then build, render, isolated critique and QA. Basic uses one Builder. High-score may use builder_shards when `next --json` provides them; deck-level blockers without page ids use one Builder. Only when Packet generation fails does the Builder read the QA report directly.",
+      "Fix all blockers from one Builder Packet in a single repair round, then build, render, isolated critique and QA. fast uses one Builder. standard/rigorous may use builder_shards when `next --json` provides them; deck-level blockers without page ids use one Builder. Only when Packet generation fails does the Builder read the QA report directly.",
       "Spawn a NEW builder for every repair round; never SendMessage the previous instance. A builder instance that served three rounds reached 699K resident context, and 212 of its 261 requests ran at >=200K (96.1% of that instance's cost). Measured counterfactual: resetting per round alone takes that instance from 98.7M to 80.9M, because round 1 grows to 606K inside itself — the larger saving comes from not letting a full-deck rework happen at all (see the calibration review). `next --json` reports builder_instance_reuse when the guard's instance ledger shows one instance spanning several rounds.",
       "Never mark major/critical resolved without before/after evidence.",
       "Resuming after the QA DAG: `next --json` carries repair_convergence (per-round blocker counts and the trend). improving justifies another round, flat means change the approach, worse means recover the gate or page the last round broke before anything else. Read it instead of asking the user whether to continue. When it reports suspect_gate_defect — a blocker group byte-identical in two consecutive rounds while the rest moved — that group is not page work: check it once against the artifact, then either name a page-level fix in --extend-reason or record it as a known gate limitation and repair the rest. Budget extensions are refused while such a group accounts for most of the blocker list.",
@@ -211,6 +227,7 @@
     ],
     "complete": [
       "All delivery stages must pass. Evidence and authorization are rechecked; confirmed files are published under the project outputs directory and verified before completion.",
+      "Publishing content-verifies every confirmed artifact before copying: PPTX/PDF page counts and script/notes section counts must cover the frozen Slide Spec, and each published file is hash-bound to its final path with its verified counts recorded in manifest.published.",
       "Source-based work requires change-summary.md; preserve the original deck."
     ]
   }

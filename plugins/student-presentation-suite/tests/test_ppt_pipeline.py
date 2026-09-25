@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from contextlib import redirect_stdout
 from pathlib import Path
 from typing import Any
@@ -65,6 +66,45 @@ def ok_report(path: Path) -> None:
     path.write_text(json.dumps({"ok": True, "issues": []}), encoding="utf-8")
 
 
+def minimal_pptx_zip_bytes(slides: int = 1) -> bytes:
+    """A real OOXML zip skeleton: publish verifies the delivered slide count."""
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for number in range(1, slides + 1):
+            archive.writestr(f"ppt/slides/slide{number}.xml", "<slide/>")
+    return buffer.getvalue()
+
+
+def minimal_pdf_bytes(pages: int = 1) -> bytes:
+    """A structurally real PDF whose page objects the /Type /Page counter can read."""
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids ["
+        + b" ".join(f"{3 + index} 0 R".encode() for index in range(pages))
+        + b"] /Count "
+        + str(pages).encode()
+        + b" >>",
+        *(
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>"
+            for _ in range(pages)
+        ),
+    ]
+    out = [b"%PDF-1.4\n"]
+    offsets = []
+    for index, body in enumerate(objects, 1):
+        offsets.append(sum(len(part) for part in out))
+        out.append(f"{index} 0 obj\n".encode() + body + b"\nendobj\n")
+    xref_at = sum(len(part) for part in out)
+    out.append(f"xref\n0 {len(objects) + 1}\n".encode())
+    out.append(b"0000000000 65535 f \n")
+    out.extend(f"{offset:010d} 00000 n \n".encode() for offset in offsets)
+    out.append(
+        f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+        f"startxref\n{xref_at}\n%%EOF\n".encode()
+    )
+    return b"".join(out)
+
+
 class FakeRunner:
     def __init__(self, work_dir: Path, *, check_ok: bool = True) -> None:
         self.work_dir = work_dir
@@ -102,7 +142,7 @@ class FakeRunner:
                 stdout="", stderr="bad lock" if not self.check_ok else "",
             )
         if "run_with_pptxgenjs.js" in joined:
-            Path(flag_value("--output")).write_bytes(b"PK\x03\x04 fake pptx")
+            Path(flag_value("--output")).write_bytes(minimal_pptx_zip_bytes())
             return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
         if "build_support_outputs.py" in joined:
             output_dir = Path(flag_value("--output-dir"))
@@ -115,10 +155,41 @@ class FakeRunner:
                 "references": "references.md",
             }
             requested = [argv[index + 1] for index, item in enumerate(argv[:-1]) if item == "--only"]
+            spec_data: dict[str, Any] = {}
+            try:
+                spec_data = json.loads(Path(argv[2]).read_text(encoding="utf-8"))
+            except (OSError, ValueError, IndexError):
+                spec_data = {}
+            slides = [
+                slide for slide in (spec_data.get("slides") or [])
+                if isinstance(slide, dict)
+            ] or [{"id": 1, "title": "Slide 1"}]
+            bodies = {
+                "speaker-notes": "# Speaker Notes\n\n" + "\n\n".join(
+                    f"## 第 {slide.get('id') or position} 页 · {slide.get('title', '')}\n\n讲稿 {position}。"
+                    for position, slide in enumerate(slides, 1)
+                ),
+                "full-script": "# Full Presentation Script\n\n" + "\n\n".join(
+                    f"## Slide {slide.get('id') or position}: {slide.get('title', '')}\n\n讲稿 {position}。"
+                    for position, slide in enumerate(slides, 1)
+                ),
+                "teleprompter": "<!doctype html><main>" + "".join(
+                    f'<section data-slide="{slide.get("id") or position}"><p>讲稿 {position}。</p></section>'
+                    for position, slide in enumerate(slides, 1)
+                ) + "</main>",
+                "training-cards": "# Presentation Training Cards\n\n" + "\n\n".join(
+                    f"## Slide {slide.get('id') or position}: {slide.get('title', '')}\n\n- Keywords: a, b"
+                    for position, slide in enumerate(slides, 1)
+                ),
+                "references": "# References (classroom)\n\n" + "\n".join(
+                    f"- [F{index}] Author. (2024). Title. locator Confidence: high."
+                    for index in range(1, max(1, len(spec_data.get("evidence_ledger") or [])) + 1)
+                ),
+            }
             outputs = {}
             for name in requested:
                 path = output_dir / f"{prefix}-{suffixes[name]}"
-                path.write_text(f"generated {name}", encoding="utf-8")
+                path.write_text(bodies[name], encoding="utf-8")
                 outputs[name] = str(path.resolve())
             return subprocess.CompletedProcess(
                 argv, 0, stdout=json.dumps({"ok": True, "outputs": outputs}), stderr=""
@@ -166,6 +237,14 @@ class PipelineTestCase(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
         self._original_runner = pp._core._runner
+        # Isolate runtime usage probes: the live transcript (a real rollout log
+        # can be hundreds of MB) must never decide unit-test behavior or speed.
+        self._usage_stub = patch("pipeline.dispatch.current_usage", return_value=None)
+        self._usage_stub2 = patch("pipeline.advance.current_usage", return_value=None)
+        self._usage_stub.start()
+        self._usage_stub2.start()
+        self.addCleanup(self._usage_stub.stop)
+        self.addCleanup(self._usage_stub2.stop)
         self.summary = self.work / "production-summary.md"
         self.summary.write_text("approved", encoding="utf-8")
         self.workflow_state = self.work / "workflow-state.json"
@@ -219,6 +298,13 @@ class PipelineTestCase(unittest.TestCase):
     def plan(self, files: dict[str, Path], runner: FakeRunner | None = None, extra_args: list[str] | None = None) -> FakeRunner:
         runner = runner or FakeRunner(self.work)
         pp._core._runner = runner
+        level = getattr(self, "quality_level", None)
+        if level:
+            # Tier tests declare their level; plan injects it right before freeze
+            # so it survives any fixture that rewrites the spec file first.
+            spec = json.loads(files["spec"].read_text(encoding="utf-8"))
+            spec.setdefault("meta", {})["quality_level"] = level
+            files["spec"].write_text(json.dumps(spec), encoding="utf-8")
         rc = pp.main([
             "plan", "--work-dir", str(self.work),
             "--workflow-state", str(self.workflow_state),
@@ -265,7 +351,7 @@ class PipelineTestCase(unittest.TestCase):
         contact = self.work / "contact-sheet.png"
         pp.make_contact_sheet([page], contact)
         pdf = self.work / "render" / "slide.pdf"
-        pdf.write_bytes(b"%PDF-1.4\n")
+        pdf.write_bytes(minimal_pdf_bytes(1))
         manifest["render"] = {
             "pptx_sha256": pp.sha256_file(files["pptx"]),
             "pages": [pp.bind(page)],
@@ -824,6 +910,7 @@ class BuildTests(PipelineTestCase):
 
     def test_next_after_plan_dispatches_to_calibration_builder(self) -> None:
         """Fresh planned create-mode work must spawn the builder, not edit pages directly."""
+        self.quality_level = "rigorous"
         self.plan(self.files)
         payload = self.next_dispatch_payload()
         self.assertEqual("planned", payload["state"])
@@ -839,7 +926,8 @@ class BuildTests(PipelineTestCase):
         self.files["spec"].write_text(json.dumps(spec), encoding="utf-8")
         self.plan(self.files)
         payload = self.next_dispatch_payload()
-        self.assertEqual("basic", self.manifest()["quality_level"])
+        self.assertEqual("fast", self.manifest()["quality_level"])
+        self.assertEqual("basic", self.manifest()["quality_level_raw"])
         self.assertEqual("initial", payload["builder_mode"])
         self.assertNotIn("calibration", payload)
         self.assertEqual(1, len(payload["builder_packets"]))
@@ -856,6 +944,7 @@ class BuildTests(PipelineTestCase):
         self.assertEqual(2, pp.main(["build", "--work-dir", str(self.work)]))
 
     def test_next_with_calibration_manifest_but_no_render_points_at_preview(self) -> None:
+        self.quality_level = "rigorous"
         self.plan(self.files)
         calibration = self.work / "calibration"
         calibration.mkdir()
@@ -909,12 +998,60 @@ class BuildTests(PipelineTestCase):
         self.write_calibration_receipt(review)
         return review
 
+    def test_calibration_round_budget_releases_the_build_with_recorded_risk(self) -> None:
+        """Tiers cap calibration rounds (standard 1 / rigorous 2): then production carries risk."""
+        self.quality_level = "rigorous"
+        self.plan(self.files)
+        calibration = self.calibration_with_render()
+        self.write_calibration_review(calibration, slides=[
+            {"slide": 1, "visual_structure": "cover", "issues": [
+                {"code": "style", "severity": "major", "message": "weak hierarchy"},
+            ]},
+            {"slide": 6, "visual_structure": "chart-led", "issues": []},
+            {"slide": 7, "visual_structure": "compare", "issues": []},
+        ])
+        manifest = self.manifest()
+        manifest["calibration"] = {"rounds": 1}
+        pp.save_manifest(self.work, manifest)
+        payload = self.next_dispatch_payload()
+        self.assertEqual("calibration", payload["builder_mode"], "rigorous has one fix round left")
+
+        manifest = self.manifest()
+        manifest["calibration"] = {"rounds": 2}
+        pp.save_manifest(self.work, manifest)
+        payload = self.next_dispatch_payload()
+        self.assertEqual("initial", payload["builder_mode"], "budget spent: proceed to production")
+        self.assertIn("budget spent", payload["notes"])
+        self.assertIn("recorded risk", payload["notes"])
+
+    def test_build_carries_calibration_risk_once_the_round_budget_is_spent(self) -> None:
+        self.quality_level = "rigorous"
+        self.plan(self.files)
+        calibration = self.calibration_with_render()
+        self.write_calibration_review(calibration, slides=[
+            {"slide": 1, "visual_structure": "cover", "issues": [
+                {"code": "style", "severity": "major", "message": "weak hierarchy"},
+            ]},
+            {"slide": 6, "visual_structure": "chart-led", "issues": []},
+            {"slide": 7, "visual_structure": "compare", "issues": []},
+        ])
+        self.implement_scaffolded_pages()
+        manifest = self.manifest()
+        manifest["calibration"] = {"rounds": 1}
+        pp.save_manifest(self.work, manifest)
+        self.assertEqual(2, pp.main(["build", "--work-dir", str(self.work)]))
+        manifest = self.manifest()
+        manifest["calibration"] = {"rounds": 2}
+        pp.save_manifest(self.work, manifest)
+        self.assertEqual(0, pp.main(["build", "--work-dir", str(self.work)]))
+
     def test_next_with_calibration_render_dispatches_the_independent_review(self) -> None:
         """Calibration is reviewed by the critic, not by the session that chose the treatment.
 
         2026-09-18 live: the main session read its own calibration PNGs, accepted the visual
         system, and the independent critic then rejected the pattern on all 13 built pages.
         """
+        self.quality_level = "rigorous"
         self.plan(self.files)
         self.calibration_with_render()
         payload = self.next_dispatch_payload()
@@ -926,6 +1063,7 @@ class BuildTests(PipelineTestCase):
         self.assertEqual("build", payload["contract"]["stage"])
 
     def test_next_after_a_green_calibration_review_authorises_the_full_build(self) -> None:
+        self.quality_level = "rigorous"
         self.plan(self.files)
         calibration = self.calibration_with_render()
         self.write_calibration_review(calibration)
@@ -934,6 +1072,7 @@ class BuildTests(PipelineTestCase):
         self.assertIn("mode=initial", payload["notes"])
 
     def test_next_keeps_the_builder_on_a_calibration_that_still_has_findings(self) -> None:
+        self.quality_level = "rigorous"
         self.plan(self.files)
         calibration = self.calibration_with_render()
         self.write_calibration_review(
@@ -953,6 +1092,7 @@ class BuildTests(PipelineTestCase):
         self.assertIn("repetitive_structure_run", payload["calibration"]["status"])
 
     def test_next_retries_critic_when_review_exists_but_receipt_is_missing(self) -> None:
+        self.quality_level = "rigorous"
         self.plan(self.files)
         calibration = self.calibration_with_render()
         self.write_calibration_review(calibration)
@@ -975,6 +1115,7 @@ class BuildTests(PipelineTestCase):
 
     def test_full_build_is_refused_until_calibration_is_independently_reviewed(self) -> None:
         """Doc-only, this rule was already in SKILL.md and a live session still skipped it."""
+        self.quality_level = "rigorous"
         self.prepared_calibrated_without_review()
         self.implement_scaffolded_pages()
         rc = pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.work / "deck.js")])
@@ -1099,7 +1240,7 @@ class QaDagTests(PipelineTestCase):
         self.files["spec"].write_text(json.dumps(spec), encoding="utf-8")
         self.producing_manifest()
         render_pdf = self.work / "render" / "slide.pdf"
-        render_pdf.write_bytes(b"%PDF-1.4\n")
+        render_pdf.write_bytes(minimal_pdf_bytes(1))
         manifest = self.manifest()
         manifest["render"]["pdf"] = pp.bind(render_pdf)
         pp.save_manifest(self.work, manifest)
@@ -1156,6 +1297,36 @@ class QaDagTests(PipelineTestCase):
         self.assertTrue(dispatch["visual_evidence_reused"])
         self.assertNotIn("agent", dispatch)
         self.assertIn(" qa ", dispatch["next_command"])
+
+    def test_complete_refuses_truncated_script_even_with_fresh_hashes(self) -> None:
+        """Hash currency alone never proved completeness: missing pages must refuse."""
+        with patch("pptx_actual_content_check.extract_pptx_notes", return_value={1: "第一页讲稿。"}):
+            spec = json.loads(self.files["spec"].read_text(encoding="utf-8"))
+            spec["meta"]["deliverables"] = ["pptx", "full-script"]
+            self.files["spec"].write_text(json.dumps(spec), encoding="utf-8")
+            self.producing_manifest()
+            runner = FakeRunner(self.work)
+            pp._core._runner = runner
+            self.assertEqual(pp.main(["prepare-deliverables", "--work-dir", str(self.work)]), 0)
+            self.assertEqual(
+                pp.main([
+                    "qa", "--work-dir", str(self.work),
+                    "--visual-review", str(self.files["visual_review"]),
+                ]),
+                0,
+            )
+            script = Path(self.manifest()["deliverables"]["outputs"]["full-script"]["path"])
+            script.write_text("# Full Presentation Script\n\n缺页的残稿。\n", encoding="utf-8")
+            manifest = self.manifest()
+            # Rebind so every hash check passes — only the content check can
+            # catch this file (the 2026-09-22 run shipped a script missing 1-3
+            # pages under exactly these conditions).
+            fresh = pp.bind(script)
+            manifest["deliverables"]["outputs"]["full-script"] = fresh
+            manifest["qa"]["deliverables"]["outputs"]["full-script"] = fresh
+            pp.save_manifest(self.work, manifest)
+            self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)
+            self.assertEqual(self.manifest()["state"], "qa")
 
     def test_previews_and_visual_review_are_hash_bound(self) -> None:
         self.producing_manifest()
@@ -1500,6 +1671,25 @@ class CompleteTests(PipelineTestCase):
         self.files["vgr"].write_text('{"round": 2}', encoding="utf-8")
         self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)
 
+    def test_published_record_carries_verified_page_counts(self) -> None:
+        self.state_qa(ok=True, delivery_checked=True)
+        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 0)
+        published = self.manifest()["published"]
+        self.assertEqual(published["pptx"]["pages"], 1)
+        self.assertTrue(pp.binding_is_current(published["pptx"]))
+
+    def test_complete_refuses_a_slide_count_mismatch(self) -> None:
+        self.state_qa(ok=True, delivery_checked=True)
+        # The delivered package must cover the frozen Slide Spec: a 0-slide
+        # package is exactly the "content check by hash only" hole this closes.
+        (self.work / "deck.pptx").write_bytes(minimal_pptx_zip_bytes(0))
+        manifest = self.manifest()
+        manifest["build"]["pptx"] = pp.bind(self.work / "deck.pptx")
+        manifest["render"]["pptx_sha256"] = pp.sha256_file(self.work / "deck.pptx")
+        pp.save_manifest(self.work, manifest)
+        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 2)
+        self.assertEqual(self.manifest()["state"], "qa")
+
 
 class StatusTests(PipelineTestCase):
     def test_status_is_one_line(self) -> None:
@@ -1554,7 +1744,9 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.plan(self.files)
         plan = pp.builder_shards(pp.remaining_scaffold_slides(self.work), self.work)
         self.assertIsNotNone(plan)
-        self.assertEqual(pp.MAX_PARALLEL_BUILDERS, plan["parallel"])
+        # Complexity-aware sizing: 9 simple pages weigh 9 -> ceil(9/6) = 2 shards
+        # instead of always MAX_PARALLEL_BUILDERS.
+        self.assertEqual(2, plan["parallel"])
         assigned = [slide for shard in plan["shards"] for slide in shard["slides"]]
         self.assertEqual(sorted(assigned), list(range(1, 10)), "every page exactly once")
         self.assertEqual(len(assigned), len(set(assigned)), "no page in two shards")
@@ -1585,6 +1777,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.write_spec(9)
         self.plan(self.files)
         plan = pp.builder_shards([1, 2, 3, 4, 5, 6, 7, 8, 9], self.work)
+        self.assertIsNotNone(plan)
         for shard in plan["shards"]:
             for slide, page in zip(shard["slides"], shard["pages"], strict=True):
                 self.assertTrue(
@@ -1676,6 +1869,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
         return json.loads(buffer.getvalue())
 
     def test_next_emits_a_calibration_packet_for_the_default_set(self) -> None:
+        self.quality_level = "rigorous"
         self.files = self.write_inputs()
         self.write_rich_spec(9)
         self.write_art([1, 3, 4])
@@ -1698,6 +1892,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
         [1,2,3]; the builder was then refused. A later `next` also recreated the
         default packet. Neither half of that split-brain may recur.
         """
+        self.quality_level = "rigorous"
         self.files = self.write_inputs()
         self.write_rich_spec(9)
         self.write_art([1, 3, 4])
@@ -1732,6 +1927,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
         """Packet generation must never break the dispatch answer — and under
         archetype coverage (Batch 4.1) a missing art-direction no longer prevents
         a default sample: the spec alone drives it."""
+        self.quality_level = "rigorous"
         self.files = self.write_inputs()
         self.plan(self.files)
         payload = self.next_dispatch_payload()
@@ -1745,7 +1941,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.write_art([1, 3, 4])
         self.plan(self.files)
         packets = pp._packet.prepare_packets(self.work, "initial")
-        self.assertEqual(pp.MAX_PARALLEL_BUILDERS, len(packets))
+        self.assertEqual(2, len(packets), "9 simple pages weigh 9 -> two complexity-capped shards")
         assigned: list[int] = []
         for descriptor in packets:
             packet = json.loads(Path(descriptor["packet"]).read_text(encoding="utf-8"))
@@ -1767,6 +1963,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
         """Dispatch survives a packet failure, but the payload must say the builder
         fell back to the legacy full-read path — otherwise the cost optimization
         quietly turns off and no benchmark can tell."""
+        self.quality_level = "rigorous"
         self.files = self.write_inputs()
         self.write_rich_spec(9)
         self.write_art([1, 3, 4])
@@ -1786,6 +1983,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.assertEqual(1, payload["packet_fallback_count"])
 
     def test_next_reports_zero_packet_fallbacks_when_green(self) -> None:
+        self.quality_level = "rigorous"
         self.files = self.write_inputs()
         self.write_rich_spec(9)
         self.write_art([1, 3, 4])
@@ -1800,22 +1998,20 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.plan(self.files)
         (self.work / "pipeline-qa.json").write_text(
             json.dumps({"problems": [
-                {"gate": "quality", "severity": "major", "code": "visual_score_low", "slide": 2,
-                 "message": "s2"},
-                {"gate": "quality", "severity": "major", "code": "visual_score_low", "slide": 7,
-                 "message": "s7"},
-                {"gate": "quality", "severity": "major", "code": "visual_score_low", "slide": 9,
-                 "message": "s9"},
-                {"gate": "quality", "severity": "major", "code": "visual_score_low", "slide": 4,
-                 "message": "s4"},
+                {"gate": "quality", "severity": "major", "code": "visual_score_low", "slide": number,
+                 "message": f"s{number}"}
+                for number in range(1, 10)
             ]}),
             encoding="utf-8",
         )
         slides = pp.slides_named_in_reports(self.work, ("pipeline-qa.json",))
-        self.assertEqual([2, 4, 7, 9], slides)
+        self.assertEqual(list(range(1, 10)), slides)
         plan = pp.builder_shards(slides, self.work)
         self.assertIsNotNone(plan)
-        self.assertEqual(sorted(s for shard in plan["shards"] for s in shard["slides"]), [2, 4, 7, 9])
+        self.assertEqual(
+            sorted(s for shard in plan["shards"] for s in shard["slides"]),
+            list(range(1, 10)),
+        )
 
     def test_build_assembles_speaker_note_shards_in_order(self) -> None:
         """Parallel builders cannot each write speaker-notes.md without losing the others'."""
@@ -1876,6 +2072,29 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.assertEqual([], pp.merge_speaker_note_shards(self.work))
         self.assertFalse((self.work / "speaker-notes.md").exists())
 
+    def test_merge_refuses_fragments_that_drop_pages(self) -> None:
+        self.write_spec(4)
+        self.plan(self.files)
+        self.implement_scaffolded_pages()
+        shard = self.work / "speaker-notes-shard-1.md"
+        shard.write_text(
+            "## 第 1 页 · Slide 1\n\n第一页。\n\n"
+            "## 第 2 页 · Slide 2\n\n第二页。\n\n"
+            "## 第 4 页 · Slide 4\n\n第四页。\n",
+            encoding="utf-8",
+        )
+        with self.assertRaises(pp.RefusedError):
+            pp.merge_speaker_note_shards(self.work)
+        self.assertFalse((self.work / "speaker-notes.md").exists())
+        shard.write_text(
+            shard.read_text(encoding="utf-8") + "\n## 第 3 页 · Slide 3\n\n第三页。\n",
+            encoding="utf-8",
+        )
+        self.assertTrue(pp.merge_speaker_note_shards(self.work))
+        merged = (self.work / "speaker-notes.md").read_text(encoding="utf-8")
+        for number in range(1, 5):
+            self.assertIn(f"## 第 {number} 页", merged)
+
     def test_plan_records_deck_rhythm_failure_instead_of_hiding_it(self) -> None:
         """Closure: a deck-rhythm regression is recorded in the manifest as
         status=failed (and reported), never silently absorbed — otherwise pages
@@ -1908,6 +2127,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
 
     def test_next_offers_shards_for_the_full_build(self) -> None:
         """The plan must reach the main session, or the gain never happens."""
+        self.quality_level = "rigorous"
         self.write_spec(9)
         self.plan(self.files)
         calibration = self.work / "calibration"
@@ -1942,7 +2162,7 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
         self.assertIn("mode=initial", payload["notes"])
         self.assertIn("builder_shards", payload)
-        self.assertEqual(pp.MAX_PARALLEL_BUILDERS, payload["builder_shards"]["parallel"])
+        self.assertEqual(2, payload["builder_shards"]["parallel"])
 
 
 class AdvanceTests(PipelineTestCase):
@@ -2028,6 +2248,7 @@ class AdvanceTests(PipelineTestCase):
         return json.loads(buffer.getvalue())
 
     def test_brief_advance_omits_repeated_stage_rules(self) -> None:
+        self.quality_level = "rigorous"
         self.plan(self.files)
         buffer = io.StringIO()
         with redirect_stdout(buffer):
@@ -2045,6 +2266,7 @@ class AdvanceTests(PipelineTestCase):
         self.assertIn("reason", result)
 
     def test_a_planned_deck_needs_the_calibration_builder_with_its_packet(self) -> None:
+        self.quality_level = "rigorous"
         self.write_rich_spec(9)
         self.write_art([1, 3, 4])
         self.plan(self.files)
@@ -2056,6 +2278,7 @@ class AdvanceTests(PipelineTestCase):
         self.assertIn("builder_packet", result["dispatch"])
 
     def test_advance_runs_the_calibration_preview_itself_then_needs_the_critic(self) -> None:
+        self.quality_level = "rigorous"
         self.write_rich_spec(9)
         self.write_art([1, 3, 4])
         self.plan(self.files)

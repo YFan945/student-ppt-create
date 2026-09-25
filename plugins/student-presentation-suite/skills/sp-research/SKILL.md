@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.15.11
+version: 0.16.0
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
@@ -36,7 +36,7 @@ arguments: [work_id, brief_path, scope, materials_path]
 - work-id：`$work_id`
 - Brief / draft Slide Spec 路径：`$brief_path`
 - scope：`$scope`
-- D 模式用户材料路径：`$materials_path`
+- D 模式用户材料路径：`$materials_path`（默认路径是确定性导入：`import_user_materials.py` 不派子代理即可生成 Research Pack 与导入凭据；本 skill 的 D 模式仅在用户点名要研究员整理时使用）
 
 `work_id` / `brief_path` / `scope` 缺失或 scope 不在 A/B/C/D 时，不猜参数，按 agent 的 `RESEARCH_BLOCKED` 契约返回；D 模式还必须有 `materials_path`。
 

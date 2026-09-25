@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
@@ -611,6 +612,156 @@ def profile_model_io(path: Path) -> dict[str, Any]:
         if start_time and end_time else None,
         "tool_calls": dict(tools),
     }
+
+
+ZCODE_ROLLOUT_DIR = Path.home() / ".zcode" / "cli" / "rollout"
+_USAGE_BLOCK_RE = re.compile(rb'"usage"\s*:\s*(\{[^{}]*\})')
+_STARTED_RE = re.compile(rb'"startedAt"\s*:\s*"([^"]+)"')
+_COMPLETED_RE = re.compile(rb'"completedAt"\s*:\s*"([^"]+)"')
+
+
+def scan_model_io(path: Path) -> dict[str, Any]:
+    """Byte-level usage scan: runtime budget checks cannot afford full-line JSON.
+
+    A live model-io log carries every request body (a 12-page run measured 260MB);
+    json.loads per line just to sum `usage` costs seconds. This extracts only the
+    flat usage block and the two timestamps per row — same numbers, tiny cost.
+    """
+    usage: Counter[str] = Counter()
+    requests = 0
+    peak_input = 0
+    first: str | None = None
+    last: str | None = None
+    with path.open("rb") as stream:
+        for line in stream:
+            if not line.strip():
+                continue
+            requests += 1
+            match = _USAGE_BLOCK_RE.search(line)
+            if match:
+                try:
+                    current = json.loads(match.group(1))
+                except ValueError:
+                    current = {}
+                if isinstance(current, dict):
+                    for key, value in current.items():
+                        try:
+                            usage[key] += int(value or 0)
+                        except (TypeError, ValueError):
+                            continue
+                    with contextlib.suppress(TypeError, ValueError):
+                        peak_input = max(peak_input, int(current.get("inputTokens") or 0))
+            if first is None:
+                started = _STARTED_RE.search(line)
+                first = started.group(1).decode("utf-8", "replace") if started else None
+            completed = _COMPLETED_RE.search(line)
+            if completed:
+                last = completed.group(1).decode("utf-8", "replace")
+    start_time, end_time = parse_timestamp(first), parse_timestamp(last)
+    return {
+        "file": str(path),
+        "requests": requests,
+        "usage": dict(usage),
+        "peak_input_tokens": peak_input,
+        "elapsed_seconds": round((end_time - start_time).total_seconds(), 1)
+        if start_time and end_time else None,
+        "first_started_at": first,
+    }
+
+
+def _normalize(source_kind: str, path: Path, data: dict[str, Any]) -> dict[str, Any]:
+    usage = data.get("usage") or {}
+    elapsed = data.get("elapsed_seconds")
+    return {
+        "source": str(path),
+        "source_kind": source_kind,
+        "requests": int(data.get("requests") or 0),
+        "fresh_input": int(usage.get("fresh_input") or 0),
+        "cache_read": int(usage.get("cache_read") or 0),
+        "output": int(usage.get("output") or 0),
+        "peak_context": int(data.get("peak_context") or 0),
+        "elapsed_s": float(elapsed) if elapsed is not None else None,
+        "elapsed_minutes": round(float(elapsed) / 60, 1) if elapsed is not None else None,
+        "task_total_tokens": int(usage.get("total") or 0),
+        "subagent_tokens": 0,
+        "subagent_files": 0,
+    }
+
+
+def _model_io_normalize(path: Path, data: dict[str, Any]) -> dict[str, Any]:
+    usage = data.get("usage") or {}
+    fresh = int(usage.get("inputTokens") or 0) - int(usage.get("cacheReadTokens") or 0)
+    return _normalize("model-io", path, {
+        "requests": data.get("requests"),
+        "peak_context": data.get("peak_input_tokens"),
+        "elapsed_seconds": data.get("elapsed_seconds"),
+        "usage": {
+            "fresh_input": max(fresh, 0),
+            "cache_read": int(usage.get("cacheReadTokens") or 0),
+            "output": int(usage.get("outputTokens") or 0),
+            "total": int(usage.get("totalTokens") or 0),
+        },
+    })
+
+
+def _claude_normalize(path: Path, records: list[dict[str, Any]]) -> dict[str, Any]:
+    summary = profile(records)
+    tokens = summary.get("tokens") or {}
+    return _normalize("claude-transcript", path, {
+        "requests": summary.get("requests"),
+        "peak_context": (summary.get("context") or {}).get("peak"),
+        "elapsed_seconds": summary.get("duration_sec"),
+        "usage": {
+            "fresh_input": tokens.get("fresh_input"),
+            "cache_read": tokens.get("cache_read"),
+            "output": tokens.get("output"),
+            "total": tokens.get("total"),
+        },
+    })
+
+
+def current_session_usage(
+    *, zcode_rollout: Path | None = None, claude_root: Path | None = None
+) -> dict[str, Any] | None:
+    """Best-effort snapshot of the LIVE session for runtime budget decisions.
+
+    A pipeline subprocess has no session id; the live transcript is whichever
+    session file was written last (ZCode `model-io-sess_*.jsonl`, or a Claude
+    Code project transcript). Returns None when neither source exists — the
+    session brake then degrades to advisory instead of guessing.
+
+    `fresh_input` counts uncached input only. `peak_context` is the largest
+    single request's input (the resident context re-sent every turn) and is the
+    number the CD-8 peak target constrains. `task_total_tokens` additionally
+    folds in the run's subagent logs (best effort, same rollout directory).
+    """
+    candidates: list[tuple[str, Path]] = []
+    rollout = zcode_rollout if zcode_rollout is not None else ZCODE_ROLLOUT_DIR
+    if rollout.is_dir():
+        for path in rollout.glob("model-io-sess_*.jsonl"):
+            if "subagent" in path.name:
+                continue
+            candidates.append(("model-io", path))
+    root = claude_root if claude_root is not None else DEFAULT_ROOT
+    for path in discover(root):
+        candidates.append(("claude-transcript", path))
+    if not candidates:
+        return None
+    kind, path = max(candidates, key=lambda item: item[1].stat().st_mtime)
+    if kind == "model-io":
+        snapshot = _model_io_normalize(path, scan_model_io(path))
+        elapsed = snapshot.get("elapsed_s") or 0
+        window_start = path.stat().st_mtime - elapsed - 300
+        for child in sorted(rollout.glob("model-io-sess_subagent_agent_*.jsonl")):
+            if child.stat().st_mtime < window_start:
+                continue
+            data = scan_model_io(child)
+            snapshot["subagent_files"] += 1
+            snapshot["subagent_tokens"] += int((data.get("usage") or {}).get("totalTokens") or 0)
+        snapshot["task_total_tokens"] += snapshot["subagent_tokens"]
+    else:
+        snapshot = _claude_normalize(path, read_records(path))
+    return snapshot
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

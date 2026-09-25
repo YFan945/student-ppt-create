@@ -20,6 +20,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from shared import image_capability  # noqa: E402
+from shared.quality_tiers import tier_policy  # noqa: E402
 from shared.runtime_paths import project_root  # noqa: E402
 
 BLOCKING = {"critical", "major"}
@@ -323,7 +324,12 @@ def validate_art_direction(
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("art_direction", type=Path)
-    parser.add_argument("--quality", choices=["high-score", "standard"], default="high-score")
+    parser.add_argument(
+        "--quality",
+        choices=["fast", "standard", "rigorous", "basic", "high-score"],
+        default="high-score",
+        help="delivery tier (legacy basic/high-score accepted); rigorous is strict",
+    )
     parser.add_argument(
         "--work-dir",
         type=Path,
@@ -341,7 +347,7 @@ def main() -> int:
 
     report = validate_art_direction(
         load_structured(args.art_direction),
-        high_score=args.quality == "high-score",
+        high_score=tier_policy(args.quality)["strict_v08"],
         image_sources=resolve_capability(args.work_dir),
     )
     payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"

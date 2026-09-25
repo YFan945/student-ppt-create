@@ -30,9 +30,13 @@ SUPPORTED = {
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 NOTESLIDE_REL_RE = re.compile(r'Type="[^"]*?/notesSlide"[^>]*?Target="([^"]+)"')
+# Only exact level-2 page headings are sections: `### 3. 方法` inside a page body
+# used to match, truncating that page and overwriting the parsed entry for slide 3.
+# The dot separator is excluded for the same reason; canonical forms stay
+# `## 第 N 页 · 标题`, `## N — 标题` and `## Slide N: 标题`.
 NOTES_HEADING_RE = re.compile(
-    r"(?m)^#{1,6}\s+(?:(?:Slide|幻灯片)\s*)?(?:第\s*)?(?P<slide>\d+)"
-    r"(?:\s*页)?(?:\s*[-—:.：·][^\n]*|\s*)$",
+    r"(?m)^##\s+(?:(?:Slide|幻灯片)\s*)?(?:第\s*)?(?P<slide>\d+)"
+    r"(?:\s*页)?(?:\s*[-—:：·][^\n]*)?\s*$",
     re.IGNORECASE,
 )
 
@@ -264,6 +268,25 @@ def full_script_markdown(data: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+PAGE_RENDERERS = {"speaker-notes", "full-script", "teleprompter", "training-cards"}
+
+
+def _assert_page_sections(name: str, text: str, data: dict[str, Any]) -> None:
+    """One emitted section per Slide Spec slide; partial scripts never ship."""
+    if name not in PAGE_RENDERERS:
+        return
+    expected = sum(1 for slide in data.get("slides", []) if isinstance(slide, dict))
+    if name == "teleprompter":
+        found = text.count('data-slide="')
+    else:
+        found = len(re.findall(r"(?m)^##\s+(?:第\s*\d+\s*页|(?:Slide|幻灯片)\s*\d+)", text))
+    if found != expected:
+        raise ValueError(
+            f"{name} rendered {found} page sections for {expected} slides; "
+            "refusing to write a partial deliverable"
+        )
+
+
 def main() -> None:
     load_optional_dependencies()
     parser = argparse.ArgumentParser(description="Build support outputs from Slide Spec")
@@ -332,7 +355,9 @@ def main() -> None:
     }
     try:
         for name, path in outputs.items():
-            path.write_text(renderers[name][1](data), encoding="utf-8")
+            text = renderers[name][1](data)
+            _assert_page_sections(name, text, data)
+            path.write_text(text, encoding="utf-8")
     except (OSError, ValueError) as exc:
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
         raise SystemExit(1) from exc

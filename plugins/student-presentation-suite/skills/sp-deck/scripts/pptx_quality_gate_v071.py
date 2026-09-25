@@ -28,9 +28,14 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
+ROOT = HERE.parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import pptx_actual_content_check as actual_check  # noqa: E402
 import slide_spec_guard as spec_guard  # noqa: E402
+
+from shared.quality_tiers import tier_policy  # noqa: E402
 
 SCORE_FIELDS = ("hierarchy", "focal_point", "composition", "visual_interest", "whitespace")
 # Batch 4.4: structural dimensions below the floor mean the page is broken (unreadable
@@ -204,11 +209,20 @@ def validate_visual_report(
     pptx: Path,
     slide_count: int,
     *,
-    high_score: bool,
+    high_score: bool = False,
+    policy: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Judge a visual review under one tier's policy (shared/quality_tiers.py).
+
+    `high_score` remains as the legacy two-level switch; the tier policy is what
+    new callers pass so fast/standard/rigorous each get exactly their contract.
+    """
+    if policy is None:
+        policy = tier_policy("rigorous" if high_score else "fast")
     report = load_json(report_path)
     issues: list[dict[str, Any]] = visual_review_schema_issues(report)
-    style_severity = "major" if high_score else ADVISORY_SEVERITY
+    style_severity = "major" if policy["block_style_major"] else ADVISORY_SEVERITY
+    structural_severity = "major" if policy["block_structural"] else ADVISORY_SEVERITY
     pptx_digest = sha256_file(pptx)
     if report.get("pptx_sha256") != pptx_digest:
         issues.append(issue("critical", "visual_report_stale", "Visual review is not bound to the current PPTX."))
@@ -243,10 +257,11 @@ def validate_visual_report(
                 continue
             score = float(raw)
             score_values.append(score)
-            minimum = 6.0 if high_score else 5.0
-            if score < minimum:
-                severity = style_severity if field in STRUCTURAL_SCORE_FIELDS else ADVISORY_SEVERITY
-                issues.append(issue(severity, "visual_score_low", f"Slide {slide_no} {field} score {score:g} is below the quality floor {minimum:g}.", slide=slide_no, field=field, score=score))
+            minimum = float(policy["score_floor"])
+            floor = 6.0 if (policy["block_structural"] and field in STRUCTURAL_SCORE_FIELDS) else minimum
+            if score < floor:
+                severity = structural_severity if field in STRUCTURAL_SCORE_FIELDS else ADVISORY_SEVERITY
+                issues.append(issue(severity, "visual_score_low", f"Slide {slide_no} {field} score {score:g} is below the quality floor {floor:g}.", slide=slide_no, field=field, score=score))
 
         ai_feel = str(item.get("ai_template_feel") or "none").strip().lower()
         if ai_feel == "major":
@@ -329,7 +344,7 @@ def validate_visual_report(
             issues.append(issue(effective, str(finding.get("code") or "deck_visual_finding"), str(finding.get("message") or "Unresolved deck-level visual finding.")))
 
     average_score = sum(score_values) / len(score_values) if score_values else 0.0
-    target_average = 7.0 if high_score else 6.0
+    target_average = 7.0 if policy["block_style_major"] else 6.0
     if score_values and average_score < target_average:
         issues.append(issue(ADVISORY_SEVERITY, "visual_average_low", f"Average visual score {average_score:.2f} is below {target_average:.1f}."))
 
@@ -690,11 +705,11 @@ def run(args: argparse.Namespace) -> int:
     spec = load_structured(args.slide_spec)
     actual_text = actual_check.extract_pptx_text(args.pptx)
     meta = spec.get("meta") or {}
-    high_score = str(meta.get("quality_level") or "").lower() == "high-score"
+    policy = tier_policy(meta.get("quality_level"))
 
     visual_only = bool(args.visual_report)
     if visual_only:
-        visual = validate_visual_report(args.visual_report, args.pptx, len(actual_text), high_score=high_score)
+        visual = validate_visual_report(args.visual_report, args.pptx, len(actual_text), policy=policy)
     else:
         visual = {
             "ok": True,
@@ -706,7 +721,7 @@ def run(args: argparse.Namespace) -> int:
     history_path = args.pptx.parent / SCORE_HISTORY_NAME
     if visual_only:
         regression, merged_scores = check_visual_regression(history_path, load_json(args.visual_report))
-        if not high_score:
+        if not policy["block_regression"]:
             for item in regression:
                 item["severity"] = ADVISORY_SEVERITY
     else:

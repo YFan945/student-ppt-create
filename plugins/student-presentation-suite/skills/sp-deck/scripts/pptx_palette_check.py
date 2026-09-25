@@ -32,6 +32,46 @@ THEME_COLOR = re.compile(
     re.DOTALL,
 )
 SCHEME_ALIASES = {"tx1": "dk1", "bg1": "lt1", "tx2": "dk2", "bg2": "lt2"}
+CHART_REL_RE = re.compile(r'Target="\.\./charts/(chart\d+\.xml)"')
+CHART_ELEMENT_RE = re.compile(
+    r"<c:(?P<tag>catAx|valAx|dateAx|serAx|legend|title|dLbls|ser)>.*?</c:(?P=tag)>",
+    re.DOTALL,
+)
+CHART_ELEMENT_ROLES = {
+    "catAx": "axis",
+    "valAx": "axis",
+    "dateAx": "axis",
+    "serAx": "axis",
+    "legend": "legend",
+    "title": "title",
+    "dLbls": "data-labels",
+    "ser": "series",
+}
+GENERATOR_DEFAULT_COLOR = "000000"
+GENERATOR_DEFAULT_ROLES = {"axis", "legend", "title"}
+
+
+def chart_slide_map(archive: zipfile.ZipFile) -> dict[str, int]:
+    """chart part -> slide number, via each slide's relationship file."""
+    out: dict[str, int] = {}
+    for name in archive.namelist():
+        match = re.fullmatch(r"ppt/slides/_rels/slide(\d+)\.xml\.rels", name)
+        if not match:
+            continue
+        slide = int(match.group(1))
+        for chart in CHART_REL_RE.findall(archive.read(name).decode("utf-8", "replace")):
+            out[f"ppt/charts/{chart}"] = slide
+    return out
+
+
+def chart_element_colors(text: str) -> dict[str, dict[str, int]]:
+    """Which chart chrome carries which colors: axis / legend / title / series / labels."""
+    out: dict[str, Counter[str]] = {}
+    for match in CHART_ELEMENT_RE.finditer(text):
+        role = CHART_ELEMENT_ROLES[match.group("tag")]
+        colors = Counter(value.upper() for value in SRGB.findall(match.group(0)))
+        out.setdefault(role, Counter()).update(colors)
+    return {role: dict(sorted(colors.items())) for role, colors in out.items()}
 
 
 def load_structured(path: Path) -> dict[str, Any]:
@@ -76,10 +116,14 @@ def check_pptx(pptx: Path, art_direction: Path) -> dict[str, Any]:
     scheme_counts: Counter[str] = Counter()
     with zipfile.ZipFile(pptx, "r") as archive:
         theme = theme_colors(archive)
+        chart_slides = chart_slide_map(archive)
+        chart_texts: dict[str, str] = {}
         for name in archive.namelist():
             if not VISIBLE_PART.match(name):
                 continue
             text = archive.read(name).decode("utf-8", "replace")
+            if name.startswith("ppt/charts/"):
+                chart_texts[name] = text
             colors = Counter(value.upper() for value in SRGB.findall(text))
             for role in SCHEME.findall(text):
                 canonical = SCHEME_ALIASES.get(role, role)
@@ -95,17 +139,31 @@ def check_pptx(pptx: Path, art_direction: Path) -> dict[str, Any]:
         outside = {color: count for color, count in sorted(colors.items()) if color not in allowed}
         if outside:
             slide_match = SLIDE_PART.match(part)
-            slide = int(slide_match.group(1)) if slide_match else None
+            slide = int(slide_match.group(1)) if slide_match else chart_slides.get(part)
+            is_chart = part in chart_texts
+            elements = chart_element_colors(chart_texts[part]) if is_chart else {}
+            message = (
+                f"{part} contains colors outside the approved light/dark role palettes: "
+                + ", ".join(f"{color} x{count}" for color, count in outside.items())
+            )
+            if (
+                is_chart
+                and GENERATOR_DEFAULT_COLOR in outside
+                and set(elements) & GENERATOR_DEFAULT_ROLES
+            ):
+                message += (
+                    " — 000000 sits in chart chrome (axis/legend/title): the generator left"
+                    " pptxgenjs defaults. Set those colors once in pptx-visuals.js chart"
+                    " options instead of patching each chart"
+                )
             issues.append({
                 "slide": slide,
                 "part": part,
                 "severity": "major",
                 "code": "off-palette-color",
-                "message": (
-                    f"{part} contains colors outside the approved light/dark role palettes: "
-                    + ", ".join(f"{color} x{count}" for color, count in outside.items())
-                ),
+                "message": message,
                 "colors": outside,
+                **({"elements": elements} if elements else {}),
             })
     return {
         "ok": not issues,

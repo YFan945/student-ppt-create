@@ -234,6 +234,17 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 **可验证**：同一 reference 全文读取次数 ≤ 1；单个子代理实例峰值 ctx ≤200k
 （2026-09-18 实测 699k）；`next --json` 的 `builder_instance_reuse` 不报任何实例跨轮。
 
+**运行时执行（v0.16 起）**：上面的目标不再是散文。`session_budget` 是机器契约
+（pipeline-contract.json）：峰值 ≤150k、单会话 ≤150 分钟、任务总量 ≤25M token。
+`advance` / `next --json` 的 `usage` 块实时报告这三项与剩余耗时预估；任一超限即返回
+`session_rotate`、写 `session-handoff.md`（状态、路径、下一动作、预算、history 尾部），
+并在换会话前拒绝执行任何后续确定性步骤。新会话（transcript 来源变化）自动解除刹车；
+度量误报用 `advance --resume-after-handoff` 显式解锁，解锁记入 manifest 与 ledger。
+
+**可验证**：`session_budget` 三项与本段目标一致；超阈值后 `advance` 退出码 2 且
+`status: session_rotate`；`session-handoff.md` 存在且含 resume 命令；ledger 含
+`session-brake` 状态跃迁，`pipeline_report` 计入 `advance_session_rotations`。
+
 ## CD-9 读图：并行、一次、看图
 
 DeepSeek Flash 视觉按约 1300×1300 缩放，**每张图封顶 1024 token**。禁止的是
@@ -319,7 +330,7 @@ Claude Code 把一条消息的 content blocks 拆成多行，逐行数就永远�
 所以并行调用必须由**插件自己的指令面**要求——agent 定义确实会进 prompt
 （实测 22 份快照含其正文），这里写的每一句都是到达模型的。
 
-**并行分片仅用于 `high-score`**：`basic` 全程使用一个 Builder Packet，省掉多实例读取、协调和讲稿合并。`next --json` 在 `high-score` 的 `initial` / `repair` 给出 `builder_shards` 时，在**同一条消息里
+**并行分片不用于 `fast`**：`fast` 全程使用一个 Builder Packet（standard 至多 2 个分片，rigorous 至多 3 个），省掉多实例读取、协调和讲稿合并。`next --json` 在 `standard`/`rigorous` 的 `initial` / `repair` 给出 `builder_shards` 时，在**同一条消息里
 spawn 全部 shard**（各自不传 `name`、只做自己的 slide ids、只写自己的
 `speaker-notes-shard-<N>.md`）。分片由管线按页号轮转计算，**天然互斥且页数均衡**；
 `build` 以已有 `speaker-notes.md` 为逐页基线再合并碎片，repair 覆盖同名 shard 时仍保留

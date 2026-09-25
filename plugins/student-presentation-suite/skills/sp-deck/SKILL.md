@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.15.11
+version: 0.16.0
 ---
 
 # Student Presentation PPT
@@ -26,7 +26,7 @@ version: 0.15.11
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" next --work-dir <wd> --json
 ```
 
-只读 `next` 列出的路径。**主会话不得直接实现、读取或修复 `pages/pNN-*.js`**：`high-score` 先让 builder 校准高杠杆页再补齐其余页面；`basic` 直接实现全部 scaffold 页；主会话只接收 `BUILDER_DONE` / `BUILDER_BLOCKED` 紧凑信封，不接收页面源码。
+只读 `next` 列出的路径。**主会话不得直接实现、读取或修复 `pages/pNN-*.js`**：`standard`/`rigorous` 先让 builder 校准高杠杆页再补齐其余页面；`fast` 直接实现全部 scaffold 页；主会话只接收 `BUILDER_DONE` / `BUILDER_BLOCKED` 紧凑信封，不接收页面源码。
 
 视觉 QA **必须看图**（CD-9）：校准与最终逐页复核由隔离的 visual-critic 读取当前预览，主会话不重复读取同一批图。只有处理具体 blocker 或争议页时，主会话才按需读取对应 PNG；同一 sha256 不得再读。主会话全尺寸大图（>150KB）预算是 6 张；同一条 `ls`/`cat`/`find` 类只读巡检命令一个会话最多 2 次，第 3 次会被 `cost_guard` 拒绝。
 
@@ -36,7 +36,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" next --wor
 
 `next --json` 的 `contract` 是按阶段选择的紧凑执行契约，含当前 policy hash、QA 顺序和 repair budget；不再预读整套 references。仅在具体内容/设计问题无法由当前契约解决时，按需读对应 reference。intake 规则仍以 `../../references/presentation-intake.md` 为准，机器规则以 `../../references/pipeline-contract.json` 为准。
 
-**常规推进用 `advance --brief-json`，`next --json` 退为调试/巡检入口**（完整输出仍可用 `advance --json`）：`advance` 自动串行执行校准预览、build、render、交付物准备、已有独立评审后的 QA、repair 登记和 complete；只在确需 Builder、Critic 或用户输入时停下。Critic 写出与当前渲染匹配的报告及 receipt 后，再调用一次 `advance` 即可执行 QA，并在有 blocker 时登记 repair、返回 Builder Packet；同一渲染不得重复 spawn critic。`actions` 只列本轮实际执行的确定性步骤。它不 spawn 子代理，也不替 critic 判断视觉质量。edit_ooxml 首次 build 前仍须主会话应用编辑意图。
+**常规推进用 `advance --brief-json`（默认输出即 brief，`--json` 才给完整 dispatch），`next --json` 退为调试/巡检入口**：`advance` 自动串行执行校准预览、build、render、交付物准备、已有独立评审后的 QA、repair 登记和 complete；只在确需 Builder、Critic 或用户输入时停下。Critic 写出与当前渲染匹配的报告及 receipt 后，再调用一次 `advance` 即可执行 QA，并在有 blocker 时登记 repair、返回 Builder Packet；同一渲染不得重复 spawn critic。`actions` 只列本轮实际执行的确定性步骤。它不 spawn 子代理，也不替 critic 判断视觉质量。edit_ooxml 首次 build 前仍须主会话应用编辑意图。brief 同时携带 `usage`（CD-8 实时用量与剩余预估）；超预算时返回 `session_rotate` 并写 `session-handoff.md`——读该 handoff 后**开新会话继续**（自动解除），误报才用 `advance --resume-after-handoff` 显式解锁。
 
 **回执门与 doctor（2026-09-19 实测）**：`plan`/`qa` 因 `missing successful isolated
 *-execution.json` 拒绝时，**不要**反向排查 hook 机制（一次实测为此烧掉 52 个请求、6.5M
@@ -94,7 +94,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" status --w
 4. **Art Direction**：**先读 `references/design-tokens.json`，再呈现具体样式选项或做任何颜色/视觉承诺**——选项只能引用 token 名；6 角色位之外的配色语义（如"暖色琥珀当第二主角"）禁止承诺（2026-09-17 live：承诺"光伏配琥珀"后才发现调色板契约禁色族外颜色，被迫中途换风格并重绑确认哈希）。visual style 只作为 seed，形成 `art-direction.yaml` 与 3–5 个 high-leverage slides。
 5. **Plan**：`<wd>` 必须为项目 `outputs/.pptx-work/<work-id>`；`edit_ooxml` 自动解包到 `ooxml/`，不生成 JS；`rebuild_from_source` 须先写 `source-analysis.md`。`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证 Production Summary、copy-fit、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/` 并建立 `build-manifest.json`。仍处于 `planned` 时确需更新 spec / research chain，直接给同一命令加 `--force --reason <具体原因>`；管线会调用 revision、保留锁的 revision/parent 链，不要 reset intake、移动旧锁或直调 `slide_spec_guard.py`。`--validation-report` 若描述的不是将被 freeze 的那个 spec（研究型 deck 会是 plan 自己编译出的 `slide-spec-compiled.yaml`），plan 会**自动对该 spec 重新生成报告**并在 manifest 记 `spec_report_regenerated`；不要为此手工跑第二遍 plan，也不要自己猜 compiled 文件的哈希。
 6. **Reference + Composition**：high-leverage 页保存 reference selection、2–3 个 silhouette candidates 与 wireframe 选择证据；普通页保留明确 composition intent。
-7. **Calibration Build**：仅 `high-score` 的 `create` / `rebuild_from_source`；`basic` 直接进入第 9 步。按 **archetype coverage** 使用 Builder Packet 默认的 2–3 张代表页；只有需要覆盖默认集遗漏的视觉语法时，才用 `builder_packet.py --mode calibration --slides <ids>` 改样本，脚本会拒绝降低覆盖度的选法。主会话 spawn `student-presentation-suite:presentation-builder`（不传 `name`），传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder 只实现这些页面，**剩余 scaffold 页面**保持不变；覆盖度细则见 `../../references/pipeline-contract.json`。
+7. **Calibration Build**：仅 `standard` / `rigorous` 的 `create` / `rebuild_from_source`（校准轮次上限 standard 1、rigorous 2，超限后遗留 finding 记为风险继续生产）；`fast` 直接进入第 9 步。按 **archetype coverage** 使用 Builder Packet 默认的 2–3 张代表页；只有需要覆盖默认集遗漏的视觉语法时，才用 `builder_packet.py --mode calibration --slides <ids>` 改样本，脚本会拒绝降低覆盖度的选法。主会话 spawn `student-presentation-suite:presentation-builder`（不传 `name`），传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder 只实现这些页面，**剩余 scaffold 页面**保持不变；覆盖度细则见 `../../references/pipeline-contract.json`。
 8. **Calibration Preview**：收到 `BUILDER_DONE(mode=calibration)` 后，主会话调用 `advance --brief-json` 自动运行确定性 helper；排查预览故障时才直接调用：
 
 ```bash
@@ -109,15 +109,15 @@ helper 只把这些已实现页面组装成临时 `calibration/calibration.pptx`
 `advance` 给出 critic 的 spawn 参数与 `calibration/calibration-visual-review.json` 写入路径：spawn `student-presentation-suite:visual-critic`（不传 `name`）。runtime hook 准备压缩预览并写 receipt；生产 build 校验报告与 receipt 对当前 PPTX/PNG 的绑定。评审带 Major/Critical 就 spawn builder `mode=calibration` 修这些页，再调用 `advance` 重跑预览；**评审全绿之前正式 `build` 会被机械拒绝**。receipt 降级与预览契约见 `../../references/pipeline-contract.json`。
 
 显式改校准样本时，`builder_packet.py --mode calibration --slides <ids>` 会把 packet 与 `builder-active-round.json` **原子地一起更新**；随后 `next` / `advance` 复用这组 slide ids，不会重新落回默认校准集。不要手改 packet 或只改其中一个文件；builder 对每次页面访问都会重验已登记 packet 的 SHA-256，登记后篡改会立即撤销授权。
-9. **Full Isolated Page Build**：`high-score` 在 Calibration 经独立评审可接受后，`basic` 在 plan 后，spawn `presentation-builder`，传绝对 work-dir 与 `mode=initial`。Builder 保留已校准页面，按它们已建立的 typography/spacing/surface/image language 实现**所有剩余 scaffold 页面**。主会话不得打开逐页源码复核，只接受紧凑信封。
+9. **Full Isolated Page Build**：`standard`/`rigorous` 在 Calibration 经独立评审可接受后，`fast` 在 plan 后，spawn `presentation-builder`，传绝对 work-dir 与 `mode=initial`。Builder 保留已校准页面，按它们已建立的 typography/spacing/surface/image language 实现**所有剩余 scaffold 页面**。主会话不得打开逐页源码复核，只接受紧凑信封。
 
-   `basic` 只派一个 Builder，使用一个覆盖全部页面的 Packet，避免分片协调和讲稿合并。`high-score` 仅在 `next --json` 明确给出 `builder_shards` 时按分片派工；每个 Builder 只写自己的页与讲稿片段。
+   `fast` 只派一个 Builder，使用一个覆盖全部页面的 Packet，避免分片协调和讲稿合并。`standard`/`rigorous` 仅在 `next --json` 明确给出 `builder_shards` 时按分片派工（standard 至多 2 个分片）；每个 Builder 只写自己的页与讲稿片段。
 10. **Exploration Gates + Production Build**：运行一次 gates orchestrator，只把 blocker 回到主上下文，完整结果写盘；全绿后调用 `advance --brief-json` 自动 build：
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
   --art-direction <ad> --slide-spec <spec> --evidence-dir <wd> --lock-file <wd>/slide-spec-lock.json \
-  --quality <standard|high-score>
+  --quality <fast|standard|rigorous>
 ```
 
 Windows 下用这个 python 形式。`edit_ooxml` 走原 OOXML 路径；create/rebuild 只有全部页面完成才进入正式 build，未实现页会被机械拒绝。Calibration PPTX 不能替代正式 build。
@@ -125,7 +125,7 @@ Windows 下用这个 python 形式。`edit_ooxml` 走原 OOXML 路径；create/r
 该 orchestrator 会把 delivery 所需的 canonical `visual-generation-report.json` 自动写入 work-dir；它是 repair 后可更新的生成证据，不是冻结输入，QA 会绑定当轮版本，complete 会拒绝 QA 后再次变化；不得直调内部 visual-generation gate 或手写报告。校准预览和正式 `rendered` gate 都会从 PPTX 成品的 slide、chart、diagram XML 核对所选 style 的浅/深六角色 palette，并解析 theme scheme 的基础色；静态门不完整模拟 `tint` / `shade` / `alpha` 等 OOXML 颜色变换，最终观感仍由渲染图与 visual-critic 判断，raster 图片由 provenance 与视觉评审负责。
 11. **Render**：`advance` 在 build 的确定性预检全绿后渲染全部页面；失败则返回免 repair 轮的 Builder 修法（上限 `max_pre_qa_rebuilds`）。相同 PPTX hash 复用渲染，repair 后重新渲染。Critic 只评审预检全绿的 deck。
 12. **Prepare Deliverables**：`advance` 在 render 后、Critic 前按冻结 Slide Spec 生成已确认类型。讲稿正文以最终 PPTX 备注区为准，缺页即拒绝；PDF 绑定当前 render。QA 后仅交付文件变化时复用有效视觉评审，只重跑确定性 QA/Delivery。
-13. **Visual Critique**：Agent `student-presentation-suite:visual-critic`，不传 `name`，独立读取当前预览，写绑定当前 SHA256 的 `visual-review.json`。`basic` 对主观分数与版式建议只记录 advisory，只有无法使用的页面报 critical；`high-score` 的 Major/Critical 仍阻塞。具体口径由 `pptx-visual-critic.md` 和质量门共同定义。
+13. **Visual Critique**：Agent `student-presentation-suite:visual-critic`，不传 `name`，独立读取当前预览，写绑定当前 SHA256 的 `visual-review.json`。`fast` 对主观分数与版式建议只记录 advisory，只有无法使用的页面报 critical；`standard` 额外阻断结构性低分；`rigorous` 的 Major/Critical 仍阻塞。具体口径由 `pptx-visual-critic.md` 和质量门共同定义。
 14. **QA DAG**：Critic 返回后调用 `advance --brief-json`，它验证当前评审与 receipt，再运行 `package → rendered → actual-content → quality → delivery`。产物可用性门失败即停，其余内容门同轮汇总；完整 blocker 在 `pipeline-qa.json`，派生问题不单独修。
 15. **Repair**：有 QA blocker 时，`advance` 自动登记 repair 并返回 `presentation-builder mode=repair` 的 Packet。Builder 只读 Packet 投影的完整 blocker；仅在 Packet 生成失败时回退到 `pipeline-qa.json`。一次处理所有 blocker，不按门分批。
 
@@ -133,7 +133,7 @@ Windows 下用这个 python 形式。`edit_ooxml` 走原 OOXML 路径；create/r
 
    **builder 自己不 build、不 render**（渲染与 `calibration_preview.py` 属于主会话，hook 会拒绝）；页面全改完再回报，主会话跑唯一一次 build。若 builder 在 build 之后又改了页，`build` 允许**一次**补差量重建（`carryover_builds`），避免为一处微调单开一轮。
 
-   `basic` 的 repair 仍只派一个 Builder，一次处理完整 blocker 清单。`high-score` 仅在 `next --json` 给出 `builder_shards` 时分片；无页号的 deck 级 blocker 用一个 Builder。
+   `fast` 的 repair 仍只派一个 Builder，一次处理完整 blocker 清单。`standard`/`rigorous` 仅在 `next --json` 给出 `builder_shards` 时分片；无页号的 deck 级 blocker 用一个 Builder。
 
    **减少回合数本身就是目标**：实测每个回合平均只带 ~1.0 个工具调用（发一个、等结果、再发下一个）。合并调用（CD-1）在时间上等价于省钱——一个回合 10~19 秒，13 页的构建阶段每少 30 个回合就是少 5~10 分钟。`page_brief.py --work-dir <wd> --json`（不带 `--slide`）一次给全 deck 每页的契约，不要逐页调。
 
@@ -148,8 +148,8 @@ Windows 下用这个 python 形式。`edit_ooxml` 走原 OOXML 路径；create/r
 Production Summary confirmation
 → isolated research / compiled Slide Spec / Art Direction
 → ppt_pipeline plan
-→ high-score: isolated builder(calibration) + preview + independent critic
-→ basic: skip calibration
+→ standard/rigorous: isolated builder(calibration) + preview + independent critic
+→ fast: skip calibration
 → isolated builder(initial: remaining pages, preserving calibration)
 → exploration gates → production build（确定性预检：rendered + actual-content + quality 确定性部分）
 → render（预检全绿才放行）→ prepare-deliverables（仅已确认类型）→ isolated visual-critic + QA DAG（内容门全跑后汇总）
@@ -157,7 +157,7 @@ Production Summary confirmation
 → build → render → prepare-deliverables → critique → QA → complete
 ```
 
-核心原则：**high-score 先用极少数真实页面校准视觉系统；basic 在最终成品阶段集中评审。** Skill 负责智能编排，Builder/Researcher/Critic 各自隔离高上下文工作，Pipeline 负责确定性状态和交付；Calibration helper 只负责便宜、可追溯的早期视觉反馈，**但它的判定权属于独立 critic，不属于 spec 的作者**。
+核心原则：**standard/rigorous 先用极少数真实页面校准视觉系统；fast 在最终成品阶段集中评审。** Skill 负责智能编排，Builder/Researcher/Critic 各自隔离高上下文工作，Pipeline 负责确定性状态和交付；Calibration helper 只负责便宜、可追溯的早期视觉反馈，**但它的判定权属于独立 critic，不属于 spec 的作者**。
 
 ## Output contract
 

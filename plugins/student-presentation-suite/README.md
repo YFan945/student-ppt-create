@@ -116,7 +116,7 @@ Before production, confirm:
 
 The plugin reuses confirmed information and asks only for missing fields. Each
 missing field receives a recommendation and impact statement. Quality level
-defaults to `high-score` and citation style to classroom citations — neither is
+defaults to `fast` and citation style to classroom citations — neither is
 asked during intake. A user delegation such as “you decide” fills
 recommendations but still requires approval of the complete Production Summary,
 confirmed via `AskUserQuestion` (confirm / adjust / change style).
@@ -252,9 +252,8 @@ contained images, accessible alt text, and projection-readable charts.
 
 ## Quality Gates
 
-The default workflow has three gates: one Slide Spec/Brief validation report; package validation
-plus complete rendering and page-by-page review of the final PPTX; then one simplified delivery
-report binding the current PPTX, planning report, package report, previews, and requested outputs.
+The flow's gates, round budgets and delivery tiers live in the generated "Pipeline flow"
+table at the end of this file (rendered from `references/pipeline-contract.json` — do not edit).
 Separate content QA, asset, visual-inspection, and QA-manifest reports are advanced diagnostics,
 not normal deliverables.
 
@@ -293,8 +292,7 @@ split: `scripts/cost_guard.py` handles context/inspection cost only;
 `scripts/builder_guard.py` owns page-source isolation. This avoids duplicate policy
 while still allowing the first legitimate image Read.
 
-At most one repair loop may change the
-spec/composer/generator and rebuild the complete candidate; a remaining QA blocker
+Repair round budgets are stated in the generated "Pipeline flow" table; a remaining QA blocker
 is fixed via
 `skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>` instead
 of resetting the whole pipeline. Deterministic misses are caught even earlier:
@@ -304,8 +302,8 @@ locally — they read the PPTX and the spec and need no critic; while they fail,
 `render` is refused and `next` routes to a budget-free builder fix-and-rebuild —
 the critic never reviews a doomed deck.
 
-`quality_level: basic` uses one Builder for the whole deck and one final independent review. Subjective visual scores and style suggestions remain visible advisories; unusable pages and deterministic failures still block delivery.
-`quality_level: high-score` first calibrates representative pages.
+`quality_level: fast` (the default) uses one Builder for the whole deck and one final independent review. Subjective visual scores and style suggestions remain visible advisories; unusable pages and deterministic failures still block delivery.
+`quality_level: standard` / `rigorous` first calibrate representative pages (standard one round, rigorous up to two with blocking style majors).
 Calibration is reviewed by the independent `visual-critic`, not by the main
 session. The main session authors the Slide Spec and the Art Direction, so it
 cannot see that its own treatment repeats on every page; its own reading of the
@@ -343,7 +341,7 @@ inline-script forms of reading work-dir JSON or rewriting page modules.
 
 Wall clock is turns × round-trip latency, and the gates are not what costs it:
 the whole suite measured **150 seconds** across a 147-minute run (1.7%), against
-**519 model round-trips** at one tool call each. For `high-score`, when `next --json` supplies
+**519 model round-trips** at one tool call each. For `standard`/`rigorous`, when `next --json` supplies
 `builder_shards`, the main session spawns ALL shards in one message so the page
 work runs concurrently — shards are mutually exclusive by construction, each
 writes its own `speaker-notes-shard-<N>.md` (build assembles sections by slide number and lets a
@@ -459,3 +457,32 @@ are required before QA/complete where those stages apply. Image provider
 commands need a user-approved SHA256; project JSON cannot authorize them.
 PowerPoint COM checks are separate: `references/powerpoint-smoke.md`. LibreOffice
 success is not Office certification.
+
+<!-- pipeline-table:start -->
+### Pipeline flow (generated from references/pipeline-contract.json — do not edit)
+
+Workflow states: `intake_pending` → `intake_confirmed` → `planned` → `producing` → `qa` → `complete` (terminal: `incomplete` / `blocked`).
+
+QA gates run in contract order: `package` → `rendered` → `actual_content` → `quality` → `delivery`. Deterministic pre-QA (`rendered` +
+`actual_content` + the quality gate's deterministic half) runs right after build; a
+deck that is not deterministically green never reaches render or the critic.
+
+| Round budget | Value |
+| --- | --- |
+| QA repair rounds (base) | 3 |
+| QA repair rounds (hard cap after `repair --extend` justification) | 6 |
+| Pre-QA rebuilds (no repair round consumed) | 2 |
+| Parallel builder shards (tier-capped) | 3 |
+
+Delivery tiers (`quality_level`; legacy `basic` / `high-score` accepted as aliases):
+
+| Tier | Calibration rounds | Shard cap | Blocks |
+| --- | --- | --- | --- |
+| `fast` | 0 | 1 | critical + deterministic failures |
+| `standard` | 1 | 2 | + structural lows (hierarchy/focal_point) |
+| `rigorous` | 2 | 3 | + style majors + visual regression, per-slide floor 6.0 |
+
+Delivery guarantee: every confirmed artifact is content-verified against the frozen
+Slide Spec (PPTX/PDF page counts, per-page script sections) and hash-bound to its
+final path under `outputs/` before `complete`.
+<!-- pipeline-table:end -->

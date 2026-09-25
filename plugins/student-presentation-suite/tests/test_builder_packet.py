@@ -138,7 +138,7 @@ class BuilderPacketTests(unittest.TestCase):
 
     def test_initial_shard_packets_are_disjoint_with_own_notes_targets(self) -> None:
         descriptors = self.packet.prepare_packets(self.work, "initial")
-        self.assertGreaterEqual(len(descriptors), 2, "four pages should shard")
+        self.assertEqual(1, len(descriptors), "four ordinary pages no longer force multiple shards")
         seen: list[int] = []
         notes: list[str] = []
         for descriptor in descriptors:
@@ -148,6 +148,23 @@ class BuilderPacketTests(unittest.TestCase):
             notes.append(packet["speaker_notes_target"])
         self.assertEqual(sorted(seen), [1, 2, 3, 4], "shards must cover every page exactly once")
         self.assertEqual(len(set(notes)), len(notes), "shards must not share a notes fragment")
+
+    def test_split_shards_balances_by_complexity(self) -> None:
+        """Heavy pages earn parallelism: 4 pages x weight 3 = 12 -> two shards."""
+        shards = self.packet.split_shards(
+            [1, 2, 3, 4], self.work, weights={1: 3, 2: 3, 3: 3, 4: 3}
+        )
+        self.assertEqual(2, len(shards))
+        covered = sorted(slide for group in shards for slide in group["slides"])
+        self.assertEqual([1, 2, 3, 4], covered)
+        self.assertEqual(len(covered), len(set(covered)), "shards are disjoint")
+
+    def test_tier_cap_limits_shard_count(self) -> None:
+        shards = self.packet.split_shards(
+            [1, 2, 3, 4], self.work, max_parallel=1,
+            weights={1: 3, 2: 3, 3: 3, 4: 3},
+        )
+        self.assertEqual([], shards, "cap 1 means one builder, no shard plan")
 
     def test_basic_single_builder_packet_covers_all_pages(self) -> None:
         descriptors = self.packet.prepare_packets(self.work, "initial", single_builder=True)

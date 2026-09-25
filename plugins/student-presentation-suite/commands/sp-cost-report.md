@@ -16,9 +16,15 @@ description: 复盘一次会话的 token 与时间成本。解析会话日志，
 | `--last <n>` | 最近 n 次会话 |
 | `--project <目录名>` | 按项目过滤，如 `E--test-ppt` |
 | `--session <path>` | 指定 transcript |
+| `--model-io <path>` | 解析 model-io JSONL（ZCode 会话日志）而非 Claude transcript |
+| `--agent-metadata-dir <path>` | 与 `--model-io` 搭配，合并子代理 usage 元数据 |
 | `--json` | 机器可读输出 |
 
-日志位置：`<CLAUDE_CONFIG_DIR 或 ~/.claude>/projects/<项目>/<sessionId>.jsonl`。
+日志位置（按运行环境二选一）：
+
+- ZCode：`~/.zcode/cli/rollout/model-io-sess_<sessionId>.jsonl`（子代理为
+  `model-io-sess_subagent_agent_*.jsonl`），用 `--model-io` 解析；
+- Claude Code：`<CLAUDE_CONFIG_DIR 或 ~/.claude>/projects/<项目>/<sessionId>.jsonl`。
 
 ## 何时运行
 

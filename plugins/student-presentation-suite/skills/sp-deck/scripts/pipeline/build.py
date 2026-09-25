@@ -37,6 +37,7 @@ from pipeline.core import (  # noqa: E402
 from pipeline.scheduler import (  # noqa: E402
     merge_speaker_note_shards,
 )
+from shared.quality_tiers import tier_policy  # noqa: E402
 
 
 def enforce_page_copy_fidelity(work_dir: Path, spec: Path) -> None:
@@ -100,9 +101,17 @@ def cmd_build(args: argparse.Namespace) -> int:
     if not editing and state == "planned":
         # Authorise the full production build only on an independently reviewed
         # calibration; the doc-only version of this rule was already in SKILL.md
-        # and was not followed in the 2026-09-18 live session.
+        # and was not followed in the 2026-09-18 live session. Tier policy decides
+        # whether calibration applies and how many fix rounds it may spend before
+        # remaining majors are carried as recorded risk.
         review = calibration_review(work_dir)
-        if (manifest.get("quality_level") == "high-score" or review["required"]) and not review["ok"]:
+        policy = tier_policy(manifest.get("quality_level"))
+        rounds = int((manifest.get("calibration") or {}).get("rounds") or 0)
+        if (
+            (policy["calibration"] or review["required"])
+            and not review["ok"]
+            and rounds < policy["calibration_max_rounds"]
+        ):
             raise RefusedError(
                 "full build refused: " + (review["reason"] or "calibration review is not green")
                 + f". Run `next --json`; the review is written to {review['path']}"

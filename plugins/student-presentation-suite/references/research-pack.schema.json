@@ -96,6 +96,7 @@
             "minLength": 1,
             "description": "Genuine independence key. Two sources that republish the same upstream report — a wire story and a site carrying that wire story, an agency summary and the report it summarises — must share one group. Cross-validation counts distinct groups, not distinct rows; without this a single origin masquerades as two sources."
           },
+            "sha256": { "type": "string" },
           "type": {
             "enum": [
               "user-file",
@@ -159,6 +160,21 @@
             "description": "受影响的 finding / data_point id"
           },
           "resolution": {"type": "string", "description": "如何取舍，或明确写未解决"}
+        }
+      }
+    },
+    "pack_author": {
+      "enum": ["researcher", "import_user_materials"]
+    },
+    "must_verify": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["claim"],
+        "properties": {
+          "claim": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["verified", "unresolved"] },
+          "source_ids": { "type": "array", "items": { "type": "string" } }
         }
       }
     },

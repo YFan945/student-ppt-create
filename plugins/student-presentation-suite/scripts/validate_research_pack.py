@@ -485,6 +485,63 @@ def contract_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def must_verify_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
+    """Pre-declared stop condition: 3-5 must-verify claims, each covered or named.
+
+    The researcher lists the claims that actually decide the deck BEFORE
+    retrieval starts and stops when every one is cross-validated or explicitly
+    unresolved — a leftover budget is not a goal (2026-09-22: one researcher
+    spent 42 minutes / 4.0M tokens largely beyond sufficiency).
+    """
+    entries = pack.get("must_verify")
+    if entries is None:
+        return []
+    if not isinstance(entries, list):
+        return [issue("major", "must_verify_invalid", "must_verify must be a list of claim entries")]
+    out: list[dict[str, Any]] = []
+    budget = pack.get("budget")
+    band = str((budget or {}).get("band") if isinstance(budget, dict) else budget or "").lower()
+    severity = "minor" if band == "simple" else "major"
+    if not 3 <= len(entries) <= 5:
+        out.append(
+            issue(
+                severity,
+                "must_verify_count",
+                f"must_verify declares {len(entries)} claims; 3-5 are required before retrieval starts",
+            )
+        )
+    known_sources = {str(entry.get("id")) for entry in items(pack, "sources")}
+    for entry in entries:
+        if not isinstance(entry, dict) or not str(entry.get("claim") or "").strip():
+            out.append(issue(severity, "must_verify_claim_missing", "each must_verify entry needs a claim statement"))
+            continue
+        if str(entry.get("status") or "") == "unresolved":
+            continue
+        refs = [str(value) for value in (entry.get("source_ids") or [])]
+        if not refs:
+            out.append(
+                issue(
+                    severity,
+                    "must_verify_uncovered",
+                    f"must-verify claim {entry.get('claim')!r} has no source_ids and is not "
+                    "marked unresolved — cover it with sources or record it as unresolved "
+                    "(that is the stop condition, not more searching)",
+                )
+            )
+            continue
+        missing = sorted(set(refs) - known_sources)
+        if missing:
+            out.append(
+                issue(
+                    severity,
+                    "must_verify_unknown_source",
+                    f"must-verify claim {entry.get('claim')!r} references unknown sources {missing}",
+                    entry=entry.get("claim"),
+                )
+            )
+    return out
+
+
 def validate(pack: dict[str, Any]) -> dict[str, Any]:
     problems = (
         schema_issues(pack)
@@ -493,6 +550,7 @@ def validate(pack: dict[str, Any]) -> dict[str, Any]:
         + tier_issues(pack)
         + cross_validation_issues(pack)
         + contract_issues(pack)
+        + must_verify_issues(pack)
         + budget_issues(pack)
         + hygiene_issues(pack)
     )

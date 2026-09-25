@@ -21,9 +21,14 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
+ROOT = HERE.parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import art_direction_check as art_check  # noqa: E402
 import composition_candidate_check as candidate_check  # noqa: E402
+
+from shared.quality_tiers import tier_policy  # noqa: E402
 
 REFERENCE_LIBRARY = HERE.parent / "references" / "visual-reference-library.json"
 BLOCKING = {"critical", "major"}
@@ -264,7 +269,12 @@ def main() -> int:
     parser.add_argument("--slide-spec", type=Path, required=True)
     parser.add_argument("--art-direction", type=Path, required=True)
     parser.add_argument("--evidence-dir", type=Path, required=True)
-    parser.add_argument("--quality", choices=["high-score", "standard"], default="high-score")
+    parser.add_argument(
+        "--quality",
+        choices=["fast", "standard", "rigorous", "basic", "high-score"],
+        default="high-score",
+        help="delivery tier (legacy basic/high-score accepted); rigorous is strict",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict", action="store_true", help="deprecated no-op alias; gates are fail-closed by default")
@@ -275,11 +285,12 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    quality = "high-score" if tier_policy(args.quality)["strict_v08"] else "standard"
     report = validate_visual_generation(
         slide_spec=args.slide_spec,
         art_direction=args.art_direction,
         evidence_dir=args.evidence_dir,
-        quality=args.quality,
+        quality=quality,
     )
     payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:

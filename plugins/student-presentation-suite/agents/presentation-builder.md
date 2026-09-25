@@ -56,8 +56,8 @@ For `repair` mode:
   repair round; never work from a blocker list transcribed in the spawn prompt;
 - edit only the blocker pages plus any directly shared helper/page module that must change to fix them;
 - do not opportunistically redesign unrelated pages;
-- **never make an accepted page worse.** `high-score` blocks a per-slide visual
-  regression of 1.5 or more; `basic` records it as advisory. Do not redesign
+- **never make an accepted page worse.** `rigorous` blocks a per-slide visual
+  regression of 1.5 or more; `fast` and `standard` record it as advisory. Do not redesign
   passing pages to chase a subjective score;
 - never claim a blocker is fixed without changing the relevant generator artifact.
 
@@ -96,7 +96,7 @@ Use `Edit` for existing page modules and `Write` only for allowed new work-dir a
 
 Implement the frozen copy faithfully; do not paraphrase slide copy simply to make layout easier. Preserve evidence markers and source references. Use the selected composition intent rather than falling back to repetitive card grids. Respect the Art Direction typography, spacing, palette roles, image treatment, and high-leverage slide intent. Prefer a deterministic fallback over a clever but fragile layout.
 
-Calibration establishes the visual thesis for `high-score` decks. In `initial` / `repair` mode, follow the packet's `calibration_style` contract when present; a `basic` deck has no calibration, so use the packet's Art Direction instead. You must never read calibration page modules to infer style: they belong to another builder or the archive. In `calibration` mode, record what you actually established in `calibration/style-summary.json`; the pipeline assembles later builders' style contract from those bytes.
+Calibration establishes the visual thesis for `standard` and `rigorous` decks. In `initial` / `repair` mode, follow the packet's `calibration_style` contract when present; a `fast` deck has no calibration, so use the packet's Art Direction instead. You must never read calibration page modules to infer style: they belong to another builder or the archive. In `calibration` mode, record what you actually established in `calibration/style-summary.json`; the pipeline assembles later builders' style contract from those bytes.
 
 Before returning, verify every target page has no scaffold marker and that all edited files remain inside the work directory. Do not build the production deck yourself.
 

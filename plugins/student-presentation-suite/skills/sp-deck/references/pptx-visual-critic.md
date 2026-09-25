@@ -17,9 +17,9 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 
 ## blocker 口径必须与质量门一致
 
-`high-score` 的 blocker = `critical` + `major`。`basic` 的主观视觉分数、重复版式和
+`rigorous` 的 blocker = `critical` + `major`。`fast` 的主观视觉分数、重复版式和
 `major` 风格意见只作 advisory；只有无法使用的页面（例如文字无法辨认）报 `critical` 并
-阻塞。Critic 应把基础档的风格建议写成 `minor`，`blocker_count` 与回给主会话的计数按
+阻塞。Critic 应把 `fast` 档的风格建议写成 `minor`，`blocker_count` 与回给主会话的计数按
 当前质量档计算。QA 保留这些建议，但不会因此要求 Builder 反复改版。
 
 2026-09-17 live：critic 按自己的习惯回报"blocker 数：0（critical 0 / major 8 / minor 12）"，
@@ -108,7 +108,7 @@ direction 在生产时被丢失。
 优先使用稳定名称：`cover`、`statement`、`typography`、`split`、`editorial`、`image-led`、`chart`、`diagram`、`flow`、`timeline`、`comparison`、`matrix`、`table`、`dashboard`、`quote`、`reference`、`equal-cards`、`card-grid`、`three-column`、`numbered-list`、`plain-list`、`other`。
 
 `equal-cards / card-grid / three-column / numbered-list / plain-list` 是高复用风险结构。
-连续两页同类、任意结构连续三页，在 `high-score` 属 Major；在 `basic` 留作改进建议。
+连续两页同类、任意结构连续三页，在 `rigorous` 属 Major；在 `fast`/`standard` 留作改进建议。
 
 ## AI-template feel
 

@@ -29,6 +29,14 @@ from pipeline.deliverables import cmd_prepare_deliverables  # noqa: E402
 from pipeline.dispatch import (  # noqa: E402
     build_next_payload,
 )
+from pipeline.handoff import (  # noqa: E402
+    brake_state,
+    current_usage,
+    mark_breached,
+    release_brake,
+    usage_block,
+    write_session_handoff,
+)
 from pipeline.qa import cmd_qa  # noqa: E402
 from pipeline.render import (  # noqa: E402
     cmd_render,
@@ -53,6 +61,49 @@ def _run_quietly(func, ns: argparse.Namespace) -> int:
     JSON would break every machine consumer."""
     with _redirect_stdout(sys.stderr):
         return func(ns)
+
+
+BRIEF_KEYS = (
+    "status", "actions", "agent", "mode", "packet", "packets",
+    "reason", "error", "packet_fallback_count",
+    "usage", "handoff", "breaches", "resume_command",
+)
+BRIEF_DISPATCH_KEYS = (
+    "state", "next_command", "review_output", "repair_budget", "session_segment",
+    "builder_shards", "pre_qa", "session_rotate", "usage",
+)
+
+
+def _emit(result: dict[str, Any], args: argparse.Namespace, work_dir: Path) -> None:
+    """Print the result: full JSON on --json, otherwise the CD-7 brief.
+
+    The brief is the default because the full dispatch is the single largest
+    stable block entering the main session's context at every boundary; the
+    detail stays one flag away (`--json`) when judgement needs it."""
+    if getattr(args, "json", False):
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+    dispatch = result.get("dispatch") or {}
+    brief = {key: result[key] for key in BRIEF_KEYS if key in result}
+    brief["work_dir"] = str(work_dir)
+    stage = str(dispatch.get("state") or "")
+    summary = work_dir / f"stage-{stage}-summary.md"
+    if summary.is_file():
+        brief["stage_summary"] = str(summary)
+    brief["resume_command"] = result.get("resume_command") or (
+        f'{sys.executable} "{HERE / "ppt_pipeline.py"}" advance '
+        f'--brief-json --work-dir "{work_dir}"'
+    )
+    for key in BRIEF_DISPATCH_KEYS:
+        if key in dispatch and key not in brief:
+            brief[key] = dispatch[key]
+    print(json.dumps(brief, ensure_ascii=False, separators=(",", ":")))
+    line = f"ppt_pipeline: advance → {result['status']}"
+    if result.get("mode"):
+        line += f" ({result['mode']})"
+    if result.get("actions"):
+        line += f" — executed: {', '.join(result['actions'])}"
+    print(line, file=sys.stderr)
 
 
 def cmd_advance(args: argparse.Namespace) -> int:
@@ -81,7 +132,43 @@ def cmd_advance(args: argparse.Namespace) -> int:
     actions: list[str] = []
     result: dict[str, Any] = {}
     step_cap_hit = False
-    start_state = str((load_manifest(work_dir) or {}).get("state") or "(absent)")
+    manifest = load_manifest(work_dir)
+    start_state = str((manifest or {}).get("state") or "(absent)")
+    usage = current_usage()
+    if manifest is not None:
+        brake, detail = brake_state(manifest, usage)
+        wants_resume = bool(getattr(args, "resume_after_handoff", False))
+        if brake == "rotate":
+            if not wants_resume:
+                # CD-8 hard brake: the handoff is the deliverable here. No
+                # deterministic step runs again until the session rotates.
+                handoff = write_session_handoff(work_dir, manifest, usage)
+                mark_breached(work_dir, manifest, usage, detail["breaches"], handoff)
+                result = {
+                    "status": "session_rotate",
+                    "actions": [],
+                    "breaches": detail["breaches"],
+                    "handoff": handoff,
+                    "usage": usage_block(usage, manifest),
+                    "resume_command": (
+                        f'{sys.executable} "{HERE / "ppt_pipeline.py"}" '
+                        f'advance --resume-after-handoff --work-dir "{work_dir}"'
+                    ),
+                }
+                record(
+                    manifest, "advance", start_state, start_state,
+                    status="session_rotate", actions=[], step_cap=False,
+                )
+                save_manifest(work_dir, manifest)
+                _emit(result, args, work_dir)
+                return 2
+            release_brake(work_dir, manifest, "resume-after-handoff", usage)
+            manifest = load_manifest(work_dir)
+        elif detail.get("released") and str(
+            (detail.get("previous") or {}).get("status") or ""
+        ) == "breached":
+            release_brake(work_dir, manifest, str(detail["released"]), usage)
+            manifest = load_manifest(work_dir)
     try:
         for _ in range(MAX_ADVANCE_STEPS):
             payload = build_next_payload(work_dir)
@@ -147,6 +234,15 @@ def cmd_advance(args: argparse.Namespace) -> int:
                     detail = (proc.stderr or proc.stdout or "").strip()
                     raise RefusedError(f"calibration preview failed: {detail[:300]}")
                 actions.append("calibration_preview")
+                # One preview == one calibration round. The tier budget (standard 1,
+                # rigorous 2) is counted here because this is the one mechanical step
+                # every round must pass through exactly once.
+                manifest = load_manifest(work_dir)
+                if manifest is not None:
+                    calibration = dict(manifest.get("calibration") or {})
+                    calibration["rounds"] = int(calibration.get("rounds") or 0) + 1
+                    manifest["calibration"] = calibration
+                    save_manifest(work_dir, manifest)
                 continue
             if " render " in bordered:
                 _run_quietly(cmd_render, argparse.Namespace(work_dir=work_dir, cols=3, prefix="slide"))
@@ -208,34 +304,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
             save_manifest(work_dir, manifest)
     except Exception as exc:  # the ledger must never turn a finished advance into a failure
         result["ledger_error"] = str(exc)[:160]
-    if getattr(args, "brief_json", False):
-        dispatch = result.get("dispatch") or {}
-        brief = {key: result[key] for key in (
-            "status", "actions", "agent", "mode", "packet", "packets",
-            "reason", "error", "packet_fallback_count",
-        ) if key in result}
-        brief["work_dir"] = str(work_dir)
-        stage = str(dispatch.get("state") or "")
-        summary = work_dir / f"stage-{stage}-summary.md"
-        if summary.is_file():
-            brief["stage_summary"] = str(summary)
-        brief["resume_command"] = (
-            f'{sys.executable} "{HERE / "ppt_pipeline.py"}" advance '
-            f'--brief-json --work-dir "{work_dir}"'
-        )
-        for key in ("state", "next_command", "review_output", "repair_budget", "session_segment"):
-            if key in dispatch:
-                brief[key] = dispatch[key]
-        print(json.dumps(brief, ensure_ascii=False, separators=(",", ":")))
-    elif getattr(args, "json", False):
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        line = f"ppt_pipeline: advance → {result['status']}"
-        if result.get("mode"):
-            line += f" ({result['mode']})"
-        if actions:
-            line += f" — executed: {', '.join(actions)}"
-        print(line)
+    _emit(result, args, work_dir)
     return 0 if result["status"] != "refused" else 2
 
 

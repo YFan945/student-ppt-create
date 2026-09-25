@@ -517,6 +517,12 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
     title: data.title || data.measure || 'Key result',
     titleFontFace: H.fontFamily(tokens).title,
     titleFontSize: chartText.chartTitle,
+    // Chart chrome defaults are generator-owned: pptxgenjs falls back to black
+    // axis lines / legend text / chart titles, which trips the palette gate as
+    // off-palette 000000. Bind every chrome color to the palette here so pages
+    // never carry per-chart color patching.
+    titleColor: p.text,
+    legendColor: p.muted,
     // PptxGenJS ignores a `color` property on series data. Supplying one color per
     // series through chartColors writes c:ser/c:spPr and keeps style tokens visible.
     chartColors,
@@ -546,6 +552,8 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
     chartOptions.valAxisMajorUnit = axisRange.majorUnit;
     chartOptions.catAxisLabelColor = p.muted;
     chartOptions.valAxisLabelColor = p.muted;
+    chartOptions.catAxisLineColor = p.muted;
+    chartOptions.valAxisLineColor = p.muted;
     chartOptions.catGridLine = { style: 'none' };
     chartOptions.valGridLine =
       data.gridlines === true ? { color: p.muted, size: 1 } : { style: 'none' };

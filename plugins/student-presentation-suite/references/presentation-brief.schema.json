@@ -52,7 +52,7 @@
       "enum": ["problem-solution", "research", "timeline", "comparison", "case-study", "product"]
     },
     "interaction_mode": { "enum": ["beginner", "expert"] },
-    "quality_level": { "enum": ["basic", "high-score"] },
+    "quality_level": { "enum": ["fast", "standard", "rigorous", "basic", "high-score"] },
     "rubric": { "type": "string" },
     "source_material": {
       "oneOf": [

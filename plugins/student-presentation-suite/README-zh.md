@@ -96,7 +96,7 @@ AF_UNIX 时，render 才按需编译并加载内置 shim。
 - 必需交付物。
 
 插件会复用已确认的信息，只询问缺失项，并为每个缺失项提供推荐值和影响。
-质量目标默认 `high-score`，引用风格默认课堂引用，两者都不在 intake 中询问。
+质量目标默认 `fast`，引用风格默认课堂引用，两者都不在 intake 中询问。
 即使用户说“你决定”，也只是自动采用推荐值，仍需用户通过 `AskUserQuestion`
 （确认 / 调整方案 / 更换视觉风格）确认完整 Production Summary。
 
@@ -207,10 +207,9 @@ dashboard/architecture/matrix/quote/summary/reference 等布局族。图片默�
 
 ## 质量门禁
 
-默认流程只有三道门禁：一次 Slide Spec/Brief 校验；最终 PPTX 的 package validation、完整
-渲染和逐页查看；最后一次简化 delivery check，绑定当前 PPTX、规划报告、package report、
-预览和用户要求的输出。content QA、asset、visual-inspection、QA manifest 等独立报告只保留给
-高风险编辑、排错或用户明确要求审计证据的场景。
+默认流程的门禁、轮次预算与交付档位见文末「管线流程」生成表（由
+`references/pipeline-contract.json` 生成，勿手改）。content QA、asset、visual-inspection、
+QA manifest 等独立报告只保留给高风险编辑、排错或用户明确要求审计证据的场景。
 
 v0.8 的视觉门禁（Art Direction、composition 候选、探索证据）由一次运行覆盖：
 
@@ -239,15 +238,14 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 
 发现 blocker 时用 `skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>`
 走返工边，不要手工 `workflow_guard.py transition` 推进 `producing` / `complete`。
-最多允许一次“修 spec/composer/generator → 重建整份 candidate → 重跑最终门禁”；
-仍有 blocker 则交付 `incomplete`。确定性缺陷在更早处拦截：`build` 打包后立即本地
+返工轮次预算见「管线流程」生成表；仍有 blocker 则交付 `incomplete`。确定性缺陷在更早处拦截：`build` 打包后立即本地
 跑 `rendered` + `actual-content` 以及 `quality` 门的确定性部分（evidence/timing/lock），
 不绿则 `render` 拒绝、`next` 指向免 repair 轮的 builder 改页重建——critic 从不评审
 注定返工的 deck。QA 通过后 `complete` 使用 `ppt_pipeline.py complete --work-dir <wd>`。
 CI 继续渲染完整场景矩阵，但不会提交生成产物。
 
-`quality_level: basic` 由一个 Builder 完成全部页面，再做一次最终独立评审。主观视觉分数和风格建议保留为 advisory；页面不可用及确定性门失败仍阻止交付。
-`quality_level: high-score` 先校准代表页。**校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与
+`quality_level: fast`（默认）由一个 Builder 完成全部页面，再做一次最终独立评审。主观视觉分数和风格建议保留为 advisory；页面不可用及确定性门失败仍阻止交付。
+`quality_level: standard` / `rigorous` 先校准代表页（standard 校准一轮，rigorous 至多两轮且风格 Major 阻断）。**校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与
 Art Direction 的作者，看不见自己选的视觉语言在每页重复，所以它读预览 PNG 不算评审；
 在 `calibration/calibration-visual-review.json` 存在、绑定当前校准 PPTX、且无
 critical/major 之前，正式 `build` 会被机械拒绝。runtime hook 会按 production / calibration
@@ -274,7 +272,7 @@ JSON / 改页面模块"的各种写法。
 
 **墙钟 = 回合数 × 往返延迟，而门不占时间**：全套门在一次 147 分钟的运行里实测只有
 **150 秒（1.7%）**，其余是 **519 个模型回合**、每个回合只带一个工具调用。`next --json`
-`high-score` 给出 `builder_shards` 时，主会话**在同一条消息里 spawn 全部 shard** 让页面工作并发——
+`standard`/`rigorous` 给出 `builder_shards` 时，主会话**在同一条消息里 spawn 全部 shard** 让页面工作并发——
 分片天然互斥，每个只写自己的 `speaker-notes-shard-<N>.md`（`build` 按页号合并，repair
 分片中较新的同页讲稿会替换旧稿，不会重复），并以已有 `speaker-notes.md` 作为逐页基线，
 所以覆盖同名 repair shard 不会丢失未修改页面。任何一道门都没有改动。`session_cost.py` 现在输出 `turns`、
@@ -336,3 +334,30 @@ source-analysis.md）。编辑保留源文件并须 change-summary.md。QA/compl
 隔离 visual-critic / 研究员凭据（适用阶段）。图片 provider command 需用户批准的
 SHA256，项目 JSON 不能自行授权。PowerPoint 验收见
 `references/powerpoint-smoke.md`；LibreOffice 通过不代表 Office 已验收。
+
+<!-- pipeline-table:start -->
+### 管线流程（由 references/pipeline-contract.json 生成，勿手改）
+
+状态机：`intake_pending` → `intake_confirmed` → `planned` → `producing` → `qa` → `complete`（终止态 `incomplete` / `blocked`）。
+
+QA 门按契约顺序执行：`package` → `rendered` → `actual_content` → `quality` → `delivery`。`build` 打包后立即跑确定性 pre-QA（`rendered` +
+`actual_content` + `quality` 门的确定性半部）；非确定性绿的 deck 不会进入 render 与 critic。
+
+| 轮次预算 | 数值 |
+| --- | --- |
+| QA 返工轮（基数） | 3 |
+| QA 返工轮（`repair --extend` 申报后硬上限） | 6 |
+| pre-QA 免返工重建（不消耗返工预算） | 2 |
+| 并行 Builder 分片上限（按档位收紧） | 3 |
+
+交付档位（`quality_level`，旧值 `basic` / `high-score` 作为别名兼容）：
+
+| 档位 | 校准轮 | 分片上限 | 阻断项 |
+| --- | --- | --- | --- |
+| `fast` | 0 | 1 | critical + 确定性失败 |
+| `standard` | 1 | 2 | + 结构性低分（hierarchy/focal_point） |
+| `rigorous` | 2 | 3 | + 风格 Major + 视觉回归，单页底线 6.0 |
+
+交付保证：每个已确认产物在 `complete` 前按冻结 Slide Spec 核对内容与页数（PPTX/PDF 页数、
+逐页讲稿段数），并绑定最终路径与哈希到 `outputs/` 目录。
+<!-- pipeline-table:end -->

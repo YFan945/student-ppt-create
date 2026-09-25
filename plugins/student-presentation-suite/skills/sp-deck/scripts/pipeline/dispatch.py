@@ -44,6 +44,13 @@ from pipeline.deliverables import (  # noqa: E402
     deliverables_are_current,
     requested_prepared_deliverables,
 )
+from pipeline.handoff import (  # noqa: E402
+    brake_state,
+    current_usage,
+    mark_breached,
+    usage_block,
+    write_session_handoff,
+)
 from pipeline.plan import (  # noqa: E402
     _research_budget,
 )
@@ -55,6 +62,7 @@ from pipeline.scheduler import (  # noqa: E402
     remaining_scaffold_slides,
     slides_named_in_reports,
 )
+from shared.quality_tiers import tier_policy  # noqa: E402
 
 
 def _current_critic_review(work_dir: Path, manifest: dict[str, Any]) -> bool:
@@ -140,7 +148,8 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
             )
     else:
         state = str(manifest.get("state") or "(absent)")
-        basic = manifest.get("quality_level") == "basic"
+        policy = tier_policy(manifest.get("quality_level"))
+        basic = not policy["calibration"]
         summary = work_dir / f"stage-{state}-summary.md"
         read = [str(summary)] if summary.is_file() else []
         forbidden = ["slide-spec.yaml", "art-direction.yaml", "research-pack.json"]
@@ -164,21 +173,22 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
                 payload["allowed_writes"] = [str(work_dir / "ooxml"), str(work_dir / "change-summary.md")]
                 payload["notes"] = "Edit unpacked OOXML preserving the source and preserve contract, then build (pack)."
-            elif manifest.get("quality_level") == "basic":
+            elif not policy["calibration"]:
                 remaining = remaining_scaffold_slides(work_dir)
                 if not remaining:
                     payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
-                    payload["notes"] = "basic: all pages implemented; run the deterministic build."
+                    payload["notes"] = f"{policy['tier']}: all pages implemented; run the deterministic build."
                 else:
                     payload["agent"] = "student-presentation-suite:presentation-builder"
                     payload["builder_mode"] = "initial"
                     payload["notes"] = (
-                        "basic: implement all scaffolded pages from the Art Direction; "
+                        f"{policy['tier']}: implement all scaffolded pages from the Art Direction; "
                         "final independent visual review remains required."
                     )
                     try:
                         packets = _packet.prepare_packets(
-                            work_dir, "initial", remaining, single_builder=True
+                            work_dir, "initial", remaining, single_builder=True,
+                            max_parallel=policy["shard_cap"],
                         )
                         if packets:
                             payload["builder_packets"] = packets
@@ -264,7 +274,16 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     )
                 else:
                     review = calibration_review(work_dir)
-                    if not review["ok"]:
+                    rounds = int((manifest.get("calibration") or {}).get("rounds") or 0)
+                    # Tier budget: standard spends 1 calibration round, rigorous 2.
+                    # Once spent, remaining majors are carried as recorded risk
+                    # instead of another builder+critic cycle.
+                    budget_spent = (
+                        not review["ok"]
+                        and review.get("action") == "builder"
+                        and rounds >= policy["calibration_max_rounds"]
+                    )
+                    if not review["ok"] and not budget_spent:
                         payload["calibration"] = {
                             "slides": review["slides"],
                             "pptx": str(work_dir / CALIBRATION_DIR_NAME / "calibration.pptx"),
@@ -334,7 +353,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                                 "mode=initial to implement every remaining scaffold page (calibrated pages are "
                                 "preserved); run build only after BUILDER_DONE."
                             )
-                            shards = builder_shards(remaining, work_dir)
+                            shards = builder_shards(remaining, work_dir, max_parallel=policy["shard_cap"])
                             if shards:
                                 payload["builder_shards"] = shards
                                 payload["notes"] += (
@@ -345,7 +364,10 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             # Builder Packet (v0.15 Batch 2): one packet per instance, projected
                             # from the frozen inputs so builders stop re-reading them.
                             try:
-                                packets = _packet.prepare_packets(work_dir, "initial", remaining)
+                                packets = _packet.prepare_packets(
+                                    work_dir, "initial", remaining,
+                                    max_parallel=policy["shard_cap"],
+                                )
                                 if packets:
                                     payload["builder_packets"] = packets
                                     payload["notes"] += (
@@ -356,6 +378,12 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                                     )
                             except Exception as exc:
                                 observe_packet_failure(work_dir, payload, "initial", exc)
+                            if budget_spent:
+                                payload["notes"] = (
+                                    f"Calibration tier budget spent ({rounds}/"
+                                    f"{policy['calibration_max_rounds']} rounds); remaining review "
+                                    f"findings carried as recorded risk: {review['reason']}. "
+                                ) + payload["notes"]
         elif state == "producing":
             pending_repair = bool((manifest.get("build") or {}).get("pending_repair"))
             if (pending_repair or pre_qa_failed_current(manifest)) and generator_changed_since_build(manifest):
@@ -411,6 +439,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     packets = _packet.prepare_packets(
                         work_dir, "repair", fixable or None, pre_qa_reports,
                         single_builder=basic,
+                        max_parallel=policy["shard_cap"],
                     ) if fixable else []
                     if packets:
                         payload["builder_packets"] = packets
@@ -438,6 +467,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         packets = _packet.prepare_packets(
                             work_dir, "repair", blocker_slides, ["pipeline-qa.json"],
                             single_builder=basic,
+                            max_parallel=policy["shard_cap"],
                         )
                         if packets:
                             payload["builder_packets"] = packets
@@ -537,7 +567,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     work_dir, ("pipeline-qa.json", "pre-qa-quality.json", "pre-qa-actual-content.json",
                                "pre-qa-rendered.json")
                 )
-                shards = builder_shards(blocker_slides, work_dir) if not basic else None
+                shards = builder_shards(blocker_slides, work_dir, max_parallel=policy["shard_cap"])
                 if shards:
                     payload["builder_shards"] = shards
                     payload["notes"] += (
@@ -553,6 +583,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         packets = _packet.prepare_packets(
                             work_dir, "repair", blocker_slides, ["pipeline-qa.json"],
                             single_builder=basic,
+                            max_parallel=policy["shard_cap"],
                         )
                         if packets:
                             payload["builder_packets"] = packets
@@ -594,6 +625,33 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
     # failed for this work dir (each one is a builder that fell back to the legacy
     # full-read context path and quietly gave back Batch 2's savings).
     payload["packet_fallback_count"] = len(packet_fallbacks(work_dir))
+    # CD-8 runtime budget: report live usage at every boundary, and when the
+    # budget is breached point at the handoff instead of the work — the session
+    # must rotate before another deterministic step runs.
+    usage = current_usage()
+    payload["usage"] = usage_block(usage, manifest)
+    if manifest is not None:
+        status, detail = brake_state(manifest, usage)
+        if status == "rotate":
+            resume_command = (
+                f'{python} "{pipeline}" advance --resume-after-handoff '
+                f'--work-dir "{work_dir}"'
+            )
+            payload["session_rotate"] = {
+                "breaches": detail["breaches"],
+                "resume_command": resume_command,
+            }
+            payload["next_command"] = resume_command
+            payload["notes"] = (
+                "Session budget breached (CD-8). Read session-handoff.md and continue in a NEW "
+                "session; a fresh session releases the brake automatically. If this is a metric "
+                "false positive, unlock explicitly with `advance --resume-after-handoff` (recorded)."
+            )
+            # Handoff last, with the final dispatch in hand: its `next` line must
+            # name the resume step, not the agent boundary the brake overrode.
+            handoff = write_session_handoff(work_dir, manifest, usage, dispatch=payload)
+            payload["session_rotate"]["handoff"] = handoff
+            mark_breached(work_dir, manifest, usage, detail["breaches"], handoff)
     return payload
 
 

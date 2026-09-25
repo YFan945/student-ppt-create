@@ -320,6 +320,19 @@ def handle(event: dict) -> int:
                 )
                 return 2
         return 0
+    if (
+        kind == "PostToolUse"
+        and tool in {"Bash", "PowerShell"}
+        and "ppt_pipeline.py" in str(inputs.get("command") or "")
+    ):
+        # A researcher-less deck (D-class structured import, scope-C work) still
+        # owns a work-id: record it here so release_if_production_complete can
+        # scope to the exact deck instead of falling back to the whole root.
+        work_match = re.search(r"--work-dir[ =]+[\"']?([^\"'\s]+)", str(inputs.get("command") or ""))
+        if work_match:
+            work_name = Path(work_match.group(1)).resolve().name
+            if work_name and work_name != ".pptx-work":
+                pipeline_context.mark_research_active(project, event, work_ids=[work_name])
     if agent not in {RESEARCHER, CRITIC} or not child:
         return 0
     key = re.sub(r"[^A-Za-z0-9_-]", "_", str(event.get("session_id")) + "-" + str(child))

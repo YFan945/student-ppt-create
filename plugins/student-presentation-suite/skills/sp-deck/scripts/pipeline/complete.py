@@ -89,7 +89,17 @@ def cmd_complete(args: argparse.Namespace) -> int:
         [
             "- QA green; delivery stage ran and was hash-bound.",
             f"- pptx: `{((manifest.get('build') or {}).get('pptx') or {}).get('path')}`",
-            *[f"- published {name}: `{item['path']}`" for name, item in published.items()],
+            *[
+                f"- published {name}: `{item['path']}`"
+                + (
+                    f" ({item['pages']} pages)"
+                    if item.get("pages")
+                    else f" ({item['entries']} entries)"
+                    if item.get("entries")
+                    else ""
+                )
+                for name, item in published.items()
+            ],
             *(
                 []
                 if not degraded_receipt

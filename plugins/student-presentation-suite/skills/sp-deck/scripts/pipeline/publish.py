@@ -10,7 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from pipeline.core import RefusedError, bind, pptx_path
-from pipeline.deliverables import _load_spec, confirmed_deliverables
+from pipeline.deliverables import (
+    _load_spec,
+    confirmed_deliverables,
+    verify_deliverable,
+)
 
 
 def _source(manifest: dict[str, Any], name: str, work_dir: Path) -> Path:
@@ -47,9 +51,10 @@ def publish_deliverables(work_dir: Path, manifest: dict[str, Any]) -> dict[str, 
     requested = confirmed_deliverables(manifest)
     if "pptx" not in requested:
         requested = ["pptx", *requested]
+    spec_data = _load_spec(spec)
     if "revision-manifest" in requested:
         revision = {
-            "revision": _load_spec(spec).get("revision"),
+            "revision": spec_data.get("revision"),
             "mode": manifest.get("mode"),
             "source_pptx": (manifest.get("inputs") or {}).get("source_deck"),
             "delivered_pptx": (manifest.get("build") or {}).get("pptx"),
@@ -58,11 +63,17 @@ def publish_deliverables(work_dir: Path, manifest: dict[str, Any]) -> dict[str, 
         (work_dir / "revision-manifest.json").write_text(
             json.dumps(revision, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
+    render_pages = int((manifest.get("render") or {}).get("page_count") or 0) or None
+    counts: dict[str, dict[str, int]] = {}
     destinations: dict[str, tuple[Path, Path]] = {}
     for name in requested:
         source = _source(manifest, name, work_dir)
         if not source.is_file() or not source.resolve().is_relative_to(work_dir):
             raise RefusedError(f"requested deliverable is missing from work-dir: {name}")
+        # Content completeness is checked on the work-dir source before any
+        # copy: page/section counts must match the frozen Slide Spec, so a
+        # truncated script can never reach the outputs directory.
+        counts[name] = verify_deliverable(name, source, spec_data, render_pages=render_pages)
         basename = (
             f"{prefix}-presentation{source.suffix}"
             if name in {"pptx", "pdf"}
@@ -81,5 +92,5 @@ def publish_deliverables(work_dir: Path, manifest: dict[str, Any]) -> dict[str, 
         binding = bind(target)
         if binding["sha256"] != bind(source)["sha256"]:
             raise RefusedError(f"published file hash differs from QA source: {target}")
-        published[name] = binding
+        published[name] = {**binding, **counts.get(name, {})}
     return published

@@ -2,6 +2,38 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.0 — 2026-09-25 · Runtime cost brake and delivery tiers
+
+- README 的管线流程表（状态机、QA 门、轮次预算、交付档位）改为由
+  `references/pipeline-contract.json` 生成（`scripts/render_pipeline_tables.py`，漂移即测试
+  失败）；删除手写的"三道门禁/最多一次重建"等与机器契约不符的表述。
+- 分片预算由页数+复杂度+档位共同决定：图表/数据/对比页计 2、`layout_lock` 加 1，
+  `shard_count = min(档位上限, 3, ceil(总复杂度/6), 页数)`——普通 12 页任务落在 1–2 个
+  Builder，重图表 deck 仍并行；返工本就只针对 blocker 页。
+- 图表默认色修在生成端：`pptx-visuals.js` 统一绑定标题/图例/轴线颜色（不再留 pptxgenjs
+  默认黑），palette 门禁改为按页、按元素（轴/图例/标题/系列）归因并提示"生成器默认值"，
+  Builder 不必逐图补配置。
+- 研究停止条件：检索前先声明 3–5 条 `must_verify` claim，逐条达到交叉验证或记入
+  `unresolved` 即停止（validator 校验，剩余配额不是目标）；D 类（只用用户材料）改为
+  `import_user_materials.py` 确定性导入——保留来源哈希与校验凭据，不再必开研究员子代理。
+- 三档任务档位 `fast` / `standard` / `rigorous`（旧值 `basic`/`high-score` 作别名）：`fast` 为新默认
+  ——一次成稿 + 一次最终视觉复核，无校准，主观分数与风格 Major 只作建议；`standard` 增加一轮
+  校准样张与独立复核（分片 ≤2），结构性低分阻断；`rigorous` 保留完整高要求路径（校准 ≤2 轮、
+  风格 Major/回归阻断、单页底线 6.0）。所有档位保留确定性预检、渲染与交付检查；校准轮次
+  超限后遗留 finding 记为风险继续生产，不再无限循环。普通课程展示不再默认走高要求流程。
+- 运行时成本刹车（CD-8 从散文变机器契约）：`session_budget` 写入 pipeline-contract.json
+  （峰值 150k / 单会话 150 分钟 / 任务 25M），`advance` / `next` 的 `usage` 块实时报告用量与
+  剩余预估；超阈值强制生成 `session-handoff.md` 并以 `session_rotate` 拒绝继续，新会话自动
+  解锁，误报用 `advance --resume-after-handoff` 显式解锁并留痕。
+- `advance` 默认只输出 brief（状态、下一动作、必要路径、用量），完整 dispatch 改由 `--json`
+  按需展开；新增 `handoff` 子命令可随时生成续接摘要。
+- 发布前逐项核对交付内容与页数：PPTX/PDF 页数、讲稿/完整稿/提词器/训练卡的逐页段数必须覆盖
+  冻结 Slide Spec，哈希与页数一起写入 `manifest.published`；残稿无法发布（修掉"QA 全绿但独立
+  讲稿缺 1–3 页"的缺口）。
+- 修在生成端：讲稿分节标题解析只认规范二级标题，正文里的 `### 3. 方法` 等子标题不再截断同页
+  内容；`full-script`/`teleprompter` 写出前校验段数，残缺直接拒绝写入；讲稿分片合并后断言
+  页页存活，丢页即拒绝构建。
+
 ## 0.15.11 — 2026-09-23 · Full-flow cost and delivery closure
 
 - 独立讲稿从最终 PPTX 备注区按页导出；`complete` 发布并核验已确认文件，避免 QA 全绿后仍缺页或未交付。

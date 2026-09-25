@@ -1,7 +1,7 @@
 ---
 name: sp-outline
 description: Use only for a clearly student-owned academic context when the user explicitly requests a PPT or slide outline, not an editable deck. Do not use for generic presentations, standalone scripts, Q&A-only work, or non-student tasks.
-version: 0.15.11
+version: 0.16.0
 ---
 
 # Student Presentation
@@ -30,7 +30,7 @@ version: 0.15.11
 
 1. 按需读一次 `../../references/presentation-intake.md`，使用 outline-only 模式；提炼清单后不再重读。
 2. 按需读一次 `../../references/presentation-brief.md`，分类场景、受众、结构、交互和质量模式。仅确认会影响故事/时间/证据/归属的约束。
-3. **Research Need Analysis**：排页前先在主流程里只做“是否需要证据”的轻量判定，把待证内容拆成 Claim 并标 A/B/C/D；**这一步本身不联网**。若存在 A/B Claim，则调用 `sp-research`；D 类也调用 `sp-research`，但显式传 `scope:D` 与用户材料路径，由隔离子代理在禁网模式生成 Research Pack。若全部是 C（仅重排/概括用户已有内容、过渡页等），**不要启动子代理，也不要制造空 Research Pack**。只要调用过 `sp-research`，必须拿到 `research-pack.json` + passing validation report 后才能排页。不要先写正文再补来源。
+3. **Research Need Analysis**：排页前先在主流程里只做“是否需要证据”的轻量判定，把待证内容拆成 Claim 并标 A/B/C/D；**这一步本身不联网**。若存在 A/B Claim，则调用 `sp-research`；D 类**不派子代理**——运行 `${CLAUDE_PLUGIN_ROOT}/scripts/import_user_materials.py <材料文件...> --work-dir <wd> --spec <spec> --json` 做结构化导入（sources 全为哈希绑定的 `user-file`、`queries` 为空、写 `research-import.json` 凭据，`plan` 直接接受该凭据），仅当用户点名要研究员整理时才走 `sp-research scope:D`。若全部是 C（仅重排/概括用户已有内容、过渡页等），**不要启动子代理，也不要制造空 Research Pack**。只要调用过 `sp-research`，必须拿到 `research-pack.json` + passing validation report 后才能排页。不要先写正文再补来源。
 4. 缺哪条规则再读哪份（各一次）：`references/slide-structures.md`、`references/transition-phrases.md`、`references/group-handoff.md`、`references/qa-prediction.md`、`../../references/content-workflow.md`、`../../references/evidence-and-citations.md`、`../../references/research-workflow.md`、`../../references/revision-training-export.md`、`../../references/slide-spec.md`、`../../references/image-strategy.md`。不要 grep 插件源码。
 5. 宽泛主题时，根据时长和证据提供 2-3 个角度选择。
 6. 沿单一主线构建，按序生成：目录→每页主张/要点→PPT文案→演讲版→Slide Spec（用户表明将转 PPTX 时必写）。

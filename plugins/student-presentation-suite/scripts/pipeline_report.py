@@ -98,6 +98,7 @@ def collect(manifest: dict[str, Any], work_dir: Path | None = None) -> dict[str,
             1 for h in advance if h.get("status") == "needs_user" and not h.get("step_cap")
         ),
         "advance_refusals": sum(1 for h in advance if h.get("status") == "refused"),
+        "advance_session_rotations": sum(1 for h in advance if h.get("status") == "session_rotate"),
         "advance_step_cap_hits": sum(1 for h in advance if h.get("step_cap")),
         # Batch 1-4 closure: rhythm planning failures must be visible in the report,
         # not silently absorbed at plan time.

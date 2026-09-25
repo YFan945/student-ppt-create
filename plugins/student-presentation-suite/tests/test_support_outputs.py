@@ -169,6 +169,35 @@ class SupportOutputTests(unittest.TestCase):
             self.assertEqual(notes[1], "这是开场白的完整正文内容。")
             self.assertEqual(notes[10], "这是环境分析的完整正文内容。")
 
+    def test_body_subheadings_never_split_page_sections(self) -> None:
+        """Regression: `### 3. 方法` used to truncate page 3 and drop its body."""
+        module = load_module(SCRIPT)
+        data = {"slides": [{"id": 3, "title": "方法"}]}
+        with tempfile.TemporaryDirectory() as tmp:
+            notes_path = Path(tmp) / "speaker-notes.md"
+            notes_path.write_text(
+                "## 第 3 页 · 方法\n\n开头一句。\n\n### 3. 方法\n细节说明仍在同一页。\n\n"
+                "## 2. 这不是页标题\n子标题正文也在页内。\n",
+                encoding="utf-8",
+            )
+            notes = module.actual_speaker_notes(data, notes_path, None)
+        self.assertIn("细节说明仍在同一页", notes[3])
+        self.assertIn("子标题正文也在页内", notes[3])
+
+    def test_partial_render_refuses_to_write(self) -> None:
+        """One emitted section per slide; partial scripts never reach disk."""
+        module = load_module(SCRIPT)
+        data = {"slides": [{"id": 1, "title": "A"}, {"id": 2, "title": "B"}]}
+        with self.assertRaisesRegex(ValueError, "refusing to write a partial deliverable"):
+            module._assert_page_sections(
+                "full-script", "# Full Presentation Script\n\n## Slide 1: A\n\n正文。\n", data
+            )
+        module._assert_page_sections(
+            "full-script",
+            "# Full Presentation Script\n\n## Slide 1: A\n\n正文。\n\n## Slide 2: B\n\n正文。\n",
+            data,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

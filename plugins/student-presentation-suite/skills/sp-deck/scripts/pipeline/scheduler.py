@@ -15,8 +15,7 @@ import builder_packet as _packet  # noqa: E402
 import generator_scaffold as _scaffold  # noqa: E402
 
 from pipeline.core import (  # noqa: E402
-    MAX_PARALLEL_BUILDERS,
-    PARALLEL_MIN_PAGES,
+    RefusedError,
     load_json,
 )
 
@@ -79,35 +78,38 @@ def slides_named_in_reports(work_dir: Path, names: tuple[str, ...]) -> list[int]
     return sorted(found)
 
 
-def builder_shards(slides: list[int], work_dir: Path) -> dict[str, Any] | None:
+def builder_shards(
+    slides: list[int], work_dir: Path, *, max_parallel: int | None = None
+) -> dict[str, Any] | None:
     """Split the target pages across isolated builder instances (wall clock only).
 
     Wall clock is turns x per-turn latency, and nothing about the gate set changes that:
     2026-09-18 measured every gate in the suite at 150s total (1.7% of the run) while the
     critical path was 519 model round-trips. Independent builders hold independent
     contexts and turn sequences, so sharding divides the build phase's wall clock without
-    touching a single gate. Shards are disjoint by construction (round-robin over the
-    sorted slide list), which is also what keeps two builders off the same page module.
+    touching a single gate. Shard count and grouping come from builder_packet.split_shards
+    (one shard policy: complexity-balanced, tier-capped, disjoint by construction), which
+    is also what keeps two builders off the same page module.
     """
-    targets = sorted({int(slide) for slide in slides if int(slide) > 0})
-    if len(targets) < PARALLEL_MIN_PAGES or MAX_PARALLEL_BUILDERS < 2:
+    groups = _packet.split_shards(slides, work_dir, max_parallel=max_parallel)
+    if not groups:
         return None
     by_slide = page_files_by_slide(work_dir)
-    known = [slide for slide in targets if slide in by_slide]
-    if len(known) < PARALLEL_MIN_PAGES:
-        return None
-    shard_count = min(MAX_PARALLEL_BUILDERS, len(known))
-    shards: list[dict[str, Any]] = [{"shard": index + 1, "slides": [], "pages": []} for index in range(shard_count)]
-    for position, slide in enumerate(known):
-        shard = shards[position % shard_count]
-        shard["slides"].append(slide)
-        shard["pages"].append(by_slide[slide])
+    shards: list[dict[str, Any]] = [
+        {
+            "shard": group["shard"],
+            "slides": list(group["slides"]),
+            "pages": [by_slide[slide] for slide in group["slides"] if slide in by_slide],
+        }
+        for group in groups
+    ]
+    known = sorted({slide for group in groups for slide in group["slides"]})
     return {
-        "parallel": shard_count,
+        "parallel": len(shards),
         "slides": known,
         "shards": shards,
         "spawn": (
-            f"spawn all {shard_count} shards in ONE message so they run concurrently, each without a "
+            f"spawn all {len(shards)} shards in ONE message so they run concurrently, each without a "
             "`name`, each with its own slide ids and its own speaker-notes fragment "
             "(speaker-notes-shard-<N>.md). Never give one builder another shard's slides."
         ),
@@ -134,8 +136,11 @@ def merge_speaker_note_shards(work_dir: Path) -> list[str]:
     # duplicates a page whenever its new shard differs from the initial round.
     # Parse page sections and let the most recently written fragment replace the
     # older copy; only legacy fragments without page headings use concatenation.
+    # Level-2 headings only, and no bare-dot separator: a body subhead like
+    # `## 2. 方法` must never register as a page section and erase page 2.
     section_re = re.compile(
-        r"(?m)^##\s+(?:第\s*)?(?P<slide>\d+)(?:\s*页|\s*[-—:.])[^\n]*\n"
+        r"(?m)^##\s+(?:(?:Slide|幻灯片)\s*)?(?:第\s*)?(?P<slide>\d+)"
+        r"(?:\s*页|\s*[-—:：·])[^\n]*\n"
     )
     by_slide: dict[int, tuple[int, int, str, str]] = {}
     parsed_any = False
@@ -165,6 +170,18 @@ def merge_speaker_note_shards(work_dir: Path) -> list[str]:
             if previous is None or marker > (previous[0], previous[1], previous[2]):
                 by_slide[slide] = (stamp, priority, path.name, section)
     if parsed_any:
+        # Structured merge must not silently drop pages: every scaffolded page
+        # needs notes, and a lost page is invisible until delivery. Legacy
+        # unheaded fragments cannot be counted, so only the parsed path asserts.
+        known = set(page_files_by_slide(work_dir))
+        if known:
+            missing = sorted(known - set(by_slide))
+            if missing:
+                raise RefusedError(
+                    "speaker-notes fragments dropped pages "
+                    + ", ".join(map(str, missing))
+                    + " — restore them in a shard fragment or the previous speaker-notes.md before build"
+                )
         ordered = [by_slide[slide][3] for slide in sorted(by_slide)]
         parts = ["# 演讲稿", *ordered, *parts]
     if not parts:

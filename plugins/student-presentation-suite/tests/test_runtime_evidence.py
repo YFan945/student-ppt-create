@@ -270,6 +270,24 @@ class RuntimeEvidenceTests(unittest.TestCase):
         data = json.loads(active.read_text(encoding="utf-8"))
         self.assertEqual(data.get("work_ids"), [self.work.name])
 
+    def test_pipeline_bash_records_work_id_without_any_spawn(self):
+        """A researcher-less deck (D import / scope-C) still owns its work-id."""
+        self.event["agent_type"] = "main"
+        code = self.event_call(
+            "PostToolUse",
+            tool_name="Bash",
+            tool_input={
+                "command": (
+                    'python "E:/plugin/scripts/ppt_pipeline.py" plan '
+                    f'--work-dir "{self.work}"'
+                )
+            },
+        )
+        self.assertEqual(0, code)
+        active = runtime.pipeline_context.research_active_path(self.project, "parent")
+        data = json.loads(active.read_text(encoding="utf-8"))
+        self.assertEqual(data.get("work_ids"), [self.work.name])
+
     def test_critic_spawn_without_absolute_work_dir_is_refused(self):
         self.prepare_render()
         self.assertEqual(self.critic_spawn(prompt="Review the current deck"), 2)

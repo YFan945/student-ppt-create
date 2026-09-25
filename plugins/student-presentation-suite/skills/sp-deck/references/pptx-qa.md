@@ -137,7 +137,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/quality_gate.py" --core v07
 
 该 gate 同时执行四类检查：
 
-1. **Structured Visual Critic**：`hierarchy` / `focal_point` 低于下限（high-score 6、其余 5）是 Major 阻断；`composition` / `visual_interest` / `whitespace` 低于下限与整套平均低于目标值是 **advisory**——记录并计数（`advisory_count`），不机械阻断交付；未解决 Major/Critical finding 照常阻断（管线 `visual_score_policy`）；
+1. **Structured Visual Critic**：`hierarchy` / `focal_point` 低于下限（rigorous 6、其余 5）在 rigorous/standard 是 Major 阻断（standard 按 6.0 判定结构性低分），fast 记 advisory；`composition` / `visual_interest` / `whitespace` 低于下限与整套平均低于目标值是 **advisory**——记录并计数（`advisory_count`），不机械阻断交付；未解决 Major/Critical finding 照常阻断（管线 `visual_score_policy`）；
 2. **Deck Rhythm**：连续两页相同弱卡片/列表结构或任意结构连续三页阻断；
 3. **Evidence Closure**：Slide `evidence_refs` ↔ Evidence Ledger 使用页一致，课堂/学术引用必须能在最终 reference area 找到每个已使用来源；
 4. **Speaker Timing**：按约 240 中文字/分钟、130 英文词/分钟估算真实讲稿时长；整套预计超过确认时长 15% 视为 Major。判定对象是**交付的 PPTX 备注区**（`ppt/notesSlides/*.xml`），不是冻结 spec 的 `speaker_notes` 字段——后者从 `plan` 起一直为空、也没有任何步骤被要求填写它，2026-09-17 live 因此在一个备注区完好的 deck 上报出 10 项幽灵 `speaker_notes_missing`，直接导致交付 `incomplete`。门读产物，不读计划。

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sys
 import zipfile
@@ -34,6 +35,143 @@ SUPPORT_DELIVERABLES = {
 }
 PREPARED_DELIVERABLES = SUPPORT_DELIVERABLES | {"pdf"}
 SUPPORT_SCRIPT = ROOT / "scripts" / "build_support_outputs.py"
+
+PPTX_SLIDE_RE = re.compile(r"ppt/slides/slide(\d+)\.xml$")
+PDF_PAGE_RE = re.compile(rb"/Type\s*/Page(?![s/A-Za-z])")
+NOTES_SECTION_RE = re.compile(r"(?m)^##\s+第\s*(\d+)\s*页(?:\s*[-—:：·][^\n]*)?\s*$")
+SCRIPT_SECTION_RE = re.compile(r"(?m)^##\s+Slide\s+(\d+)\s*:")
+TELEPROMPTER_SECTION_RE = re.compile(r'data-slide="(\d+)"')
+REFERENCE_ENTRY_RE = re.compile(r"(?m)^-\s+\[")
+
+
+def _slide_id(slide: Any, fallback: int) -> int:
+    try:
+        value = int(slide.get("id")) if isinstance(slide, dict) else 0
+    except (TypeError, ValueError):
+        value = 0
+    return value if value > 0 else fallback
+
+
+def expected_slide_ids(spec: dict[str, Any]) -> list[int]:
+    """One deliverable page per Slide Spec slide, by slide id (position fallback)."""
+    slides = spec.get("slides")
+    if not isinstance(slides, list) or not slides:
+        return []
+    return [_slide_id(slide, position) for position, slide in enumerate(slides, 1)]
+
+
+def pdf_page_count(path: Path) -> int:
+    """Count pages of a PDF export without new dependencies.
+
+    The only PDF the pipeline ever publishes is the render-owned LibreOffice
+    export, whose page objects are plain indirect objects. Undeterminable input
+    is refused rather than waved through: a page count nobody can check is
+    exactly the gap that once shipped a 12-page script with 1-3 pages missing.
+    """
+    try:
+        data = path.read_bytes()
+    except OSError as exc:
+        raise RefusedError(f"cannot read PDF deliverable: {path}") from exc
+    if not data.startswith(b"%PDF-"):
+        raise RefusedError(f"PDF deliverable is not a PDF file: {path}")
+    count = len(PDF_PAGE_RE.findall(data))
+    if count < 1:
+        raise RefusedError(
+            f"cannot determine the page count of {path.name}; refusing to publish an unverified PDF"
+        )
+    return count
+
+
+def _section_bodies(text: str, heading_re: re.Pattern[str]) -> dict[int, str]:
+    matches = list(heading_re.finditer(text))
+    bodies: dict[int, str] = {}
+    for index, match in enumerate(matches):
+        # Body starts on the line BELOW the heading: a heading suffix such as
+        # "## Slide 2: 方法" leaves "方法" after the colon, which is title text.
+        line_end = text.find("\n", match.end())
+        start = len(text) if line_end == -1 else line_end + 1
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        bodies[int(match.group(1))] = text[start:end].strip()
+    return bodies
+
+
+def verify_deliverable(
+    name: str, path: Path, spec: dict[str, Any], *, render_pages: int | None = None
+) -> dict[str, int]:
+    """Check artifact completeness against the frozen Slide Spec before binding.
+
+    Hash bindings prove bytes did not change; this proves the bytes cover every
+    page. Both are required before a deliverable may be published — the page
+    count is returned so the published record carries it.
+    """
+    if not path.is_file() or path.stat().st_size == 0:
+        raise RefusedError(f"deliverable is missing or empty: {path}")
+    ids = expected_slide_ids(spec)
+
+    def require_coverage(found: set[int], unit: str) -> int:
+        if not ids:
+            return len(found)
+        expected = set(ids)
+        missing = sorted(expected - found)
+        extra = sorted(found - expected)
+        if missing or extra or len(ids) != len(set(ids)):
+            detail = []
+            if missing:
+                detail.append(f"missing {unit} {missing}")
+            if extra:
+                detail.append(f"unexpected {unit} {extra}")
+            raise RefusedError(
+                f"{name} does not cover the Slide Spec ({len(ids)} slides): "
+                + "; ".join(detail)
+                + f" — regenerate before delivery: {path}"
+            )
+        return len(ids)
+
+    if name == "pptx":
+        try:
+            with zipfile.ZipFile(path) as archive:
+                found = {
+                    int(match.group(1))
+                    for member in archive.namelist()
+                    if (match := PPTX_SLIDE_RE.search(member))
+                }
+        except zipfile.BadZipFile as exc:
+            raise RefusedError(f"delivered PPTX is not a readable package: {path}") from exc
+        return {"pages": require_coverage(found, "slides")}
+    if name == "pdf":
+        pages = pdf_page_count(path)
+        if ids and pages != len(ids):
+            raise RefusedError(
+                f"PDF page count {pages} does not match the {len(ids)} planned slides: {path}"
+            )
+        if render_pages and pages != render_pages:
+            raise RefusedError(
+                f"PDF page count {pages} does not match the {render_pages} rendered pages: {path}"
+            )
+        return {"pages": pages}
+    if name == "speaker-notes":
+        bodies = _section_bodies(path.read_text(encoding="utf-8"), NOTES_SECTION_RE)
+        if any(not body for body in bodies.values()):
+            raise RefusedError(f"speaker-notes has an empty page section: {path}")
+        return {"pages": require_coverage(set(bodies), "sections")}
+    if name in {"full-script", "training-cards"}:
+        bodies = _section_bodies(path.read_text(encoding="utf-8"), SCRIPT_SECTION_RE)
+        if name == "full-script" and any(not body for body in bodies.values()):
+            raise RefusedError(f"full-script has an empty page section: {path}")
+        return {"pages": require_coverage(set(bodies), "sections")}
+    if name == "teleprompter":
+        found = {int(value) for value in TELEPROMPTER_SECTION_RE.findall(path.read_text(encoding="utf-8"))}
+        return {"pages": require_coverage(found, "sections")}
+    if name == "references":
+        ledger = spec.get("evidence_ledger")
+        entries = len(REFERENCE_ENTRY_RE.findall(path.read_text(encoding="utf-8")))
+        if isinstance(ledger, list) and ledger and entries != len(ledger):
+            raise RefusedError(
+                f"references lists {entries} entries but the Slide Spec ledger has "
+                f"{len(ledger)}: {path}"
+            )
+        return {"entries": entries}
+    return {}
 
 
 def _load_spec(path: Path) -> dict[str, Any]:
@@ -128,10 +266,14 @@ def speaker_notes_markdown(pptx: Path, spec: Path) -> str:
     if sorted(notes) != expected or any(not notes[number].strip() for number in expected):
         raise RefusedError("speaker-notes export requires notes on every PPTX slide")
     sections = ["# 演讲稿"]
-    for number, slide in enumerate(slides, 1):
+    for position, slide in enumerate(slides, 1):
         title = str(slide.get("title") or "").strip() if isinstance(slide, dict) else ""
+        # Headings carry the Slide Spec id (position fallback) so downstream
+        # parsers key sections by the same identifier the spec uses; the body
+        # still comes from the PPTX notes pane, which is numbered by position.
+        number = _slide_id(slide, position)
         sections.append(f"## 第 {number} 页" + (f" · {title}" if title else ""))
-        sections.append(notes[number].strip())
+        sections.append(notes[position].strip())
     return "\n\n".join(sections) + "\n"
 
 
@@ -217,6 +359,12 @@ def cmd_prepare_deliverables(args: argparse.Namespace) -> int:
     missing = [name for name in requested if name not in outputs]
     if missing:
         raise RefusedError("requested deliverables were not prepared: " + ", ".join(missing))
+    spec_data = _load_spec(spec)
+    render_pages = int((manifest.get("render") or {}).get("page_count") or 0) or None
+    for name, binding in outputs.items():
+        binding.update(
+            verify_deliverable(name, Path(str(binding.get("path") or "")), spec_data, render_pages=render_pages)
+        )
     report_path = work_dir / "deliverables-report.json"
     report: dict[str, Any] = {
         "ok": True,

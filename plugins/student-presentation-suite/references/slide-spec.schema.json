@@ -38,7 +38,7 @@
           "enum": ["problem-solution", "research", "timeline", "comparison", "case-study", "product"]
         },
         "interaction_mode": { "enum": ["beginner", "expert"] },
-        "quality_level": { "enum": ["basic", "high-score"] },
+        "quality_level": { "enum": ["fast", "standard", "rigorous", "basic", "high-score"] },
         "max_words_per_slide": { "type": "integer", "minimum": 10, "maximum": 120 },
         "max_chinese_chars_per_slide": { "type": "integer", "minimum": 20, "maximum": 240 },
         "visual_text_ratio": { "enum": ["text-led", "balanced", "visual-led"] },
