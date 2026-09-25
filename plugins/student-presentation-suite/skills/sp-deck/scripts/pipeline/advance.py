@@ -29,14 +29,6 @@ from pipeline.deliverables import cmd_prepare_deliverables  # noqa: E402
 from pipeline.dispatch import (  # noqa: E402
     build_next_payload,
 )
-from pipeline.handoff import (  # noqa: E402
-    brake_state,
-    current_usage,
-    mark_breached,
-    release_brake,
-    usage_block,
-    write_session_handoff,
-)
 from pipeline.qa import cmd_qa  # noqa: E402
 from pipeline.render import (  # noqa: E402
     cmd_render,
@@ -66,11 +58,10 @@ def _run_quietly(func, ns: argparse.Namespace) -> int:
 BRIEF_KEYS = (
     "status", "actions", "agent", "mode", "packet", "packets",
     "reason", "error", "packet_fallback_count",
-    "usage", "handoff", "breaches", "resume_command",
 )
 BRIEF_DISPATCH_KEYS = (
     "state", "next_command", "review_output", "repair_budget", "session_segment",
-    "builder_shards", "pre_qa", "session_rotate", "usage",
+    "builder_shards", "pre_qa",
 )
 
 
@@ -90,7 +81,7 @@ def _emit(result: dict[str, Any], args: argparse.Namespace, work_dir: Path) -> N
     summary = work_dir / f"stage-{stage}-summary.md"
     if summary.is_file():
         brief["stage_summary"] = str(summary)
-    brief["resume_command"] = result.get("resume_command") or (
+    brief["resume_command"] = (
         f'{sys.executable} "{HERE / "ppt_pipeline.py"}" advance '
         f'--brief-json --work-dir "{work_dir}"'
     )
@@ -132,43 +123,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
     actions: list[str] = []
     result: dict[str, Any] = {}
     step_cap_hit = False
-    manifest = load_manifest(work_dir)
-    start_state = str((manifest or {}).get("state") or "(absent)")
-    usage = current_usage()
-    if manifest is not None:
-        brake, detail = brake_state(manifest, usage)
-        wants_resume = bool(getattr(args, "resume_after_handoff", False))
-        if brake == "rotate":
-            if not wants_resume:
-                # CD-8 hard brake: the handoff is the deliverable here. No
-                # deterministic step runs again until the session rotates.
-                handoff = write_session_handoff(work_dir, manifest, usage)
-                mark_breached(work_dir, manifest, usage, detail["breaches"], handoff)
-                result = {
-                    "status": "session_rotate",
-                    "actions": [],
-                    "breaches": detail["breaches"],
-                    "handoff": handoff,
-                    "usage": usage_block(usage, manifest),
-                    "resume_command": (
-                        f'{sys.executable} "{HERE / "ppt_pipeline.py"}" '
-                        f'advance --resume-after-handoff --work-dir "{work_dir}"'
-                    ),
-                }
-                record(
-                    manifest, "advance", start_state, start_state,
-                    status="session_rotate", actions=[], step_cap=False,
-                )
-                save_manifest(work_dir, manifest)
-                _emit(result, args, work_dir)
-                return 2
-            release_brake(work_dir, manifest, "resume-after-handoff", usage)
-            manifest = load_manifest(work_dir)
-        elif detail.get("released") and str(
-            (detail.get("previous") or {}).get("status") or ""
-        ) == "breached":
-            release_brake(work_dir, manifest, str(detail["released"]), usage)
-            manifest = load_manifest(work_dir)
+    start_state = str((load_manifest(work_dir) or {}).get("state") or "(absent)")
     try:
         for _ in range(MAX_ADVANCE_STEPS):
             payload = build_next_payload(work_dir)

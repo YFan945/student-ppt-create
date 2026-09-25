@@ -234,16 +234,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 **可验证**：同一 reference 全文读取次数 ≤ 1；单个子代理实例峰值 ctx ≤200k
 （2026-09-18 实测 699k）；`next --json` 的 `builder_instance_reuse` 不报任何实例跨轮。
 
-**运行时执行（v0.16 起）**：上面的目标不再是散文。`session_budget` 是机器契约
-（pipeline-contract.json）：峰值 ≤150k、单会话 ≤150 分钟、任务总量 ≤25M token。
-`advance` / `next --json` 的 `usage` 块实时报告这三项与剩余耗时预估；任一超限即返回
-`session_rotate`、写 `session-handoff.md`（状态、路径、下一动作、预算、history 尾部），
-并在换会话前拒绝执行任何后续确定性步骤。新会话（transcript 来源变化）自动解除刹车；
-度量误报用 `advance --resume-after-handoff` 显式解锁，解锁记入 manifest 与 ledger。
 
-**可验证**：`session_budget` 三项与本段目标一致；超阈值后 `advance` 退出码 2 且
-`status: session_rotate`；`session-handoff.md` 存在且含 resume 命令；ledger 含
-`session-brake` 状态跃迁，`pipeline_report` 计入 `advance_session_rotations`。
 
 ## CD-9 读图：并行、一次、看图
 

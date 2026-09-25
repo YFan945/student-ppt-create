@@ -237,14 +237,6 @@ class PipelineTestCase(unittest.TestCase):
         self.env.start()
         self.addCleanup(self.env.stop)
         self._original_runner = pp._core._runner
-        # Isolate runtime usage probes: the live transcript (a real rollout log
-        # can be hundreds of MB) must never decide unit-test behavior or speed.
-        self._usage_stub = patch("pipeline.dispatch.current_usage", return_value=None)
-        self._usage_stub2 = patch("pipeline.advance.current_usage", return_value=None)
-        self._usage_stub.start()
-        self._usage_stub2.start()
-        self.addCleanup(self._usage_stub.stop)
-        self.addCleanup(self._usage_stub2.stop)
         self.summary = self.work / "production-summary.md"
         self.summary.write_text("approved", encoding="utf-8")
         self.workflow_state = self.work / "workflow-state.json"

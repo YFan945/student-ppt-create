@@ -119,13 +119,6 @@
   "max_pre_qa_rebuilds": 2,
   "max_parallel_builders": 3,
   "parallel_builder_min_pages": 4,
-  "session_budget": {
-    "peak_context_tokens": 150000,
-    "session_minutes": 150,
-    "task_total_tokens": 25000000,
-    "on_breach": "handoff-and-rotate",
-    "default_minutes_per_agent_round": 8
-  },
   "builder_shard_policy": {
     "per_shard_complexity": 6,
     "note": "shard_count = min(tier cap, max_parallel_builders, ceil(total slide complexity / per_shard_complexity), known pages); chart/data/compare pages weigh 2, layout_lock adds 1"

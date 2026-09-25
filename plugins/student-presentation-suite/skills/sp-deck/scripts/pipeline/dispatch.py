@@ -44,13 +44,6 @@ from pipeline.deliverables import (  # noqa: E402
     deliverables_are_current,
     requested_prepared_deliverables,
 )
-from pipeline.handoff import (  # noqa: E402
-    brake_state,
-    current_usage,
-    mark_breached,
-    usage_block,
-    write_session_handoff,
-)
 from pipeline.plan import (  # noqa: E402
     _research_budget,
 )
@@ -625,33 +618,6 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
     # failed for this work dir (each one is a builder that fell back to the legacy
     # full-read context path and quietly gave back Batch 2's savings).
     payload["packet_fallback_count"] = len(packet_fallbacks(work_dir))
-    # CD-8 runtime budget: report live usage at every boundary, and when the
-    # budget is breached point at the handoff instead of the work — the session
-    # must rotate before another deterministic step runs.
-    usage = current_usage()
-    payload["usage"] = usage_block(usage, manifest)
-    if manifest is not None:
-        status, detail = brake_state(manifest, usage)
-        if status == "rotate":
-            resume_command = (
-                f'{python} "{pipeline}" advance --resume-after-handoff '
-                f'--work-dir "{work_dir}"'
-            )
-            payload["session_rotate"] = {
-                "breaches": detail["breaches"],
-                "resume_command": resume_command,
-            }
-            payload["next_command"] = resume_command
-            payload["notes"] = (
-                "Session budget breached (CD-8). Read session-handoff.md and continue in a NEW "
-                "session; a fresh session releases the brake automatically. If this is a metric "
-                "false positive, unlock explicitly with `advance --resume-after-handoff` (recorded)."
-            )
-            # Handoff last, with the final dispatch in hand: its `next` line must
-            # name the resume step, not the agent boundary the brake overrode.
-            handoff = write_session_handoff(work_dir, manifest, usage, dispatch=payload)
-            payload["session_rotate"]["handoff"] = handoff
-            mark_breached(work_dir, manifest, usage, detail["breaches"], handoff)
     return payload
 
 

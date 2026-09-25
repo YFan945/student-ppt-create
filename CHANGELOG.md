@@ -2,6 +2,12 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.1 — 2026-09-26 · Cost mechanism removed
+
+- 按 owner 要求整体移除 v0.16.0 的运行时成本管控：用量探测（会话日志扫描）、阈值判定、
+  `session_rotate` 状态、`session-handoff` 续接摘要、`--resume-after-handoff` 及相关测试，
+  不留任何预算声明或替代机制。`advance` 默认输出 brief 保留；事后成本复盘仍用 `/sp-cost-report`。
+
 ## 0.16.0 — 2026-09-25 · Runtime cost brake and delivery tiers
 
 - README 的管线流程表（状态机、QA 门、轮次预算、交付档位）改为由

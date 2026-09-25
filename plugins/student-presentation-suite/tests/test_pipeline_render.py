@@ -12,7 +12,6 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import patch
 
 from PIL import Image
 
@@ -24,22 +23,6 @@ sys.modules[_SPEC.name] = pp
 assert _SPEC.loader is not None
 _SPEC.loader.exec_module(pp)
 
-_USAGE_PATCHES: list = []
-
-
-def setUpModule() -> None:
-    # Isolate runtime usage probes: the live transcript must never decide
-    # routing-test behavior (an over-budget real session would trip the CD-8
-    # brake and rewrite next_command).
-    for target in ("pipeline.dispatch.current_usage", "pipeline.advance.current_usage"):
-        stub = patch(target, return_value=None)
-        stub.start()
-        _USAGE_PATCHES.append(stub)
-
-
-def tearDownModule() -> None:
-    while _USAGE_PATCHES:
-        _USAGE_PATCHES.pop().stop()
 
 
 class RenderRunner:

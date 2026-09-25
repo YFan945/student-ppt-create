@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.16.0
+version: 0.16.1
 ---
 
 # Student Presentation PPT
@@ -36,7 +36,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" next --wor
 
 `next --json` 的 `contract` 是按阶段选择的紧凑执行契约，含当前 policy hash、QA 顺序和 repair budget；不再预读整套 references。仅在具体内容/设计问题无法由当前契约解决时，按需读对应 reference。intake 规则仍以 `../../references/presentation-intake.md` 为准，机器规则以 `../../references/pipeline-contract.json` 为准。
 
-**常规推进用 `advance --brief-json`（默认输出即 brief，`--json` 才给完整 dispatch），`next --json` 退为调试/巡检入口**：`advance` 自动串行执行校准预览、build、render、交付物准备、已有独立评审后的 QA、repair 登记和 complete；只在确需 Builder、Critic 或用户输入时停下。Critic 写出与当前渲染匹配的报告及 receipt 后，再调用一次 `advance` 即可执行 QA，并在有 blocker 时登记 repair、返回 Builder Packet；同一渲染不得重复 spawn critic。`actions` 只列本轮实际执行的确定性步骤。它不 spawn 子代理，也不替 critic 判断视觉质量。edit_ooxml 首次 build 前仍须主会话应用编辑意图。brief 同时携带 `usage`（CD-8 实时用量与剩余预估）；超预算时返回 `session_rotate` 并写 `session-handoff.md`——读该 handoff 后**开新会话继续**（自动解除），误报才用 `advance --resume-after-handoff` 显式解锁。
+**常规推进用 `advance --brief-json`（默认输出即 brief，`--json` 才给完整 dispatch），`next --json` 退为调试/巡检入口**：`advance` 自动串行执行校准预览、build、render、交付物准备、已有独立评审后的 QA、repair 登记和 complete；只在确需 Builder、Critic 或用户输入时停下。Critic 写出与当前渲染匹配的报告及 receipt 后，再调用一次 `advance` 即可执行 QA，并在有 blocker 时登记 repair、返回 Builder Packet；同一渲染不得重复 spawn critic。`actions` 只列本轮实际执行的确定性步骤。它不 spawn 子代理，也不替 critic 判断视觉质量。edit_ooxml 首次 build 前仍须主会话应用编辑意图。
 
 **回执门与 doctor（2026-09-19 实测）**：`plan`/`qa` 因 `missing successful isolated
 *-execution.json` 拒绝时，**不要**反向排查 hook 机制（一次实测为此烧掉 52 个请求、6.5M
