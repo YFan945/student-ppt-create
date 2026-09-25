@@ -52,10 +52,21 @@ from pipeline.scheduler import (  # noqa: E402
     builder_shards,
     observe_packet_failure,
     packet_fallbacks,
+    page_files_by_slide,
     remaining_scaffold_slides,
     slides_named_in_reports,
 )
 from shared.quality_tiers import tier_policy  # noqa: E402
+
+
+def _high_leverage(work_dir: Path) -> list[int]:
+    """The critic's <ids> slot: projected so the main session never opens the AD."""
+    try:
+        from calibration_preview import high_leverage_slides  # noqa: PLC0415
+
+        return high_leverage_slides(work_dir / "art-direction.yaml")
+    except Exception:
+        return []
 
 
 def _current_critic_review(work_dir: Path, manifest: dict[str, Any]) -> bool:
@@ -305,7 +316,14 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             repair_slides = review.get("repair_slides") or review["slides"]
                             payload["agent"] = "student-presentation-suite:presentation-builder"
                             payload["builder_mode"] = "calibration"
-                            packets = _packet.prepare_packets(work_dir, "calibration", repair_slides)
+                            calibration_reports = [
+                                work_dir / "calibration" / "calibration-visual-review.json",
+                                work_dir / "calibration" / "palette-report.json",
+                            ]
+                            packets = _packet.prepare_packets(
+                                work_dir, "calibration", repair_slides,
+                                [report for report in calibration_reports if report.is_file()],
+                            )
                             if packets:
                                 payload["builder_packet"] = packets[0]
                             payload["notes"] = (
@@ -316,6 +334,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             )
                         else:
                             payload["agent"] = "student-presentation-suite:visual-critic"
+                            payload["high_leverage_slides"] = _high_leverage(work_dir)
                             payload["notes"] = (
                                 "Calibration evidence needs an independent visual-critic run. Spawn "
                                 "student-presentation-suite:visual-critic (no `name`) with the absolute "
@@ -456,11 +475,13 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         work_dir,
                         ("pipeline-qa.json", "pre-qa-quality.json", "pre-qa-actual-content.json", "pre-qa-rendered.json"),
                     )
-                    if blocker_slides and (work_dir / "pipeline-qa.json").is_file():
+                    if (work_dir / "pipeline-qa.json").is_file():
+                        repair_targets = blocker_slides or sorted(page_files_by_slide(work_dir))
                         packets = _packet.prepare_packets(
-                            work_dir, "repair", blocker_slides, ["pipeline-qa.json"],
-                            single_builder=basic,
+                            work_dir, "repair", repair_targets, ["pipeline-qa.json"],
+                            single_builder=basic or not blocker_slides,
                             max_parallel=policy["shard_cap"],
+                            convergence=repair_convergence(work_dir),
                         )
                         if packets:
                             payload["builder_packets"] = packets
@@ -521,6 +542,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         )
                     )
                     payload["agent"] = "student-presentation-suite:visual-critic"
+                    payload["high_leverage_slides"] = _high_leverage(work_dir)
                     payload["session_segment"] = (
                         "boundary-recommended: build+render is done and this work-dir carries all state. "
                         "Running review+QA in a NEW session (just /sp-deck then `next --json`) avoids "
@@ -572,11 +594,13 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 # Builder Packet (v0.15 Batch 2): full-QA repair packets projected from
                 # pipeline-qa.json, generated once the repair is recorded.
                 try:
-                    if blocker_slides and (work_dir / "pipeline-qa.json").is_file():
+                    if (work_dir / "pipeline-qa.json").is_file():
+                        repair_targets = blocker_slides or sorted(page_files_by_slide(work_dir))
                         packets = _packet.prepare_packets(
-                            work_dir, "repair", blocker_slides, ["pipeline-qa.json"],
-                            single_builder=basic,
+                            work_dir, "repair", repair_targets, ["pipeline-qa.json"],
+                            single_builder=basic or not blocker_slides,
                             max_parallel=policy["shard_cap"],
+                            convergence=repair_convergence(work_dir),
                         )
                         if packets:
                             payload["builder_packets"] = packets

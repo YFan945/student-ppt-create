@@ -2373,6 +2373,25 @@ class AdvanceTests(PipelineTestCase):
         self.assertIn("contract", dispatch)
         self.assertIn("notes", dispatch)
 
+    def test_deck_level_blockers_get_a_single_full_deck_packet(self) -> None:
+        """Blockers without a slide number used to ship NO packet at all."""
+        self.state_qa(ok=False)
+        (self.work / "pipeline-qa.json").write_text(
+            json.dumps({"ok": False, "problems": [
+                {"gate": "quality", "severity": "major", "code": "low_visual_variety",
+                 "message": "deck repeats one structure"},
+            ]}),
+            encoding="utf-8",
+        )
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        dispatch = result["dispatch"]
+        self.assertIn("builder_packets", dispatch)
+        payload = json.loads(Path(dispatch["builder_packets"][0]["packet"]).read_text(encoding="utf-8"))
+        self.assertEqual([1], payload["assigned_slides"], "deck-level repair covers the whole deck")
+        self.assertTrue(payload["deck_blockers"], "the deck-level finding is projected")
+        self.assertEqual("low_visual_variety", payload["deck_blockers"][0]["code"])
+
     def test_advance_surfaces_packet_generation_failure_instead_of_silently_dropping(self) -> None:
         """Batch 2.1's rule — a packet fallback is observable, never silent — must
         also hold on advance's repair path. A packet generator crash has to land in

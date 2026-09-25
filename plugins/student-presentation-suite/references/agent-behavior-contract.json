@@ -3,7 +3,11 @@
   "purpose": "Single canonical machine source for agent behavior rules. Guards enforce this file; spawn templates and agent definitions project it; no prose file may state a contradicting rule. See AGENTS.md 'Documentation Ownership'.",
   "presentation_builder": {
     "agent": "student-presentation-suite:presentation-builder",
-    "allowed_modes": ["calibration", "initial", "repair"],
+    "allowed_modes": [
+      "calibration",
+      "initial",
+      "repair"
+    ],
     "page_brief_strategy": {
       "initial": "whole_deck",
       "calibration": "target_pages",
@@ -38,7 +42,11 @@
         "build-manifest",
         "pipeline-qa",
         "pre-qa",
-        "page_brief"
+        "page_brief",
+        "slide-spec.yaml",
+        "qa-",
+        "visual-review",
+        "calibration-style-contract"
       ]
     },
     "edit_scope": {
@@ -54,7 +62,10 @@
     "read_full_render_pngs": false,
     "required_preview_mode": "batched",
     "report_schema": "references/visual-review.schema.json",
-    "blocker_severities": ["critical", "major"]
+    "blocker_severities": [
+      "critical",
+      "major"
+    ]
   },
   "presentation_researcher": {
     "agent": "student-presentation-suite:presentation-researcher",

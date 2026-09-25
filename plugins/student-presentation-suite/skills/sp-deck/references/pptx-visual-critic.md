@@ -24,7 +24,7 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 
 2026-09-17 live：critic 按自己的习惯回报"blocker 数：0（critical 0 / major 8 / minor 12）"，
 主会话据此判断"独立复核已判定可交付"，而质量门同一份报告算出 23 个 blocker。现在必须
-先读质量档，再按该档统一汇总口径。
+先读 `critic-preview-map.json` 的 `quality_level`（档位与哈希绑定的唯一来源，不读冻结 Spec/manifest），再按该档统一汇总口径。
 
 ## visual-review.json
 
@@ -170,7 +170,9 @@ direction 在生产时被丢失。
 
 ## Repair classification
 
-遇到 Major/Critical 先判断修复层级，不要所有问题都只改 x/y：
+遇到 Major/Critical 先判断修复层级，不要所有问题都只改 x/y。**这些内容就是报告字段本身**：
+每条 Major/Critical 的 `element`（元素定位）、`fix`（可执行修法）与 `repair_level` 按下面的
+分类写出——修复 builder 只按这些字段动手，缺定位或缺修法的 blocker 会直接多烧一整轮：
 
 ```yaml
 slide: 6

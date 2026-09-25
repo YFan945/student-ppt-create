@@ -62,7 +62,7 @@ class AddTextBoxFloorTests(unittest.TestCase):
     def test_sub_body_font_size_warns_and_clamps(self) -> None:
         result = run_node(
             """
-  H.addTextBox(slide, '数据标签 0.034', { x: 0.5, y: 0.5, w: 3, h: 0.4 }, tokens, 'chinese', { fontSize: 12, label: '数据标签' });
+  H.addTextBox(slide, '数据标签 0.034', { x: 0.5, y: 0.5, w: 4, h: 1.2 }, tokens, 'chinese', { fontSize: 12, label: '数据标签' });
   if (slide.calls[0].options.fontSize !== 22) process.exit(4);
   if (!warnings.some((w) => w.includes('数据标签') && w.includes('12pt') && w.includes('22pt'))) process.exit(5);
   if (!warnings.some((w) => w.includes('role'))) process.exit(6);

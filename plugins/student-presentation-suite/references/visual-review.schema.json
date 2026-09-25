@@ -137,6 +137,29 @@
         "resolved": {
           "type": "boolean",
           "description": "声称已解决必须携带绑定当前 PPTX sha256 的证据，否则 QA 判 resolved_without_evidence"
+        },
+        "element": {
+          "type": "string",
+          "minLength": 1,
+          "description": "元素定位：页面区域 / 形状名 / 构件（如 '标题栏' 'chart1 图例' '第 3 条要点'）——修复者据此不用翻找"
+        },
+        "fix": {
+          "type": "string",
+          "minLength": 1,
+          "description": "可执行修法：改什么、改成什么（如 '标题降到 28pt 并留出 0.3in 下边距'）。major/critical 必须携带"
+        },
+        "repair_level": {
+          "enum": ["art-direction", "reference", "composition", "asset", "implementation"],
+          "description": "修复入口层级：改视觉系统 / 换参考 / 换构图 / 换素材 / 改实现"
+        },
+        "resolved_evidence": {
+          "type": "object",
+          "required": ["before_sha256", "after_sha256"],
+          "properties": {
+            "before_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "after_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+          },
+          "description": "resolved: true 的必备证据：修改前后页面渲染哈希（QA 的 has_resolution_evidence 消费）"
         }
       }
     }

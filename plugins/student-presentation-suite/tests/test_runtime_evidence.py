@@ -230,6 +230,17 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(self.critic_spawn(), 2)
         self.assertFalse((self.work / runtime.critic_preview.MAP_NAME).exists())
 
+    def test_preview_map_carries_the_delivery_tier(self):
+        """The critic reads quality_level from the map, never from the frozen spec."""
+        self.prepare_render()
+        manifest_path = self.work / "build-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["quality_level"] = "rigorous"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        payload = runtime.critic_preview.materialize(self.work)
+        self.assertEqual("rigorous", payload["quality_level"])
+        self.assertEqual("production", payload["scope"])
+
     def test_critic_preview_artifacts_are_hook_owned(self):
         preview = self.work / runtime.critic_preview.PREVIEW_DIR_NAME / "p01.jpg"
         preview.parent.mkdir(parents=True)

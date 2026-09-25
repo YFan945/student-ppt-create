@@ -39,6 +39,16 @@
       "pre_build": false,
       "artifact": "package"
     },
+    "static_risk": {
+      "script": "pptx_static_risk_check.py",
+      "phase": "post_build",
+      "requires": ["pptx"],
+      "dependencies": [],
+      "critic": false,
+      "pre_build": true,
+      "note": "element-level overflow / out-of-bounds / overlap from shared/pptx_static_core; deterministic pre-QA only",
+      "artifact": "static_risk"
+    },
     "rendered": {
       "script": "pptx_rendered_check.py",
       "phase": "post_build",

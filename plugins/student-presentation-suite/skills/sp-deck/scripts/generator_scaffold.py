@@ -57,6 +57,10 @@ const H = require(path.join(HELPERS_DIR, 'pptx-helpers.js'));
 const {{ SlideElementRegistry }} = require(path.join(HELPERS_DIR, 'pptx-element-registry.js'));
 const pptxgen = require('pptxgenjs');
 
+// 解析好的设计 token 由 scaffold 内联（同源：shared/design_tokens.resolve_design_tokens）。
+// 页模块只用这些角色色与字体，不要手写十六进制色值。
+const TOKENS = {tokens_json};
+
 const PAGES = [
 {requires}
 ];
@@ -65,7 +69,7 @@ function main() {{
   const out = process.argv[2];
   if (!out) throw new Error('usage: deck.js <output.pptx>');
   const pptx = new pptxgen();
-  H.applyTokens(pptx, {{}}, 'chinese');
+  H.applyTokens(pptx, TOKENS, 'chinese');
   const registry = new SlideElementRegistry({{
     slideW: H.SLIDE_W_IN,
     slideH: H.SLIDE_H_IN,
@@ -73,8 +77,8 @@ function main() {{
   PAGES.forEach((mod, index) => {{
     const n = index + 1;
     const slide = pptx.addSlide();
-    slide.background = {{ color: H.color({{ palette: {{ canvas: 'FFFFFF' }} }}, 'canvas') }};
-    mod({{ pptx, slide, n, H, registry }});
+    slide.background = {{ color: H.color(TOKENS, 'canvas') }};
+    mod({{ pptx, slide, n, H, registry, tokens: TOKENS }});
   }});
   registry.assertSafe();
   return pptx.writeFile({{ fileName: out }});
@@ -89,19 +93,21 @@ PAGE_STUB = """\
 /** Slide {n} — {title} */
 {on_screen_block}
 module.exports = function (ctx) {{
-  const {{ slide, n, H, registry }} = ctx;
+  const {{ slide, n, H, registry, tokens }} = ctx;
   const COPY = {{
     title: {title_js},
     claim: {claim_js},
     slideCopy: {copy_js},{sources_line}
   }};
   /* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */
-  slide.addText(COPY.title, {{
-    x: 0.6, y: 0.4, w: 8.8, h: 1.0,
-    fontSize: 32,
-    lineSpacing: Number((32 * H.LINE_SPACING_FACTOR).toFixed(2)),
-  }});
+  /* 标题走角色字号表（title），装不下会抛错——不要裸 slide.addText 绕过检查。 */
+  H.addFittedText(slide, COPY.title, {{ x: 0.6, y: 0.4, w: 8.8, h: 1.0 }}, tokens, 'chinese', 'title');
   registry.text(n, COPY.title, {{ x: 0.6, y: 0.4, w: 8.8, h: 1.0, fontSize: 32 }});
+  /* 正文/列表同理：H.addFittedText(..., tokens, 'chinese', 'body' | 'list')；
+     小字用角色 'caption' | 'source' | 'label'。色值只取 tokens.palette 角色
+     （H.color(tokens, role)），不要手写十六进制。 */
+  /* 图片：用带 altText 的封装（如 addAnnotatedVisual），不要裸 slide.addImage。 */
+  /* 讲稿：slide.addNotes(本页讲稿正文) —— 每页一次、纯文本，质量门读 PPTX 备注区。 */
 }};
 """
 
@@ -272,7 +278,42 @@ def write_if_scaffoldable(path: Path, contents: str) -> bool:
     return True
 
 
-def scaffold_generator(work_dir: Path, spec_path: Path) -> dict[str, Any]:
+def _inline_tokens_json(spec: dict[str, Any], art_direction: Path | None) -> str:
+    """Resolved design tokens inlined into deck.js — pages never hand-type colors.
+
+    Same source the palette gate judges against (shared/design_tokens), so the
+    scaffolded deck cannot disagree with the gate about what a legal color is.
+    """
+    root = Path(
+        os.environ.get("CLAUDE_PLUGIN_ROOT") or Path(__file__).resolve().parent.parents[2]
+    ).resolve()
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from shared.design_tokens import resolve_design_tokens  # noqa: PLC0415
+
+    meta = spec.get("meta") if isinstance(spec.get("meta"), dict) else {}
+    style = meta.get("visual_style")
+    custom = meta.get("visual_style_custom")
+    if art_direction is not None and Path(art_direction).is_file():
+        try:
+            ad = load_spec(Path(art_direction))
+        except ValueError:
+            ad = {}
+        style = ad.get("style_seed") or ad.get("visual_style") or style
+        custom = ad.get("visual_style_custom") or custom
+    try:
+        tokens = resolve_design_tokens(
+            str(style) if style else None,
+            custom if isinstance(custom, dict) else None,
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        tokens = {"palette": {"canvas": "FFFFFF"}}
+    return json.dumps(tokens, ensure_ascii=False, indent=2)
+
+
+def scaffold_generator(
+    work_dir: Path, spec_path: Path, art_direction: Path | None = None
+) -> dict[str, Any]:
     """Create deck.js + pages/ stubs. Returns counts for the stage summary."""
     spec = load_spec(spec_path)
     slides = spec_slides(spec)
@@ -307,7 +348,11 @@ def scaffold_generator(work_dir: Path, spec_path: Path) -> dict[str, Any]:
             kept_pages += 1
 
     requires = ",\n".join(f"  require('./pages/{name}')" for name in names)
-    deck = DECK_TEMPLATE.format(marker=SCAFFOLD_MARKER, requires=requires or "  // no slides")
+    deck = DECK_TEMPLATE.format(
+        marker=SCAFFOLD_MARKER,
+        requires=requires or "  // no slides",
+        tokens_json=_inline_tokens_json(spec, art_direction),
+    )
     deck_path = work_dir / "deck.js"
     wrote_deck = write_if_scaffoldable(deck_path, deck)
     return {

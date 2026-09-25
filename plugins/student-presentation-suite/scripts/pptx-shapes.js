@@ -116,28 +116,21 @@ function ensureFillContrast(fill, canvas, minRatio = 1.06) {
  * @param {number} [highlightIndex] 需要用满色的点索引
  * @returns {string[]}
  */
-function accentRamp(base, canvas, count, highlightIndex) {
+function accentRamp(roles, count, highlightIndex) {
+  // 数据点色阶在调色板角色之间轮转：tint 插值会越出角色集合，被 palette 门判
+  // off-palette-color（2026-09-22 live：三个图表的默认/插值色触发 major + 整轮返工）。
   const total = Math.max(1, Math.floor(Number(count) || 1));
-  const baseRgb = parseHex(base);
-  const canvasRgb = parseHex(canvas);
-  if (!baseRgb || !canvasRgb) return [base];
+  const palette = (Array.isArray(roles) ? roles : [roles]).filter(Boolean);
+  if (!palette.length) throw new RangeError('accentRamp requires at least one palette role color');
   const tints = [];
   for (let i = 0; i < total; i += 1) {
-    const step = total === 1 ? 0 : i / (total - 1);
-    const amount = 0.15 + step * 0.5;
-    tints.push(
-      toHex({
-        r: baseRgb.r + (canvasRgb.r - baseRgb.r) * amount,
-        g: baseRgb.g + (canvasRgb.g - baseRgb.g) * amount,
-        b: baseRgb.b + (canvasRgb.b - baseRgb.b) * amount,
-      }),
-    );
+    tints.push(palette[i % palette.length]);
   }
   const focus =
     Number.isInteger(highlightIndex) && highlightIndex >= 0 && highlightIndex < total
       ? highlightIndex
       : 0;
-  tints[focus] = toHex(baseRgb);
+  tints[focus] = palette[0];
   return tints;
 }
 

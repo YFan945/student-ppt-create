@@ -71,7 +71,7 @@ function baseSlide(mode = 'light', reserveTitle = true) {{
 
 {{
   const {{ slide, tokens, area }} = baseSlide('light', false);
-  H.addTextBox(slide, {style_label}, {{x:area.x,y:area.y+area.h*0.24,w:area.w*0.58,h:area.h*0.24}}, tokens, 'chinese', {{fontSize:34,bold:true,margin:0}});
+  H.addTextBox(slide, {style_label}, {{x:area.x,y:area.y+area.h*0.20,w:area.w*0.86,h:area.h*0.30}}, tokens, 'chinese', {{role:'title',bold:true,margin:0}});
   H.addFittedText(slide, TOKENS.style_character, {{x:area.x,y:area.y+area.h*0.54,w:area.w*0.74,h:area.h*0.30}}, tokens, 'english', 'caption', {{fontSize:13,color:H.color(tokens,'secondary_text'),margin:0,label:'Style character'}});
   slide.addShape(pptx.ShapeType.ellipse, {{x:area.x+area.w*0.78,y:area.y+area.h*0.20,w:area.h*0.36,h:area.h*0.36,fill:{{color:H.color(tokens,'primary_accent'),transparency:8}},line:{{transparency:100}}}});
 }}

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -66,8 +67,9 @@ FORBIDDEN_ACTIONS = [
 ]
 NO_REREAD = (
     "this packet is the complete task input for its assigned slides: do not re-read "
-    "slide-spec-compiled.yaml, art-direction.yaml, research-pack.json, build-manifest.json "
-    "or the QA reports it projects — every field below is byte-derived from those sources"
+    "slide-spec-compiled.yaml, slide-spec.yaml, art-direction.yaml, research-pack.json, "
+    "build-manifest.json, visual-review.json or the QA reports it projects (pipeline-qa, "
+    "pre-qa, qa-*.json) — every field below is byte-derived from those sources"
 )
 
 # Shard policy has ONE owner: references/pipeline-contract.json. This module must not
@@ -266,24 +268,69 @@ def score_history(work_dir: Path) -> dict[str, dict[str, Any]]:
     return loaded if isinstance(loaded, dict) else {}
 
 
+ISSUE_DETAIL_KEYS = (
+    "detail", "expected", "missing", "part", "colors", "elements",
+    "field", "score", "estimated_sec",
+)
+
+
+def slide_number_of(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    match = re.search(r"(\d+)", str(value or ""))
+    if match:
+        number = int(match.group(1))
+        return number if number > 0 else None
+    return None
+
+
+def report_items(report: dict[str, Any]) -> list[dict[str, Any]]:
+    """Flat finding list: top-level problems/issues plus nested slides[].issues.
+
+    Visual reviews keep findings under each slide; the packet used to miss them,
+    leaving calibration repair builders to open the review file themselves.
+    """
+    items = [item for item in (report.get("problems") or []) + (report.get("issues") or [])
+             if isinstance(item, dict)]
+    for entry in report.get("slides") or []:
+        if not isinstance(entry, dict):
+            continue
+        for item in entry.get("issues") or []:
+            if isinstance(item, dict):
+                items.append({**item, "slide": item.get("slide") or entry.get("slide")})
+    return items
+
+
+def project_blocker(item: dict[str, Any]) -> dict[str, Any]:
+    run = item.get("slides") if isinstance(item.get("slides"), list) else []
+    projected = {
+        "gate": item.get("gate"),
+        "code": item.get("code"),
+        "severity": item.get("severity"),
+        "message": str(item.get("message") or "")[:800],
+    }
+    slide = slide_number_of(item.get("slide"))
+    if slide is not None:
+        projected["slide"] = slide
+    slides = [slide_number_of(value) for value in run]
+    if any(slides):
+        projected["slides"] = [value for value in slides if value]
+    for key in ISSUE_DETAIL_KEYS:
+        if item.get(key) is not None:
+            projected[key] = item[key]
+    return projected
+
+
 def report_slide_blockers(report: dict[str, Any], slide: int) -> list[dict[str, Any]]:
     out = []
-    for item in (report.get("problems") or []) + (report.get("issues") or []):
-        if not isinstance(item, dict):
-            continue
-        run = item.get("slides") if isinstance(item.get("slides"), list) else []
+    for item in report_items(report):
+        run = [slide_number_of(value) for value in item.get("slides") or []]
         # Match single-slide findings and multi-slide runs (repetitive_structure_*),
         # and keep the run list in the projection so the builder sees the span.
-        if item.get("slide") == slide or slide in run:
-            out.append(
-                {
-                    "gate": item.get("gate"),
-                    "code": item.get("code"),
-                    "severity": item.get("severity"),
-                    "message": str(item.get("message") or "")[:300],
-                    **({"slides": [int(v) for v in run if isinstance(v, int)]} if run else {}),
-                }
-            )
+        if slide_number_of(item.get("slide")) == slide or slide in run:
+            out.append(project_blocker(item))
     return out
 
 
@@ -293,6 +340,7 @@ def build_packet(
     slides: list[int] | None = None,
     shard: int | None = None,
     qa_reports: list[Path] | None = None,
+    convergence: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Project one builder instance's complete task input. Raises SystemExit on
     missing spec or unknown slides, exactly like `page_brief.py`."""
@@ -383,9 +431,21 @@ def build_packet(
         (work_dir / "calibration").mkdir(exist_ok=True)
         allowed_files.append("calibration/style-summary.json")
 
+    spec_meta = spec.get("meta") if isinstance(spec.get("meta"), dict) else {}
     packet: dict[str, Any] = {
         "schema_version": "1.0",
         "mode": mode,
+        # Deck-level constraints the gates read from meta: projected so a
+        # packet round never needs to open the spec for them.
+        "meta": {
+            key: spec_meta[key]
+            for key in (
+                "quality_level", "include_speaker_notes", "include_key_lines",
+                "max_words_per_slide", "max_chinese_chars_per_slide", "citation_style",
+                "topic",
+            )
+            if key in spec_meta
+        },
         "work_dir": str(work_dir),
         "shard": shard,
         "assigned_slides": targets,
@@ -412,17 +472,25 @@ def build_packet(
     if mode == "repair":
         packet["reports"] = reports
         deck_level = [
-            {
-                "gate": item.get("gate"),
-                "code": item.get("code"),
-                "severity": item.get("severity"),
-                "message": str(item.get("message") or "")[:300],
-            }
+            project_blocker(item)
             for report in loaded_reports
-            for item in (report.get("problems") or []) + (report.get("issues") or [])
-            if isinstance(item, dict) and item.get("slide") is None
+            for item in report_items(report)
+            if slide_number_of(item.get("slide")) is None
+            and not any(slide_number_of(value) for value in item.get("slides") or [])
         ]
         packet["deck_blockers"] = deck_level
+        packet["minimal_edit"] = {
+            "rule": (
+                "diff only the blocker element's call and its direct dependencies; "
+                "no layout rewrites, no unrelated polish, no whole-page redesign"
+            ),
+            "scope": (
+                "slides[].blockers / deck_blockers name the ONLY elements to touch this "
+                "round; use Edit with targeted replacements, not file rewrites"
+            ),
+        }
+        if convergence:
+            packet["repair_convergence"] = convergence
         packet["must_not_regress_note"] = (
             "pages that already passed review must not drop 1.5+ points; the QA gate "
             "compares this round's per-slide scores against visual-score-history.json"
@@ -601,9 +669,10 @@ def write_packet(
     slides: list[int] | None = None,
     shard: int | None = None,
     qa_reports: list[Path] | None = None,
+    convergence: dict[str, Any] | None = None,
 ) -> tuple[Path, dict[str, Any]]:
     """Generate and write one packet; returns (path, packet)."""
-    packet = build_packet(work_dir, mode, slides, shard, qa_reports)
+    packet = build_packet(work_dir, mode, slides, shard, qa_reports, convergence=convergence)
     out_dir = work_dir / PACKET_DIR_NAME
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / packet_name(mode, shard)
@@ -619,6 +688,7 @@ def prepare_packets(
     *,
     single_builder: bool = False,
     max_parallel: int | None = None,
+    convergence: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Generate one packet per builder instance for a spawn, disjoint by shard.
 
@@ -636,7 +706,9 @@ def prepare_packets(
     out: list[dict[str, Any]] = []
     if shards:
         for shard in shards:
-            path, packet = write_packet(work_dir, mode, shard["slides"], shard["shard"], qa_reports)
+            path, packet = write_packet(
+                work_dir, mode, shard["slides"], shard["shard"], qa_reports, convergence=convergence
+            )
             out.append(
                 {
                     "shard": shard["shard"],
@@ -646,7 +718,7 @@ def prepare_packets(
                 }
             )
     else:
-        path, packet = write_packet(work_dir, mode, targets, None, qa_reports)
+        path, packet = write_packet(work_dir, mode, targets, None, qa_reports, convergence=convergence)
         out.append(
             {
                 "shard": None,

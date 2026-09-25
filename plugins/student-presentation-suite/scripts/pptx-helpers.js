@@ -357,6 +357,24 @@ function assertTextFits(text, boxW, boxH, fontSize, isCJK, label) {
   return fit;
 }
 
+/**
+ * 溢出即抛错的写入前置检查（addTextBox 的统一语义）。
+ * 溢出类缺陷必须在生成时消灭：旧实现只警告，等独立评审发现时已经是一整轮修复。
+ */
+function requireTextFits(text, boxW, boxH, fontSize, isCJK, label) {
+  const fit = estimateTextFit(String(text || ''), boxW, boxH, fontSize, isCJK);
+  if (fit.overflow) {
+    const detail = Number.isFinite(fit.fillRatio)
+      ? `${fit.lines} 行，填充率 ${fit.fillRatio}`
+      : '盒子高度扣除边距后可用区域 ≤ 0';
+    throw new RangeError(
+      `${label || '文本框'}装不下（${fontSize}pt，${detail}）：扩大文本框、精简内容、` +
+        '改用角色小字号（caption/source/label）或拆分幻灯片。',
+    );
+  }
+  return fit;
+}
+
 function rolePolicy(tokens, lang, role, options = {}) {
   const sizes = fontSizeScale(tokens, lang);
   const normalized = String(role || 'body');
@@ -395,7 +413,13 @@ function rolePolicy(tokens, lang, role, options = {}) {
       valign: 'mid',
     },
   };
-  const policy = { ...(table[normalized] || table.body), ...options, role: normalized };
+  const basePolicy = table[normalized] || table.body;
+  const policy = { ...basePolicy, ...options, role: normalized };
+  // 角色字号地板不可被调用方压穿：min/fontSize 只能抬、不能压到地板下
+  // （caption/source/label 的地板本就低，小字走角色字号表是合法通道）。
+  if (Number.isFinite(Number(basePolicy.min))) {
+    policy.min = Math.max(Number(basePolicy.min), Number(options.min || 0));
+  }
   // 调用方显式传入的字号必须生效。
   // 旧实现在 addText() 里用 `fontSize: fit.fontSize` 覆盖了调用方的 fontSize，
   // 导致"传了等于没传"且不报错（Hero 标题请求 32pt 实际只拿到 26pt）。
@@ -726,7 +750,7 @@ function addTextBox(slide, text, box, tokens, lang, opts) {
   const margins = Array.isArray(margin) ? margin : [margin, margin, margin, margin];
   const usableW = box.w - ((margins[1] || 0) + (margins[3] || 0)) / 72;
   const usableH = box.h - ((margins[0] || 0) + (margins[2] || 0)) / 72;
-  assertTextFits(
+  requireTextFits(
     plainText(text),
     usableW,
     usableH,
@@ -1005,6 +1029,12 @@ function describeApi() {
       'set explicit valAxisMinVal: 0 and valAxisMaxVal >= data max on every chart; the rendered check rejects auto-scaled value axes',
     lineSeriesLimit:
       'pptxgenjs ignores series-level line.width/dashType on line charts (verified 2026-09-17); encode series with color + markers + direct labels, never legend-only stroke styles',
+    pptxgenjsSafety: [
+      'lineSpacing must be points (lineSpacingMultiple is unreliable); bullets need explicit bullet: { type }',
+      'never share one shadow object across shapes — pptxgenjs keeps the reference and mutates it',
+      'stacked charts allow dataLabelPosition ctr/inEnd/inBase only; outEnd corrupts the file',
+      'chart axis/legend/title colors are palette-bound in pptx-visuals chart options; never hand-patch per chart',
+    ],
     entries,
   };
 }

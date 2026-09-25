@@ -409,6 +409,17 @@ function addMetricDashboard(slide, data, area, tokens, lang) {
  * data: { columns: string[], rows: (string|number)[][], highlight_row?: number,
  *         zebra?: boolean (默认 true), title?: string }
  */
+function readableOn(background, p) {
+  // 表格文字色必须是调色板角色（FFFFFF 会越界：forest-moss / warm-terracotta
+  // 两套调色板里根本没有白色）。背景偏亮用 text、偏暗用 canvas。
+  const hex = String(background || '').replace('#', '');
+  const r = parseInt(hex.slice(0, 2), 16) || 0;
+  const g = parseInt(hex.slice(2, 4), 16) || 0;
+  const b = parseInt(hex.slice(4, 6), 16) || 0;
+  const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  return luminance > 0.55 ? p.text : p.canvas;
+}
+
 function addStyledTable(slide, data, area, tokens, lang) {
   const p = palette(tokens);
   const columns = items(data.columns);
@@ -419,7 +430,7 @@ function addStyledTable(slide, data, area, tokens, lang) {
     text: textOf(name),
     options: {
       fill: { color: p.accent },
-      color: 'FFFFFF',
+      color: readableOn(p.accent, p),
       bold: true,
       fontFace: H.fontFamily(tokens).body,
       fontSize: Math.max(11, H.fontSizeScale(tokens, lang).caption + 1),
@@ -436,7 +447,7 @@ function addStyledTable(slide, data, area, tokens, lang) {
       text: textOf(cell),
       options: {
         fill: { color: baseFill },
-        color: emphasized ? 'FFFFFF' : p.text,
+        color: emphasized ? readableOn(baseFill, p) : p.text,
         bold: emphasized,
         fontFace: H.fontFamily(tokens).body,
         fontSize: Math.max(11, H.fontSizeScale(tokens, lang).caption),
@@ -500,7 +511,7 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
   const pointCount = Array.isArray(series[0] && series[0].values) ? series[0].values.length : 0;
   const varyByPoint = kind === 'bar' && !stacked && series.length === 1 && pointCount > 1;
   const chartColors = varyByPoint
-    ? S.accentRamp(p.accent, p.canvas, pointCount, data.highlight_index)
+    ? S.accentRamp([p.accent, p.accent2, p.muted], pointCount, data.highlight_index)
     : rawSeries.map((entry, index) => entry.color || colors[index % colors.length]);
   // 图表内文字统一从字号层级派生：图表标题 < 页面标题，轴标签/数据标签 < 正文。
   // 之前的硬编码 18pt/22pt 与正文同级，一页会出现两个"准标题"。
@@ -537,6 +548,8 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
     showCatName: false,
     showSerName: false,
     altText: data.alt_text || data.altText || data.takeaway || 'Editable data chart',
+    // 图表区边框也绑调色板：不设时渲染器画默认白框（深色页上一个白盒子）。
+    border: { pt: 0, color: p.canvas },
   };
   if (kind === 'doughnut') {
     chartOptions.dataLabelPosition = 'bestFit';
@@ -750,7 +763,7 @@ function addAnnotatedVisual(slide, data, area, tokens, lang) {
     addPanel(slide, cells[index], tokens);
     addLabel(slide, textOf(annotation), cells[index], tokens, lang, {
       align: 'left',
-      fontSize: 18,
+      fontSize: H.fontSizeScale(tokens, lang).label,
       margin: 16,
       label: `图像注释 ${index + 1}`,
     });

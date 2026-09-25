@@ -60,8 +60,8 @@ BRIEF_KEYS = (
     "reason", "error", "packet_fallback_count",
 )
 BRIEF_DISPATCH_KEYS = (
-    "state", "next_command", "review_output", "repair_budget", "session_segment",
-    "builder_shards", "pre_qa",
+    "state", "next_command", "repair_budget", "session_segment",
+    "builder_shards", "pre_qa", "calibration", "high_leverage_slides",
 )
 
 

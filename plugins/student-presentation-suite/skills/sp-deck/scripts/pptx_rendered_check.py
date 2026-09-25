@@ -108,13 +108,14 @@ def check_pptx(pptx: Path, tokens: dict[str, Any]) -> dict[str, Any]:
             slide_sizes.extend(collect_font_sizes(xml))
             number = re.search(r"slide(\d+)\.xml$", name)
             label = f"slide-{number.group(1)}" if number else name
+            slide_no = int(number.group(1)) if number else None
             gap = content_bottom_whitespace(xml, slide_h)
             if gap is not None:
                 whitespace[label] = round(gap, 4)
                 if gap > DEAD_SPACE_LIMIT:
                     issues.append(
                         {
-                            "slide": label,
+                            "slide": slide_no,
                             "severity": "blocker",
                             "code": "dead-space",
                             "detail": f"bottom whitespace {gap:.1%} exceeds {DEAD_SPACE_LIMIT:.0%}",

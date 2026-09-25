@@ -134,6 +134,8 @@ class BuilderPacketTests(unittest.TestCase):
         path, packet = self.packet.write_packet(self.work, "initial")
         self.assertEqual([1, 2, 3, 4], packet["assigned_slides"])
         self.assertTrue(all(item["page_module"] for item in packet["slides"]))
+        self.assertEqual("classroom", packet["meta"]["citation_style"])
+        self.assertNotIn("quality_level", packet["meta"], "unset meta keys stay unprojected")
         self.assertIn("speaker-notes.md", packet["allowed_files"])
 
     def test_initial_shard_packets_are_disjoint_with_own_notes_targets(self) -> None:

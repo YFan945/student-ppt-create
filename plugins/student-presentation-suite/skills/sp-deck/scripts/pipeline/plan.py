@@ -310,7 +310,11 @@ def cmd_plan(args: argparse.Namespace) -> int:
             raise RefusedError("source unpack failed")
         scaffold_info = {"slides": len(spec_data.get("slides") or []), "pages": []}
     else:
-        scaffold_info = _scaffold.scaffold_generator(work_dir, spec)
+        scaffold_info = _scaffold.scaffold_generator(
+            work_dir,
+            spec,
+            art_direction=Path(str(getattr(args, "art_direction", "") or "")) or None,
+        )
         if mode == "rebuild_from_source":
             analysis = work_dir / "source-analysis.md"
             if not analysis.is_file() or not analysis.read_text(encoding="utf-8").strip():

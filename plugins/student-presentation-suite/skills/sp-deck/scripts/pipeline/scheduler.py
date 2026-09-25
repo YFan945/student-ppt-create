@@ -46,6 +46,19 @@ def remaining_scaffold_slides(work_dir: Path) -> list[int]:
     return sorted(result)
 
 
+def _slide_number_of(value: object) -> int | None:
+    """Accept 3, '3' or 'slide-3' — gates disagree on slide labels."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    match = re.search(r"(\d+)", str(value or ""))
+    if match:
+        number = int(match.group(1))
+        return number if number > 0 else None
+    return None
+
+
 def slides_named_in_reports(work_dir: Path, names: tuple[str, ...]) -> list[int]:
     """Slide numbers carried by the current blocker reports.
 
@@ -67,8 +80,8 @@ def slides_named_in_reports(work_dir: Path, names: tuple[str, ...]) -> list[int]
                 continue
             # Blockers name pages either singly (`slide`) or as a run
             # (`slides: [4, 5, 6]` — e.g. repetitive_structure_pair/run).
-            slide = item.get("slide")
-            if isinstance(slide, int) and not isinstance(slide, bool) and slide > 0:
+            slide = _slide_number_of(item.get("slide"))
+            if slide is not None:
                 found.add(slide)
             group = item.get("slides")
             if isinstance(group, list):

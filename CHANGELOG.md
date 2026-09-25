@@ -2,6 +2,23 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.2 — 2026-09-26 · Structural cost reduction
+
+- 上下文投影瘦身（少重复读取）：critic 的档位与哈希绑定改由 critic-preview-map 携带（不再
+  读冻结 Spec/manifest）；Builder Packet 增 meta 投影；spawn 固定块去除与 packet/agent 契约
+  重复的段落；`advance` brief 补齐校准与高杠杆页槽位；no_reread 清单补缝。
+- 首次生成质量（修在生成端）：scaffold 内联解析好的设计 token 并演示正确调用（addFittedText
+  / role / notes / altText）；表格文字色、图表色阶与图表区边框全部绑定调色板（消除
+  FFFFFF/插值色/默认白框三类越界色）；`addTextBox` 装不下即抛错，角色字号地板不可被调用方
+  压穿；`--describe` 增补 pptxgenjs 关键 gotcha。
+- 减少修复次数：rendered 门页码改为整数（字符串页码曾让逐页 blocker 从修复包里消失）；
+  `collect()` 保留 expected/missing/part/elements 等结构化字段并投影进修复包；校准修复包
+  带上评审 findings；deck 级 blocker 也生成整包；新增确定性静态风险门（溢出/出界/重叠，
+  带元素级 bounds）接入 build 后 pre-QA，在 render/critic 之前拦截。
+- 修复更小：视觉报告 schema 增 `element`/`fix`/`repair_level`/`resolved_evidence` 字段，
+  critic 对每条 blocker 必须给出元素定位与可执行修法；修复包携带 `minimal_edit` 契约
+  （diff 只限 blocker 元素）与 `repair_convergence` 摘要（同 code 持续多轮=疑似门缺陷）。
+
 ## 0.16.1 — 2026-09-26 · Cost mechanism removed
 
 - 按 owner 要求整体移除 v0.16.0 的运行时成本管控：用量探测（会话日志扫描）、阈值判定、

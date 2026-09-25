@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -520,6 +521,8 @@ def _gate_stage(
 
     if name == "package":
         argv = [sys.executable, str(PPTX_TOOL), "validate", pptx, "--output", str(report)]
+    elif name == "static_risk":
+        argv = gate("pptx_static_risk_check.py", "--pptx", pptx, "--output", str(report))
     elif name == "rendered":
         argv = gate(
             "pptx_rendered_check.py", "--pptx", pptx,
@@ -620,7 +623,8 @@ def pre_qa_stages(manifest: dict[str, Any], work_dir: Path) -> list[Stage]:
     gate_inputs = _gate_inputs(manifest)
     if not gate_inputs["pptx"]:
         return []
-    stages = [_gate_stage("rendered", work_dir, "pre-qa", gate_inputs)]
+    stages = [_gate_stage("static_risk", work_dir, "pre-qa", gate_inputs)]
+    stages.append(_gate_stage("rendered", work_dir, "pre-qa", gate_inputs))
     if gate_inputs["slide_spec"]:
         stages.append(_gate_stage("actual_content", work_dir, "pre-qa", gate_inputs))
     if gate_inputs["slide_spec"] and gate_inputs["spec_lock"]:
@@ -715,6 +719,25 @@ from calibration_review import (  # noqa: E402
     normalise_severity,
 )
 
+ISSUE_DETAIL_KEYS = (
+    "detail", "expected", "missing", "part", "colors", "elements",
+    "field", "score", "estimated_sec",
+)
+
+
+def slide_number_of(value: Any) -> int | None:
+    """Accept 3, "3" or "slide-3" — gates disagreed on slide labels once, and
+    the mismatch dropped rendered-gate blockers out of the repair packet."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    match = re.search(r"(\d+)", str(value or ""))
+    if match:
+        number = int(match.group(1))
+        return number if number > 0 else None
+    return None
+
 
 def collect(stage: Stage) -> tuple[bool, list[dict[str, Any]], dict[str, Any]]:
     started = time.monotonic()
@@ -736,7 +759,14 @@ def collect(stage: Stage) -> tuple[bool, list[dict[str, Any]], dict[str, Any]]:
         "severity": normalise_severity(report, issue),
         "code": str(issue.get("code") or f"{stage.name}_issue"),
         "message": str(issue.get("message") or issue.get("detail") or issue.get("problem") or issue),
-        **({"slide": issue.get("slide")} if issue.get("slide") is not None else {}),
+        **({"slide": slide_number_of(issue.get("slide"))}
+           if slide_number_of(issue.get("slide")) is not None else {}),
+        **({"slides": [slide for slide in (issue.get("slides") or []) if slide_number_of(slide)]}
+           if isinstance(issue.get("slides"), list) and issue.get("slides") else {}),
+        # Structured fields travel with the finding: the repair packet projects
+        # them so the builder gets expected/missing/part/elements instead of a
+        # 300-char stringified dict it cannot act on.
+        **{key: issue[key] for key in ISSUE_DETAIL_KEYS if issue.get(key) is not None},
     } for issue in issues if isinstance(issue, dict)]
     binding = {
         "ok": report.get("ok") is True and proc.returncode == 0, "checked": True,

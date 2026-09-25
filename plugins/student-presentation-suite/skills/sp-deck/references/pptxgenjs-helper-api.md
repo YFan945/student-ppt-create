@@ -52,7 +52,9 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/pptx-helpers.js --describe"
 - `preflightText(text, box, tokens, lang, role, options)` — 只算不画
 - `estimateTextFit(text, boxW, boxH, fontSize, isCJK)` — 返回
   `{ lines, fillRatio, overflow }`
-- `assertTextFits(...)` — 超限直接抛，用于"这一页必须放下"的硬约束
+- `assertTextFits(...)` — 超限仅警告并返回 fit（辅助区域如页脚使用）
+- `requireTextFits(...)` — 超限直接抛错；`addTextBox` 的写入前置检查走它，
+  溢出类缺陷在生成时消灭，不留给修复轮
 - `plainText(text)` — 提取纯文本，回读比对时使用
 
 **组件**

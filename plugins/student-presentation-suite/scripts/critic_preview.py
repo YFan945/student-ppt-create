@@ -19,6 +19,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.quality_tiers import normalize as normalize_tier  # noqa: E402
+
 MAP_NAME = "critic-preview-map.json"
 PREVIEW_DIR_NAME = "critic-preview"
 DEFAULT_LONG_EDGE = 1024
@@ -180,10 +186,17 @@ def materialize(
             }
         )
 
+    try:
+        manifest = _load_json(work_dir / "build-manifest.json")
+    except (OSError, ValueError, json.JSONDecodeError):
+        manifest = {}
     payload = {
         "version": 1,
         "work_id": work_dir.name,
         "scope": evidence["scope"],
+        # The tier travels with the bindings: the critic judges per tier without
+        # opening the frozen Slide Spec (26KB+ for one enum value).
+        "quality_level": normalize_tier(manifest.get("quality_level")),
         "pptx_sha256": evidence["pptx_sha256"],
         "review_output": evidence["review_output"],
         "receipt_output": evidence["receipt_output"],
