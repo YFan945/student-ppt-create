@@ -2,6 +2,15 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.11 — 2026-09-26 · Safe constraint pin refresh
+
+- `python-constraints.txt` 落地 dependabot 被关前积压的 5 个安全 pin：idna 3.20、
+  markitdown 0.1.8、protobuf 7.36.2、urllib3 2.8.0、ruff 0.16.8。**onnxruntime 保持
+  1.20.1**——magika 0.6.3 在 win32 上封顶 ≤1.20.1，升它就是 #42 windows 腿失败的复刻；
+  magika/mpmath/numpy 同样按原钉冻结（父约束未动，见 0.16.4–0.16.6）。
+- 本地 py3.11/windows 组合 `pip install --dry-run -c` 解析通过；其余三组合由 CI 矩阵
+  （`-c` 安装）验证。这是 dependabot pip 关闭后的第一次手工重生成节奏。
+
 ## 0.16.10 — 2026-09-26 · Guard invocation anchoring and dep-freshness watchdog
 
 - `production_entry_guard` 只在**调用**位置匹配内部脚本：解释器邻接（`python/sh/node/…`
