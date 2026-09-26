@@ -2,6 +2,13 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.5 — 2026-09-26 · Dependabot mpmath pin
+
+- `.github/dependabot.yml`：pip 组忽略 `mpmath >=1.4`——mpmath 是 sympy 在
+  `requirements-lock.txt` 里的传递钉，sympy 1.14 要求 `mpmath<1.4`（#40 的
+  ResolutionImpossible 根因）；sympy 放宽后移除。这是 dependabot 独立升锁文件传递钉
+  的第三例，结构性方案（锁文件移出 dependabot 视野）待 owner 决策。
+
 ## 0.16.4 — 2026-09-26 · Dependabot magika pin
 
 - `.github/dependabot.yml`：pip 组忽略 `magika >=1`——`markitdown 0.1.x` 钉死 `magika~=0.6.1`，

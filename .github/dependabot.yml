@@ -10,6 +10,10 @@ updates:
       # until markitdown updates its pin. Revisit then.
       - dependency-name: "magika"
         versions: [">=1"]
+      # mpmath is a transitive pin of sympy in requirements-lock.txt; sympy
+      # 1.14 requires mpmath<1.4. Revisit when sympy allows mpmath 1.4.
+      - dependency-name: "mpmath"
+        versions: [">=1.4"]
     groups:
       python-dependencies:
         patterns:
