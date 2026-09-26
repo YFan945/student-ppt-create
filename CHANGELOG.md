@@ -2,6 +2,11 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.3 — 2026-09-26 · Dependabot eslint pin
+
+- `.github/dependabot.yml`：npm 组忽略 `eslint >=9`——仓库仍是 `.eslintrc` 格式，v9+
+  默认不再支持该格式（#34 的 lint 失败原因）；flat config 迁移是独立任务，完成后移除此约束。
+
 ## 0.16.2 — 2026-09-26 · Structural cost reduction
 
 - 上下文投影瘦身（少重复读取）：critic 的档位与哈希绑定改由 critic-preview-map 携带（不再

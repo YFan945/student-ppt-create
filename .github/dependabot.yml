@@ -15,6 +15,11 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 1
+    ignore:
+      # Repo still uses .eslintrc format; eslint >=9 requires a flat-config
+      # migration, which is its own task. Revisit after that migration.
+      - dependency-name: "eslint"
+        versions: [">=9"]
     groups:
       javascript-dependencies:
         patterns:
