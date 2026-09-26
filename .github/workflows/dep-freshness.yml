@@ -1,0 +1,63 @@
+name: dep-freshness
+
+# dependabot's pip group is disabled (v0.16.8): python-constraints.txt is a
+# cross-platform frozen pin set that independent transitive bumps kept breaking.
+# This workflow restores the missing clock: monthly pip-audit plus a pin-drift
+# report, upserted into one tracking issue instead of silent staleness.
+
+on:
+  schedule:
+    - cron: "0 6 1 * *" # monthly, 1st 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Pip audit on the frozen constraints
+        id: audit
+        run: |
+          python -m pip install pip-audit==2.9.0
+          if pip-audit -r plugins/student-presentation-suite/python-constraints.txt > audit-report.txt 2>&1; then
+            echo "advisories=none" >> "$GITHUB_OUTPUT"
+          else
+            echo "advisories=found" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Constraint freshness report
+        id: report
+        run: |
+          python plugins/student-presentation-suite/scripts/constraint_freshness.py \
+            plugins/student-presentation-suite/python-constraints.txt > freshness-report.md
+          cat freshness-report.md
+          drift=$(sed -n 's/^DRIFT: \([0-9]*\)\/.*/\1/p' freshness-report.md)
+          echo "drift=${drift:-0}" >> "$GITHUB_OUTPUT"
+      - name: Upsert the tracking issue
+        if: ${{ steps.report.outputs.drift != '0' || steps.audit.outputs.advisories != 'none' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: "Python dependency freshness report"
+        run: |
+          {
+            echo "## pip-audit on python-constraints.txt"
+            echo '```'
+            cat audit-report.txt
+            echo '```'
+            echo
+            echo "## Pin freshness (informational)"
+            cat freshness-report.md
+          } > issue-body.md
+          existing=$(gh issue list --state open --search "$TITLE in:title" --json number --jq '.[0].number')
+          if [ -n "$existing" ]; then
+            gh issue edit "$existing" --body-file issue-body.md
+            gh issue comment "$existing" --body "Refreshed $(date -u +%Y-%m-%d); see body."
+          else
+            gh issue create --title "$TITLE" --body-file issue-body.md
+          fi

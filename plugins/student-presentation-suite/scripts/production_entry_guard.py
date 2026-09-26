@@ -54,24 +54,45 @@ ROOT_PRODUCTION_INTERNALS = frozenset(
         "run_with_pptxgenjs.js",
     }
 )
-_DECK_SCRIPT_RE = re.compile(
-    r"(?:^|[\\/])skills[\\/]sp-deck[\\/]scripts[\\/]"
-    r"(?P<name>[A-Za-z0-9_.-]+\.(?:py|sh))(?=$|[\s\"';&|])",
-    re.IGNORECASE,
+# A path counts as an *invocation* only when an interpreter token immediately
+# precedes it, or when the command opens with the path itself (direct exec).
+# sed/grep/cat/git-diff text that merely mentions the same path is a read;
+# refusing reads was the 2026-09-26 trap (deck maintenance blocked for carrying
+# script names). Detection stays conservative: `FOO=bar python x.py` still
+# counts (`=` joins the boundary class); exotic shells (`cat x.py | python`)
+# stay accepted false negatives — this is a discipline guard, not an adversary.
+_INTERPRETER_TOKEN = r"(?:python3?(?:\.\d+)?|py|sh|bash|node|pwsh|powershell|source)(?:\.exe)?"
+
+
+def _anchored(tail: str) -> re.Pattern[str]:
+    """Match *tail* only where a shell would execute it."""
+    return re.compile(
+        r"(?:"
+        # interpreter form: boundary + interpreter + flags + quote + prefix + path
+        r"(?:^|[\s;&|(=])(?:" + _INTERPRETER_TOKEN + r")"
+        r"(?:\s+(?:-{1,2}[\w.-]+))*\s+[\"']?(?:\./)?[^\s\"';&|]*"
+        r"|"
+        # direct-exec form: the command opens with the (possibly quoted) path
+        r"^[\"']?(?:\./)?[^\s\"';&|]*"
+        r")"
+        + tail,
+        re.IGNORECASE,
+    )
+
+
+_DECK_SCRIPT_RE = _anchored(
+    r"skills[\\/]sp-deck[\\/]scripts[\\/](?P<name>[A-Za-z0-9_.-]+\.(?:py|sh))"
 )
-_ROOT_SCRIPT_RE = re.compile(
+_ROOT_SCRIPT_RE = _anchored(
     r"(?:\$\{CLAUDE_PLUGIN_ROOT\}|student-presentation-suite(?:[\\/][^\\/\s\"']+)?)"
-    r"[\\/]scripts[\\/]"
-    r"(?P<name>[A-Za-z0-9_.-]+\.(?:py|js|sh))(?=$|[\s\"';&|])",
-    re.IGNORECASE,
+    r"[\\/]scripts[\\/](?P<name>[A-Za-z0-9_.-]+\.(?:py|js|sh))"
 )
 _PIPELINE_ACTION_RE = re.compile(
     r"ppt_pipeline\.py(?:[\"']?)(?:\s+)(?P<action>[A-Za-z0-9_-]+)",
     re.IGNORECASE,
 )
-_RUN_WITH_INVOCATION_RE = re.compile(
-    r"run_with_pptxgenjs\.js[\"']?(?P<args>.*?)(?=(?:&&|\|\||;|\n|\|)|$)",
-    re.IGNORECASE,
+_RUN_WITH_INVOCATION_RE = _anchored(
+    r"[^\"'\s;&|]*run_with_pptxgenjs\.js[\"']?(?P<args>.*?)(?=(?:&&|\|\||;|\n|\|)|$)"
 )
 _PROBE_TOKEN_RE = re.compile(r"(?:^|\s)--probe(?=$|\s)", re.IGNORECASE)
 

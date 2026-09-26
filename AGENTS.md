@@ -17,7 +17,12 @@ implementation line and is not supported here.
 
 - `.claude-plugin/marketplace.json`: marketplace manifest and published plugin version.
 - `.github/workflows/validate.yml`: Windows/Linux tests and strict Claude validation.
-- `.github/dependabot.yml`: automated dependency updates for pip, npm, and GitHub Actions.
+- `.github/dependabot.yml`: automated dependency updates for npm and GitHub
+  Actions. pip is intentionally not covered: `python-constraints.txt` is a
+  cross-platform frozen pin set (consumed with `pip install -c`) that
+  dependabot's independent transitive bumps kept breaking.
+- `.github/workflows/dep-freshness.yml`: monthly pip-audit plus a pin-drift
+  report on the frozen constraints, upserted into one tracking issue.
 - `.editorconfig`: cross-editor formatting baseline (indentation, line endings).
 - `plugins/student-presentation-suite/`: complete installable Claude Code plugin.
 - `scripts/install_claude_plugin.ps1`: install, migrate, update, and dependency setup.

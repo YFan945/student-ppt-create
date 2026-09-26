@@ -128,6 +128,48 @@ class ProductionEntryGuardTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual((0, ""), self.run_guard(command))
 
+    def test_mentions_of_internal_scripts_are_reads_not_invocations(self) -> None:
+        """2026-09-26 trap: deck maintenance (`sed`/`grep`/`cat`/`git diff` carrying
+        internal script names) was refused because any occurrence matched. Reads pass;
+        only interpreter-adjacent or direct-exec forms are invocations."""
+        commands = [
+            "sed -n '1,3p' C:/u/.claude/plugins/cache/claude-personal/student-presentation-suite/0.16.9/skills/sp-deck/scripts/deck_rhythm.py",
+            'grep -n "def check_bash" plugins/student-presentation-suite/skills/sp-deck/scripts/quality_gate.py',
+            'cat "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" | head -5',
+            "git diff -- plugins/student-presentation-suite/skills/sp-deck/scripts/slide_spec_guard.py",
+            "cat plugins/student-presentation-suite/scripts/research_pack_to_evidence.py",
+        ]
+        for command in commands:
+            with self.subTest(command=command[:60]):
+                self.assertEqual((0, ""), self.run_guard(command))
+
+    def test_invocations_still_refused_after_anchoring(self) -> None:
+        """Anchoring must not re-open the bypasses the guard exists to close."""
+        commands = [
+            "python C:/u/.claude/plugins/cache/claude-personal/student-presentation-suite/0.16.9/skills/sp-deck/scripts/deck_rhythm.py --work-dir wd",
+            './skills/sp-deck/scripts/art_direction_check.py --json',
+            'py -3 "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/art_direction_check.py" --json',
+            'FOO=bar python skills/sp-deck/scripts/quality_gate.py --json',
+            'grep x skills/sp-deck/scripts/quality_gate.py && python skills/sp-deck/scripts/quality_gate.py --json',
+            'python "${CLAUDE_PLUGIN_ROOT}/scripts/research_pack_to_evidence.py" pack.json',
+        ]
+        for command in commands:
+            with self.subTest(command=command[:60]):
+                code, message = self.run_guard(command)
+                self.assertEqual(2, code)
+                self.assertTrue(message.strip())
+
+    def test_probe_mention_does_not_break_probe_allowance(self) -> None:
+        """A non-invocation mention of run_with_pptxgenjs.js must not make the
+        probe-check see a non-probe invocation. (Known adjacency limit: a mention
+        whose path directly follows a word like `node` is indistinguishable from
+        an invocation for a text scanner — conservative refusal wins there.)"""
+        command = (
+            'node "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" --probe '
+            '&& grep -c run_with "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js"'
+        )
+        self.assertEqual((0, ""), self.run_guard(command))
+
     def test_windows_style_path_is_recognized(self) -> None:
         command = r'python "C:\Users\me\.claude\plugins\student-presentation-suite\skills\sp-deck\scripts\pptx_actual_content_check.py" --json'
         command = command.replace(r'\"', '"')

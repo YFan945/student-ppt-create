@@ -2,6 +2,19 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.10 — 2026-09-26 · Guard invocation anchoring and dep-freshness watchdog
+
+- `production_entry_guard` 只在**调用**位置匹配内部脚本：解释器邻接（`python/sh/node/…`
+  紧贴路径，含 `FOO=bar python x.py`）或命令开头直接执行形式才拒绝；`sed/grep/cat/git diff`
+  携带脚本名的纯提及一律放行（2026-09-26 实测 deck 维护命令被误伤的根因）。已知局限：
+  提及路径前恰好是解释器同名词（如 `grep -c node "…run_with_pptxgenjs.js"`）仍按调用处理，
+  保守方向优先。新增 3 组提及/调用配对测试（全套 979 测试）。
+- 新增 `.github/workflows/dep-freshness.yml`（每月 1 日）：对冻结的
+  `python-constraints.txt` 跑 pip-audit + 钉子漂移报告
+  （`scripts/constraint_freshness.py`，纯 stdlib），漂移或有 CVE 时更新到同一个跟踪
+  issue——dependabot pip 关闭后补上缺失的时间节拍。
+- AGENTS.md 仓库布局：dependabot 描述改为 npm/actions 两组，登记 dep-freshness 工作流。
+
 ## 0.16.9 — 2026-09-26 · ESLint flat config and dependency refresh
 
 - ESLint 8.57.1 → **10.11.0**，`.eslintrc.json` 迁移为 `eslint.config.mjs`（flat config，
