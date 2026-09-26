@@ -9,5 +9,5 @@ python-pptx>=1.0
 # cjk_fonts.py 直接 import lxml 改 OOXML；不得只靠传递依赖。
 lxml>=5.0
 # markitdown 以 CLI 子进程方式被 pptx_tool.py 调用（非 import）。
-markitdown[pptx]>=0.1.0,<1.0
+markitdown[pptx]>=0.1.8,<1.0
 defusedxml>=0.7.1,<1.0
