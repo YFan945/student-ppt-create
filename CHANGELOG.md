@@ -2,6 +2,14 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.8 — 2026-09-26 · Dependabot pip off
+
+- 关闭 dependabot 的 pip 版本更新组：其发现器连非 `requirements*` 命名的 .txt 也会解析
+  （v0.16.7 的改名规避被 #43 证伪），对跨平台冻结的 `python-constraints.txt` 做独立传递钉
+  升级必然反复冲突。pip 更新改为手工流程（升级范围 → 重生成 constraints，覆盖
+  3.11/3.12 × linux/windows），已知漏洞由 CI pip-audit 门兜底；npm 与 github-actions
+  的 dependabot 组保留。
+
 ## 0.16.7 — 2026-09-26 · Constraints file out of Dependabot's reach
 
 - `requirements-lock.txt` 改名 **`python-constraints.txt`**（内容不变）：dependabot 把这个

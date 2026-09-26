@@ -1,21 +1,10 @@
 version: 2
 updates:
-  - package-ecosystem: "pip"
-    directory: "/plugins/student-presentation-suite"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 1
-    # python-constraints.txt (the resolved transitive pin set, consumed via
-    # `pip install -c`) is deliberately NOT named requirements*.txt so it
-    # stays outside Dependabot's file discovery: independent bumps of
-    # transitive pins broke sibling constraints four times on 2026-09-26
-    # (magika, mpmath, numpy, onnxruntime). Regenerate that file manually
-    # after manifest range upgrades, covering py3.11/3.12 on linux+windows.
-    groups:
-      python-dependencies:
-        patterns:
-          - "*"
-
+  # pip 版本更新不交给 dependabot：python-constraints.txt 是跨平台（py3.11/3.12 ×
+  # linux/windows）冻结的传递钉闭包，dependabot 的发现器连非 requirements* 命名的
+  # .txt 也会解析并独立升钉，2026-09-26 一天四例与父约束/平台冲突（magika、mpmath、
+  # numpy、onnxruntime）。pip 更新走手工流程：升级范围 → 重生成 python-constraints.txt；
+  # 已知漏洞由 CI 的 pip-audit 门兜底。
   - package-ecosystem: "npm"
     directory: "/plugins/student-presentation-suite"
     schedule:
