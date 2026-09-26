@@ -14,6 +14,11 @@ updates:
       # 1.14 requires mpmath<1.4. Revisit when sympy allows mpmath 1.4.
       - dependency-name: "mpmath"
         versions: [">=1.4"]
+      # numpy 2.5+ requires Python >=3.12 but the CI/runtime matrix still
+      # supports 3.11 (magika<3.12 also needs numpy). Revisit when 3.11
+      # support is dropped.
+      - dependency-name: "numpy"
+        versions: [">=2.5"]
     groups:
       python-dependencies:
         patterns:

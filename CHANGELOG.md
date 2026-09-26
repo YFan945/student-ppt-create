@@ -2,6 +2,12 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.6 — 2026-09-26 · Dependabot numpy pin
+
+- `.github/dependabot.yml`：pip 组忽略 `numpy >=2.5`——numpy 2.5+ 要求 Python ≥3.12，
+  而 CI/runtime 矩阵仍支持 3.11（magika 在 <3.12 时也强制 numpy），锁文件升上去后 3.11
+  环境无法安装（#41 runtime 三腿失败的根因）；仓库放弃 3.11 后移除。
+
 ## 0.16.5 — 2026-09-26 · Dependabot mpmath pin
 
 - `.github/dependabot.yml`：pip 组忽略 `mpmath >=1.4`——mpmath 是 sympy 在
