@@ -214,7 +214,7 @@ $env:PYTHONPATH=(Resolve-Path "plugins/student-presentation-suite").Path
 
 # Lint checks
 ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/skills/ plugins/student-presentation-suite/tests/
-npx --prefix plugins/student-presentation-suite eslint plugins/student-presentation-suite/scripts/*.js
+npx --prefix plugins/student-presentation-suite eslint --config plugins/student-presentation-suite/eslint.config.mjs plugins/student-presentation-suite/scripts/*.js
 npx --prefix plugins/student-presentation-suite prettier --check plugins/student-presentation-suite/scripts/*.js
 
 # Unit and integration tests

@@ -42,7 +42,7 @@ jobs:
           ruff check plugins/student-presentation-suite/shared/ plugins/student-presentation-suite/scripts/ plugins/student-presentation-suite/skills/ plugins/student-presentation-suite/tests/
       - name: Lint JavaScript (eslint + prettier)
         run: |
-          npx --prefix plugins/student-presentation-suite eslint plugins/student-presentation-suite/scripts/*.js
+          npx --prefix plugins/student-presentation-suite eslint --config plugins/student-presentation-suite/eslint.config.mjs plugins/student-presentation-suite/scripts/*.js
           npx --prefix plugins/student-presentation-suite prettier --check plugins/student-presentation-suite/scripts/*.js
 
   runtime:

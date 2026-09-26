@@ -2,6 +2,17 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.9 — 2026-09-26 · ESLint flat config and dependency refresh
+
+- ESLint 8.57.1 → **10.11.0**，`.eslintrc.json` 迁移为 `eslint.config.mjs`（flat config，
+  v9+ 唯一支持的格式）：`no-unused-vars` 补 `caughtErrorsIgnorePattern: "^_"`（v9 起
+  catch 参数默认从忽略改为检查，保持 `catch (_)` 占位写法）；配置块不带 `files` 模式
+  （`--config` 下模式相对调用方 cwd，全局块最稳）。新增 devDep `globals`。
+- lint 命令统一加 `--config plugins/student-presentation-suite/eslint.config.mjs`
+  （`validate.yml`、根 `AGENTS.md`；从插件目录内运行的 `npx eslint scripts/*.js` 不变）。
+- dependabot npm 组移除 eslint ignore（flat config 迁移完成）。
+- 合并 #37（github-actions 5 个更新）与 #38（image-size、prettier）。
+
 ## 0.16.8 — 2026-09-26 · Dependabot pip off
 
 - 关闭 dependabot 的 pip 版本更新组：其发现器连非 `requirements*` 命名的 .txt 也会解析
