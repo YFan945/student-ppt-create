@@ -57,8 +57,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libreoffice-impress poppler-utils
-          python -m pip install -r plugins/student-presentation-suite/requirements.txt -c plugins/student-presentation-suite/requirements-lock.txt
-          python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt -c plugins/student-presentation-suite/requirements-lock.txt
+          python -m pip install -r plugins/student-presentation-suite/requirements.txt -c plugins/student-presentation-suite/python-constraints.txt
+          python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt -c plugins/student-presentation-suite/python-constraints.txt
           npm --prefix plugins/student-presentation-suite ci
           npm install -g @anthropic-ai/claude-code@2.1.272
 

@@ -5,20 +5,12 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 1
-    ignore:
-      # markitdown 0.1.x pins magika~=0.6.1, so magika 1.x is uninstallable
-      # until markitdown updates its pin. Revisit then.
-      - dependency-name: "magika"
-        versions: [">=1"]
-      # mpmath is a transitive pin of sympy in requirements-lock.txt; sympy
-      # 1.14 requires mpmath<1.4. Revisit when sympy allows mpmath 1.4.
-      - dependency-name: "mpmath"
-        versions: [">=1.4"]
-      # numpy 2.5+ requires Python >=3.12 but the CI/runtime matrix still
-      # supports 3.11 (magika<3.12 also needs numpy). Revisit when 3.11
-      # support is dropped.
-      - dependency-name: "numpy"
-        versions: [">=2.5"]
+    # python-constraints.txt (the resolved transitive pin set, consumed via
+    # `pip install -c`) is deliberately NOT named requirements*.txt so it
+    # stays outside Dependabot's file discovery: independent bumps of
+    # transitive pins broke sibling constraints four times on 2026-09-26
+    # (magika, mpmath, numpy, onnxruntime). Regenerate that file manually
+    # after manifest range upgrades, covering py3.11/3.12 on linux+windows.
     groups:
       python-dependencies:
         patterns:

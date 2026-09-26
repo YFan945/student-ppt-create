@@ -2,6 +2,18 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.7 — 2026-09-26 · Constraints file out of Dependabot's reach
+
+- `requirements-lock.txt` 改名 **`python-constraints.txt`**（内容不变）：dependabot 把这个
+  生成的传递钉闭包当独立 manifest 升级，2026-09-26 一天之内四例独立升钉与父约束/平台
+  冲突（magika vs markitdown、mpmath vs sympy、numpy vs py3.11、onnxruntime vs win32），
+  分别以 ignore 规则钉住（v0.16.3–v0.16.6）。改名后文件脱离 dependabot 的
+  `requirements*.txt` 发现范围，pip 更新只走范围清单；范围升级后手工重生成
+  constraints（需覆盖 3.11/3.12 × linux/windows）。
+- 移除 pip 组的 magika/mpmath/numpy 三条 ignore（对象已不在 dependabot 视野内）；
+  保留 npm 组的 eslint ignore（eslint 仍是直接依赖，flat config 迁移后移除）。
+- 同步 `validate.yml`、`live-cost-canary.yml`、`check_plugin_release.py` 的引用。
+
 ## 0.16.6 — 2026-09-26 · Dependabot numpy pin
 
 - `.github/dependabot.yml`：pip 组忽略 `numpy >=2.5`——numpy 2.5+ 要求 Python ≥3.12，

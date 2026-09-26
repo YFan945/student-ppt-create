@@ -1,7 +1,11 @@
-# Python 依赖 lock（constraints）——由 requirements*.txt 的范围解析出的精确闭包。
+# Python 依赖 constraints——由 requirements*.txt 的范围解析出的精确闭包。
 # 生成方式：pip install --dry-run --ignore-installed --report <file> -r requirements-claude-pptx.txt
-# 用法：python -m pip install -r requirements.txt -c requirements-lock.txt（CI 全部走 -c）。
+# 用法：python -m pip install -r requirements.txt -c python-constraints.txt（CI 全部走 -c）。
 # 手工升级范围后需重新生成；本文件不做范围判断，只钉版本。
+# 文件名刻意不叫 requirements*.txt：dependabot 只应升范围清单，不能独立升这里的
+# 传递钉（2026-09-26 曾连续四例：magika/mpmath/numpy/onnxruntime 传递钉被独立
+# 升级后与父约束或 3.11/win32 平台冲突）。重新生成时需覆盖 CI 矩阵的全部
+# Python 版本（3.11、3.12）与平台（linux、windows）。
 
 PyYAML==6.0.3
 attrs==26.1.0
