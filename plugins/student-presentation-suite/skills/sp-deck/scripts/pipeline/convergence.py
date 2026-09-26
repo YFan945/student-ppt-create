@@ -140,6 +140,22 @@ def repair_convergence(work_dir: Path) -> dict[str, Any] | None:
         "trend": trend,
         "advice": advice,
     }
+    # D3 (informational): pages touched per round. Two consecutive rounds naming
+    # the same pages while the trend is not "improving" is the signature of work
+    # that keeps polishing the same spots instead of clearing the blocker set.
+    pages_by_round = [sorted(item.get("pages") or []) for item in rounds]
+    result["pages_touched_by_round"] = pages_by_round
+    if (
+        trend != "improving"
+        and len(pages_by_round) >= 2
+        and pages_by_round[-1]
+        and pages_by_round[-1] == pages_by_round[-2]
+    ):
+        result["advice"] += (
+            f" Rounds {rounds[-1].get('round')} and {rounds[-2].get('round')} name exactly the "
+            f"same pages ({pages_by_round[-1]}): the approach is not moving those pages — "
+            "change it or deliver incomplete."
+        )
 
     # A blocker group that is byte-identical in two consecutive rounds while everything else
     # moved is evidence about the GATE, not about the pages. 2026-09-18 live: 16

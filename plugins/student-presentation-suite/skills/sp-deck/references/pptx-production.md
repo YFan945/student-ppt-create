@@ -161,6 +161,24 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/pptx_actual_content_check.p
 - 单任务最多 3 个 design repair iterations；每轮记录 blocker 与视觉质量是否改善。第 3 次仍阻断 → `incomplete`。
 - workflow-level `qa → producing` 仍记录一次正式返工边，其内部可完成上述受控迭代。
 
+## Deterministic pre-QA gates (v0.17)
+
+build 内部在渲染前运行确定性门，把"实现没有兑现布局承诺"挡在生成期而不是 critic 轮：
+
+- **structural_contract**（`pptx_structural_contract_check.py`）：冻结 spec 每页声明的 layout 在
+  layout-library.json 里的 `requirements` 必须被成品兑现——`asset: required` 而零图片、
+  `data: required` 而无 chart/table/数字，判 critical（全档位阻断）；chart/table 型 silhouette
+  只渲染出文本数字是 weak realization（fast 记 advisory，standard+ 记 major）。不可解析的
+  layout id 跳过并记录，不猜测。形状契约以 `references/composition-candidates.schema.json`
+  之外，layout 侧的语义来源就是 library 的 `requirements` 本身。
+- **palette 变换解析与对比度**（`pptx_palette_check.py`，rendered 门内消费）：`tint`/`shade`/
+  `lumMod`/`lumOff` 先解析出最终 RGB 再比对允许盘；`alpha < 50%` 的离盘色按水洗降为 advisory。
+  文字对比度分级判定——<3.0（近不可见）一律 major；小字 3.0–4.5 记 advisory 留给 critic
+  终审（5 组 token 自身的 accent/canvas 组合按设计落在 3.88–4.42，不得阻断）。
+- **planned-vs-realized rhythm**（quality 门 `--rhythm-plan`）：critic 报告里连续同构的弱结构
+  跨越 rhythm plan 分派的不同 family 时记 `rhythm_plan_divergence`（fast advisory / rigorous
+  major）——计划好的多样性在 build 时被摊平，正是 deck-rhythm 警告要避免的事。
+
 ## Edit branch
 
 严格按 `pptx-editing.md`：inspect/thumbnail → unpack → 结构操作 → 内容/样式修改 → clean → pack → `validate --original --output <package-report>`。若 edit intent 是“整体美化/重设计”且允许改变视觉语言，可先补一份 Art Direction；若要求严格保留模板，则不强制多候选探索。

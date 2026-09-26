@@ -111,3 +111,100 @@ class PptxPaletteCheckTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PptxColorTransformAndContrastTests(unittest.TestCase):
+    """B3: OOXML color transforms resolve before the palette check, and text
+    contrast is graded — near-invisible is major, borderline small text advisory."""
+
+    def write_deck(self, root: Path, slide_body: str) -> tuple[Path, Path]:
+        pptx = root / "deck.pptx"
+        with zipfile.ZipFile(pptx, "w") as archive:
+            archive.writestr(
+                "ppt/slides/slide1.xml",
+                f"<p:sld xmlns:p='p' xmlns:a='a'>{slide_body}</p:sld>",
+            )
+        art = root / "art-direction.yaml"
+        art.write_text('style_seed: "Data Driven"\n', encoding="utf-8")
+        return pptx, art
+
+    def run_xml(self, sz: int, color: str, bold: bool = False) -> str:
+        bold_attr = ' b="1"' if bold else ""
+        return (
+            "<p:sp><p:spPr><a:solidFill>"
+            "<a:srgbClr val=\"F8FAFC\"/></a:solidFill></p:spPr>"
+            f"<p:txBody><a:r><a:rPr lang='en-US' sz='{sz}'{bold_attr}>"
+            f"<a:solidFill><a:srgbClr val='{color}'/></a:solidFill></a:rPr>"
+            "<a:t>标题文字</a:t></a:r></p:txBody></p:sp>"
+        )
+
+    def test_shade_resolves_before_the_palette_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx, art = self.write_deck(
+                Path(tmp), "<a:srgbClr val='FF0000'><a:shade val='50000'/></a:srgbClr>"
+            )
+            report = palette_check.check_pptx(pptx, art)
+            self.assertFalse(report["ok"])
+            self.assertIn("800000", report["issues"][0]["colors"], "the RESOLVED color is flagged")
+            self.assertNotIn("FF0000", report["issues"][0]["colors"])
+
+    def test_low_alpha_off_palette_downgrades_to_advisory(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx, art = self.write_deck(
+                Path(tmp), "<a:srgbClr val='D7D1C4'><a:alpha val='20000'/></a:srgbClr>"
+            )
+            report = palette_check.check_pptx(pptx, art)
+            self.assertTrue(report["ok"], "a <50% wash does not block")
+            self.assertEqual("minor", report["issues"][0]["severity"])
+
+    def test_transparent_palette_color_stays_clean(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx, art = self.write_deck(
+                Path(tmp), "<a:srgbClr val='2563EB'><a:alpha val='45000'/></a:srgbClr>"
+            )
+            report = palette_check.check_pptx(pptx, art)
+            self.assertTrue(report["ok"])
+            self.assertEqual([], report["issues"])
+
+    def test_near_invisible_text_is_major_on_every_tier(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx, art = self.write_deck(Path(tmp), self.run_xml(1800, "F8FAFC"))
+            report = palette_check.check_pptx(pptx, art)
+            issue = next(i for i in report["issues"] if i["code"] == "low-contrast-text")
+            self.assertEqual("major", issue["severity"])
+            self.assertEqual(1.0, issue["detail"]["ratio"])
+
+    def test_borderline_small_text_is_advisory(self) -> None:
+        # 16A34A on F8FAFC = 3.15 (in-palette): below the 4.5 body floor, above
+        # the 3.0 hard floor — advisory, and the only finding in this deck
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx, art = self.write_deck(Path(tmp), self.run_xml(1300, "16A34A"))
+            report = palette_check.check_pptx(pptx, art)
+            issue = next(i for i in report["issues"] if i["code"] == "low-contrast-text")
+            self.assertEqual("minor", issue["severity"])
+            self.assertTrue(report["ok"])
+
+    def test_large_text_passes_at_the_3_floor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx, art = self.write_deck(Path(tmp), self.run_xml(2000, "16A34A"))
+            report = palette_check.check_pptx(pptx, art)
+            self.assertEqual([], [i for i in report["issues"] if i["code"] == "low-contrast-text"])
+
+    def test_bold_body_text_uses_the_large_floor(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx, art = self.write_deck(Path(tmp), self.run_xml(1400, "16A34A", bold=True))
+            report = palette_check.check_pptx(pptx, art)
+            self.assertEqual([], [i for i in report["issues"] if i["code"] == "low-contrast-text"])
+
+    def test_text_over_picture_fill_is_skipped(self) -> None:
+        body = (
+            "<p:sp><p:spPr><a:blipFill><a:blip r:embed='rId2'/>"
+            "</a:blipFill></p:spPr><p:txBody>"
+            "<a:r><a:rPr lang='en-US' sz='1300'>"
+            "<a:solidFill><a:srgbClr val='F8FAFC'/></a:solidFill></a:rPr>"
+            "<a:t>图片上的字</a:t></a:r></p:txBody></p:sp>"
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx, art = self.write_deck(Path(tmp), body)
+            report = palette_check.check_pptx(pptx, art)
+            self.assertEqual([], [i for i in report["issues"] if i["code"] == "low-contrast-text"])

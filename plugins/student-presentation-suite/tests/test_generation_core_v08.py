@@ -404,6 +404,30 @@ class GenerationCoreV08Tests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertIn("wireframe_missing", {item["code"] for item in result["issues"]})
 
+    def test_missing_wireframe_is_advisory_in_fast(self) -> None:
+        """D2: fast gets its silhouette evidence from the composition candidates;
+        a missing wireframe is exploration breadth, not a delivery blocker."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            spec = root / "slide-spec.yaml"
+            spec.write_text(yaml.safe_dump({"slides": [{"id": 1}, {"id": 2}, {"id": 3}]}), encoding="utf-8")
+            art = root / "art-direction.yaml"
+            art.write_text(yaml.safe_dump(self.good_art_direction((1, 2, 3))), encoding="utf-8")
+            self.declare_image_capability(root)
+            for slide in (1, 2, 3):
+                (root / f"references-slide-{slide}.json").write_text(json.dumps(self.make_reference_selection()), encoding="utf-8")
+                candidate_file = root / f"composition-candidates-{slide}.json"
+                candidate_file.write_text(json.dumps(self.good_candidate_set(slide)), encoding="utf-8")
+            result = self.visual_gate.validate_visual_generation(
+                slide_spec=spec,
+                art_direction=art,
+                evidence_dir=root,
+                quality="fast",
+            )
+            missing = next(i for i in result["issues"] if i["code"] == "wireframe_missing")
+            self.assertEqual("minor", missing["severity"])
+            self.assertTrue(result["ok"], result["issues"])
+
 
 if __name__ == "__main__":
     unittest.main()

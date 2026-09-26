@@ -15,7 +15,7 @@ for entry in (str(ROOT), str(ROOT / "skills" / "sp-deck" / "scripts")):
     if entry not in sys.path:
         sys.path.insert(0, entry)
 
-from shared.quality_tiers import DEFAULT_TIER, normalize, tier_policy  # noqa: E402
+from shared.quality_tiers import DEFAULT_TIER, effective_shard_cap, normalize, tier_policy  # noqa: E402
 
 
 def load_module(name: str, path: Path):
@@ -158,3 +158,27 @@ class TierGateMatrixTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EffectiveShardCapTests(unittest.TestCase):
+    """D1: fast stays single-builder below the page line and shards to 2 above it."""
+
+    def test_fast_below_the_line_stays_single(self) -> None:
+        self.assertEqual(1, effective_shard_cap("fast", 8))
+        self.assertEqual(1, effective_shard_cap("fast", 3))
+
+    def test_fast_above_the_line_shards_to_two(self) -> None:
+        self.assertEqual(2, effective_shard_cap("fast", 9))
+        self.assertEqual(2, effective_shard_cap("fast", 20))
+
+    def test_fast_without_a_page_count_stays_single(self) -> None:
+        self.assertEqual(1, effective_shard_cap("fast"))
+
+    def test_standard_and_rigorous_ignore_the_page_line(self) -> None:
+        self.assertEqual(2, effective_shard_cap("standard", 3))
+        self.assertEqual(2, effective_shard_cap("standard", 30))
+        self.assertEqual(3, effective_shard_cap("rigorous", 30))
+
+    def test_legacy_aliases_normalize_first(self) -> None:
+        self.assertEqual(1, effective_shard_cap("basic", 4))
+        self.assertEqual(3, effective_shard_cap("high-score", 30))

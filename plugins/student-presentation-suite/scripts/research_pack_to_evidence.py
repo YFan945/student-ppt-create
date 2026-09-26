@@ -11,6 +11,11 @@ Pack ids (F/D/Q) or already allocated E ids. The compiler rewrites those refs,
 recomputes used_on_slides, replaces the ledger with the generated ledger, and can
 write a non-destructive compiled Slide Spec. No model hand-copy step is required.
 
+A pack with NO F/D/Q entities (D-class import: the user's own files are the
+evidence) resolves slide refs that name sources directly — each cited source
+becomes one source-level ledger entry with its byte-exact title/locator and a
+user-material limitation note.
+
 A Research Pack that fails validate_research_pack.py is refused. If a validation
 report is supplied, it must be passing and hash-bound to the exact pack. The
 resulting evidence map records the pack, validation and Slide Spec hashes so the
@@ -280,6 +285,72 @@ def source_ledger(pack: dict[str, Any]) -> list[dict[str, Any]]:
     return records
 
 
+def source_level_ledger_entries(
+    pack: dict[str, Any],
+    wanted_ids: list[str],
+    *,
+    start_index: int = 1,
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    """Allocate source-level ledger entries for entity-less (D-class) packs.
+
+    import_user_materials builds a hash-bound pack whose ``findings`` are empty —
+    the material IS the evidence — so a spec slide citing ``S01`` could never
+    resolve and every D-class compile blocked. Each cited source becomes one
+    ledger record whose title/locator are byte-exact from the pack (the QA gates
+    match them verbatim), with a limitation note keeping its epistemic status
+    honest: user materials are the user's own position, not independent evidence.
+    """
+    by_id = {str(source.get("id")): source for source in pack_validator.items(pack, "sources")}
+    entries: list[dict[str, Any]] = []
+    ref_map: dict[str, str] = {}
+    index = start_index
+    for source_id in wanted_ids:
+        source = by_id.get(source_id)
+        if source is None or source_id in ref_map:
+            continue
+        evidence_id = f"E{index:02d}"
+        index += 1
+        ref_map[source_id] = evidence_id
+        title = " ".join(str(source.get("title") or "").split())
+        record: dict[str, Any] = {
+            "id": evidence_id,
+            "title": truncate(title or source_id),
+            "source_type": SOURCE_TYPE_MAP.get(str(source.get("type") or "other"), "other"),
+            "locator": locator_of(source),
+            "source_ids": [source_id],
+            "confidence": quote_confidence(source),
+            "used_on_slides": [],
+        }
+        if source.get("id"):
+            record["primary_source_id"] = str(source["id"])
+        if source.get("publisher"):
+            record["author"] = str(source["publisher"])
+        if source.get("year"):
+            record["date"] = str(source["year"])
+        limitations: list[str] = []
+        if str(source.get("type") or "") == "user-file":
+            limitations.append("用户自带材料：仅代表用户立场/内部数据，不构成独立外部来源")
+        if str(source.get("tier") or "") == "D":
+            limitations.append("仅有 D 级来源，只能作为用户观点引用")
+        if limitations:
+            record["limitation"] = "；".join(dict.fromkeys(limitations))
+        entries.append(record)
+    return entries, ref_map
+
+
+def spec_source_refs(spec: dict[str, Any]) -> list[str]:
+    """Cited refs in spec order, deduplicated — the D-class resolution candidates."""
+    refs: list[str] = []
+    for slide in spec.get("slides") or []:
+        if not isinstance(slide, dict):
+            continue
+        for ref in slide.get("evidence_refs") or []:
+            text = str(ref)
+            if text and text not in refs:
+                refs.append(text)
+    return refs
+
+
 def compile_pack(
     pack: dict[str, Any],
     spec: dict[str, Any] | None,
@@ -288,6 +359,12 @@ def compile_pack(
     compiled_spec = None
     unresolved: list[str] = []
     if spec is not None:
+        if not ref_map:
+            # No F/D/Q entities at all (D-class import): slide refs cite sources
+            # directly, so allocate source-level entries for the cited ids.
+            extra, extra_map = source_level_ledger_entries(pack, spec_source_refs(spec))
+            ledger.extend(extra)
+            ref_map.update(extra_map)
         compiled_spec, unresolved = compile_slide_spec(spec, ref_map, ledger)
         compiled_spec["source_ledger"] = source_ledger(pack)
 
@@ -352,7 +429,7 @@ def render(report: dict[str, Any], path: Path, compiled_spec: Path | None) -> st
     suffix = f" | compiled spec: {compiled_spec}" if compiled_spec else ""
     return (
         f"research_pack_to_evidence: {state} — {len(report['evidence_ledger'])} ledger entries from "
-        f"{len(report['ref_map'])} F/D/Q entities | {len(report['source_index'])} sources | "
+        f"{len(report['ref_map'])} F/D/Q/S entities | {len(report['source_index'])} sources | "
         f"unresolved refs {len(report['unresolved_refs'])} | map: {path}{suffix}\n"
         + "".join(f"  [major] {line}\n" for line in report["unresolved_refs"])
     )

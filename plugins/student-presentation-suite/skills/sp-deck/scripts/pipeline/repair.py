@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -23,6 +24,7 @@ from pipeline.core import (  # noqa: E402
     save_manifest,
     validate_manifest_authorization,
 )
+from pipeline.scheduler import slides_named_in_reports  # noqa: E402
 
 
 def cmd_repair(args: argparse.Namespace) -> int:
@@ -67,6 +69,19 @@ def cmd_repair(args: argparse.Namespace) -> int:
                 "record as a known gate limitation and deliver around. "
                 f"{suspect.get('advice') or ''}"
             )
+        # D3 (informational): does the reason name the pages it claims to fix?
+        # A grant whose reason never touches the current blocker pages is recorded
+        # with that mismatch for the audit trail — warned about, never refused,
+        # because digits in prose are only a hint.
+        blocker_pages = slides_named_in_reports(work_dir, ("pipeline-qa.json",))
+        digit_tokens = {int(match) for match in re.findall(r"\d{1,3}", reason)}
+        named_pages = sorted(digit_tokens & set(blocker_pages))
+        if blocker_pages and not named_pages:
+            print(
+                "ppt_pipeline: WARNING — extend-reason names none of the current blocker pages "
+                f"{blocker_pages}; the grant is recorded with that mismatch. Name the pages "
+                "(or the deck-level defect) so the next round's convergence is readable."
+            )
         build_info.setdefault("repair_budget_grants", []).append(
             {
                 "rounds": int(args.extend),
@@ -75,6 +90,8 @@ def cmd_repair(args: argparse.Namespace) -> int:
                 "blockers_at_grant": blockers,
                 "repairs_used": repairs,
                 "suspect_gate_defect": suspect or None,
+                "blocker_pages": blocker_pages,
+                "reason_named_pages": named_pages,
             }
         )
         print(

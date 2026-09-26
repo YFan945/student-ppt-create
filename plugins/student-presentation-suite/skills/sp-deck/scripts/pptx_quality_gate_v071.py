@@ -211,11 +211,15 @@ def validate_visual_report(
     *,
     high_score: bool = False,
     policy: dict[str, Any] | None = None,
+    rhythm_plan: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Judge a visual review under one tier's policy (shared/quality_tiers.py).
 
     `high_score` remains as the legacy two-level switch; the tier policy is what
     new callers pass so fast/standard/rigorous each get exactly their contract.
+    `rhythm_plan` (deck-rhythm.json) enables the planned-vs-realized divergence
+    check: identical weak structures across pages the plan assigned DIFFERENT
+    composition families mean the builders flattened planned variety.
     """
     if policy is None:
         policy = tier_policy("rigorous" if high_score else "fast")
@@ -316,6 +320,35 @@ def validate_visual_report(
         if ordered_structures[run_start] and run_end - run_start >= 3:
             issues.append(issue(style_severity, "repetitive_structure_run", f"Slides {run_start + 1}-{run_end} repeat visual structure {ordered_structures[run_start]} three or more times.", slides=list(range(run_start + 1, run_end + 1))))
         run_start = run_end
+
+    # Planned-vs-realized rhythm (B2): the plan assigns composition families at
+    # plan time and warns builders where consecutive pages share one; this check
+    # catches the opposite failure — pages the plan deliberately put in
+    # DIFFERENT families all rendered the same weak structure anyway.
+    if isinstance(rhythm_plan, dict):
+        planned_families = {
+            int(page.get("slide")): str(page.get("family") or "")
+            for page in rhythm_plan.get("pages") or []
+            if isinstance(page, dict) and isinstance(page.get("slide"), int)
+        }
+        run_start = 0
+        while run_start < len(ordered_structures):
+            run_end = run_start + 1
+            while run_end < len(ordered_structures) and ordered_structures[run_end] == ordered_structures[run_start]:
+                run_end += 1
+            structure = ordered_structures[run_start]
+            if structure and run_end - run_start >= 2 and structure in REPETITIVE_STRUCTURES:
+                window = list(range(run_start + 1, run_end + 1))
+                families = sorted({planned_families[i] for i in window if planned_families.get(i)})
+                if len(families) >= 2:
+                    issues.append(issue(
+                        style_severity, "rhythm_plan_divergence",
+                        f"Slides {window[0]}-{window[-1]} all render structure {structure} although the "
+                        f"rhythm plan assigns them {len(families)} composition families "
+                        f"({', '.join(families)}) — planned variety was flattened at build time.",
+                        slides=window, visual_structure=structure, planned_families=families,
+                    ))
+            run_start = run_end
 
     distinct = {value for value in ordered_structures if value}
     min_distinct = 3 if slide_count >= 6 else 2 if slide_count >= 3 else 1
@@ -688,6 +721,10 @@ def parse_args() -> argparse.Namespace:
     # blockers, render + a full critic pass were paid for, and QA then returned 48 blockers —
     # 16 of them computable from the PPTX and the spec alone.
     parser.add_argument("--visual-report", type=Path)
+    parser.add_argument(
+        "--rhythm-plan", type=Path,
+        help="deck-rhythm.json (plan-time family plan); enables the planned-vs-realized divergence check",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict", action="store_true")
@@ -708,8 +745,17 @@ def run(args: argparse.Namespace) -> int:
     policy = tier_policy(meta.get("quality_level"))
 
     visual_only = bool(args.visual_report)
+    rhythm_plan: dict[str, Any] | None = None
+    if getattr(args, "rhythm_plan", None) and args.rhythm_plan.is_file():
+        try:
+            loaded = json.loads(args.rhythm_plan.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            loaded = None  # the plan is advisory input; a corrupt file must not fail the gate
+        rhythm_plan = loaded if isinstance(loaded, dict) else None
     if visual_only:
-        visual = validate_visual_report(args.visual_report, args.pptx, len(actual_text), policy=policy)
+        visual = validate_visual_report(
+            args.visual_report, args.pptx, len(actual_text), policy=policy, rhythm_plan=rhythm_plan,
+        )
     else:
         visual = {
             "ok": True,

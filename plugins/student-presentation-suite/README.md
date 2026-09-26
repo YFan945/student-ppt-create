@@ -302,7 +302,7 @@ locally — they read the PPTX and the spec and need no critic; while they fail,
 `render` is refused and `next` routes to a budget-free builder fix-and-rebuild —
 the critic never reviews a doomed deck.
 
-`quality_level: fast` (the default) uses one Builder for the whole deck and one final independent review. Subjective visual scores and style suggestions remain visible advisories; unusable pages and deterministic failures still block delivery.
+`quality_level: fast` (the default) uses one Builder below the 8-page shard line and two shards above it, plus one final independent review. Subjective visual scores and style suggestions remain visible advisories; unusable pages and deterministic failures still block delivery.
 `quality_level: standard` / `rigorous` first calibrate representative pages (standard one round, rigorous up to two with blocking style majors).
 Calibration is reviewed by the independent `visual-critic`, not by the main
 session. The main session authors the Slide Spec and the Art Direction, so it

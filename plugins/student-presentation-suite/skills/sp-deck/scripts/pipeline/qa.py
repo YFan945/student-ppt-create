@@ -189,6 +189,12 @@ def cmd_qa(args: argparse.Namespace) -> int:
     rounds.append({
         "round": len(rounds) + 1, "blockers": blockers, "failed": failed_stages,
         "codes": dict(sorted(codes.items())),
+        # D3 (informational): which pages this round's blockers name, so the
+        # convergence reader can see "same pages keep failing" vs "moving around".
+        "pages": sorted({
+            item["slide"] for item in problems
+            if not item.get("derived") and isinstance(item.get("slide"), int)
+        }),
     })
     gate_history["_rounds"] = rounds[-8:]
     qa_report = {

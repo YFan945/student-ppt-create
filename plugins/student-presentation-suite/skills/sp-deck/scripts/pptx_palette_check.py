@@ -26,6 +26,23 @@ VISIBLE_PART = re.compile(
 )
 SRGB = re.compile(r"<a:srgbClr\b[^>]*\bval=['\"]([0-9A-Fa-f]{6})['\"]")
 SCHEME = re.compile(r"<a:schemeClr\b[^>]*\bval=['\"]([A-Za-z0-9]+)['\"]")
+# A color element plus its OOXML transform children (tint/shade/alpha/…): the
+# rendered color is the RESOLVED result, not the base val. Flat scanning saw
+# only the base, so `tint`/`shade` could smuggle off-palette renders past this
+# gate (B3).
+COLOR_ELEMENT = re.compile(
+    r"<a:(?P<kind>srgbClr|schemeClr)\b(?P<attrs>[^>]*?)(?:/>|>(?P<children>.*?)</a:(?P=kind)>)",
+    re.DOTALL,
+)
+COLOR_TRANSFORM = re.compile(
+    r"<a:(?P<op>tint|shade|alpha|alphaMod|lumMod|lumOff)\b[^>]*\bval=['\"](?P<val>-?\d+)['\"]"
+)
+RUN_RE = re.compile(r"<a:r>(?P<body>.*?)</a:r>", re.DOTALL)
+RPR_RE = re.compile(r"<a:rPr\b(?P<attrs>[^>]*?)(?:/>|>(?P<children>.*?)</a:rPr>)", re.DOTALL)
+RUN_TEXT_RE = re.compile(r"<a:t>([^<]*)</a:t>")
+SHAPE_RE = re.compile(r"<p:sp>(?P<body>.*?)</p:sp>", re.DOTALL)
+SPPR_RE = re.compile(r"<p:spPr>(?P<body>.*?)</p:spPr>", re.DOTALL)
+SLIDE_BG_RE = re.compile(r"<p:bg>(?P<body>.*?)</p:bg>", re.DOTALL)
 THEME_COLOR = re.compile(
     r"<a:(?P<role>dk1|lt1|dk2|lt2|accent[1-6]|hlink|folHlink)>.*?"
     r"<a:(?:srgbClr\b[^>]*\bval|sysClr\b[^>]*\blastClr)=['\"](?P<value>[0-9A-Fa-f]{6})['\"]",
@@ -49,6 +66,203 @@ CHART_ELEMENT_ROLES = {
 }
 GENERATOR_DEFAULT_COLOR = "000000"
 GENERATOR_DEFAULT_ROLES = {"axis", "legend", "title"}
+# WCAG-ish contrast floors (B3): large text (>=18pt, or >=14pt bold) 3.0, body 4.5.
+# Severity is graded: below 3.0 the text is near-invisible — major on every tier.
+# Between 3.0 and the size floor it is borderline (five token pairings — accent
+# text on canvas — sit at 3.88–4.42 by design), so it degrades to an advisory the
+# rendered-page critic can judge; the gate must not block token-conformant decks.
+LARGE_TEXT_FLOOR = 3.0
+BODY_TEXT_FLOOR = 4.5
+HARD_CONTRAST_FLOOR = 3.0
+LARGE_TEXT_MIN_SZ = 1800
+LARGE_BOLD_MIN_SZ = 1400
+# A heavily transparent fill reads as a wash over whatever sits behind it; the
+# base color can no longer be attributed to the visible surface, so an
+# off-palette base under 50% alpha degrades to advisory instead of major.
+OPAQUE_ALPHA_FLOOR = 50_000
+
+
+def _channel(value: float) -> int:
+    return max(0, min(255, round(value)))
+
+
+def _hls_lum_shift(rgb: tuple[int, int, int], mod: float, off: float) -> tuple[int, int, int]:
+    import colorsys
+
+    r, g, b = (value / 255 for value in rgb)
+    hue, light, sat = colorsys.rgb_to_hls(r, g, b)
+    light = max(0.0, min(1.0, light * mod + off))
+    r, g, b = colorsys.hls_to_rgb(hue, light, sat)
+    return (_channel(r * 255), _channel(g * 255), _channel(b * 255))
+
+
+def resolve_color(base: tuple[int, int, int], transforms: list[tuple[str, int]]) -> tuple[int, int, int]:
+    """Apply OOXML color transforms in document order (B3)."""
+    rgb = base
+    for op, val in transforms:
+        factor = val / 100_000
+        if op == "shade":
+            rgb = tuple(_channel(value * factor) for value in rgb)
+        elif op == "tint":
+            rgb = tuple(_channel(value * factor + 255 * (1 - factor)) for value in rgb)
+        elif op == "lumMod":
+            rgb = _hls_lum_shift(rgb, factor, 0.0)
+        elif op == "lumOff":
+            rgb = _hls_lum_shift(rgb, 1.0, factor)
+        # alpha / alphaMod change opacity, not RGB: handled by the caller
+    return rgb
+
+
+def parse_color_element(match: re.Match[str], theme: dict[str, str]) -> dict[str, Any] | None:
+    """Base + transforms -> resolved rgb, final alpha, transform list.
+
+    None when the base cannot be resolved (unknown scheme role / missing theme).
+    """
+    kind = match.group("kind")
+    attrs = match.group("attrs") or ""
+    children = match.group("children") or ""
+    if kind == "srgbClr":
+        base_match = re.search(r"\bval=['\"]([0-9A-Fa-f]{6})['\"]", attrs)
+        if not base_match:
+            return None
+        base = tuple(int(base_match.group(1)[i:i + 2], 16) for i in (0, 2, 4))
+        scheme_role = None
+    else:
+        role_match = re.search(r"\bval=['\"]([A-Za-z0-9]+)['\"]", attrs)
+        if not role_match:
+            return None
+        scheme_role = SCHEME_ALIASES.get(role_match.group(1), role_match.group(1))
+        resolved = theme.get(scheme_role or "")
+        if not resolved:
+            return None
+        base = tuple(int(resolved[i:i + 2], 16) for i in (0, 2, 4))
+    transforms = [(op, int(val)) for op, val in COLOR_TRANSFORM.findall(children)]
+    rgb = resolve_color(base, transforms) if transforms else base
+    alpha = 100_000
+    for op, val in transforms:
+        if op == "alpha":
+            alpha = val
+        elif op == "alphaMod":
+            alpha = round(alpha * val / 100_000)
+    return {
+        "base": "{:02X}{:02X}{:02X}".format(*base),
+        "rgb": "{:02X}{:02X}{:02X}".format(*rgb),
+        "alpha": alpha,
+        "scheme_role": scheme_role,
+        "transforms": transforms,
+    }
+
+
+def relative_luminance(rgb: tuple[int, int, int]) -> float:
+    def lin(value: float) -> float:
+        value /= 255
+        return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+
+    r, g, b = rgb
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
+
+
+def contrast_ratio(first: str, second: str) -> float:
+    a = tuple(int(first[i:i + 2], 16) for i in (0, 2, 4))
+    b = tuple(int(second[i:i + 2], 16) for i in (0, 2, 4))
+    la, lb = relative_luminance(a), relative_luminance(b)
+    lighter, darker = max(la, lb), min(la, lb)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def text_contrast_issues(
+    text: str,
+    slide_no: int,
+    theme: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Runs whose resolved text color fails the WCAG-ish floor on their resolvable background.
+
+    Background resolution: the innermost shape with a solid fill, else the slide
+    background, else theme lt1. Runs over pictures/gradients and runs with
+    inherited (unresolvable) color are skipped — this gate stays deterministic.
+    """
+    default_bg = theme.get("lt1")
+    slide_bg = None
+    bg_match = SLIDE_BG_RE.search(text)
+    if bg_match:
+        bg_block = bg_match.group("body")
+        if "<a:blipFill" in bg_block or "<a:gradFill" in bg_block:
+            default_bg = None  # slide-level picture/gradient: unresolvable
+        else:
+            for match in COLOR_ELEMENT.finditer(bg_block):
+                parsed = parse_color_element(match, theme)
+                if parsed:
+                    slide_bg = parsed["rgb"]
+                    break
+    shapes = [
+        (match.start(), match.end(), match.group("body"))
+        for match in SHAPE_RE.finditer(text)
+    ]
+
+    def shape_fill(span_body: str) -> str | None:
+        sp_pr = SPPR_RE.search(span_body)
+        if not sp_pr:
+            return None
+        fill = sp_pr.group("body")
+        if "<a:blipFill" in fill or "<a:gradFill" in fill:
+            return None
+        for match in COLOR_ELEMENT.finditer(fill):
+            parsed = parse_color_element(match, theme)
+            if parsed and parsed["alpha"] >= OPAQUE_ALPHA_FLOOR:
+                return parsed["rgb"]
+        return None
+
+    issues: list[dict[str, Any]] = []
+    for run in RUN_RE.finditer(text):
+        body = run.group("body")
+        run_text = (RUN_TEXT_RE.search(body).group(1) if RUN_TEXT_RE.search(body) else "").strip()
+        if not run_text:
+            continue
+        rpr = RPR_RE.search(body)
+        if not rpr:
+            continue
+        attrs = rpr.group("attrs") or ""
+        sz_match = re.search(r"\bsz=['\"](\d+)['\"]", attrs)
+        if not sz_match:
+            continue  # inherited size: cannot classify large vs body
+        sz = int(sz_match.group(1))
+        color = None
+        for match in COLOR_ELEMENT.finditer(rpr.group("children") or ""):
+            parsed = parse_color_element(match, theme)
+            if parsed:
+                color = parsed["rgb"]
+                break
+        if not color:
+            continue  # inherited/theme-list color: unresolvable deterministically
+        background = None
+        for start, end, span_body in shapes:
+            if start <= run.start() < end:
+                background = shape_fill(span_body)
+                break
+        if background is None:
+            background = slide_bg if slide_bg else default_bg
+        if not background:
+            continue
+        floor = (
+            LARGE_TEXT_FLOOR
+            if sz >= LARGE_TEXT_MIN_SZ or ("b=\"1\"" in attrs and sz >= LARGE_BOLD_MIN_SZ)
+            else BODY_TEXT_FLOOR
+        )
+        ratio = contrast_ratio(color, background)
+        if ratio < floor:
+            major = ratio < HARD_CONTRAST_FLOOR or floor == LARGE_TEXT_FLOOR
+            issues.append({
+                "slide": slide_no,
+                "severity": "major" if major else "minor",
+                "code": "low-contrast-text",
+                "message": (
+                    f"Slide {slide_no} text {run_text[:40]!r} ({sz / 100:.0f}pt, {color}) on "
+                    f"{background} has contrast {ratio:.2f} < {floor:.1f}."
+                ),
+                "detail": {"text": run_text[:80], "color": color, "background": background,
+                           "ratio": round(ratio, 2), "floor": floor, "sz": sz},
+            })
+    return issues
 
 
 def chart_slide_map(archive: zipfile.ZipFile) -> dict[str, int]:
@@ -113,7 +327,10 @@ def check_pptx(pptx: Path, art_direction: Path) -> dict[str, Any]:
     allowed = set(light.values()) | set(dark.values())
     counts: Counter[str] = Counter()
     per_part: dict[str, Counter[str]] = {}
+    low_alpha_parts: set[str] = set()
     scheme_counts: Counter[str] = Counter()
+    transform_count = 0
+    issues: list[dict[str, Any]] = []
     with zipfile.ZipFile(pptx, "r") as archive:
         theme = theme_colors(archive)
         chart_slides = chart_slide_map(archive)
@@ -124,17 +341,26 @@ def check_pptx(pptx: Path, art_direction: Path) -> dict[str, Any]:
             text = archive.read(name).decode("utf-8", "replace")
             if name.startswith("ppt/charts/"):
                 chart_texts[name] = text
-            colors = Counter(value.upper() for value in SRGB.findall(text))
-            for role in SCHEME.findall(text):
-                canonical = SCHEME_ALIASES.get(role, role)
-                resolved = theme.get(canonical)
-                scheme_counts[role] += 1
-                if resolved:
-                    colors[resolved] += 1
+            colors: Counter[str] = Counter()
+            for match in COLOR_ELEMENT.finditer(text):
+                parsed = parse_color_element(match, theme)
+                if match.group("kind") == "schemeClr":
+                    role = re.search(r"\bval=['\"]([A-Za-z0-9]+)['\"]", match.group("attrs") or "")
+                    if role:
+                        scheme_counts[role.group(1)] += 1
+                if not parsed:
+                    continue
+                if parsed["transforms"]:
+                    transform_count += 1
+                if parsed["alpha"] < OPAQUE_ALPHA_FLOOR:
+                    low_alpha_parts.add(name)
+                colors[parsed["rgb"]] += 1
+            slide_match = SLIDE_PART.match(name)
+            if slide_match:
+                issues.extend(text_contrast_issues(text, int(slide_match.group(1)), theme))
             per_part[name] = colors
             counts.update(colors)
 
-    issues: list[dict[str, Any]] = []
     for part, colors in sorted(per_part.items()):
         outside = {color: count for color, count in sorted(colors.items()) if color not in allowed}
         if outside:
@@ -156,23 +382,26 @@ def check_pptx(pptx: Path, art_direction: Path) -> dict[str, Any]:
                     " pptxgenjs defaults. Set those colors once in pptx-visuals.js chart"
                     " options instead of patching each chart"
                 )
+            # A <50% alpha fill is a wash over an unknown background: the base
+            # color no longer determines the visible surface, so downgrade.
             issues.append({
                 "slide": slide,
                 "part": part,
-                "severity": "major",
+                "severity": "minor" if part in low_alpha_parts else "major",
                 "code": "off-palette-color",
                 "message": message,
                 "colors": outside,
                 **({"elements": elements} if elements else {}),
             })
     return {
-        "ok": not issues,
+        "ok": not any(item["severity"] in {"critical", "major"} for item in issues),
         "pptx": str(pptx.resolve()),
         "art_direction": str(art_direction.resolve()),
         "style": style,
         "allowed": {"light": light, "dark": dark},
         "used": dict(sorted(counts.items())),
         "scheme_references": dict(sorted(scheme_counts.items())),
+        "transforms_resolved": transform_count,
         "coverage": {
             "parts": sorted(per_part),
             "images": "exempt; provenance and visual review govern raster imagery",

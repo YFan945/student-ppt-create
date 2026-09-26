@@ -56,7 +56,7 @@ from pipeline.scheduler import (  # noqa: E402
     remaining_scaffold_slides,
     slides_named_in_reports,
 )
-from shared.quality_tiers import tier_policy  # noqa: E402
+from shared.quality_tiers import effective_shard_cap, tier_policy  # noqa: E402
 
 
 def _high_leverage(work_dir: Path) -> list[int]:
@@ -211,10 +211,24 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         f"{policy['tier']}: implement all scaffolded pages from the Art Direction; "
                         "final independent visual review remains required."
                     )
+                    # D1: fast stays single-builder below the page line (coordination
+                    # costs more than one builder's context), but a long deck split
+                    # across one instance inflates its context past the point of no
+                    # return — above the line fast shards to 2 like standard.
+                    fast_cap = effective_shard_cap(manifest.get("quality_level"), len(remaining))
+                    if fast_cap > 1:
+                        shards = builder_shards(remaining, work_dir, max_parallel=fast_cap)
+                        if shards:
+                            payload["builder_shards"] = shards
+                            payload["notes"] += (
+                                f" {len(remaining)} pages exceed the fast shard line: spawn all "
+                                f"{shards['parallel']} shards in ONE message (see builder_shards) so "
+                                "no single builder carries the whole deck."
+                            )
                     try:
                         packets = _packet.prepare_packets(
-                            work_dir, "initial", remaining, single_builder=True,
-                            max_parallel=policy["shard_cap"],
+                            work_dir, "initial", remaining, single_builder=fast_cap <= 1,
+                            max_parallel=fast_cap,
                         )
                         if packets:
                             payload["builder_packets"] = packets
@@ -395,7 +409,10 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                                 "mode=initial to implement every remaining scaffold page (calibrated pages are "
                                 "preserved); run build only after BUILDER_DONE."
                             )
-                            shards = builder_shards(remaining, work_dir, max_parallel=policy["shard_cap"])
+                            shards = builder_shards(
+                                remaining, work_dir,
+                                max_parallel=effective_shard_cap(manifest.get("quality_level"), len(remaining)),
+                            )
                             if shards:
                                 payload["builder_shards"] = shards
                                 payload["notes"] += (
@@ -408,7 +425,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             try:
                                 packets = _packet.prepare_packets(
                                     work_dir, "initial", remaining,
-                                    max_parallel=policy["shard_cap"],
+                                    max_parallel=effective_shard_cap(manifest.get("quality_level"), len(remaining)),
                                 )
                                 if packets:
                                     payload["builder_packets"] = packets
@@ -481,7 +498,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     packets = _packet.prepare_packets(
                         work_dir, "repair", fixable or None, pre_qa_reports,
                         single_builder=basic,
-                        max_parallel=policy["shard_cap"],
+                        max_parallel=effective_shard_cap(manifest.get("quality_level"), len(fixable)),
                     ) if fixable else []
                     if packets:
                         payload["builder_packets"] = packets
@@ -510,7 +527,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         packets = _packet.prepare_packets(
                             work_dir, "repair", repair_targets, ["pipeline-qa.json"],
                             single_builder=basic or not blocker_slides,
-                            max_parallel=policy["shard_cap"],
+                            max_parallel=effective_shard_cap(manifest.get("quality_level"), len(repair_targets)),
                             convergence=repair_convergence(work_dir),
                         )
                         if packets:
@@ -622,7 +639,10 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     work_dir, ("pipeline-qa.json", "pre-qa-quality.json", "pre-qa-actual-content.json",
                                "pre-qa-rendered.json")
                 )
-                shards = builder_shards(blocker_slides, work_dir, max_parallel=policy["shard_cap"])
+                shards = builder_shards(
+                    blocker_slides, work_dir,
+                    max_parallel=effective_shard_cap(manifest.get("quality_level"), len(blocker_slides)),
+                )
                 if shards:
                     payload["builder_shards"] = shards
                     payload["notes"] += (
@@ -639,7 +659,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         packets = _packet.prepare_packets(
                             work_dir, "repair", repair_targets, ["pipeline-qa.json"],
                             single_builder=basic or not blocker_slides,
-                            max_parallel=policy["shard_cap"],
+                            max_parallel=effective_shard_cap(manifest.get("quality_level"), len(repair_targets)),
                             convergence=repair_convergence(work_dir),
                         )
                         if packets:

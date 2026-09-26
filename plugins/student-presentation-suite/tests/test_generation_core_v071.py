@@ -130,6 +130,113 @@ class GenerationCoreV071Tests(unittest.TestCase):
             self.assertFalse(result["ok"])
             self.assertIn("repetitive_structure_pair", {item["code"] for item in result["issues"]})
 
+    def rhythm_review(self, root: Path, structures: list[str]) -> tuple[Path, Path]:
+        pptx = root / "deck.pptx"
+        pptx.write_bytes(b"pptx")
+        report = root / "visual.json"
+        slides = []
+        for number, structure in enumerate(structures, start=1):
+            slides.append(
+                {
+                    "slide": number,
+                    "visual_structure": structure,
+                    "scores": {
+                        "hierarchy": 8,
+                        "focal_point": 8,
+                        "composition": 8,
+                        "visual_interest": 8,
+                        "whitespace": 8,
+                    },
+                    "ai_template_feel": "none",
+                    "issues": [],
+                }
+            )
+        report.write_text(
+            json.dumps({"pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(), "slides": slides}),
+            encoding="utf-8",
+        )
+        return pptx, report
+
+    def test_rhythm_plan_divergence_flags_flattened_variety(self) -> None:
+        """B2: pages the plan deliberately placed in DIFFERENT families must not all
+        render the same weak structure — that is planned variety flattened at build
+        time, the exact failure the rhythm plan tells builders to avoid."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx, report = self.rhythm_review(
+                root, ["cover", "equal-cards", "equal-cards", "typography", "flow", "reference"]
+            )
+            rhythm = {
+                "pages": [
+                    {"slide": i, "family": family}
+                    for i, family in enumerate(["A", "B", "C", "A", "B", "C"], start=1)
+                ]
+            }
+            result = self.quality.validate_visual_report(
+                report, pptx, 6, high_score=True, rhythm_plan=rhythm
+            )
+            divergence = next(
+                (i for i in result["issues"] if i["code"] == "rhythm_plan_divergence"), None
+            )
+            self.assertIsNotNone(divergence)
+            self.assertEqual(["B", "C"], divergence["planned_families"])
+            self.assertEqual("major", divergence["severity"])
+
+    def test_rhythm_plan_divergence_is_advisory_outside_rigorous(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx, report = self.rhythm_review(
+                root, ["cover", "equal-cards", "equal-cards", "typography", "flow", "reference"]
+            )
+            rhythm = {
+                "pages": [
+                    {"slide": i, "family": family}
+                    for i, family in enumerate(["A", "B", "C", "A", "B", "C"], start=1)
+                ]
+            }
+            fast = self.quality.validate_visual_report(
+                report, pptx, 6, policy=self.quality.tier_policy("fast"), rhythm_plan=rhythm
+            )
+            divergence = next(i for i in fast["issues"] if i["code"] == "rhythm_plan_divergence")
+            self.assertEqual("advisory", divergence["severity"])
+
+    def test_same_family_repetition_does_not_trigger_divergence(self) -> None:
+        """The plan itself warned about same-family runs (deck-rhythm warnings);
+        that case belongs to repetitive_structure_run, not to divergence."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx, report = self.rhythm_review(
+                root, ["cover", "equal-cards", "equal-cards", "typography", "flow", "reference"]
+            )
+            rhythm = {
+                "pages": [
+                    {"slide": i, "family": family}
+                    for i, family in enumerate(["A", "B", "B", "A", "B", "C"], start=1)
+                ]
+            }
+            result = self.quality.validate_visual_report(
+                report, pptx, 6, high_score=True, rhythm_plan=rhythm
+            )
+            self.assertNotIn("rhythm_plan_divergence", {i["code"] for i in result["issues"]})
+
+    def test_non_weak_structure_repetition_does_not_trigger_divergence(self) -> None:
+        """A chart on three different-family pages is variety, not flattening."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx, report = self.rhythm_review(
+                root, ["cover", "chart", "chart", "typography", "flow", "reference"]
+            )
+            rhythm = {
+                "pages": [
+                    {"slide": i, "family": family}
+                    for i, family in enumerate(["A", "B", "C", "A", "B", "C"], start=1)
+                ]
+            }
+            result = self.quality.validate_visual_report(
+                report, pptx, 6, high_score=True, rhythm_plan=rhythm
+            )
+            self.assertNotIn("rhythm_plan_divergence", {i["code"] for i in result["issues"]})
+
     def test_visual_critic_blocks_low_high_score_visuals(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

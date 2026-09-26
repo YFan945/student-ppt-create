@@ -534,3 +534,68 @@ class ResearchPipelineEndToEndTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SourceLevelResolutionTests(ResearchPackToEvidenceTests):
+    """C1: D-class import packs carry no F/D/Q entities; slide refs citing
+    sources directly must resolve into source-level ledger entries instead of
+    blocking every scope-D compile (2026-09-26 e2e defect)."""
+
+    def entityless_pack(self) -> dict:
+        pack = base_pack()
+        pack["findings"] = []
+        pack["data_points"] = []
+        pack["quotes"] = []
+        pack["visual_candidates"] = []
+        pack["queries"] = []  # D mode must not record searches
+        # mirror import_user_materials output: the user's own files are tier-S sources
+        for source in pack["sources"]:
+            source["type"] = "user-file"
+            source["tier"] = "S"
+        return pack
+
+    def test_source_refs_resolve_on_entityless_packs(self) -> None:
+        pack = self.entityless_pack()
+        spec = {
+            "meta": {"topic": "t"},
+            "slides": [
+                {"id": 1, "evidence_refs": ["S01", "S02"]},
+                {"id": 2, "evidence_refs": ["S01"]},
+            ],
+        }
+        report, compiled = self.compiled(pack, spec)
+        self.assertEqual({"S01": "E01", "S02": "E02"}, report["ref_map"])
+        self.assertEqual([], report["unresolved_refs"])
+        first = report["evidence_ledger"][0]
+        self.assertEqual("E01", first["id"])
+        self.assertEqual(["S01"], first["source_ids"])
+        self.assertEqual(pack["sources"][0]["title"], first["title"], "byte-exact source title")
+        self.assertEqual([1, 2], first["used_on_slides"])
+        self.assertEqual([1], report["evidence_ledger"][1]["used_on_slides"])
+        self.assertIn("用户自带材料", first.get("limitation") or "")
+        # the compiled spec's refs were rewritten to the allocated E ids
+        self.assertEqual(["E01", "E02"], compiled["slides"][0]["evidence_refs"])
+        self.assertEqual(["E01"], compiled["slides"][1]["evidence_refs"])
+
+    def test_unknown_refs_stay_unresolved_on_entityless_packs(self) -> None:
+        pack = self.entityless_pack()
+        spec = {"meta": {"topic": "t"}, "slides": [{"id": 1, "evidence_refs": ["S99"]}]}
+        pack_path = self.write_pack(pack)
+        spec_path = self.tmp / "spec.json"
+        spec_path.write_text(json.dumps(spec), encoding="utf-8")
+        code, _ = self.invoke([
+            str(pack_path), "--slide-spec", str(spec_path),
+            "--output", str(self.tmp / "map.json"),
+        ])
+        self.assertEqual(2, code)
+        report = json.loads((self.tmp / "map.json").read_text(encoding="utf-8"))
+        self.assertEqual(1, len(report["unresolved_refs"]))
+
+    def test_entity_packs_keep_research_behavior(self) -> None:
+        """A normal research pack with findings never gains source-level entries."""
+        pack = base_pack()
+        spec = {"meta": {"topic": "t"}, "slides": [{"id": 1, "evidence_refs": ["F01"]}]}
+        report, _ = self.compiled(pack, spec)
+        self.assertEqual({"F01": "E01", "D01": "E02"}, report["ref_map"])
+        self.assertNotIn("S01", report["ref_map"], "entity packs keep research behavior")
+        self.assertEqual(2, len(report["evidence_ledger"]))

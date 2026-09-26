@@ -39,7 +39,9 @@ PPTX                 最终怎么呈现
 | **D 禁止查** | 用户明确限定范围："只根据我上传的论文 / 只用课程 PPT / 不要用外部资料" | 立即停止检索；用 `import_user_materials.py` 确定性导入用户材料（不派研究员子代理），只整理用户材料 |
 
 D 类默认走确定性导入（`import_user_materials.py` → Research Pack + `research-import.json` 凭据，无子代理）；仅当用户点名要研究员整理时才 spawn 隔离研究员。D 类是硬约束：一旦触发，`sp-research` 不发起任何检索，只把用户材料整理成 Research Pack
-（`queries` 为空、`sources` 只含用户材料）。
+（`queries` 为空、`sources` 只含用户材料）。D 类 pack 没有 F/D/Q 实体，Slide Spec 的
+`evidence_refs` 直接引用来源 id（`S01`…）；编译器会把被引来源落成 source 级 ledger 条目
+（标题/locator 与 pack 字节一致，附用户材料限定语）——v0.16.13 之前这类引用结构性无法解析。
 
 ## 二、调用单位是 Claim，不是主题
 

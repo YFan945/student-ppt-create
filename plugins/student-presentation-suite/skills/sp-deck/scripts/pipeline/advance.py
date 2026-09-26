@@ -57,7 +57,7 @@ def _run_quietly(func, ns: argparse.Namespace) -> int:
 
 BRIEF_KEYS = (
     "status", "actions", "agent", "mode", "packet", "packets",
-    "reason", "error", "packet_fallback_count",
+    "reason", "error", "packet_fallback_count", "segment_boundary",
 )
 BRIEF_DISPATCH_KEYS = (
     "state", "next_command", "repair_budget", "session_segment",
@@ -131,6 +131,13 @@ def cmd_advance(args: argparse.Namespace) -> int:
             manifest = load_manifest(work_dir)
             if payload.get("agent"):
                 result = {"status": "needs_agent", "actions": actions, "dispatch": payload}
+                # D4: machine-readable turn-end marker. When the dispatch says this
+                # boundary is where a fresh session should take over (build+render
+                # done, review+QA ahead), the main session's cheapest correct move
+                # is to finish its turn after handling the spawn — not to force a
+                # restart, just to stop inheriting history it no longer needs.
+                if str(payload.get("session_segment") or "").startswith("boundary-recommended"):
+                    result["segment_boundary"] = True
                 # Hoist the spawn fields so every builder/critic boundary answers the
                 # same shape (agent / mode / packets) on top of the full dispatch.
                 result["agent"] = payload["agent"]

@@ -108,6 +108,44 @@ class RepairMinimisationContractTests(unittest.TestCase):
         self.assertIn("blockers", built["minimal_edit"]["scope"])
         self.assertEqual("flat", built["repair_convergence"]["trend"])
 
+    def test_repair_packet_records_pages_touched(self) -> None:
+        """D3 (informational): the packet shows which pages the blockers name
+        versus the full assignment, so flat rounds on the same pages are visible."""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            spec = work / "slide-spec.json"
+            spec.write_text(json.dumps({
+                "slides": [
+                    {"id": 1, "title": "封面", "kind": "cover"},
+                    {"id": 2, "title": "数据", "kind": "content"},
+                ]
+            }), encoding="utf-8")
+            (work / "pipeline-qa.json").write_text(json.dumps({"problems": [
+                {"gate": "quality", "severity": "major", "code": "overflow",
+                 "slide": 1, "message": "body text overflows its box"},
+            ]}), encoding="utf-8")
+            built = packet.build_packet(
+                work, "repair", [1, 2], qa_reports=[work / "pipeline-qa.json"],
+            )
+            self.assertEqual({"named": [1], "deck_level": False}, built["pages_touched"])
+
+    def test_deck_level_blockers_mark_pages_touched_deck_level(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            spec = work / "slide-spec.json"
+            spec.write_text(json.dumps({
+                "slides": [{"id": 1, "title": "封面", "kind": "cover"}]
+            }), encoding="utf-8")
+            (work / "pipeline-qa.json").write_text(json.dumps({"problems": [
+                {"gate": "quality", "severity": "major", "code": "bibliography_mismatch",
+                 "message": "deck-level: evidence claims must match the bibliography"},
+            ]}), encoding="utf-8")
+            built = packet.build_packet(
+                work, "repair", [1], qa_reports=[work / "pipeline-qa.json"],
+            )
+            self.assertTrue(built["pages_touched"]["deck_level"])
+            self.assertEqual([], built["pages_touched"]["named"])
+
     def test_critic_contract_demands_element_and_fix(self) -> None:
         templates = (ROOT / "references" / "spawn-templates.md").read_text(encoding="utf-8")
         self.assertIn("`element`", templates)

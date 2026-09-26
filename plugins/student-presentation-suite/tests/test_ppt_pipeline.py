@@ -2125,6 +2125,47 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.assertEqual("failed", rhythm["status"])
         self.assertIn("rhythm regression", rhythm["error"])
 
+    def test_fast_deck_above_the_shard_line_offers_two_shards(self) -> None:
+        """D1: fast stays single-builder for small decks, but a deck above the
+        shard line splits across one builder's context — 2 shards, 2 packets."""
+        self.quality_level = "fast"
+        self.write_spec(9)
+        self.plan(self.files)
+        payload = self.next_dispatch_payload()
+        self.assertEqual(pp.BUILDER_AGENT, payload["agent"])
+        self.assertEqual(2, payload["builder_shards"]["parallel"])
+        self.assertGreaterEqual(len(payload.get("builder_packets") or []), 2)
+
+    def test_fast_deck_below_the_shard_line_stays_single_builder(self) -> None:
+        self.quality_level = "fast"
+        self.write_spec(6)
+        self.plan(self.files)
+        payload = self.next_dispatch_payload()
+        self.assertEqual(pp.BUILDER_AGENT, payload["agent"])
+        self.assertNotIn("builder_shards", payload)
+        self.assertEqual(1, len(payload.get("builder_packets") or []))
+
+    def test_flat_rounds_on_the_same_pages_name_the_stall(self) -> None:
+        """D3 (informational): two rounds naming exactly the same pages while not
+        improving is the signature of an approach that never moves those pages."""
+        (self.work / "gate-history.json").write_text(json.dumps({"_rounds": [
+            {"round": 3, "blockers": 9, "failed": ["quality"], "pages": [2, 5]},
+            {"round": 4, "blockers": 9, "failed": ["quality"], "pages": [2, 5]},
+        ]}), encoding="utf-8")
+        result = pp.repair_convergence(self.work)
+        self.assertEqual("flat", result["trend"])
+        self.assertEqual([[2, 5], [2, 5]], result["pages_touched_by_round"])
+        self.assertIn("same pages", result["advice"])
+
+    def test_improving_rounds_do_not_name_a_stall(self) -> None:
+        (self.work / "gate-history.json").write_text(json.dumps({"_rounds": [
+            {"round": 3, "blockers": 9, "failed": ["quality"], "pages": [2, 5]},
+            {"round": 4, "blockers": 4, "failed": [], "pages": [2, 5]},
+        ]}), encoding="utf-8")
+        result = pp.repair_convergence(self.work)
+        self.assertEqual("improving", result["trend"])
+        self.assertNotIn("same pages", result["advice"])
+
     def test_next_offers_shards_for_the_full_build(self) -> None:
         """The plan must reach the main session, or the gain never happens."""
         self.quality_level = "rigorous"
@@ -2303,6 +2344,17 @@ class AdvanceTests(PipelineTestCase):
         self.assertEqual("needs_agent", result["status"])
         self.assertEqual(["render"], result["actions"])
         self.assertEqual(pp.CRITIC_AGENT, result["dispatch"]["agent"])
+
+    def test_advance_marks_the_production_critic_boundary_as_a_segment_boundary(self) -> None:
+        """D4: the review+QA turn should not inherit the build session's history;
+        advance surfaces that as a machine-readable flag, not a forced restart."""
+        self.plan(self.files)
+        self.use_fake_runtime()
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        self.assertEqual(pp.CRITIC_AGENT, result["agent"])
+        self.assertTrue(result.get("segment_boundary"))
 
     def test_advance_materializes_critic_preview_map_at_the_boundary(self) -> None:
         """Hooks do not fire in every runtime: the map the critic template reads

@@ -476,6 +476,7 @@ def _gate_inputs(manifest: dict[str, Any]) -> dict[str, Any]:
         "slide_spec": str((inputs.get("slide_spec") or {}).get("path") or ""),
         "spec_lock": str((inputs.get("spec_lock") or {}).get("path") or ""),
         "art_direction": str((inputs.get("art_direction") or {}).get("path") or ""),
+        "quality_level": manifest.get("quality_level"),
         "visual_generation_report": str(visual_generation.get("path") or ""),
         "slide_spec_report": str((inputs.get("slide_spec_report") or {}).get("path") or ""),
         "deliverables": {
@@ -530,10 +531,19 @@ def _gate_stage(
         )
     elif name == "actual_content":
         argv = gate("pptx_actual_content_check.py", pptx, spec, "--output", str(report))
+    elif name == "structural_contract":
+        argv = gate(
+            "pptx_structural_contract_check.py", "--pptx", pptx, "--slide-spec", spec,
+            "--quality", str(gate_inputs.get("quality_level") or "fast"),
+            "--output", str(report),
+        )
     elif name == "quality":
         # `visual_review` decides full (post-critic) vs deterministic (pre-build) half.
         argv = gate("pptx_quality_gate_v071.py", "--pptx", pptx, "--slide-spec", spec,
                     "--spec-lock", lock, "--output", str(report))
+        rhythm_plan = work_dir / "deck-rhythm.json"
+        if rhythm_plan.is_file():
+            argv += ["--rhythm-plan", str(rhythm_plan)]
         if visual_review:
             argv += ["--visual-report", str(visual_review)]
     elif name == "delivery":
@@ -627,6 +637,7 @@ def pre_qa_stages(manifest: dict[str, Any], work_dir: Path) -> list[Stage]:
     stages.append(_gate_stage("rendered", work_dir, "pre-qa", gate_inputs))
     if gate_inputs["slide_spec"]:
         stages.append(_gate_stage("actual_content", work_dir, "pre-qa", gate_inputs))
+        stages.append(_gate_stage("structural_contract", work_dir, "pre-qa", gate_inputs))
     if gate_inputs["slide_spec"] and gate_inputs["spec_lock"]:
         # Evidence closure, note timing and the spec lock are pure PPTX + spec reads — the
         # same pass the quality gate runs, minus everything that needs the critic. Without

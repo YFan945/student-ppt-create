@@ -479,6 +479,16 @@ def build_packet(
             and not any(slide_number_of(value) for value in item.get("slides") or [])
         ]
         packet["deck_blockers"] = deck_level
+        # D3 (informational): the pages this round's blockers actually name, versus
+        # the packet's full assignment — a round whose pages_touched never shrinks
+        # while blocker counts stay flat is visible in the convergence data.
+        packet["pages_touched"] = {
+            "named": sorted({
+                int(entry["id"]) for entry in details
+                if entry.get("blockers") and isinstance(entry.get("id"), int)
+            }),
+            "deck_level": bool(deck_level),
+        }
         packet["minimal_edit"] = {
             "rule": (
                 "diff only the blocker element's call and its direct dependencies; "

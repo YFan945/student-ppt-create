@@ -244,7 +244,7 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 注定返工的 deck。QA 通过后 `complete` 使用 `ppt_pipeline.py complete --work-dir <wd>`。
 CI 继续渲染完整场景矩阵，但不会提交生成产物。
 
-`quality_level: fast`（默认）由一个 Builder 完成全部页面，再做一次最终独立评审。主观视觉分数和风格建议保留为 advisory；页面不可用及确定性门失败仍阻止交付。
+`quality_level: fast`（默认）在 8 页分片线以下由一个 Builder 完成全部页面，超过则分 2 片，再做一次最终独立评审。主观视觉分数和风格建议保留为 advisory；页面不可用及确定性门失败仍阻止交付。
 `quality_level: standard` / `rigorous` 先校准代表页（standard 校准一轮，rigorous 至多两轮且风格 Major 阻断）。**校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与
 Art Direction 的作者，看不见自己选的视觉语言在每页重复，所以它读预览 PNG 不算评审；
 在 `calibration/calibration-visual-review.json` 存在、绑定当前校准 PPTX、且无

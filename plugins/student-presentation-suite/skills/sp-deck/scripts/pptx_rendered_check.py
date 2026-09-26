@@ -200,7 +200,11 @@ def run(args: argparse.Namespace) -> int:
         palette = pptx_palette_check.check_pptx(args.pptx, args.art_direction)
         report["palette"] = palette
         report["issues"].extend(palette["issues"])
-        report["ok"] = not report["issues"]
+        # Advisory issues (borderline contrast, sub-50%-alpha off-palette washes)
+        # ride along for the repair packet but must not flip the gate: only
+        # blocking severities decide ok, mirroring how collect() counts them.
+        blocking = {"critical", "major", "blocker"}
+        report["ok"] = not any(item.get("severity") in blocking for item in report["issues"])
     payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

@@ -2,6 +2,47 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.17.0 — 2026-09-27 · Realization gates, rhythm divergence and tier-aware sharding
+
+三维度排查 Batch B/C/D 评审包（minor：新增阻断规则与档位语义）。新增 50 个测试，全套 1043 绿。
+
+**Batch B — 视觉系统的确定性兑现门（不再等 critic 发现）**
+
+- **structural_contract 门**（新 `pptx_structural_contract_check.py`，进 pre-QA DAG）：冻结 spec
+  每页声明的 layout 在 layout-library.json 的 `requirements` 必须被成品兑现——`asset: required`
+  零图片、`data: required` 无 chart/table/数字判 critical（全档位阻断）；chart/table 型
+  silhouette 只渲染文本数字是 weak realization（fast advisory / standard+ major）。layout id
+  不可解析则跳过记录，不猜测。
+- **planned-vs-realized rhythm**：quality 门新增 `--rhythm-plan`；critic 报告中连续同构弱结构
+  跨越 rhythm plan 分派的不同 family 时记 `rhythm_plan_divergence`（fast advisory / rigorous
+  major）——计划好的多样性被 build 摊平从此机器可见。
+- **palette 变换解析 + 对比度分级**：`pptx_palette_check.py` 先解析 `tint/shade/lumMod/lumOff`
+  到最终 RGB 再比对允许盘（变换不再能走私离盘色）；`alpha < 50%` 离盘色按水洗降 advisory。
+  文字对比度分级判定：<3.0（近不可见）major，小字 3.0–4.5 advisory（5 组 token 自身的
+  accent/canvas 组合按设计落在 3.88–4.42，不阻断合法 deck）。rendered 门改为按 severity
+  判定（advisory 不再经 exit code 变 blocker）。
+
+**Batch C — D 类证据链闭合**
+
+- 无实体 pack（D 类导入）的 Slide Spec `evidence_refs` 现在直接解析来源 id（`S01`…）：
+  每个被引来源落成 source 级 ledger 条目（标题/locator 与 pack 字节一致 + 用户材料限定语）。
+  此前这类引用结构性无法解析，每个 D 类编译都被 `unresolved_refs` 阻断（2026-09-26 e2e 实测）。
+
+**Batch D — 档位语义与回合结构**
+
+- **fast 分片线**（`quality_tiers.effective_shard_cap`）：fast 在 8 页以下保持单 Builder
+  （协调成本 > 单实例上下文），超过 8 页分 2 片——单 builder 扛整副长 deck 会把实例上下文
+  推到不可回收（2026-09-18 live：8.7K 涨到 699K）。dispatch 六处接线，initial 与 repair 同规。
+- **探索门按档位缩放**：`wireframe_missing` 在 fast 降为 advisory（fast 的 silhouette 证据由
+  composition candidates 承担），standard/rigorous 仍为 critical。
+- **repair 可观测性（informational，无任何成本阈值）**：QA 轮历史记录逐轮 `pages`；
+  `repair_convergence` 暴露 `pages_touched_by_round`，连续两轮同名页且非 improving 时
+  advice 点名停滞；repair packet 新增 `pages_touched`（named vs deck_level）；
+  `repair --extend-reason` 记录 `blocker_pages` / `reason_named_pages` 并在零交集时打印
+  WARNING（记录不匹配，绝不据此拒绝）。
+- **segment_boundary**：advance 在生产 critic 边界（build+render 完成、review+QA 在前）返回
+  顶层 `segment_boundary: true`，SKILL 明确"收到即结束当前回合"——机器可见，不强制重启。
+
 ## 0.16.13 — 2026-09-26 · Hook-less critic boundary hardening
 
 三维度排查（链路 / 视觉 / 成本）Batch A 的四个小修，全部源自 2026-09-26 e2e 验收跑的实测

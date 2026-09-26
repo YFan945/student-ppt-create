@@ -42,7 +42,9 @@
     "static_risk": {
       "script": "pptx_static_risk_check.py",
       "phase": "post_build",
-      "requires": ["pptx"],
+      "requires": [
+        "pptx"
+      ],
       "dependencies": [],
       "critic": false,
       "pre_build": true,
@@ -71,6 +73,19 @@
       "critic": false,
       "pre_build": true,
       "artifact": "actual_content"
+    },
+    "structural_contract": {
+      "script": "pptx_structural_contract_check.py",
+      "phase": "post_build",
+      "requires": [
+        "pptx",
+        "slide_spec"
+      ],
+      "dependencies": [],
+      "critic": false,
+      "pre_build": true,
+      "note": "layout-library requirements realized in the built PPTX: zero realization (asset/data required but nothing rendered) is critical on every tier, weak realization (chart/table instrument promised, text numbers only) is fast-advisory / standard+ major; deterministic pre-QA only",
+      "artifact": "structural_contract"
     },
     "quality": {
       "script": "pptx_quality_gate_v071.py",
@@ -131,7 +146,7 @@
   "parallel_builder_min_pages": 4,
   "builder_shard_policy": {
     "per_shard_complexity": 6,
-    "note": "shard_count = min(tier cap, max_parallel_builders, ceil(total slide complexity / per_shard_complexity), known pages); chart/data/compare pages weigh 2, layout_lock adds 1"
+    "note": "shard_count = min(tier cap, max_parallel_builders, ceil(total slide complexity / per_shard_complexity), known pages); chart/data/compare pages weigh 2, layout_lock adds 1. Tier cap comes from shared/quality_tiers.effective_shard_cap: fast is 1 below the 8-page line and 2 above it (a single builder carrying a long deck inflates its instance context past recovery); standard 2, rigorous 3 unconditional."
   },
   "intake_confirmation_required": true,
   "repeat_policy": {
@@ -177,7 +192,10 @@
     "fast": "one builder packet for all pages and repairs, deterministic pre-QA, render and one final independent critic; subjective style findings, style majors and regressions are advisory, critical and deterministic failures block; no calibration",
     "standard": "one calibration sample (builder + one independent critic review), then full generation with shards <= 2; structural lows (hierarchy/focal_point) block, style majors and regressions advisory",
     "rigorous": "the full high-score path: calibration <= 2 rounds until green (shards <= 3), structural + style-major + regression findings block, per-slide floor 6.0",
-    "aliases": { "basic": "fast", "high-score": "rigorous" },
+    "aliases": {
+      "basic": "fast",
+      "high-score": "rigorous"
+    },
     "calibration_round_accounting": "one calibration_preview execution == one round; once the tier budget is spent, remaining review findings are carried as recorded risk and production proceeds"
   },
   "workflow_state": "outputs/.pptx-work/<work-id>/workflow-state.json",

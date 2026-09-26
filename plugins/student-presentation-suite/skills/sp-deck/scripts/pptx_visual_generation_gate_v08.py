@@ -136,6 +136,10 @@ def validate_visual_generation(
 ) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
     high_score = quality == "high-score"
+    # D2: the wireframe render is exploration breadth, and fast's one-shot build
+    # gets its silhouette evidence from the composition candidates instead — a
+    # missing wireframe degrades to advisory there and stays critical elsewhere.
+    wireframe_missing_severity = "minor" if tier_policy(quality)["tier"] == "fast" else "critical"
     try:
         spec = load_structured(slide_spec)
     except (OSError, ValueError) as exc:
@@ -237,7 +241,7 @@ def validate_visual_generation(
             item["selected_id"] = candidate_result.get("selected_id")
 
         if not wireframe_path.is_file():
-            issues.append(issue("critical", "wireframe_missing", f"Missing wireframe PPTX for high-leverage slide {slide_no}.", slide=slide_no))
+            issues.append(issue(wireframe_missing_severity, "wireframe_missing", f"Missing wireframe PPTX for high-leverage slide {slide_no}.", slide=slide_no))
         else:
             count = wireframe_slide_count(wireframe_path)
             if count is None:

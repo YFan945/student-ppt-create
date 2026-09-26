@@ -53,9 +53,10 @@ class PipelineContractTests(unittest.TestCase):
         the runtime, and every gate script must exist."""
         registry = self.contract["qa_gates"]
         # The registry is the gate machine-truth: qa_order plus pre-QA-only gates
-        # (static_risk runs deterministically inside build and never in the QA DAG).
+        # (static_risk and structural_contract run deterministically inside build
+        # and never in the QA DAG).
         self.assertEqual(
-            [name for name in registry if name != "static_risk"],
+            [name for name in registry if name not in {"static_risk", "structural_contract"}],
             self.contract["qa_order"],
         )
         script_roots = (ROOT / "skills" / "sp-deck" / "scripts", ROOT / "scripts")
@@ -70,7 +71,7 @@ class PipelineContractTests(unittest.TestCase):
                 self.assertIn(entry["phase"], {"post_build", "post_critic", "final"})
         # pre-build (deterministic) subset: exactly what the build's pre-QA runs
         self.assertEqual(
-            ["static_risk", "rendered", "actual_content", "quality"],
+            ["static_risk", "rendered", "actual_content", "structural_contract", "quality"],
             [name for name, entry in registry.items() if entry["pre_build"]],
         )
         # the quality gate is the only pre-build gate that has a critic half
@@ -90,11 +91,11 @@ class PipelineContractTests(unittest.TestCase):
         }
         stages = pp.pre_qa_stages(manifest, self.tmp_dir())
         self.assertEqual(
-            ["static-risk", "rendered", "actual-content", "quality-deterministic"],
+            ["static-risk", "rendered", "actual-content", "structural-contract", "quality-deterministic"],
             [s.name for s in stages],
         )
         self.assertEqual(
-            ["static_risk", "rendered", "actual_content", "quality"],
+            ["static_risk", "rendered", "actual_content", "structural_contract", "quality"],
             [s.artifact for s in stages],
         )
         for stage in stages:
