@@ -474,12 +474,20 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     qa.add_argument("--notes", type=Path, help="speaker notes file (delivery)")
     qa.add_argument("--preview", type=Path, nargs="+", action="extend", default=None, help="preview images (delivery)")
     qa.add_argument("--allow-missing-preview", action="store_true", help="relax the delivery preview requirement")
-    parser.add_argument("--quality", choices=["high-score", "standard"], default="high-score")
+    # fast/standard/rigorous are the pipeline-contract tiers (SKILL.md passes them
+    # through); they normalize to the two calibration regimes the gates implement.
+    parser.add_argument(
+        "--quality", choices=["fast", "standard", "rigorous", "basic", "high-score"], default="high-score"
+    )
     parser.add_argument("--output", type=Path, help="merged report path; defaults to <evidence-dir>/gates-report.json")
     parser.add_argument("--json", action="store_true", help="print the merged report instead of the summary")
     parser.add_argument("--verbose", action="store_true", help="also list minor issues")
     parser.add_argument("--max-items", type=int, default=DEFAULT_MAX_ITEMS, help="cap listed problems (0 = no cap)")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    args.quality = (
+        "high-score" if visual_gate.tier_policy(args.quality)["strict_v08"] else "standard"
+    )
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -2,6 +2,19 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.12 — 2026-09-26 · E2E acceptance fixes
+
+- **真实端到端验收跑发现并修复两个管线缺陷**（详见下文 e2e 记录）：
+  - `pipeline/plan.py` 现在把 deck 自身档位传给 `art_direction_check.py`（此前检查器
+    固定按 CLI 默认 high-score 判定，所有 fast/standard 的 typography-led asset_plan
+    在 plan 时即被资产下限拒绝）；
+  - `run_gates.py` 接受管线契约档位名（fast/standard/rigorous/basic/high-score）并按
+    `strict_v08` 归一为两套校准口径——此前 SKILL.md 写的 `--quality fast` 会被 CLI 直接
+    拒绝。
+- `pptx-composer.js`：RangeError 附 `cause`（eslint v10 `preserve-caught-error`，
+  recommended 全量盘点唯一发现）。
+- 回归测试：plan 透传档位断言 + run_gates 档位归一（全套 984 测试）。
+
 ## 0.16.11 — 2026-09-26 · Safe constraint pin refresh
 
 - `python-constraints.txt` 落地 dependabot 被关前积压的 5 个安全 pin：idna 3.20、

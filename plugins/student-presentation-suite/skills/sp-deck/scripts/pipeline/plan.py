@@ -232,6 +232,10 @@ def cmd_plan(args: argparse.Namespace) -> int:
     ad_report = work_dir / "art-direction-check.json"
     ad_check = core._runner([
         sys.executable, str(HERE / "art_direction_check.py"), str(art),
+        # The checker's CLI default is high-score; plan must judge the Art
+        # Direction under the deck's own tier, or every fast/standard deck's
+        # typography-led asset_plan trips the high-score asset floor.
+        "--quality", str(fresh["quality_level"]),
         "--work-dir", str(work_dir),
         "--output", str(ad_report), "--json",
     ])

@@ -121,6 +121,7 @@ function resolveSlideComposition(slideSpec, context) {
     } catch (error) {
       throw new RangeError(
         `Slide ${slideSpec.id} locks unknown layout ${slideSpec.layout}: ${error.message}`,
+        { cause: error },
       );
     }
   } else {

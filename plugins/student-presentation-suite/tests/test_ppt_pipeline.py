@@ -446,6 +446,14 @@ class PlanTests(PipelineTestCase):
         art_call = next(c for c in runner.calls if "art_direction_check.py" in " ".join(c))
         self.assertIn("--work-dir", art_call)
         self.assertEqual(str(self.work), art_call[art_call.index("--work-dir") + 1])
+        # 2026-09-26 e2e: plan must judge the Art Direction under the deck's own
+        # tier — the checker's CLI default (high-score) refuses every
+        # typography-led fast deck's asset_plan at plan time.
+        self.assertIn("--quality", art_call)
+        self.assertEqual(
+            str(art_call[art_call.index("--quality") + 1]),
+            manifest["quality_level"],
+        )
         mirrored = json.loads(self.workflow_state.read_text(encoding="utf-8"))
         self.assertEqual(mirrored["state"], "planned")
         self.assertTrue((self.work / "pages" / "p01-cover.js").is_file())
