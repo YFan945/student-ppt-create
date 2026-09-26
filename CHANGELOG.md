@@ -2,6 +2,11 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.4 — 2026-09-26 · Dependabot magika pin
+
+- `.github/dependabot.yml`：pip 组忽略 `magika >=1`——`markitdown 0.1.x` 钉死 `magika~=0.6.1`，
+  1.x 无法安装（#39 的 ResolutionImpossible 根因）；markitdown 更新其约束后移除此项。
+
 ## 0.16.3 — 2026-09-26 · Dependabot eslint pin
 
 - `.github/dependabot.yml`：npm 组忽略 `eslint >=9`——仓库仍是 `.eslintrc` 格式，v9+

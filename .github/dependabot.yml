@@ -5,6 +5,11 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 1
+    ignore:
+      # markitdown 0.1.x pins magika~=0.6.1, so magika 1.x is uninstallable
+      # until markitdown updates its pin. Revisit then.
+      - dependency-name: "magika"
+        versions: [">=1"]
     groups:
       python-dependencies:
         patterns:
