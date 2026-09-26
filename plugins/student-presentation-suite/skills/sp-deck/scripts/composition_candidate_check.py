@@ -194,11 +194,65 @@ def validate_candidates(
     }
 
 
+def emit_template(slide_id: int) -> dict[str, Any]:
+    """A schema-shaped skeleton: every contract field present, shapes correct.
+
+    2026-09-26 e2e 的两处返工都来自猜字段形状（zones 写成数组、漏 slide_id）。
+    骨架的占位文案长度已按 checker 门槛给出；`reference_ids` 占位符必须替换成
+    visual-reference-library.json 的真实 id 后才可能过门。
+    """
+    return {
+        "_comment": (
+            f"composition-candidates template for slide {slide_id} — replace every "
+            "<placeholder>, keep the shapes (zones is an object of normalized [x,y,w,h])"
+        ),
+        "slide_id": slide_id,
+        "high_leverage": True,
+        "candidates": [
+            {
+                "id": "c1-<silhouette-name>",
+                "silhouette": "<silhouette-a>",
+                "rationale": "<≥20 chars: why this composition serves the slide claim>",
+                "focal_share": 0.55,
+                "title_pt": 40,
+                "body_pt": 24,
+                "reference_ids": ["<library-reference-id>"],
+                "zones": {
+                    "focal": [0.08, 0.18, 0.84, 0.5],
+                    "support": [0.08, 0.72, 0.84, 0.2],
+                },
+            },
+            {
+                "id": "c2-<silhouette-name>",
+                "silhouette": "<silhouette-b>",
+                "rationale": "<≥20 chars: why this genuinely different silhouette earns exploration>",
+                "focal_share": 0.45,
+                "title_pt": 36,
+                "body_pt": 22,
+                "reference_ids": ["<library-reference-id>"],
+                "zones": {
+                    "focal": [0.5, 0.14, 0.42, 0.6],
+                    "support": [0.06, 0.2, 0.4, 0.5],
+                },
+            },
+        ],
+        "selected_id": "c1-<silhouette-name>",
+        "selection_reason": "<≥20 chars: why this candidate best serves the claim/art direction>",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("candidate_file", type=Path)
+    parser.add_argument(
+        "candidate_file", type=Path, nargs="?",
+        help="composition-candidates-<slide>.json; optional when --emit-template is used",
+    )
     parser.add_argument("--reference-library", type=Path, default=DEFAULT_LIBRARY)
     parser.add_argument("--quality", choices=["high-score", "standard"], default="high-score")
+    parser.add_argument(
+        "--emit-template", type=int, metavar="SLIDE_ID",
+        help="print a schema-shaped candidates skeleton for this 1-based slide instead of validating",
+    )
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict", action="store_true", help="deprecated no-op alias; gates are fail-closed by default")
@@ -208,6 +262,19 @@ def main() -> int:
         help="opt-in relaxation: exit 0 even when the report is not ok (default is fail-closed)",
     )
     args = parser.parse_args()
+
+    if args.emit_template is not None:
+        if args.emit_template < 1:
+            parser.error("--emit-template expects a 1-based slide id")
+        payload = json.dumps(emit_template(args.emit_template), ensure_ascii=False, indent=2) + "\n"
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(payload, encoding="utf-8")
+        if args.json or not args.output:
+            print(payload, end="")
+        return 0
+    if args.candidate_file is None:
+        parser.error("candidate_file is required unless --emit-template is used")
 
     report = validate_candidates(
         load_structured(args.candidate_file),

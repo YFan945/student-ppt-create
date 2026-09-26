@@ -94,8 +94,8 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 你是本 deck 的独立视觉复核者。做一次全新复核。
 
 - work-dir（绝对路径）：<absolute work-dir>
-- hook 会在 spawn 前把当前证据压缩成 <work-dir>/critic-preview/ 并写
-  <work-dir>/critic-preview-map.json。先读 map：`scope` 必须是 `production`，档位看
+- <work-dir>/critic-preview-map.json 在 spawn 前必须已存在：dispatch 在 critic 边界物化
+  它（hook 启用时会在 spawn 时刷新）。先读 map：`scope` 必须是 `production`，档位看
   `quality_level`，哈希绑定取 `pptx_sha256`、overview 条目与 `entries[].source_sha256`——
   **不读冻结 Spec 或 build-manifest.json**。再逐张读 overview（如有）和每个 `entries[].preview`，
   不要绕过 map 直接猜 render 路径。
@@ -128,8 +128,8 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 你是这次校准预览的独立视觉复核者。只评审已实现的 <N> 页校准稿，不猜未实现的页面。
 
 - work-dir（绝对路径）：<absolute work-dir>
-- hook 会在 spawn 前读取校准 manifest，把当前校准页压缩成 <work-dir>/critic-preview/ 并写
-  <work-dir>/critic-preview-map.json。先确认 map 的 `scope` 是 `calibration`，再逐张读取
+- <work-dir>/critic-preview-map.json 在 spawn 前必须已存在：dispatch 在 critic 边界物化它
+  （hook 启用时会在 spawn 时刷新）。先确认 map 的 `scope` 是 `calibration`，再逐张读取
   `pages[].preview`；这些 preview 保留原始 slide id，并绑定 calibration.pptx 与原始 PNG 哈希。
 - 报告形状的唯一来源：<CLAUDE_PLUGIN_ROOT>/references/visual-review.schema.json；
   写到 map 的 `review_output`（即 <work-dir>/calibration/calibration-visual-review.json），`slides` 恰好覆盖

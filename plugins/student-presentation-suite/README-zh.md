@@ -248,9 +248,9 @@ CI 继续渲染完整场景矩阵，但不会提交生成产物。
 `quality_level: standard` / `rigorous` 先校准代表页（standard 校准一轮，rigorous 至多两轮且风格 Major 阻断）。**校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与
 Art Direction 的作者，看不见自己选的视觉语言在每页重复，所以它读预览 PNG 不算评审；
 在 `calibration/calibration-visual-review.json` 存在、绑定当前校准 PPTX、且无
-critical/major 之前，正式 `build` 会被机械拒绝。runtime hook 会按 production / calibration
-范围生成 `critic-preview-map.json`，critic 只能读取其中列出的当前压缩预览、写 map 指定的
-`review_output`；校准评审正常停止后，hook 另写
+critical/major 之前，正式 `build` 会被机械拒绝。dispatch 在 critic 边界按 production / calibration
+范围物化 `critic-preview-map.json`（hook 启用时 spawn 时再刷新）；hook 启用时 critic 只能读取
+其中列出的当前压缩预览、写 map 指定的 `review_output`；校准评审正常停止后，hook 另写
 `calibration/calibration-critic-execution.json`，正式 build 会验证它覆盖了每张当前校准预览。
 陈旧 render、错误报告路径和损坏/错绑 receipt 都会在放行前被拒绝。通过
 `builder_packet.py --mode calibration --slides ...` 指定的校准样本会与 active round 原子记录，

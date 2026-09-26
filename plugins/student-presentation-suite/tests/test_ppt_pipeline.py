@@ -2304,6 +2304,23 @@ class AdvanceTests(PipelineTestCase):
         self.assertEqual(["render"], result["actions"])
         self.assertEqual(pp.CRITIC_AGENT, result["dispatch"]["agent"])
 
+    def test_advance_materializes_critic_preview_map_at_the_boundary(self) -> None:
+        """Hooks do not fire in every runtime: the map the critic template reads
+        first must exist even when no hook will materialize it at spawn."""
+        self.plan(self.files)
+        self.use_fake_runtime()
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        result = self.advance()
+        self.assertEqual("needs_agent", result["status"])
+        map_path = self.work / "critic-preview-map.json"
+        self.assertTrue(map_path.is_file())
+        payload = json.loads(map_path.read_text(encoding="utf-8"))
+        self.assertEqual("production", payload["scope"])
+        self.assertTrue((self.work / "critic-preview").is_dir())
+        previews = list((self.work / "critic-preview").glob("*.jpg"))
+        self.assertEqual(2, len(previews))  # overview + the one rendered page
+        self.assertNotIn("Preview materialization failed", result["dispatch"]["notes"])
+
     def test_advance_consumes_current_critic_review_once_then_runs_qa(self) -> None:
         self.plan(self.files)
         pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
@@ -2656,6 +2673,26 @@ class ReceiptPolicyTests(PipelineTestCase):
         self.assertNotIn("--receipt-policy", payload["next_command"])
         self.assertIn("Wait for critic-execution.json before QA.", payload["notes"])
         self.assertEqual(pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(files["visual_review"])]), 2)
+
+    def test_qa_explicit_receipt_policy_promotes_to_work_id_state(self) -> None:
+        """The degrade ladder allows passing --receipt-policy at qa time (plan
+        ran without it). The decision is work-id state, so qa must record the
+        policy it applied instead of dropping it after one command."""
+        files = self.write_inputs()
+        self.plan(files)
+        self.assertEqual("require", self.manifest().get("receipt_policy"))
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        self.render_evidence(files, write_receipt=False)
+        self.assertEqual(pp.main([
+            "qa", "--work-dir", str(self.work), "--visual-review", str(files["visual_review"]),
+            "--receipt-policy", "allow-missing",
+        ]), 0)
+        manifest = self.manifest()
+        self.assertEqual(manifest["receipt_policy"], "allow-missing")
+        self.assertEqual(manifest["qa"]["receipt_policy"], "allow-missing")
+        self.assertEqual(manifest["qa"]["critic_receipt"], "missing-allowed")
+        # the resolver next/advance use for qa_command inherits the promotion
+        self.assertEqual("allow-missing", pp._core.work_id_receipt_policy(manifest))
 
 
 if __name__ == "__main__":

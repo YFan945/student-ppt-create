@@ -59,6 +59,26 @@ ALIASES = {"run_gates.sh": "run_gates.py"}
 
 FLAG_RE = re.compile(r"(?<![\w-])(--[a-z0-9][a-z0-9-]*)")
 SUBCOMMAND_RE = re.compile(r"\{([a-z0-9-]+(?:,[a-z0-9-]+)+)\}")
+# Documented value enums: `--quality <fast|standard|rigorous>`. A pipe inside
+# angle brackets after a flag is the doc promising specific accepted values;
+# the test below checks that promise against the parser's own choices.
+DOC_ENUM_RE = re.compile(r"(--[a-z0-9][a-z0-9-]*)[ \t]+<([A-Za-z0-9_-]+(?:\|[A-Za-z0-9_-]+)+)>")
+
+_CORPORA_CACHE: dict[str, str] = {}
+
+
+def script_help_corpus_cached(name: str, path: Path) -> str:
+    if name not in _CORPORA_CACHE:
+        _CORPORA_CACHE[name] = script_help_corpus(path)
+    return _CORPORA_CACHE[name]
+
+
+def script_corpora() -> dict[str, str]:
+    return {
+        name: script_help_corpus_cached(name, path)
+        for name, path in PYTHON_SCRIPTS.items()
+        if path.is_file()
+    }
 
 
 def script_help_corpus(path: Path) -> str:
@@ -130,6 +150,36 @@ def documented_flags(text: str) -> list[tuple[list[str], str, int]]:
     return found
 
 
+def documented_enum_flags(text: str) -> list[tuple[list[str], str, str, int]]:
+    """(scripts on the line, flag, pipe-separated values, line number).
+
+    Same attribution as :func:`documented_flags` — including the multi-line
+    shell-command continuation, where the flag and its value enum typically
+    sit on a continuation line under the script invocation.
+    """
+    found: list[tuple[list[str], str, str, int]] = []
+    names = sorted(set(PYTHON_SCRIPTS) | set(JS_SCRIPTS) | set(ALIASES), key=len, reverse=True)
+    lines = text.splitlines()
+
+    def scripts_on(chunk: str) -> list[str]:
+        hits = [name for name in names if name in chunk]
+        return sorted({ALIASES.get(hit, hit) for hit in hits}) or ["<none>"]
+
+    for index, line in enumerate(lines):
+        if not any(name in line for name in names):
+            continue
+        chunk = line
+        look = index
+        while chunk.rstrip().endswith("\\") and look + 1 < len(lines):
+            look += 1
+            chunk = lines[look]
+            for flag, values in DOC_ENUM_RE.findall(chunk):
+                found.append((scripts_on(lines[index]) + scripts_on(chunk), flag, values, look + 1))
+        for flag, values in DOC_ENUM_RE.findall(line):
+            found.append((scripts_on(line), flag, values, index + 1))
+    return found
+
+
 class CliDocContractTests(unittest.TestCase):
     def test_all_helps_exit_zero(self) -> None:
         for name, path in PYTHON_SCRIPTS.items():
@@ -143,10 +193,7 @@ class CliDocContractTests(unittest.TestCase):
                 self.assertEqual(proc.returncode, 0, proc.stderr[:300])
 
     def test_documented_flags_exist_in_clis(self) -> None:
-        corpora: dict[str, str] = {}
-        for name, path in PYTHON_SCRIPTS.items():
-            if path.is_file():
-                corpora[name] = script_help_corpus(path)
+        corpora = script_corpora()
         js_sources = {
             name: path.read_text(encoding="utf-8")
             for name, path in JS_SCRIPTS.items() if path.is_file()
@@ -163,6 +210,37 @@ class CliDocContractTests(unittest.TestCase):
                 if js_hits and any(flag in source for source in js_hits):
                     continue
                 problems.append(f"{doc}:{line_no}: {flag} accepted by none of {scripts}")
+        self.assertEqual(problems, [], "\n".join(problems))
+
+    def test_documented_value_enums_are_parser_choices(self) -> None:
+        """`--flag <a|b|c>` in living docs must only promise accepted values.
+
+        The v0.16.12 incident ran the other way (run_gates rejected the tier
+        names its own SKILL.md documented); this closes that direction
+        permanently. Free-form arguments (no argparse choices) are skipped —
+        only a parser that declares choices can contradict the doc.
+        """
+        corpora = script_corpora()
+        problems: list[str] = []
+        for doc, text in living_doc_texts().items():
+            for scripts, flag, values, line_no in documented_enum_flags(text):
+                if flag in {"--help", "-h"}:
+                    continue
+                allowed: set[str] = set()
+                declared_choices = False
+                for script in scripts:
+                    for match in re.finditer(
+                        re.escape(flag) + r"[ \t]*\{([^}]+)\}", corpora.get(script, "")
+                    ):
+                        declared_choices = True
+                        allowed.update(item.strip() for item in match.group(1).split(","))
+                if not declared_choices:
+                    continue
+                unknown = sorted(set(values.split("|")) - allowed)
+                if unknown:
+                    problems.append(
+                        f"{doc}:{line_no}: {flag} documents {unknown}; parser accepts {sorted(allowed)}"
+                    )
         self.assertEqual(problems, [], "\n".join(problems))
 
 

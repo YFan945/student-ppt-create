@@ -2,6 +2,29 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.16.13 — 2026-09-26 · Hook-less critic boundary hardening
+
+三维度排查（链路 / 视觉 / 成本）Batch A 的四个小修，全部源自 2026-09-26 e2e 验收跑的实测
+摩擦点；每个修法都有现成函数或既有测试落点：
+
+- **critic 边界物化预览 map（不再依赖 hook）**：`dispatch` 在两处 critic 边界
+  （calibration / production）直接调用 `critic_preview.materialize()`——hook 不触发的
+  runtime（ZCode 默认如此）里 critic 模板要读的 `critic-preview-map.json` 此前根本
+  不存在，critic 只能退回全尺寸 PNG。hook 仍是 spawn 时的刷新者，写路径守卫读同一
+  文件；物化失败（如缺 Pillow）只降级为边界注释 + 手动 CLI 提示，不阻塞 spawn。
+  `pipeline-contract.json`、`spawn-templates.md`、SKILL.md、README 双语对同步改口径。
+- **qa 持久化 receipt_policy**：降级阶梯允许在 qa 时才传 `--receipt-policy
+  allow-missing`（plan 未传），但该决定此前随命令蒸发——现在解析后的 policy 写入
+  manifest（qa 块 + 显式传入时提升顶层 work-id 状态，与 plan 语义一致），后续
+  next/advance/complete 自动继承。
+- **composition candidates 形状契约**：新增 `references/composition-candidates.schema.json`
+  （e2e 实际返工点：`zones` 写成数组、漏 `slide_id`）与
+  `composition_candidate_check.py --emit-template <slide>` 骨架生成器；
+  `pptx-production.md` 的字段清单改为与门禁一致（根级必须有 `slide_id` /
+  `high_leverage`，zones 是对象），示例命令去掉已废弃的 `--strict`。
+- **CLI 文档枚举契约**：`test_cli_doc_contract` 新增"文档 `--flag <a|b|c>` 承诺的值
+  ⊆ parser choices"测试（0.16.12 run_gates 档位名事故的永久闭合；自由参数跳过）。
+
 ## 0.16.12 — 2026-09-26 · E2E acceptance fixes
 
 - **真实端到端验收跑发现并修复两个管线缺陷**（详见下文 e2e 记录）：

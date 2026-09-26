@@ -311,9 +311,10 @@ preview PNGs is therefore not the review, and production `build` is refused unti
 `calibration/calibration-visual-review.json` exists, is bound to the current
 calibration PPTX, carries no critical/major finding, and has a hook-owned
 `calibration/calibration-critic-execution.json` proving that the critic read
-every current calibration preview. The hook builds a scope-aware
-`critic-preview-map.json` for either production or calibration and only permits
-the critic to write that map's `review_output`; stale renders and wrong output
+every current calibration preview. A scope-aware
+`critic-preview-map.json` is materialized at the critic boundary (dispatch/advance;
+the hook refreshes it at spawn when hooks fire) and, when hooks fire, the critic may
+only write that map's `review_output`; stale renders and wrong output
 paths are rejected before review. An explicit calibration sample created with
 `builder_packet.py --mode calibration --slides ...` is recorded atomically as
 the active round, so `next` and `advance` preserve it instead of silently

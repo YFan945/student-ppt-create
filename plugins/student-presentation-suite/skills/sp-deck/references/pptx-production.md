@@ -102,13 +102,17 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/visual_reference_select.py"
 
 ### Multi-candidate composition
 
-3–5 个 high-leverage slides（通常为 cover / hook / central mechanism / strongest evidence / closing）必须探索 2–3 个不同 silhouette。候选保存在 `composition-candidates-<slide>.json`，至少包含：`id`、`visual_strategy`、`silhouette`、`reference_ids`、`dominant_element`、`focal_share`、`title_pt`、`body_pt`、normalized `zones`、`rationale`；选定后写 `selected_id` 与 `selection_reason`。
+3–5 个 high-leverage slides（通常为 cover / hook / central mechanism / strongest evidence / closing）必须探索 2–3 个不同 silhouette。候选保存在 `composition-candidates-<slide>.json`，形状契约见 `references/composition-candidates.schema.json`：根级必须有 `slide_id`（1 基整数页码，必须与文件名 N 一致）、`high_leverage: true`、`candidates`、`selected_id`、`selection_reason`；每个候选必须含 `id`、`silhouette`、`focal_share`、`zones`，推荐补 `rationale`、`title_pt`、`body_pt`、`reference_ids`、`exception_justification`（选中弱结构时必填）。**`zones` 是对象**（区域名 → normalized `[x, y, w, h]`），写成数组会被判 `zones_missing`；漏 `slide_id` 会被 visual-generation 门判 critical——拿不准形状就先要骨架：
+
+```bash
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/composition_candidate_check.py" --emit-template <slide-N> --json
+```
 
 先校验：
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/composition_candidate_check.py" \
-  <composition-candidates-N.json> --quality <high-score|standard> --output <candidate-report-N.json> --json --strict
+  <composition-candidates-N.json> --quality <high-score|standard> --output <candidate-report-N.json> --json
 ```
 
 多个候选文件一次校验用 `run_gates.py --candidates <file> <file> …`，一次运行覆盖全部页。

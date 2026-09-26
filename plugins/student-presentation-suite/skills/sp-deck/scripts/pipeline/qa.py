@@ -92,11 +92,15 @@ def cmd_qa(args: argparse.Namespace) -> int:
     expected_pages = {str(i): item["sha256"] for i, item in enumerate(manifest["render"]["pages"], 1)}
     if not review or review.get("pptx_sha256") != sha256_file(pptx) or review.get("contact_sheet_sha256") != manifest["render"]["contact_sheet"]["sha256"] or review.get("page_sha256") != expected_pages:
         raise RefusedError("visual review must bind the current PPTX, contact sheet and every page SHA256")
-    receipt = execution_receipt(
-        work_dir, "critic", visual_review,
-        policy=getattr(args, "receipt_policy", None)
-        or work_id_receipt_policy(manifest) or "require",
+    # The policy actually applied here is work-id state (mirrors plan.py): an
+    # explicit --receipt-policy on qa promotes to the manifest top level so the
+    # next advance/qa/complete inherits it instead of re-hitting the refusal.
+    receipt_policy = (
+        getattr(args, "receipt_policy", None) or work_id_receipt_policy(manifest) or "require"
     )
+    if getattr(args, "receipt_policy", None):
+        manifest["receipt_policy"] = receipt_policy
+    receipt = execution_receipt(work_dir, "critic", visual_review, policy=receipt_policy)
     degraded_receipt = bool(receipt.get("degraded"))
     if not degraded_receipt:
         for item in [manifest["render"]["contact_sheet"], *manifest["render"]["pages"]]:
@@ -214,6 +218,7 @@ def cmd_qa(args: argparse.Namespace) -> int:
         "notes": bind(notes) if notes and notes.is_file() else None,
         "critic_execution": receipt_binding,
         "critic_receipt": "missing-allowed" if degraded_receipt else None,
+        "receipt_policy": receipt_policy,
         "stage_cost_ms": {name: data["duration_ms"] for name, data in reports.items() if "duration_ms" in data},
     }
     manifest["state"] = "qa"

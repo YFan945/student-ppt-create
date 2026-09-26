@@ -69,6 +69,28 @@ def _high_leverage(work_dir: Path) -> list[int]:
         return []
 
 
+def _materialize_critic_previews(work_dir: Path) -> str:
+    """Materialize the hash-bound critic preview map without relying on hooks.
+
+    The runtime hook refreshes the map at critic spawn, but hooks do not fire in
+    every runtime (the documented degrade ladder): without the map the critic
+    template's first read (critic-preview-map.json) fails and the critic falls
+    back to full-size render PNGs. The boundary materializes it deterministically;
+    the hook stays a refresher and the write-path guard reads the same file.
+    Returns "" on success, else the failure detail for the boundary notes.
+    """
+    scripts = ROOT / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))
+    try:
+        import critic_preview  # noqa: PLC0415
+
+        critic_preview.materialize(work_dir)
+    except Exception as exc:  # Pillow missing or stale evidence: degrade, don't block the spawn
+        return str(exc)[:200]
+    return ""
+
+
 def _current_critic_review(work_dir: Path, manifest: dict[str, Any]) -> bool:
     """True only when the existing independent review covers this exact render."""
     review_path = work_dir / "visual-review.json"
@@ -333,18 +355,26 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                                 "rerun calibration_preview.py for the complete calibration set."
                             )
                         else:
+                            preview_failure = _materialize_critic_previews(work_dir)
                             payload["agent"] = "student-presentation-suite:visual-critic"
                             payload["high_leverage_slides"] = _high_leverage(work_dir)
                             payload["notes"] = (
                                 "Calibration evidence needs an independent visual-critic run. Spawn "
                                 "student-presentation-suite:visual-critic (no `name`) with the absolute "
-                                "work-dir. The runtime hook will create a scope=calibration "
-                                "critic-preview-map.json; the critic must read every mapped preview and "
-                                "write only its review_output. Scope the review to repeated structure "
+                                "work-dir. A scope=calibration critic-preview-map.json with compressed "
+                                "previews is materialized under the work-dir (the runtime hook refreshes "
+                                "it at spawn when hooks are enabled); the critic reads every mapped "
+                                "preview and writes only its review_output. Scope the review to repeated structure "
                                 "across different page roles, Art Direction conformance, and whether roles "
                                 "remain visually distinct. The main session's own read is not a review. "
                                 f"Current status: {review['reason']}"
                             )
+                            if preview_failure:
+                                payload["notes"] += (
+                                    f" Preview materialization failed ({preview_failure}); run "
+                                    f'{python} "{ROOT / "scripts" / "critic_preview.py"}" --work-dir "{work_dir}" '
+                                    "--json before spawning, or the critic must read the calibration render PNGs directly."
+                                )
                     else:
                         remaining = remaining_scaffold_slides(work_dir)
                         if not remaining:
@@ -527,10 +557,14 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     )
                     payload["visual_evidence_reused"] = True
                 else:
+                    preview_failure = _materialize_critic_previews(work_dir)
                     payload["notes"] = (
                         "Spawn student-presentation-suite:visual-critic WITHOUT a `name` "
                         "parameter — a named Agent call becomes a teammate whose agent_type is the name, "
                         "so SubagentStop never issues critic-execution.json and QA blocks forever. "
+                        "A scope=production critic-preview-map.json with compressed previews is "
+                        "materialized under the work-dir (the runtime hook refreshes it at spawn when "
+                        "hooks are enabled); the critic reads the map, not raw render paths. "
                         "Overview: read the cheap contact-sheet-thumb.jpg, not the full-size contact sheet; "
                         "the isolated critic Reads EVERY full-size page (its context never reaches this session). "
                         + (
@@ -541,6 +575,12 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             else "Wait for critic-execution.json before QA."
                         )
                     )
+                    if preview_failure:
+                        payload["notes"] += (
+                            f" Preview materialization failed ({preview_failure}); run "
+                            f'{python} "{ROOT / "scripts" / "critic_preview.py"}" --work-dir "{work_dir}" '
+                            "--json before spawning, or the critic must read the render PNGs directly."
+                        )
                     payload["agent"] = "student-presentation-suite:visual-critic"
                     payload["high_leverage_slides"] = _high_leverage(work_dir)
                     payload["session_segment"] = (
