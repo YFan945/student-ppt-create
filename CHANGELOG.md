@@ -2,6 +2,26 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.17.1 — 2026-09-27 · v0.17.0 e2e acceptance fixes
+
+11 页 fast deck（双分片）的真实 e2e 验收跑抓到三个管线缺陷，全部随本版修复；deck 以
+COMPLETE 交付（QA 0 blocker / 2 minor，2 次 build，11 张备注页分片合并生效）。
+
+- **run_gates 保留原始档位传给 visual-generation 门**（D2 可达性）：0.16.12 在 parse_args 把
+  fast 归一成 standard，D2 的 `wireframe_missing` fast→advisory 缩放在编排器路径完全不可达；
+  现在 raw tier 直传（报告的 `quality` 字段记录 canonical tier），v08 门内部用 `strict_v08`
+  推导两套口径。
+- **delivery 门不再向 fast 索要 wireframe_sha256**（D2 一致性）：fast 档 wireframe 是
+  advisory，报告合法地缺少该哈希，但 delivery 对每个 high-leverage 页硬性要求 64 位
+  wireframe 哈希——任何无 wireframe 的 fast deck 都无法交付。现在仅非 fast 档要求。
+- **rebuild 不再被输出覆盖守卫拒绝**：`run_with_pptxgenjs` 拒绝覆盖已存在文件，而 build.py
+  重建传同名 deck.pptx——任何第二次 build（pre-QA 修复 / repair）都会死。现在先建到
+  `<stem>.building.pptx`，成功后原子替换；失败保留旧产物绑定不变。
+- **builder 契约新增文本装填公式**（生成期修复）：e2e 的三轮 build 返工全部源于 builder 的
+  装填模型猜错——真规则是 `fillRatio ≤ 0.85`（双维）+ 默认 8pt inset + CJK 每字
+  `fontSize/72` 英寸。公式与"密集行降 label@16pt"的成熟修法已写进 agent 契约；
+  同步记录 `node --check` 查不出未定义标识符。
+
 ## 0.17.0 — 2026-09-27 · Realization gates, rhythm divergence and tier-aware sharding
 
 三维度排查 Batch B/C/D 评审包（minor：新增阻断规则与档位语义）。新增 50 个测试，全套 1043 绿。

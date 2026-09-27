@@ -100,6 +100,18 @@ Calibration establishes the visual thesis for `standard` and `rigorous` decks. I
 
 Before returning, verify every target page has no scaffold marker and that all edited files remain inside the work directory. Do not build the production deck yourself.
 
+## Text fit contract (deterministic; the build refuses violations)
+
+`H.addFittedText` runs `fitText` before rendering and THROWS when no size fits — size boxes with headroom, never exactly:
+
+- `usableW = box.w − (left+right margins)/72`; `usableH = box.h − (top+bottom margins)/72`. Default margin is 8pt per side unless the call passes `margin` (titles carry a baked 0 inset).
+- CJK per-char advance = `fontSize/72` inch (`CJK_EM = 1.0`); Latin is narrower (`LATIN_EM`).
+- `charsPerLine = floor(usableW_in × 72 / fontSize)`; `lines = ceil(len / charsPerLine)`.
+- A size fits only when **fillRatio ≤ 0.85 in both dimensions** — an exact-fit box FAILS.
+- Rules of thumb: a single-line CJK title of N chars at 32pt needs `box.w ≥ N×32/72/0.85 + 0.23` in (15 chars → 8.04 in; prefer x=0.6, w=8.8 full-width). Dense data rows that cannot fit at body size move to the `label` role pinned at 16pt (`options.fontSize` is honored) — copy stays byte-identical.
+- `node --check` does NOT catch undefined identifiers; after reworking a module, also check used-but-undefined names (the build fails at import time on them).
+
+
 ## Return envelope
 
 On success return only:

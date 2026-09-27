@@ -48,15 +48,18 @@ def validate_visual_generation_report(path: Path, slide_spec: Path, art_directio
     if not isinstance(evidence, list) or len(evidence) != len(high or []):
         errors.append("Visual-generation report does not cover every high-leverage slide.")
     else:
+        # D2 consistency: fast tiers treat wireframes as advisory exploration, so
+        # the report legitimately carries no wireframe_sha256 for its slides;
+        # demanding it here would make every wireframe-less fast deck undeliverable.
+        require_wireframe = data.get("quality") != "fast"
         for item in evidence:
             if not isinstance(item, dict):
                 errors.append("Visual-generation evidence entry is invalid.")
                 continue
-            for key in (
-                "reference_selection_sha256",
-                "composition_candidates_sha256",
-                "wireframe_sha256",
-            ):
+            keys = ["reference_selection_sha256", "composition_candidates_sha256"]
+            if require_wireframe:
+                keys.append("wireframe_sha256")
+            for key in keys:
                 value = item.get(key)
                 if not isinstance(value, str) or len(value) != 64:
                     errors.append(f"High-leverage slide {item.get('slide')} lacks valid {key}.")

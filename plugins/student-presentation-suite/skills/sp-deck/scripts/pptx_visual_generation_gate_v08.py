@@ -135,11 +135,14 @@ def validate_visual_generation(
     quality: str = "high-score",
 ) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
-    high_score = quality == "high-score"
     # D2: the wireframe render is exploration breadth, and fast's one-shot build
     # gets its silhouette evidence from the composition candidates instead — a
     # missing wireframe degrades to advisory there and stays critical elsewhere.
-    wireframe_missing_severity = "minor" if tier_policy(quality)["tier"] == "fast" else "critical"
+    tier_policy_value = tier_policy(quality)
+    tier = tier_policy_value["tier"]
+    high_score = tier_policy_value["strict_v08"]
+    wireframe_missing_severity = "minor" if tier == "fast" else "critical"
+    quality = tier  # report the canonical tier, not a legacy alias
     try:
         spec = load_structured(slide_spec)
     except (OSError, ValueError) as exc:

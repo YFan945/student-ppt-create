@@ -350,7 +350,7 @@ def collect_visual_generation(args: argparse.Namespace, gates: dict[str, Any], p
         slide_spec=Path(args.slide_spec),
         art_direction=Path(args.art_direction),
         evidence_dir=Path(args.evidence_dir),
-        quality=args.quality,
+        quality=getattr(args, "quality_raw", None) or args.quality,
     )
     # This is the canonical v0.8 report consumed by delivery.  Previously the
     # orchestrator calculated the full report and then discarded it, leaving no
@@ -484,6 +484,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--verbose", action="store_true", help="also list minor issues")
     parser.add_argument("--max-items", type=int, default=DEFAULT_MAX_ITEMS, help="cap listed problems (0 = no cap)")
     args = parser.parse_args(argv)
+    # Keep the RAW tier for the visual-generation gate (D2 scales wireframe
+    # severity by tier) and expose the strict-v08 collapse separately for the
+    # two-caliber gates that predate tiers.
+    args.quality_raw = args.quality
     args.quality = (
         "high-score" if visual_gate.tier_policy(args.quality)["strict_v08"] else "standard"
     )

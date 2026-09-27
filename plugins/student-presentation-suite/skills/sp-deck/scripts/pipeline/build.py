@@ -148,13 +148,21 @@ def cmd_build(args: argparse.Namespace) -> int:
     if pptx.suffix.lower() != ".pptx":
         raise RefusedError("--output-name must end in .pptx")
     node = os.environ.get("NODE") or "node"
+    # Rebuilds target the same deck.pptx name, and the generator refuses to
+    # overwrite existing outputs. Build to a side name and atomically replace
+    # only on success, so a failed rebuild leaves the previous artifact bound
+    # and on disk instead of a half-state.
+    staging = pptx.with_name(f"{pptx.stem}.building{pptx.suffix}")
+    staging.unlink(missing_ok=True)
     built = core._runner(
-        [sys.executable, str(PPTX_TOOL), "pack", str(entry), "--output", str(pptx)] if editing
-        else [node, str(BUILDER), "--output", str(pptx), str(entry), *args.generator_args]
+        [sys.executable, str(PPTX_TOOL), "pack", str(entry), "--output", str(staging)] if editing
+        else [node, str(BUILDER), "--output", str(staging), str(entry), *args.generator_args]
     )
-    if built.returncode != 0 or not pptx.is_file():
+    if built.returncode != 0 or not staging.is_file():
         detail = (built.stderr or built.stdout or "").strip()
+        staging.unlink(missing_ok=True)
         raise RefusedError(f"build failed (exit {built.returncode}): {detail[:600]}")
+    os.replace(staging, pptx)
 
     # Parallel builders each own a slice of the deck, so none of them can write the single
     # readable notes file without dropping the others' text. Assemble it here instead.
