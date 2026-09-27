@@ -135,6 +135,23 @@ try {
     return;
   }
   const python = process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3');
+  // CJK sidecar：scaffold deck.js 通过 H.writeCjkMap 写 <generated>.cjk-map.json。
+  // 把 <a:ea> 注入折叠进同一次 normalize-generated（一个 python 进程），构建链
+  // 不增加任何步骤；没有 sidecar 的手写 deck 保持原行为（不注入）。
+  const cjkMapPath = `${generated}.cjk-map.json`;
+  const cjkArgs = [];
+  if (fs.existsSync(cjkMapPath)) {
+    try {
+      const map = JSON.parse(fs.readFileSync(cjkMapPath, 'utf8'));
+      for (const [latin, cjk] of Object.entries(map)) {
+        if (typeof latin === 'string' && typeof cjk === 'string' && latin && cjk) {
+          cjkArgs.push('--cjk-map', `${latin}=${cjk}`);
+        }
+      }
+    } catch (_) {
+      // sidecar 不可读就跳过注入：字体回落到查看器默认，不影响构建。
+    }
+  }
   const normalization = spawnSync(
     python,
     [
@@ -143,6 +160,7 @@ try {
       generated,
       '--output',
       normalized,
+      ...cjkArgs,
     ],
     { encoding: 'utf8', env: process.env },
   );
@@ -154,15 +172,25 @@ try {
     process.exitCode = normalization.status === null ? 1 : normalization.status;
     return;
   }
-  // normalize 会移除图表中未声明的 c:axId 引用。pptxgenjs 对普通单系列 chart 也会
-  // 写一个多余轴引用，因此这不是 blocker——但若模型本意是组合图（次轴系列），这里会
-  // 被静默降级为单轴。故只告警不阻断：让模型看到提示，同时不误伤正常生成。
+  // normalize 的 changed 混着两类修复：图表轴引用移除与 slide XML 结构修复
+  // （stray pPr、<a:ea> 注入）。只有图表条目值得"组合图降级"告警；结构修复
+  // 在这里只回显一行，避免被误读成图表问题。
   let normalizedCharts = [];
+  let otherFixes = [];
   try {
     const payload = JSON.parse(normalization.stdout || '{}');
-    normalizedCharts = Array.isArray(payload.changed) ? payload.changed : [];
+    const changed = Array.isArray(payload.changed) ? payload.changed : [];
+    normalizedCharts = changed.filter((item) => String(item).includes('chart'));
+    otherFixes = changed.filter((item) => !String(item).includes('chart'));
   } catch (_) {
     // 忽略 stdout 解析失败；仍继续用已归一化文件。
+  }
+  if (otherFixes.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[normalize] ${otherFixes.length} 处 slide XML 结构修复（stray pPr 清理 / CJK <a:ea> 注入）：\n` +
+        `  ${otherFixes.join('\n  ')}`,
+    );
   }
   if (normalizedCharts.length > 0) {
     // eslint-disable-next-line no-console
@@ -186,7 +214,7 @@ try {
     fs.copyFileSync(normalized, finalOutput);
   }
 } finally {
-  for (const temporary of [generated, normalized]) {
+  for (const temporary of [generated, normalized, `${generated}.cjk-map.json`]) {
     try {
       fs.rmSync(temporary, { force: true });
     } catch (_) {

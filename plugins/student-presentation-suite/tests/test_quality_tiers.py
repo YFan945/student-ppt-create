@@ -15,7 +15,13 @@ for entry in (str(ROOT), str(ROOT / "skills" / "sp-deck" / "scripts")):
     if entry not in sys.path:
         sys.path.insert(0, entry)
 
-from shared.quality_tiers import DEFAULT_TIER, effective_shard_cap, normalize, tier_policy  # noqa: E402
+from shared.quality_tiers import (  # noqa: E402
+    DEFAULT_TIER,
+    calibration_enabled,
+    effective_shard_cap,
+    normalize,
+    tier_policy,
+)
 
 
 def load_module(name: str, path: Path):
@@ -69,6 +75,26 @@ class QualityTierTableTests(unittest.TestCase):
         self.assertTrue(policy["block_style_major"])
         self.assertTrue(policy["block_regression"])
         self.assertTrue(policy["strict_v08"])
+
+
+class CalibrationLineTests(unittest.TestCase):
+    """standard ≤ 8 pages skips the calibration round; rigorous never does."""
+
+    def test_standard_skips_calibration_at_or_below_the_page_line(self) -> None:
+        self.assertFalse(calibration_enabled("standard", 8))
+        self.assertFalse(calibration_enabled("standard", 3))
+        self.assertTrue(calibration_enabled("standard", 9))
+        self.assertTrue(calibration_enabled("standard", 30))
+
+    def test_unknown_page_count_keeps_the_table_rule(self) -> None:
+        # 页数不可知时按 tier 表行事：standard 仍校准（宁可多付一轮，不静默降级）。
+        self.assertTrue(calibration_enabled("standard", None))
+
+    def test_fast_never_and_rigorous_always_calibrate(self) -> None:
+        self.assertFalse(calibration_enabled("fast", 3))
+        self.assertFalse(calibration_enabled("basic", 30))
+        self.assertTrue(calibration_enabled("rigorous", 3))
+        self.assertTrue(calibration_enabled("high-score", 3))
 
 
 class TierGateMatrixTests(unittest.TestCase):

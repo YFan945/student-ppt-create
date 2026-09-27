@@ -47,6 +47,26 @@ class ScaffoldContractTests(unittest.TestCase):
             tokens = json.loads(deck[start:deck.index(";\n", start)])
             self.assertIn("palette", tokens)
 
+    def test_deck_writes_the_cjk_map_sidecar(self) -> None:
+        """deck.js 必须把 Latin→CJK 映射交给构建器，normalize 同步注入 <a:ea>。
+
+        生产 build 曾从未注入东亚字形：映射存在于 tokens 与 examples 里，却没有
+        任何管线步骤执行注入。这条断言锁住 scaffold 侧的接线，防止静默回退。
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            spec = work / "spec.json"
+            spec.write_text(
+                json.dumps({
+                    "meta": {"visual_style": "Data Driven"},
+                    "slides": [{"id": 1, "title": "封面", "kind": "cover"}],
+                }),
+                encoding="utf-8",
+            )
+            self.scaffold.scaffold_generator(work, spec)
+            deck = (work / "deck.js").read_text(encoding="utf-8")
+            self.assertIn("H.writeCjkMap(out, TOKENS)", deck)
+
     def test_page_stub_demonstrates_fitted_text_notes_and_alt_text(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)

@@ -413,7 +413,10 @@ def command_validate(args: argparse.Namespace) -> int:
 
 def command_normalize_generated(args: argparse.Namespace) -> int:
     try:
-        changed = normalize_generated_package(args.input, args.output)
+        # CJK 映射与归一化折叠进同一次解包/重打包：构建链保持一个 python 进程，
+        # 生成端不再需要单独跑 cjk-fonts（此前生产 build 从未注入 <a:ea>）。
+        mapping = parse_font_map(list(args.cjk_map)) if args.cjk_map else None
+        changed = normalize_generated_package(args.input, args.output, cjk_map=mapping)
     except FileExistsError as exc:
         raise SystemExit(f"输出已存在，拒绝覆盖: {exc}") from exc
     except (OSError, ValueError) as exc:
@@ -1016,6 +1019,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     normalize_generated.add_argument("input", type=_pptx_file)
     normalize_generated.add_argument("--output", required=True, type=_path)
+    normalize_generated.add_argument(
+        "--cjk-map",
+        action="append",
+        default=None,
+        metavar="LATIN=CJK",
+        help="also inject <a:ea> East Asian typefaces in the same pass, e.g. Cambria=SimHei; repeatable",
+    )
     normalize_generated.set_defaults(handler=command_normalize_generated)
 
     thumbnail = sub.add_parser("thumbnail", help="create labeled template thumbnail grids")

@@ -12,14 +12,18 @@ Tier semantics (owner's spec):
   only critical findings and deterministic failures block.
 - ``standard``: one calibration sample + independent review, then full
   generation (shards <= 2). Structural lows (hierarchy / focal_point) block;
-  style majors stay advisory.
+  style majors stay advisory. Short decks (at or below
+  ``STANDARD_CALIBRATION_PAGE_LINE``) skip calibration: the whole-deck rework
+  that calibration insures against is bounded there, while the calibration
+  round (builder + preview + independent critic) costs proportionally more —
+  dispatch and build both consult :func:`calibration_enabled`.
 - ``rigorous``: the full high-score path (calibration <= 2 rounds until green,
   shards <= 3, structural + style-major + regression findings block, per-slide
   floor 6.0).
 
 Legacy values keep working as aliases: ``basic`` -> fast, ``high-score`` ->
-rigorous. A missing or unknown value is fast — ordinary tasks stopped paying the
-high-assurance path by accident.
+rigorous. A missing or unknown value is fast — ordinary tasks stopped paying
+the high-assurance path by accident.
 """
 
 from __future__ import annotations
@@ -39,6 +43,13 @@ FAST_SHARD_PAGE_THRESHOLD = 8
 # 3 — page work wall clock scales ~1/shards and max_parallel_builders is
 # already 3, so the extra coordination round is net-positive from here.
 FAST_SHARD_SECOND_LINE = 14
+# Owner-approved speed line (2026-09-27): standard decks at or below this page
+# count skip the calibration round entirely. Calibration exists to stop a bad
+# visual system from being copied onto every page (CD-9); on a short deck that
+# rework is bounded by the page line, while the calibration round (builder +
+# preview + independent critic) is a fixed extra round-trip. Rigorous keeps
+# calibration unconditionally — its contract buys assurance, not speed.
+STANDARD_CALIBRATION_PAGE_LINE = 8
 
 _POLICY_ROWS = {
     "fast": {
@@ -104,3 +115,19 @@ def effective_shard_cap(value: Any, page_count: int | None = None) -> int:
     if page_count > FAST_SHARD_PAGE_THRESHOLD:
         return min(cap + 1, 2)
     return cap
+
+
+def calibration_enabled(value: Any, page_count: int | None = None) -> bool:
+    """Whether a concrete deck runs the calibration round at all.
+
+    fast never calibrates. rigorous always does. standard does unless the deck
+    is at or below STANDARD_CALIBRATION_PAGE_LINE pages. ``page_count`` is the
+    FROZEN spec's total slide count — not the count of still-scaffolded pages —
+    so a session resumed mid-calibration keeps the decision it planned with.
+    """
+    policy = tier_policy(value)
+    if not policy["calibration"]:
+        return False
+    if policy["tier"] == "standard" and page_count is not None:
+        return page_count > STANDARD_CALIBRATION_PAGE_LINE
+    return True

@@ -56,7 +56,7 @@ from pipeline.scheduler import (  # noqa: E402
     remaining_scaffold_slides,
     slides_named_in_reports,
 )
-from shared.quality_tiers import effective_shard_cap, tier_policy  # noqa: E402
+from shared.quality_tiers import calibration_enabled, effective_shard_cap, tier_policy  # noqa: E402
 
 
 def _high_leverage(work_dir: Path) -> list[int]:
@@ -175,7 +175,13 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
     else:
         state = str(manifest.get("state") or "(absent)")
         policy = tier_policy(manifest.get("quality_level"))
-        basic = not policy["calibration"]
+        # 短 standard deck 跳过校准：页数冻结在 plan 时写进 manifest.scaffold.slides，
+        # 续会话与首次分派据此得到同一个"校不校准"的决定。
+        deck_pages = (manifest.get("scaffold") or {}).get("slides")
+        calibrates = calibration_enabled(
+            manifest.get("quality_level"), int(deck_pages) if deck_pages else None
+        )
+        basic = not calibrates
         summary = work_dir / f"stage-{state}-summary.md"
         read = [str(summary)] if summary.is_file() else []
         forbidden = ["slide-spec.yaml", "art-direction.yaml", "research-pack.json"]
@@ -199,7 +205,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
                 payload["allowed_writes"] = [str(work_dir / "ooxml"), str(work_dir / "change-summary.md")]
                 payload["notes"] = "Edit unpacked OOXML preserving the source and preserve contract, then build (pack)."
-            elif not policy["calibration"]:
+            elif not calibrates:
                 remaining = remaining_scaffold_slides(work_dir)
                 if not remaining:
                     payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'

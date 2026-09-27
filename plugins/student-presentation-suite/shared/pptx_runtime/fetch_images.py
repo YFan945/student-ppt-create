@@ -26,8 +26,13 @@ import shlex
 import shutil
 import subprocess
 import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+
+# 跨 query 并行抓取的线程上限。provider 命令大多是网络等待，4 个并发足以把
+# 串行逐条等待压成 ~1/4 墙钟，又不至于触发图库/provider 的速率限制。
+MAX_PARALLEL_QUERIES = 4
 
 _PLACEHOLDER = re.compile(r"\{(query|url|output)\}")
 _SCHEMA_PATH = Path(__file__).resolve().parents[2] / "references" / "image-sources.schema.json"
@@ -193,19 +198,22 @@ def fetch_images(
     approved_commands: set[str] | None = None,
     project_root: Path | None = None,
 ) -> dict[str, Any]:
-    """Run the contract for every query. Returns a report dict."""
+    """Run the contract for every query. Returns a report dict.
+
+    Queries run in parallel across a small thread pool; within one query the
+    provider chain stays serial and priority-ordered so "first provider that
+    returns an asset wins" keeps its meaning. Duplicate queries execute once
+    and their records are repeated — two concurrent runs of the same provider
+    command would otherwise race on the same output file.
+    """
     sources = load_image_sources_contract(Path(sources_path))
     out_dir.mkdir(parents=True, exist_ok=True)
     root = Path(project_root).resolve() if project_root is not None else Path.cwd().resolve()
     runnable, gate_reasons = _check_gates(sources, approved_commands, project_root=root)
     now = datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds")
-    records: list[dict[str, Any]] = []
 
-    for query in queries:
-        if not query.strip():
-            continue
-        fulfilled = False
-        notes: list[str] = []
+    def run_query(query: str, notes: list[str]) -> list[dict[str, Any]]:
+        fetched: list[dict[str, Any]] = []
         for provider in runnable:
             kind = provider.get("kind")
             result = None
@@ -215,21 +223,21 @@ def fetch_images(
                 result = _run_command(provider, query, out_dir, timeout_sec, notes)
             if result is None:
                 continue
-            fulfilled = True
-            record = {
-                "query": query,
-                "provider_id": provider["id"],
-                "permission": provider.get("permission", "unknown"),
-                "path": str(result["path"]),
-                "source_url": result.get("source_url"),
-                "license": provider.get("permission", "unknown"),
-                "retrieved_at": now,
-                "status": "fetched",
-            }
-            records.append(record)
+            fetched.append(
+                {
+                    "query": query,
+                    "provider_id": provider["id"],
+                    "permission": provider.get("permission", "unknown"),
+                    "path": str(result["path"]),
+                    "source_url": result.get("source_url"),
+                    "license": provider.get("permission", "unknown"),
+                    "retrieved_at": now,
+                    "status": "fetched",
+                }
+            )
             break
-        if not fulfilled:
-            records.append(
+        if not fetched:
+            fetched.append(
                 {
                     "query": query,
                     "provider_id": None,
@@ -238,6 +246,28 @@ def fetch_images(
                     "reason": "; ".join([*gate_reasons, *notes]) or "no provider returned an asset",
                 }
             )
+        return fetched
+
+    unique: list[str] = []
+    for query in queries:
+        if query.strip() and query not in unique:
+            unique.append(query)
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    if len(unique) > 1:
+        notes_by_query = {query: [] for query in unique}
+        with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_QUERIES, len(unique))) as pool:
+            fetched = pool.map(lambda item: run_query(item, notes_by_query[item]), unique)
+            for query, records in zip(unique, fetched, strict=True):
+                grouped[query] = records
+    else:
+        for query in unique:
+            grouped[query] = run_query(query, [])
+
+    records: list[dict[str, Any]] = []
+    for query in queries:
+        if not query.strip():
+            continue
+        records.extend(grouped.get(query) or [])
 
     return {
         "ok": all(r.get("status") == "fetched" for r in records) if records else True,

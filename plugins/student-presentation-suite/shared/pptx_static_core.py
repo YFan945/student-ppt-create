@@ -67,6 +67,19 @@ PORTABLE_FONT_FAMILIES = {
     "noto sans cjk sc",
     "noto serif cjk sc",
     "georgia",
+    # build 现在通过 normalize --cjk-map 注入 <a:ea>；这些名字与
+    # pptx-helpers.js 的 SAFE_CJK_TITLE_FONTS / SAFE_CJK_BODY_FONTS 同源
+    # （Windows/Office 随系统附带的东亚字体），不因出现在 ea 位而触发
+    # font-compatibility 评审噪音。
+    "dengxian",
+    "dengxian light",
+    "等线",
+    "simhei",
+    "黑体",
+    "fangsong",
+    "仿宋",
+    "kaiti",
+    "楷体",
 }
 
 

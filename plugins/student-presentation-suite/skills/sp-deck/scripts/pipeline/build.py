@@ -4,6 +4,7 @@ import argparse
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
@@ -38,7 +39,7 @@ from pipeline.core import (  # noqa: E402
 from pipeline.scheduler import (  # noqa: E402
     merge_speaker_note_shards,
 )
-from shared.quality_tiers import tier_policy  # noqa: E402
+from shared.quality_tiers import calibration_enabled, tier_policy  # noqa: E402
 
 
 def enforce_page_copy_fidelity(work_dir: Path, spec: Path) -> None:
@@ -104,12 +105,18 @@ def cmd_build(args: argparse.Namespace) -> int:
         # calibration; the doc-only version of this rule was already in SKILL.md
         # and was not followed in the 2026-09-18 live session. Tier policy decides
         # whether calibration applies and how many fix rounds it may spend before
-        # remaining majors are carried as recorded risk.
+        # remaining majors are carried as recorded risk. Short standard decks (at
+        # or below the page line) skip calibration entirely — dispatch and build
+        # must consult the SAME page-count frozen at plan time (manifest.scaffold).
         review = calibration_review(work_dir)
         policy = tier_policy(manifest.get("quality_level"))
+        deck_pages = (manifest.get("scaffold") or {}).get("slides")
+        calibrates = calibration_enabled(
+            manifest.get("quality_level"), int(deck_pages) if deck_pages else None
+        )
         rounds = int((manifest.get("calibration") or {}).get("rounds") or 0)
         if (
-            (policy["calibration"] or review["required"])
+            (calibrates or review["required"])
             and not review["ok"]
             and rounds < policy["calibration_max_rounds"]
         ):
@@ -171,7 +178,16 @@ def cmd_build(args: argparse.Namespace) -> int:
         raise RefusedError(
             f"build failed (exit {built.returncode}): {location}{detail[:600]}"
         )
-    os.replace(staging, pptx)
+    # Windows 杀毒/索引器会在文件刚关闭后短暂持有锁：与 cjk_fonts._write_package
+    # 相同的重试策略，别让一次瞬时 WinError 5 毁掉整次构建。
+    for attempt in range(6):
+        try:
+            os.replace(staging, pptx)
+            break
+        except PermissionError:
+            if attempt == 5:
+                raise
+            time.sleep(0.3)
 
     # Parallel builders each own a slice of the deck, so none of them can write the single
     # readable notes file without dropping the others' text. Assemble it here instead.

@@ -281,6 +281,9 @@ live：主会话接受了校准图，独立 critic 在全量建完后判定"13 �
 与轮 3（4.8M → 0.9M）。轮 1 的 38 次自渲染 + 49 次图片读 + 111 次内联脚本另有约 **16M** 的
 "留存成本"（内容加进上下文后被后续每个请求重付），去掉后约 67M。
 **最大的杠杆是"校准阶段就挡掉全 deck 返工"（CD-9 的校准一条），而不是重置实例。**
+这条杠杆对短 deck 反向成立：页数 ≤ 8 时全 deck 返工本身有界，校准往返反而成了固定
+成本，所以 standard ≤ 8 页（`STANDARD_CALIBRATION_PAGE_LINE`）跳过校准直接整副实现
+（2026-09-27 版本线，`quality_tiers.calibration_enabled` 是唯一判定点）。
 
 上一轮的结论不需要留在上下文里：把它以 **报告路径 + 本轮 blocker 清单** 传进去，
 builder 自己会读。`next --json` 的 `builder_instance_reuse` 会在检出跨轮实例时报出

@@ -2,6 +2,27 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.17.4 — 2026-09-27 · Parallel image fetch, CJK injection wired into build, short-deck calibration line
+
+- **图片获取并行化**：`fetch_images.py` 的逐 query 串行 provider 链改为跨 query 线程池
+  （上限 4），墙钟从 6×0.8s 级的串行等待压到 ~1/4；每 query 内 provider 优先级与
+  "首个成功即用"语义不变。重复 query 只执行一次但逐条出记录——原先串行覆盖同一输出
+  文件，并行下会竞态写坏，现在天然防碰撞。
+- **CJK `<a:ea>` 注入接入生产 build**：生产 build 此前从未注入东亚字形——映射只存在
+  于 design tokens 与 examples 的手动 `cjk-fonts` 调用里，pptxgenjs 又只写
+  `<a:latin>`，中文 deck 的字形一直回落到查看器默认。现在 scaffold 的 deck.js 通过
+  `H.writeCjkMap` 写 sidecar，`run_with_pptxgenjs.js` 把 `--cjk-map` 折叠进**同一次**
+  `normalize-generated` 调用（不加进程、不加主会话回合）；`normalize.py` 新增解包态
+  注入（latin 后紧邻插入 ea，schema 序不变），静态门的便携字体白名单补齐 SAFE_CJK
+  名单避免 ea 注入触发字体兼容噪音。normalize 告警拆分：图表轴移除与 slide XML
+  结构修复分开回显，不再把 pPr/ea 修复误报成"图表轴被移除"。
+- **standard ≤ 8 页跳过校准（owner 批准的提速项）**：`quality_tiers.
+  STANDARD_CALIBRATION_PAGE_LINE = 8`，`calibration_enabled(tier, page_count)` 是
+  唯一判定点，dispatch 与 build 都读 plan 时冻结的 `manifest.scaffold.slides`——
+  续会话与首次分派得到同一个决定。短 deck 的全 deck 返工本身有界，校准往返（builder
+  + preview + critic）成了固定成本；rigorous 不受影响。pipeline-contract.json、SKILL
+  第 7 步与生成核心契约、presentation-intake、cost-discipline、README 双语对同步更新。
+
 ## 0.17.3 — 2026-09-27 · Fast second shard line for long decks
 
 - **fast 分片第二道线（owner 批准的提速项）**：`effective_shard_cap` 在原 8 页线（≤8 页 1 片、

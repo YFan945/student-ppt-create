@@ -245,7 +245,7 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 CI 继续渲染完整场景矩阵，但不会提交生成产物。
 
 `quality_level: fast`（默认）在 8 页分片线以下由一个 Builder 完成全部页面，超过分 2 片、超过 14 页分 3 片，再做一次最终独立评审。主观视觉分数和风格建议保留为 advisory；页面不可用及确定性门失败仍阻止交付。
-`quality_level: standard` / `rigorous` 先校准代表页（standard 校准一轮，rigorous 至多两轮且风格 Major 阻断）。**校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与
+`quality_level: standard` / `rigorous` 先校准代表页（standard 校准一轮，rigorous 至多两轮且风格 Major 阻断）。standard 页数 ≤ 8（校准页数线，plan 时冻结）时跳过校准直接整副构建——校准所保住的全 deck 返工在这个规模是有界的。**校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与
 Art Direction 的作者，看不见自己选的视觉语言在每页重复，所以它读预览 PNG 不算评审；
 在 `calibration/calibration-visual-review.json` 存在、绑定当前校准 PPTX、且无
 critical/major 之前，正式 `build` 会被机械拒绝。dispatch 在 critic 边界按 production / calibration

@@ -81,6 +81,9 @@ function main() {{
     mod({{ pptx, slide, n, H, registry, tokens: TOKENS }});
   }});
   registry.assertSafe();
+  // 把 Latin→CJK 字体映射写给构建器：normalize-generated 在同一步注入 <a:ea>，
+  // 否则东亚字形回落到查看器默认字体（pptxgenjs 只写 <a:latin>）。
+  H.writeCjkMap(out, TOKENS);
   return pptx.writeFile({{ fileName: out }});
 }}
 

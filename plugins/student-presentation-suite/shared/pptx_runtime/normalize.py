@@ -24,6 +24,8 @@ StdET.register_namespace("c", C_NS)
 StdET.register_namespace("a", A_NS)
 
 _SLIDE_PART_DIRS = ("slides", "notesSlides")
+# CJK 注入还要覆盖版式与母版：页面上继承的字体引用落在 layout/master 里。
+_CJK_PART_DIRS = ("slides", "notesSlides", "slideLayouts", "slideMasters")
 
 
 def _fix_rich_text_paragraphs(root) -> int:
@@ -138,7 +140,56 @@ def normalize_unpacked(root: Path) -> list[str]:
     return changed
 
 
-def normalize_generated_package(source: Path, output: Path) -> list[str]:
+def apply_cjk_unpacked(root: Path, mapping: dict[str, str]) -> list[str]:
+    """Inject ``<a:ea>`` typefaces for every mapped ``<a:latin>`` (unpacked form).
+
+    Same rule as ``cjk_fonts.apply_cjk_fonts`` — pptxgenjs only writes
+    ``<a:latin>``, so CJK glyphs would fall back to the viewer's default East
+    Asian font — but operates on the already-unpacked package so the build
+    chain can fold CJK injection into the single normalize step. The ``ea``
+    element is inserted immediately after ``latin`` (schema order latin, ea, cs).
+    """
+    if not mapping:
+        return []
+    changed: list[str] = []
+    for part_dir in _CJK_PART_DIRS:
+        parts_root = root / "ppt" / part_dir
+        if not parts_root.is_dir():
+            continue
+        for part_path in sorted(parts_root.glob("*.xml")):
+            part = ET.parse(part_path).getroot()
+            parents = {child: parent for parent in part.iter() for child in parent}
+            touched = 0
+            for latin in list(part.iter(f"{{{A_NS}}}latin")):
+                cjk = mapping.get(latin.get("typeface") or "")
+                if not cjk:
+                    continue
+                parent = parents.get(latin)
+                if parent is None:
+                    continue
+                existing = parent.find(f"{{{A_NS}}}ea")
+                if existing is None:
+                    ea = StdET.Element(f"{{{A_NS}}}ea", {"typeface": cjk})
+                    parent.insert(list(parent).index(latin) + 1, ea)
+                    touched += 1
+                elif existing.get("typeface") != cjk:
+                    existing.set("typeface", cjk)
+                    touched += 1
+            if touched:
+                StdET.ElementTree(part).write(
+                    part_path,
+                    encoding="utf-8",
+                    xml_declaration=True,
+                )
+                changed.append(
+                    f"{part_path.relative_to(root).as_posix()} (added {touched} a:ea typefaces)"
+                )
+    return changed
+
+
+def normalize_generated_package(
+    source: Path, output: Path, cjk_map: dict[str, str] | None = None
+) -> list[str]:
     source = source.resolve()
     output = output.resolve()
     if source == output:
@@ -149,5 +200,7 @@ def normalize_generated_package(source: Path, output: Path) -> list[str]:
         unpacked = Path(tmp) / "package"
         safe_extract_package(source, unpacked)
         changed = normalize_unpacked(unpacked)
+        if cjk_map:
+            changed.extend(apply_cjk_unpacked(unpacked, cjk_map))
         pack_directory(unpacked, output)
     return changed

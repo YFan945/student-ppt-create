@@ -157,6 +157,34 @@ function fontFamily(tokens) {
 }
 
 /**
+ * 把 resolved 的 Latin→CJK 字体映射写到 `<output>.cjk-map.json` sidecar。
+ *
+ * pptxgenjs 只写 `<a:latin>`，东亚字形由 normalize-generated 的 --cjk-map
+ * 同步注入（run_with_pptxgenjs.js 读取本 sidecar）。映射与 fontFamily() 同源：
+ * title→cjkTitle、body→cjkBody；缺 tokens 时回落到 fontFamily 的安全默认，
+ * 因此中文 deck 总能拿到正确的 East Asian 字形。返回 sidecar 路径或 null。
+ * @param {string} outputPath - deck.js 的输出 .pptx 路径
+ * @param {object} tokens - 解析后的设计 token（与 applyTokens 同源）
+ * @returns {string|null}
+ */
+function writeCjkMap(outputPath, tokens) {
+  const nodeFs = require('node:fs');
+  const fonts = fontFamily(tokens);
+  const map = {};
+  if (fonts.title && fonts.cjkTitle) map[fonts.title] = fonts.cjkTitle;
+  if (fonts.body && fonts.cjkBody) map[fonts.body] = fonts.cjkBody;
+  const entries = Object.entries(map).filter(([latin, cjk]) => latin && cjk);
+  if (!entries.length) return null;
+  const sidecar = `${outputPath}.cjk-map.json`;
+  nodeFs.writeFileSync(
+    sidecar,
+    `${JSON.stringify(Object.fromEntries(entries), null, 2)}\n`,
+    'utf8',
+  );
+  return sidecar;
+}
+
+/**
  * 全幅纹理背景（dots/waves/grid），供 decor=expressive 的章节/封面页使用。
  * 颜色默认取当前盘的 primary_text（深色页自然为浅色纹理）。
  * @param {object} slide
@@ -947,6 +975,7 @@ module.exports = {
   paletteMode,
   fontSizeScale,
   fontFamily,
+  writeCjkMap,
   softShadow,
   patternBackground,
 

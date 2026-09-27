@@ -72,6 +72,57 @@ class FetchImagesTests(unittest.TestCase):
         contract.write_text(json.dumps(sources, ensure_ascii=False), encoding="utf-8")
         return contract
 
+    def test_parallel_fetch_is_ordered_and_actually_parallel(self) -> None:
+        """多 query 并行抓取：记录保持输入顺序，墙钟明显低于串行总和。"""
+        import tempfile
+        import time
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            slow_gen = (
+                f"{sys.executable.replace(chr(92), '/')} -c "
+                f'"import time,base64,pathlib,sys; time.sleep(0.8); '
+                f"pathlib.Path(sys.argv[1]).write_bytes(base64.b64decode('{TINY_PNG}'))\" {{output}}"
+            )
+            sources = {
+                "version": "0.8",
+                "permission": {"allow_web_search": False, "allow_generation": True, "record_source": True},
+                "providers": [
+                    {"id": "fake-gen", "kind": "image-generation", "enabled": True,
+                     "command": slow_gen, "permission": "generated"},
+                ],
+            }
+            contract = tmp_path / "image-sources.json"
+            contract.write_text(json.dumps(sources, ensure_ascii=False), encoding="utf-8")
+            queries = [f"query-{index}" for index in range(6)]
+            approved = {hashlib.sha256(slow_gen.encode()).hexdigest()}
+            started = time.monotonic()
+            report = fetch_images(
+                contract, queries, tmp_path / "fetched",
+                approved_commands=approved, project_root=tmp_path,
+            )
+            elapsed = time.monotonic() - started
+            self.assertTrue(report["ok"])
+            self.assertEqual(queries, [r["query"] for r in report["records"]])
+            self.assertTrue(all(r["status"] == "fetched" for r in report["records"]))
+            # 串行是 6×0.8s=4.8s；4 并发约 2 波 ≈ 1.6-2.5s（含 python 启动）。
+            self.assertLess(elapsed, 4.0, f"parallel fetch took {elapsed:.2f}s — pool not effective")
+
+    def test_duplicate_queries_run_once_and_report_each(self) -> None:
+        """重复 query 只执行一次 provider（避免并发写同一输出文件），但逐条出记录。"""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            contract = self._make_contract(tmp_path, allow_web=False)
+            report = fetch_images(
+                contract, ["生成封面", "生成封面"], tmp_path / "fetched", project_root=tmp_path
+            )
+            # 无批准命令 → fake-gen 被 gate 拦下，两条 query 都是 unfulfilled，
+            # 但必须各有一条记录且互不吞并。
+            self.assertEqual(2, len(report["records"]))
+            self.assertEqual(["生成封面", "生成封面"], [r["query"] for r in report["records"]])
+
     def test_user_assets_win_and_generation_fills_gaps(self) -> None:
         import tempfile
 

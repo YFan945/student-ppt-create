@@ -47,7 +47,8 @@ Confirm every item before production:
 
 `quality_level` freezes the production path at plan: `fast` (the default) uses
 one Builder, deterministic pre-QA and one final independent visual review;
-`standard` adds one calibration sample with an independent review; `rigorous`
+`standard` adds one calibration sample with an independent review (skipped for
+decks at or below the 8-page calibration line); `rigorous`
 adds full calibration rounds and blocking style scores. Do not silently change this choice after confirmation.
 | Structure mode | Scenario default | Controls the narrative spine |
 | Content controls | 40 English words / 80 Chinese characters, balanced visual/text, notes on | Controls density and output layers |
