@@ -217,6 +217,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="required with --extend: the round-over-round blocker diff that justifies more rounds",
     )
     repair.add_argument("--force", action="store_true")
+    repair.add_argument(
+        "--cancel",
+        action="store_true",
+        help="cancel a pending repair whose blockers proved to be gate-side, not page work (reason required)",
+    )
     repair.set_defaults(func=cmd_repair)
 
     complete = sub.add_parser("complete", help="qa + delivery ok -> complete")

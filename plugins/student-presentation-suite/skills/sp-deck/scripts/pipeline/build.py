@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -161,7 +162,15 @@ def cmd_build(args: argparse.Namespace) -> int:
     if built.returncode != 0 or not staging.is_file():
         detail = (built.stderr or built.stdout or "").strip()
         staging.unlink(missing_ok=True)
-        raise RefusedError(f"build failed (exit {built.returncode}): {detail[:600]}")
+        # The generator's traceback names the failing page module AFTER the
+        # RangeError text, which detail[:600] alone usually cuts off — put the
+        # page frame first so a fit/Reference refusal is fixable without a
+        # re-run just to find the file.
+        page_frame = re.search(r"pages[\\/](p[\w.-]+\.js:\d+)", detail)
+        location = f"failing page module pages/{page_frame.group(1)} — " if page_frame else ""
+        raise RefusedError(
+            f"build failed (exit {built.returncode}): {location}{detail[:600]}"
+        )
     os.replace(staging, pptx)
 
     # Parallel builders each own a slice of the deck, so none of them can write the single

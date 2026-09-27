@@ -12,7 +12,7 @@ import sys
 import tempfile
 import unittest
 import zipfile
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Any
 from unittest.mock import patch
@@ -759,6 +759,93 @@ class BuildTests(PipelineTestCase):
         page = next((self.work / "pages").glob("p*.js"))
         page.write_text(page.read_text(encoding="utf-8") + "\n/* changed */\n", encoding="utf-8")
         self.assertEqual(pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)]), 0)
+
+    def test_repair_cancel_clears_pending_and_records_the_audit(self) -> None:
+        """A repair registered against blockers that prove to be a gate-side
+        defect has no page work — the sanctioned exit is --cancel, which clears
+        pending_repair without spending a repair round."""
+        self.prepared()
+        entry = self.entry()
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)])
+        manifest = self.manifest()
+        manifest["state"] = "qa"
+        manifest["qa"] = {"ok": False, "blockers": 2, "stages": {}}
+        pp.save_manifest(self.work, manifest)
+        pp.mirror_workflow_state(manifest, manifest["state"])
+        self.assertEqual(pp.main(["repair", "--work-dir", str(self.work), "--reason", "fix"]), 0)
+        self.assertEqual(pp.main([
+            "repair", "--work-dir", str(self.work), "--cancel",
+            "--reason", "blockers trace to a delivery-gate defect fixed in plugin code",
+        ]), 0)
+        manifest = self.manifest()
+        self.assertFalse(manifest["build"]["pending_repair"])
+        self.assertEqual(1, manifest["build"]["repair_count"], "cancel never spends a round")
+        cancelled = manifest["build"]["cancelled_repairs"]
+        self.assertEqual(1, len(cancelled))
+        self.assertEqual(2, cancelled[0]["blockers_at_cancellation"])
+        self.assertTrue(any(item.get("command") == "repair-cancelled" for item in manifest.get("history") or []))
+        # advance no longer routes to a repair builder; QA evidence is re-read
+        payload = self.next_dispatch_payload()
+        self.assertNotEqual(pp.BUILDER_AGENT, payload.get("agent"))
+
+    def test_repair_cancel_requires_a_real_reason(self) -> None:
+        self.prepared()
+        manifest = self.manifest()
+        manifest["state"] = "qa"
+        manifest["qa"] = {"ok": False, "blockers": 1, "stages": {}}
+        pp.save_manifest(self.work, manifest)
+        pp.mirror_workflow_state(manifest, manifest["state"])
+        pp.main(["repair", "--work-dir", str(self.work), "--reason", "fix"])
+        short = pp.main(["repair", "--work-dir", str(self.work), "--cancel", "--reason", "gate bug"])
+        self.assertEqual(2, short)
+        self.assertTrue(self.manifest()["build"]["pending_repair"], "a refused cancel changes nothing")
+
+    def test_repair_cancel_without_pending_repair_is_refused(self) -> None:
+        self.prepared()
+        manifest = self.manifest()
+        manifest["state"] = "qa"
+        manifest["qa"] = {"ok": False, "blockers": 1, "stages": {}}
+        pp.save_manifest(self.work, manifest)
+        pp.mirror_workflow_state(manifest, manifest["state"])
+        code = pp.main([
+            "repair", "--work-dir", str(self.work), "--cancel",
+            "--reason", "nothing was ever registered so there is nothing to cancel",
+        ])
+        self.assertEqual(2, code)
+
+    def test_build_failure_error_leads_with_the_failing_page(self) -> None:
+        """The generator's traceback names the failing page module after the
+        exception text; detail truncation used to cut it off — the refusal must
+        lead with the page so the fix is one round, not two."""
+        import subprocess
+
+
+        stderr = chr(10).join([
+            "E:/wd/pptx-helpers.js:541",
+            "    throw new RangeError(",
+            "    ^",
+            "RangeError: title cannot fit at 32pt",
+            "    at Object.addFittedText (E:/wd/pptx-helpers.js:541:11)",
+            "    at module.exports (E:/wd/pages/p02-s02.js:31:5)",
+        ]) + chr(10)
+
+        def fake_runner(argv):
+            # intercept only the generator invocation; spec-lock/copy-fit
+            # subprocesses must still run for real
+            if any("run_with_pptxgenjs.js" in str(part) for part in argv):
+                return subprocess.CompletedProcess(argv, 1, stdout="", stderr=stderr)
+            return original(argv)
+
+        self.prepared()
+        entry = self.entry()
+        original = pp._core._runner
+        self.addCleanup(setattr, pp._core, "_runner", original)
+        pp._core._runner = fake_runner
+        err = io.StringIO()
+        with redirect_stderr(err):
+            code = pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)])
+        self.assertEqual(2, code)
+        self.assertIn("failing page module pages/p02-s02.js:31", err.getvalue())
 
     def test_repair_budget_is_hard_limited(self) -> None:
         self.prepared()

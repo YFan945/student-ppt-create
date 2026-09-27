@@ -2,6 +2,16 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.17.2 — 2026-09-27 · Sanctioned repair cancellation and build error page location
+
+- **`repair --cancel --reason`**：登记的 repair 事后证明是门侧缺陷（页面工作不存在、重建被
+  拒为未变更）时，正式撤销通道——清 `pending_repair`、在 `build.cancelled_repairs` 与
+  manifest history 留审计记录、不消耗 repair 轮；状态 qa/producing 均可撤销，无 pending
+  拒绝，理由 <24 字符拒绝。SKILL 第 15 步同步记录。
+- **build 失败报错前置出错页**：generator 崩溃的 traceback 把页文件名放在异常文本之后，
+  detail 截断经常吃掉它——现在 RefusedError 以 `failing page module pages/pNN-*.js:行号`
+  开头，装填/未定义标识符类拒绝一轮即可定位（0.17.1 e2e 为此多花了一轮）。
+
 ## 0.17.1 — 2026-09-27 · v0.17.0 e2e acceptance fixes
 
 11 页 fast deck（双分片）的真实 e2e 验收跑抓到三个管线缺陷，全部随本版修复；deck 以

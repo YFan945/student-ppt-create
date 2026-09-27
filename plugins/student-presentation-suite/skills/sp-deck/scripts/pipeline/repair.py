@@ -4,6 +4,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 HERE = Path(__file__).resolve().parents[1]
 if str(HERE) not in sys.path:
@@ -27,16 +28,65 @@ from pipeline.core import (  # noqa: E402
 from pipeline.scheduler import slides_named_in_reports  # noqa: E402
 
 
+def _cancel_pending_repair(
+    manifest: dict[str, Any],
+    work_dir: Path,
+    build_info: dict[str, Any],
+    blockers: int,
+    args: argparse.Namespace,
+) -> int:
+    """Cancel a registered repair that turned out not to be page work.
+
+    A repair can be recorded against blockers that later prove to be a gate-side
+    defect (fixed in plugin code) — page work then cannot exist and a rebuild is
+    refused as unchanged, deadlocking the pipeline at the builder boundary. The
+    cancel is the sanctioned exit: it clears pending_repair, keeps the QA round
+    and blocker history intact for the audit, and lets advance re-run QA against
+    the current evidence. Requires a real reason; never touches repair_count.
+    """
+    if not build_info.get("pending_repair"):
+        raise RefusedError(
+            "no pending repair to cancel — register a repair first (or run advance, which "
+            "re-runs QA on current evidence when no repair is pending)"
+        )
+    reason = str(args.reason or "").strip()
+    if len(reason) < 24:
+        raise RefusedError(
+            "repair --cancel needs --reason describing why the registered repair is not page "
+            "work (e.g. the blockers trace to a gate defect fixed in plugin code) — the "
+            "decision stays in the manifest audit trail"
+        )
+    repairs = int(build_info.get("repair_count") or 0)
+    build_info["pending_repair"] = False
+    build_info.setdefault("cancelled_repairs", []).append(
+        {
+            "reason": reason,
+            "blockers_at_cancellation": blockers,
+            "repairs_used": repairs,
+        }
+    )
+    before = str(manifest.get("state"))
+    record(manifest, "repair-cancelled", before, before, reason=reason, blockers=blockers)
+    save_manifest(work_dir, manifest)
+    print(
+        f"ppt_pipeline: pending repair cancelled ({blockers} blocker(s) remain recorded) — "
+        "advance re-runs QA against the current evidence; a later real repair round is not spent"
+    )
+    return 0
+
+
 def cmd_repair(args: argparse.Namespace) -> int:
     work_dir = args.work_dir.resolve()
     manifest = load_manifest(work_dir)
-    require_state(manifest, {"qa"}, "repair")
+    require_state(manifest, {"qa", "producing"} if getattr(args, "cancel", False) else {"qa"}, "repair")
     assert manifest is not None
     validate_manifest_authorization(manifest)
     blockers = int((manifest.get("qa") or {}).get("blockers") or 0)
+    build_info = manifest.setdefault("build", {})
+    if getattr(args, "cancel", False):
+        return _cancel_pending_repair(manifest, work_dir, build_info, blockers, args)
     if blockers == 0 and not args.force:
         raise RefusedError("QA has no blockers; complete instead of repairing")
-    build_info = manifest.setdefault("build", {})
     repairs = int(build_info.get("repair_count") or 0)
     if args.extend:
         # 提额必须写明"这轮要修什么、上轮 blocker 差异是什么"：契约要求的不是更大的预算，

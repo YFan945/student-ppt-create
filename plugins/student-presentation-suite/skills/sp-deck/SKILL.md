@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.17.1
+version: 0.17.2
 ---
 
 # Student Presentation PPT
@@ -139,7 +139,7 @@ Windows 下用这个 python 形式。`edit_ooxml` 走原 OOXML 路径；create/r
 
    收到 `BUILDER_DONE` 后调用 `advance --brief-json`，由它重建、预检、渲染并停在 Critic 边界；Critic 返回后再调用一次 `advance` 完成 QA 或给出下一轮 Builder Packet。generator hash 未变化时 build 拒绝；超过预算转 `incomplete`。
 
-   **续轮与否由数据判定，不问用户**：`next --json` 的 `repair_convergence` 给出逐轮 blocker 数与趋势（`improving` 才值得继续，`flat` 要换做法，`worse` 必须先恢复被弄坏的回归），`repair_budget` 给出 `base`/`granted`/`effective`/`hard_cap`。**若 `repair_convergence.suspect_gate_defect` 出现**（某组 blocker 连续两轮逐字相同、其余在动），说明这组不是页面能修的：对着产物核对一次，要么它有页面级修法（写进 `--extend-reason`），要么它是门的误报——记为已知门限、继续修剩下的，**不要为它问用户交付策略**，提额也会被拒绝。需要提额时用 `ppt_pipeline.py repair --extend N --extend-reason "<本轮与上轮的 blocker 差异>"`——授权写进 `build-manifest.json`，**不要改已安装插件里的 `pipeline-contract.json`**（升级即失效、不可审计）；硬顶由契约 `max_repairs_hard_cap` 强制，到顶就如实交付 `incomplete`。
+   **续轮与否由数据判定，不问用户**：`next --json` 的 `repair_convergence` 给出逐轮 blocker 数与趋势（`improving` 才值得继续，`flat` 要换做法，`worse` 必须先恢复被弄坏的回归），`repair_budget` 给出 `base`/`granted`/`effective`/`hard_cap`。**若 `repair_convergence.suspect_gate_defect` 出现**（某组 blocker 连续两轮逐字相同、其余在动），说明这组不是页面能修的：对着产物核对一次，要么它有页面级修法（写进 `--extend-reason`），要么它是门的误报——记为已知门限、继续修剩下的，**不要为它问用户交付策略**，提额也会被拒绝。需要提额时用 `ppt_pipeline.py repair --extend N --extend-reason "<本轮与上轮的 blocker 差异>"`——授权写进 `build-manifest.json`，**不要改已安装插件里的 `pipeline-contract.json`**（升级即失效、不可审计）；硬顶由契约 `max_repairs_hard_cap` 强制，到顶就如实交付 `incomplete`。 若登记的 repair 事后证明是门侧缺陷（页面工作不存在、重建被拒为未变更），用 `ppt_pipeline.py repair --cancel --reason "<为何不是页面工作>"` 正式撤销——清 pending_repair 并留审计记录，不消耗 repair 轮。
 16. **Complete**：QA 与交付物门全绿后由 `advance` 调用 complete；`full-script` / `teleprompter` 不隐含 `speaker-notes`，请求 PDF 时须有真实 PDF 签名，PNG 预览不能替代。
 
 ## Generation core contract
