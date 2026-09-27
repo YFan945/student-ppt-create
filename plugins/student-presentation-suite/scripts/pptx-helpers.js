@@ -138,6 +138,25 @@ const SAFE_CJK_BODY_FONTS = [
   'FangSong',
   'KaiTi',
 ];
+const SAFE_FONTS = new Set([
+  ...SAFE_TITLE_FONTS,
+  ...SAFE_BODY_FONTS,
+  ...SAFE_CJK_TITLE_FONTS,
+  ...SAFE_CJK_BODY_FONTS,
+]);
+// 非安全字体的宽度估算余量：LibreOffice 渲染 QA 时会用宽度不同的字体替换，
+// text-fit 的字宽算术因此失真；统一按 +10% 宽度保守估算（官方 skill 的实测经验）。
+const UNSAFE_FONT_WIDTH_FACTOR = 1.1;
+
+/**
+ * 非安全字体的字宽放大系数。fontFace 缺省（未显式指定）时返回 1——
+ * helpers 的 fontFace 默认值本身来自安全白名单，不需要余量。
+ */
+function fontWidthFactor(fontFace) {
+  const name = String(fontFace || '').trim();
+  if (!name) return 1;
+  return SAFE_FONTS.has(name) ? 1 : UNSAFE_FONT_WIDTH_FACTOR;
+}
 
 /**
  * 选中风格的字体族，强制落到官方安全字体。
@@ -214,6 +233,121 @@ function patternBackground(slide, tokens, opts = {}) {
     `<rect width="${W}" height="${Ht}" fill="url(#p)" opacity="${opacity}"/></svg>`;
   const data = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
   slide.addImage({ data, x: 0, y: 0, w: SLIDE_W_IN, h: SLIDE_H_IN });
+}
+
+/**
+ * 渐变背景（surface→canvas 同族过渡）。pptxgenjs 无原生渐变填充，
+ * 与 patternBackground 同一技术路线：确定性 SVG data-URL 整页铺放。
+ * 颜色只接受调色板角色，方向由 angle_deg 决定（0=→右，90=↓下，135=↘对角）。
+ * @param {object} slide
+ * @param {object} tokens paletteMode 后的 tokens
+ * @param {{from_role?: string, to_role?: string, angle_deg?: number}} [opts]
+ */
+function gradientBackground(slide, tokens, opts = {}) {
+  const palette = tokens.palette || {};
+  const from = String(opts.from_role ? color(tokens, opts.from_role) : palette.surface || '')
+    .replace(/^#/, '')
+    .toUpperCase();
+  const to = String(opts.to_role ? color(tokens, opts.to_role) : palette.canvas || '')
+    .replace(/^#/, '')
+    .toUpperCase();
+  if (!HEX_COLOR.test(from) || !HEX_COLOR.test(to)) {
+    throw new RangeError('gradientBackground: from/to roles must resolve to hex colors');
+  }
+  if (from === to) return slide; // 同色渐变没有视觉意义，直接省略一层图片
+  const angle =
+    ((Number.isFinite(Number(opts.angle_deg)) ? Number(opts.angle_deg) : 135) % 360) + 360;
+  const rad = (angle * Math.PI) / 180;
+  const x2 = (Math.cos(rad) + 1) / 2;
+  const y2 = (Math.sin(rad) + 1) / 2;
+  const W = Math.round(SLIDE_W_IN * 96);
+  const Ht = Math.round(SLIDE_H_IN * 96);
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${Ht}" viewBox="0 0 ${W} ${Ht}">` +
+    `<defs><linearGradient id="g" x1="0" y1="0" x2="${x2.toFixed(4)}" y2="${y2.toFixed(4)}">` +
+    `<stop offset="0" stop-color="#${from}"/><stop offset="1" stop-color="#${to}"/>` +
+    `</linearGradient></defs>` +
+    `<rect width="${W}" height="${Ht}" fill="url(#g)"/></svg>`;
+  const data = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf8').toString('base64')}`;
+  slide.addImage({ data, x: 0, y: 0, w: SLIDE_W_IN, h: SLIDE_H_IN });
+  return slide;
+}
+
+/**
+ * 封面/章节的结构色块（visual_language.cover_band）。最小边 ≥ 0.9in——
+ * 低于这个尺寸的色条就是 design grammar D2 禁止的"装饰性细条"。
+ * @param {object} slide
+ * @param {object} tokens paletteMode 后的 tokens
+ * @param {{band?: string, radius?: number}} directive
+ */
+function renderCoverBand(slide, tokens, directive) {
+  const kind = directive && directive.band;
+  if (!kind || kind === 'none') return slide;
+  const p = paletteOf(tokens);
+  const radius = Math.min(cornerRadius(tokens), Number(directive.radius) || cornerRadius(tokens));
+  if (kind === 'corner-block') {
+    slide.addShape(_shapeType.roundRect, {
+      x: SLIDE_W_IN * 0.66,
+      y: -radius,
+      w: SLIDE_W_IN * 0.36 + radius,
+      h: SLIDE_H_IN * 0.36,
+      fill: { color: p.primary_accent, transparency: 88 },
+      line: { color: p.primary_accent, transparency: 100 },
+      rectRadius: radius,
+    });
+    return slide;
+  }
+  if (kind === 'edge-block') {
+    slide.addShape(_shapeType.rect, {
+      x: 0,
+      y: SLIDE_H_IN * 0.86,
+      w: SLIDE_W_IN,
+      h: SLIDE_H_IN * 0.14,
+      fill: { color: p.primary_accent, transparency: 86 },
+      line: { color: p.primary_accent, transparency: 100 },
+    });
+  }
+  return slide;
+}
+
+function paletteOf(tokens) {
+  return tokens.palette || {};
+}
+
+/**
+ * 按背景指令渲染整页背景（design_tokens.derive_background_directives 的执行端）。
+ * 顺序固定：canvas 底色 → 渐变场 → 纹理 → 结构色块 → 角部母题。
+ * 旧 tokens（无 background_directives）退化为纯 canvas 底色，行为向后兼容。
+ * @param {object} slide
+ * @param {object} tokens resolve_design_tokens 的输出（未 paletteMode）
+ * @param {{kind?: 'cover'|'content'|'section'|'closing', dark?: boolean}} [opts]
+ */
+function renderBackground(slide, tokens, opts = {}) {
+  const pageTokens = opts.dark === true ? paletteMode(tokens, 'dark') : tokens;
+  slide.background = { color: color(pageTokens, 'canvas') };
+  const kinds = ['cover', 'content', 'section', 'closing'];
+  const kind = kinds.includes(opts.kind) ? opts.kind : 'content';
+  const directive = (pageTokens.background_directives || {})[kind];
+  if (!directive) return slide;
+  if (directive.type === 'gradient') {
+    gradientBackground(slide, pageTokens, {
+      from_role: directive.from_role,
+      to_role: directive.to_role,
+      angle_deg: directive.angle_deg,
+    });
+  }
+  if (directive.pattern && Number(directive.pattern_opacity) > 0) {
+    patternBackground(slide, pageTokens, {
+      pattern: directive.pattern,
+      opacity: Number(directive.pattern_opacity),
+    });
+  }
+  renderCoverBand(slide, pageTokens, directive);
+  if (directive.motif && opts.motif !== false) {
+    const margin = safeArea(SLIDE_W_IN, SLIDE_H_IN, pageTokens, { reserveTitle: false });
+    addStyleMotif(slide, margin, pageTokens, directive.motif_intensity || 'standard');
+  }
+  return slide;
 }
 
 /**
@@ -333,7 +467,7 @@ function cornerRadius(tokens) {
  * @param {boolean} isCJK - 是否 CJK 为主
  * @returns {{ lines: number, fillRatio: number, overflow: boolean }}
  */
-function estimateTextFit(text, boxW, boxH, fontSize, isCJK) {
+function estimateTextFit(text, boxW, boxH, fontSize, isCJK, fontFace) {
   // 零尺寸盒子无法计算填充率
   if (boxW <= 0 || boxH <= 0) {
     return {
@@ -344,7 +478,7 @@ function estimateTextFit(text, boxW, boxH, fontSize, isCJK) {
   }
   const boxWCm = boxW * CM_PER_INCH;
   const boxHCm = boxH * CM_PER_INCH;
-  const charWidthIn = (fontSize * (isCJK ? CJK_EM : LATIN_EM)) / 72;
+  const charWidthIn = ((fontSize * (isCJK ? CJK_EM : LATIN_EM)) / 72) * fontWidthFactor(fontFace);
   const charWidthCm = charWidthIn * CM_PER_INCH;
   const charsPerLine = Math.max(1, Math.floor(boxWCm / charWidthCm));
 
@@ -414,6 +548,10 @@ function rolePolicy(tokens, lang, role, options = {}) {
       valign: 'mid',
       margin: 0,
     },
+    // 大数字结论（stat callout）：官方 design ideas 的 60-72pt 档在 CJK 语境下
+    // 收敛为 36-60pt——字号仍必须显著高于 title，才配得上"唯一焦点"。
+    stat: { min: 36, max: 60, align: options.align || 'center', valign: 'mid' },
+    subtitle: { min: sizes.subtitle, max: sizes.bodyMax, align: 'left', valign: 'top' },
     body: { min: sizes.body, max: sizes.bodyMax, align: 'left', valign: 'top' },
     list: { min: sizes.body, max: sizes.bodyMax, align: 'left', valign: 'top' },
     reference: { min: sizes.caption, max: 12, align: 'left', valign: 'top' },
@@ -429,7 +567,7 @@ function rolePolicy(tokens, lang, role, options = {}) {
     },
     kpi: {
       min: Math.max(16, sizes.label),
-      max: 24,
+      max: 32,
       align: 'center',
       valign: 'mid',
       maxFillRatio: 0.85,
@@ -471,12 +609,13 @@ function fitText(text, box, policy = {}) {
   const plain = plainText(text);
   const isCJK = policy.isCJK ?? /[\u3040-\u30ff\u3400-\u9fff\uf900-\ufaff]/u.test(plain);
   const maxFillRatio = Number(policy.maxFillRatio || 0.85);
+  const fontFace = policy.fontFace;
   for (let size = max; size >= min; size -= 1) {
-    const fit = estimateTextFit(plain, usableW, usableH, size, isCJK);
+    const fit = estimateTextFit(plain, usableW, usableH, size, isCJK, fontFace);
     if (fit.fillRatio <= maxFillRatio)
       return { ...fit, overflow: false, fits: true, fontSize: size, margin: margins };
   }
-  const fit = estimateTextFit(plain, usableW, usableH, min, isCJK);
+  const fit = estimateTextFit(plain, usableW, usableH, min, isCJK, fontFace);
   return { ...fit, fits: false, fontSize: min, margin: margins };
 }
 
@@ -497,6 +636,8 @@ function preflightText(text, box, tokens, lang, role, options = {}) {
 // 允许做"平衡换行"的角色：这些角色的盒子宽度可以微调而不影响版面骨架。
 const BALANCE_ROLES = new Set([
   'title',
+  'subtitle',
+  'stat',
   'body',
   'list',
   'label',
@@ -918,7 +1059,13 @@ function addBackground(slide, tokens, dark) {
 function addStyleMotif(slide, area, tokens, intensity = 'standard') {
   const name = tokens.svg_reference?.name;
   if (!name || String(name).toLowerCase() === 'none') return slide;
-  const SVG = require('pptx-svg-library');
+  let SVG;
+  try {
+    SVG = require('pptx-svg-library');
+  } catch {
+    // 无 NODE_PATH 的独立调用（单测/直接 node）：回退同目录文件
+    SVG = require(require('node:path').join(__dirname, 'pptx-svg-library.js'));
+  }
   if (!SVG.CORNER_SETS[name] && !SVG.LEGACY_CORNER_ALIASES[name]) return slide;
   const scale = intensity === 'expressive' ? 0.3 : intensity === 'restrained' ? 0.17 : 0.23;
   const w = area.w * scale;
@@ -975,9 +1122,13 @@ module.exports = {
   paletteMode,
   fontSizeScale,
   fontFamily,
+  fontWidthFactor,
+  UNSAFE_FONT_WIDTH_FACTOR,
   writeCjkMap,
   softShadow,
   patternBackground,
+  gradientBackground,
+  renderBackground,
 
   // 几何计算
   safeArea,

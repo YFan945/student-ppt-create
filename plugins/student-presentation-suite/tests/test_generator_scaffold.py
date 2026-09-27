@@ -25,7 +25,10 @@ class ScaffoldContractTests(unittest.TestCase):
         cls.scaffold = load_module("generator_scaffold_contract_test", SCAFFOLD)
 
     def test_deck_inlines_resolved_tokens_and_binds_background(self) -> None:
-        """The stub must model the correct calls: tokens flow to pages, no raw hex."""
+        """The stub must model the correct calls: tokens flow to pages, no raw hex.
+
+        v0.18: 背景由页内 H.renderBackground 按指令渲染（deck.js 不再直接设
+        slide.background），tokens 携带机读 background_directives。"""
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             spec = work / "spec.json"
@@ -40,12 +43,17 @@ class ScaffoldContractTests(unittest.TestCase):
             deck = (work / "deck.js").read_text(encoding="utf-8")
             self.assertIn("const TOKENS = ", deck)
             self.assertIn("H.applyTokens(pptx, TOKENS, 'chinese')", deck)
-            self.assertIn("H.color(TOKENS, 'canvas')", deck)
             self.assertIn("tokens: TOKENS", deck)
+            self.assertIn("layoutReport", deck)
+            self.assertIn("registry.writeReport(out)", deck)
             self.assertNotIn("canvas: 'FFFFFF' }}", deck)
             start = deck.index("const TOKENS = ") + len("const TOKENS = ")
             tokens = json.loads(deck[start:deck.index(";\n", start)])
             self.assertIn("palette", tokens)
+            self.assertIn("background_directives", tokens)
+            self.assertIn("gradient", tokens["background_directives"]["cover"]["type"])
+            stub = (work / "pages" / "p01-cover.js").read_text(encoding="utf-8")
+            self.assertIn('H.renderBackground(slide, tokens, { kind: "cover", dark })', stub)
 
     def test_deck_writes_the_cjk_map_sidecar(self) -> None:
         """deck.js 必须把 Latin→CJK 映射交给构建器，normalize 同步注入 <a:ea>。
@@ -68,6 +76,8 @@ class ScaffoldContractTests(unittest.TestCase):
             self.assertIn("H.writeCjkMap(out, TOKENS)", deck)
 
     def test_page_stub_demonstrates_fitted_text_notes_and_alt_text(self) -> None:
+        """v0.18 stub 契约：几何交给版式引擎（renderArchetype），背景走指令渲染，
+        深浅三明治用 paletteMode 保证本页文字与背景同盘；COPY 字面量保留。"""
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)
             spec = work / "spec.json"
@@ -77,11 +87,13 @@ class ScaffoldContractTests(unittest.TestCase):
             )
             self.scaffold.scaffold_generator(work, spec)
             stub = next((work / "pages").glob("p*.js")).read_text(encoding="utf-8")
-            self.assertIn("H.addFittedText(", stub)
-            self.assertIn("'title')", stub)
+            self.assertIn("L.renderArchetype(", stub)
+            self.assertIn("H.renderBackground(slide, tokens,", stub)
+            self.assertIn("H.paletteMode(tokens, dark ? 'dark' : 'light')", stub)
+            self.assertIn("COPY.title", stub)
             self.assertIn("slide.addNotes", stub)
-            self.assertIn("altText", stub)
             self.assertNotIn("slide.addText(COPY.title", stub)
+            self.assertNotIn("H.addFittedText(slide, COPY.title", stub)
 
     def test_page_stub_carries_the_on_screen_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

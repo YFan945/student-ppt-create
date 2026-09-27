@@ -271,9 +271,10 @@ class GenerationCoreV071Tests(unittest.TestCase):
             self.assertIn("visual_score_low", {item["code"] for item in result["issues"]})
 
     def test_aesthetic_scores_below_floor_are_advisory_not_blocking(self) -> None:
-        """Batch 4.4: composition / visual_interest / whitespace below the floor and
-        a low deck average are recorded as advisory — visible, counted, and never a
-        mechanical delivery failure on their own."""
+        """v0.18 美学门分档：fast 下 composition / visual_interest / whitespace 低于
+        下限仍是 advisory（visible, counted, never blocking）；standard/rigorous 下
+        composition / visual_interest 升为阻断——"plain but readable" 不再免费过关；
+        whitespace 维持 advisory（误报面大，底部死区由 rendered gate 硬检查）。"""
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             pptx = root / "deck.pptx"
@@ -302,14 +303,30 @@ class GenerationCoreV071Tests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            result = self.quality.validate_visual_report(report, pptx, 1, high_score=True)
-            codes = {item["code"] for item in result["issues"]}
-            self.assertIn("visual_score_low", codes)
-            self.assertIn("visual_average_low", codes)
-            self.assertTrue(result["ok"])  # advisory only — nothing blocks
-            self.assertEqual(4, result["advisory_count"])  # 3 low dims + average
-            advisory = {item["code"] for item in result["issues"] if item["severity"] == "advisory"}
+            from shared.quality_tiers import tier_policy
+
+            fast = self.quality.validate_visual_report(report, pptx, 1, policy=tier_policy("fast"))
+            self.assertTrue(fast["ok"])  # fast: advisory only — nothing blocks
+            self.assertEqual(4, fast["advisory_count"])  # 3 low dims + average
+            advisory = {item["code"] for item in fast["issues"] if item["severity"] == "advisory"}
             self.assertEqual({"visual_score_low", "visual_average_low"}, advisory)
+
+            standard = self.quality.validate_visual_report(
+                report, pptx, 1, policy=tier_policy("standard")
+            )
+            self.assertFalse(standard["ok"])
+            low_fields = {
+                item["field"]
+                for item in standard["issues"]
+                if item["code"] == "visual_score_low" and item["severity"] == "major"
+            }
+            self.assertEqual({"composition", "visual_interest"}, low_fields)
+            whitespace = [
+                item
+                for item in standard["issues"]
+                if item.get("field") == "whitespace" and item["code"] == "visual_score_low"
+            ]
+            self.assertTrue(whitespace and all(item["severity"] == "advisory" for item in whitespace))
 
     def test_basic_structural_scores_are_advisory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

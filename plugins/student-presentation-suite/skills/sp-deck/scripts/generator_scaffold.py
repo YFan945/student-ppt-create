@@ -74,13 +74,21 @@ function main() {{
     slideW: H.SLIDE_W_IN,
     slideH: H.SLIDE_H_IN,
   }});
+  // 每页 renderArchetype 把选中的 archetype 记进来，build 后写 sidecar 留档。
+  const layoutReport = [];
   PAGES.forEach((mod, index) => {{
     const n = index + 1;
     const slide = pptx.addSlide();
-    slide.background = {{ color: H.color(TOKENS, 'canvas') }};
-    mod({{ pptx, slide, n, H, registry, tokens: TOKENS }});
+    mod({{ pptx, slide, n, H, registry, tokens: TOKENS, slideNumber: n, layoutReport }});
   }});
   registry.assertSafe();
+  // 完整几何分析（含 warning）写 sidecar，供确定性 QA 带进 repair packet。
+  registry.writeReport(out);
+  require('node:fs').writeFileSync(
+    `${{out}}.layout-report.json`,
+    `${{JSON.stringify(layoutReport, null, 2)}}\\n`,
+    'utf8',
+  );
   // 把 Latin→CJK 字体映射写给构建器：normalize-generated 在同一步注入 <a:ea>，
   // 否则东亚字形回落到查看器默认字体（pptxgenjs 只写 <a:latin>）。
   H.writeCjkMap(out, TOKENS);
@@ -95,6 +103,8 @@ PAGE_STUB = """\
 /* {marker} */
 /** Slide {n} — {title} */
 {on_screen_block}
+const L = require('pptx-layouts');
+
 module.exports = function (ctx) {{
   const {{ slide, n, H, registry, tokens }} = ctx;
   const COPY = {{
@@ -103,14 +113,29 @@ module.exports = function (ctx) {{
     slideCopy: {copy_js},{sources_line}
   }};
   /* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */
-  /* 标题走角色字号表（title），装不下会抛错——不要裸 slide.addText 绕过检查。 */
-  H.addFittedText(slide, COPY.title, {{ x: 0.6, y: 0.4, w: 8.8, h: 1.0 }}, tokens, 'chinese', 'title');
-  registry.text(n, COPY.title, {{ x: 0.6, y: 0.4, w: 8.8, h: 1.0, fontSize: 32 }});
-  /* 正文/列表同理：H.addFittedText(..., tokens, 'chinese', 'body' | 'list')；
-     小字用角色 'caption' | 'source' | 'label'。色值只取 tokens.palette 角色
-     （H.color(tokens, role)），不要手写十六进制。 */
-  /* 图片：用带 altText 的封装（如 addAnnotatedVisual），不要裸 slide.addImage。 */
-  /* 讲稿：slide.addNotes(本页讲稿正文) —— 每页一次、纯文本，质量门读 PPTX 备注区。 */
+
+  /* 版式引擎负责整页几何（design grammar D5）：填 slots、调 params、必要时换
+     request.layout.id；自由坐标须先注释声明 custom 理由，几何门照常全检。 */
+  const dark = {dark_js};
+  H.renderBackground(slide, tokens, {{ kind: {kind_js}, dark }});
+  // 深浅三明治：本页文字/阴影也必须用同一盘（否则深底深字不可读）。
+  const pageTokens = H.paletteMode(tokens, dark ? 'dark' : 'light');
+
+  L.renderArchetype({{ ...ctx, tokens: pageTokens }}, {{
+    context: {context_js},
+    slots: {{
+      title: COPY.title,
+      claim: COPY.claim || undefined,
+      body: Array.isArray(COPY.slideCopy)
+        ? COPY.slideCopy
+        : COPY.slideCopy
+          ? [COPY.slideCopy]
+          : undefined,
+      visual: {visual_js},
+    }},
+  }});
+  /* 追加元素时登记 registry（几何门依赖），讲稿：slide.addNotes(正文)——
+     每页一次、纯文本，质量门读 PPTX 备注区。 */
 }};
 """
 
@@ -171,6 +196,16 @@ def listed_page_files(pages_dir: Path) -> list[Path]:
 
 def js_string(value: str) -> str:
     return json.dumps(str(value or ""), ensure_ascii=False)
+
+
+def _copy_js(slide: dict[str, Any]) -> str:
+    """slide_copy / content → JS 字面量。列表嵌数组，标量嵌字符串。"""
+    value = slide.get("slide_copy") if slide.get("slide_copy") is not None else slide.get("content")
+    if value is None:
+        return '""'
+    if isinstance(value, list):
+        return json.dumps(value, ensure_ascii=False)
+    return js_string(str(value))
 
 
 def _comment_safe(text: Any) -> str:
@@ -257,6 +292,54 @@ def is_closing_slide(slide: dict[str, Any], slides: list[dict[str, Any]]) -> boo
     return bool(slides) and slide is slides[-1]
 
 
+# 深浅三明治的默认分工：cover/hook/section/closing 用 dark companion 压场，
+# 内容页用 light 盘保证阅读密度。Builder 可在 renderBackground 调用处覆盖。
+DARK_PAGE_KINDS = frozenset({"cover", "hook", "section", "section-divider", "divider", "closing"})
+
+
+def _visual_payload(slide: dict[str, Any]) -> str:
+    """Spec visual → slots.visual 的 JS 字面量（'undefined' 表示无视觉载荷）。"""
+    visual = slide.get("visual")
+    if isinstance(visual, dict) and visual:
+        return json.dumps(visual, ensure_ascii=False)
+    return "undefined"
+
+
+def _archetype_context(slide: dict[str, Any]) -> str:
+    """pptx-layouts.suggestLayouts 的选版式上下文，全部来自冻结 spec。"""
+    visual = slide.get("visual") if isinstance(slide.get("visual"), dict) else {}
+    details = visual.get("details") if isinstance(visual.get("details"), dict) else {}
+    title = str(slide.get("title") or "")
+    copy_value = slide.get("slide_copy") if slide.get("slide_copy") is not None else slide.get("content")
+    items = [item for item in (copy_value if isinstance(copy_value, list) else ([copy_value] if copy_value else [])) if item]
+    claim = str(slide.get("claim") or "").strip()
+    context = {
+        "slideId": int(slide["id"]),
+        "slideKind": str(slide.get("kind") or "").strip().lower() or None,
+        "role": str(slide.get("role") or "").strip().lower() or None,
+        "layoutFamily": visual.get("layout_family"),
+        "layout": slide.get("layout"),
+        # claim 会被引擎渲染进 body 区，容量语义上算一个 body item
+        # （数据页没有 slide_copy 但 claim 就是 takeaway，body_items≥1 才可行）。
+        "itemCount": len(items) + (1 if claim else 0),
+        "title": title,
+        "titleChars": len(title),
+        "hasAsset": bool(visual.get("asset") or details.get("asset")),
+        "hasData": bool(visual.get("series") or details.get("series") or details.get("rows")),
+        "hasQuote": bool(details.get("quote") or visual.get("quote")),
+        "density": str(slide.get("density") or "").strip().lower() or None,
+    }
+    return json.dumps(context, ensure_ascii=False)
+
+
+def _page_background(slide: dict[str, Any]) -> tuple[str, str]:
+    """(kind, dark) JS 字面量：背景指令页型 + 深浅三明治默认。"""
+    kind = str(slide.get("kind") or "").strip().lower() or "content"
+    kind_js = json.dumps(kind if kind in {"cover", "content", "section", "closing"} else "content")
+    dark_js = "true" if kind in DARK_PAGE_KINDS else "false"
+    return kind_js, dark_js
+
+
 def _source_rail_js(work_dir: Path) -> str:
     sources = _pack_sources(work_dir)
     if not sources:
@@ -332,6 +415,7 @@ def scaffold_generator(
         name = page_filename(slide)
         names.append(name)
         sources_line = _source_rail_js(work_dir) if is_closing_slide(slide, slides) else ""
+        kind_js, dark_js = _page_background(slide)
         stub = PAGE_STUB.format(
             marker=SCAFFOLD_MARKER,
             n=int(slide["id"]),
@@ -340,9 +424,15 @@ def scaffold_generator(
             title=_comment_safe(str(slide.get("title") or f"Slide {slide['id']}")),
             title_js=js_string(str(slide.get("title") or f"Slide {slide['id']}")),
             claim_js=js_string(str(slide.get("claim") or "")),
-            copy_js=js_string(str(slide.get("slide_copy") or "")),
+            # slide_copy 可能是列表：嵌成真 JS 数组字面量（str() 会把 Python repr
+            # 带引号方括号印到页面上）。字符串走 js_string。
+            copy_js=_copy_js(slide),
             sources_line=sources_line,
             on_screen_block=_on_screen_block(slide),
+            kind_js=kind_js,
+            dark_js=dark_js,
+            context_js=_archetype_context(slide),
+            visual_js=_visual_payload(slide),
         )
         target = pages_dir / name
         if write_if_scaffoldable(target, stub):

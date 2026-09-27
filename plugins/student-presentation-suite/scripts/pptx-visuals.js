@@ -490,6 +490,18 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
   const series = rawSeries.map((entry) => {
     const normalized = { ...entry };
     delete normalized.color;
+    // pptxgenjs 写内嵌 worksheet 时硬性要求 labels（缺失会在 deep inside 抛
+    // TypeError，栈指向 pptxgenjs 内部）。这里自动补 1..n 并出声，让 builder
+    // 在生成时补真实类别。
+    if (!Array.isArray(normalized.labels) || normalized.labels.length === 0) {
+      const count = Array.isArray(normalized.values) ? normalized.values.length : 0;
+      normalized.labels = Array.from({ length: count }, (_, index) => String(index + 1));
+      // eslint-disable-next-line no-console
+      console.warn(
+        `chart series "${normalized.name || 'unnamed'}" has no category labels; ` +
+          `auto-filled 1..${count} — add real labels for readable categories`,
+      );
+    }
     return normalized;
   });
   if (!series.length) {

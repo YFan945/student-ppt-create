@@ -191,9 +191,46 @@ def check_pptx(pptx: Path, tokens: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def registry_sidecar_findings(pptx: Path) -> list[dict[str, Any]]:
+    """deck.js 写的 `<pptx>.registry-report.json`：几何 warning 进 repair 视野。
+
+    assertSafe 在 error 上抛错（build 阻断），warning（decorative_stripe /
+    non_orthogonal_connector / content_dead_zone）以前被静默丢弃。这里把它们
+    以 advisory 严重级带回——run_gates 的 advisory→minor 归一化让它们出现在
+    repair packet，但不翻转门。sidecar 缺失（旧 deck）时返回空。
+    """
+    sidecar = Path(str(pptx) + ".registry-report.json")
+    if not sidecar.is_file():
+        return []
+    try:
+        report = json.loads(sidecar.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    findings: list[dict[str, Any]] = []
+    for warning in report.get("warnings") or []:
+        if not isinstance(warning, dict):
+            continue
+        findings.append(
+            {
+                "slide": warning.get("slide"),
+                "severity": "advisory",
+                "code": f"registry-{warning.get('code') or 'warning'}",
+                "detail": str(warning.get("message") or "registry geometry warning"),
+            }
+        )
+    return findings
+
+
 def run(args: argparse.Namespace) -> int:
     """Run the rendered-artifact gate with pre-parsed arguments (shared by gate-all)."""
     report = check_pptx(args.pptx, _load_tokens(args.tokens))
+    sidecar = registry_sidecar_findings(args.pptx)
+    if sidecar:
+        report["registry_geometry"] = {
+            "source": str(args.pptx) + ".registry-report.json",
+            "findings": sidecar,
+        }
+        report["issues"].extend(sidecar)
     if getattr(args, "art_direction", None):
         import pptx_palette_check
 

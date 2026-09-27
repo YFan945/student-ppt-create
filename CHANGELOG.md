@@ -2,6 +2,55 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.18.0 — 2026-09-28 · Visual quality pass: executable layout engine, machine-readable backgrounds, aesthetic gates
+
+视觉质量专项（来源：外部 JS/AI-skill 生态调研 + 2026-09-28 视觉质量方案，见
+`outputs/PPT视觉质量提升方案.md`）。核心思路：把几何自由度从"逐页手算坐标"收归
+**可执行版式引擎**，把美观下限交给引擎保底、上限交给分级阻断的 QA 门。
+
+- **版式编译器（P1 核心）**：`pptx-layouts.js` 新增 `renderArchetype()`——layout-library 的
+  normalized zones → 安全区英寸几何 → pptxgenjs 调用，builder 只选 archetype（context
+  自动选择或 `layout.id` 指定）、填 title/claim/body/visual 槽、调 params。装不下时沿
+  库内 fallback 链自动换版式重试；组件层 RangeError（如 series/labels 缺失）同归
+  fallback 而不是炸整副 deck；claim-text 双栏在无视觉载荷时把 visual zone 作第二文本列，
+  claim 横跨两栏、两列自 claim 底部对齐。每次 build 写 `<pptx>.layout-report.json`
+  sidecar 留档每页 archetype 选择。
+- **scaffold 页模板换血**：PAGE_STUB 从"一个占位文本框 + 注释"变为
+  `H.renderBackground` + `L.renderArchetype` 调用——深浅三明治（cover/hook/section/closing
+  默认 dark）经 `H.paletteMode` 保证本页文字/阴影与背景同盘（深底深字缺陷在引擎自测中
+  被抓出并修复）；`slide_copy` 列表嵌成真 JS 数组字面量（原来 `str()` 会把 Python repr
+  印上页面）。deck.js 写 `<pptx>.registry-report.json` + layout-report 两个 sidecar。
+- **背景指令机读化**：`resolve_design_tokens()` 从每个风格的 `visual_language` 派生
+  `background_directives`（cover/section/closing 渐变场 surface→canvas + 纹理 + 角部母题 +
+  结构色块；content 平铺 + restrained 档无纹理），`pptx-helpers.js` 新增
+  `gradientBackground()` / `renderBackground()`（SVG data-URL 路线，pptxgenjs 无原生渐变），
+  确定性执行、builder 无权跳过——"纯色平底"观感从根上消除。
+- **美学门分级阻断**：`quality_tiers.py` 新增 `block_aesthetic_low`（standard/rigorous
+  True，fast False）；quality gate 中 composition / visual_interest 低于 6.0 在
+  standard/rigorous 升为 major 阻断，whitespace 维持 advisory——"plain but readable"
+  不再免费过关。
+- **registry 美学几何检查**：新增 `near_miss_alignment`（水平重叠高的堆叠块左缘差
+  0.045–0.30in 即构建失败，容器-内嵌标签包含关系豁免）、`accent_line_under_title`
+  （design grammar D1，标题下方强调线/细条硬拦）、`decorative_stripe` /
+  `non_orthogonal_connector` / `content_dead_zone`（warning，经 sidecar 进 rendered gate
+  的 advisory findings 与 repair packet）。
+- **反 AI 味硬清单（P0）**：`pptx-design-grammar.md` 新增编号规则 D1–D10（✔ 条目机器
+  执行）；Builder Packet 携带 `visual_rules` 紧凑投影；`pptx-art-direction.md` 加入
+  **换色测试**（"配色换到别的 deck 还成立 = 不够内容驱动"）。
+- **60-30-10 主导度近似检查**：palette gate 新增元素计数代理——accent 角色占比 >45%
+  记 `accent-element-dominance`，整副 deck 无一页 >3% 记 `accent-absent`（均 advisory）。
+- **字体安全余量（P0）**：非安全字体在 text-fit 全链路按 +10% 宽度保守估算——
+  `pptx-helpers.js fontWidthFactor()`（fitText 接入）、element registry（独立环境回退 1）、
+  `copy_fit_preflight.py`（读 Art Direction 字体族，报告含 `font_width_factor`）。
+- **角色字号补档**：rolePolicy 新增 `subtitle`（26pt 中间档）与 `stat`（36–60pt 大数字
+  结论档，官方 design ideas 的 60-72pt 在 CJK 语境收敛）；kpi 上限 24→32；balance 角色
+  集合扩至 subtitle/stat。
+- **图表防御**：`addChartWithTakeaway` 对缺失 category labels 的 series 自动补 1..n 并
+  告警（pptxgenjs 写内嵌 worksheet 硬性要求 labels，缺失时报错栈深不可读）。
+- 修复：`pptx-layouts.js` 版式库规范检查兼容（executableLayout 空值防御）；SKILL 第 9 步、
+  插件 README 双语对同步记录引擎契约。测试：美学门分档、scaffold/stub 新契约、
+  registry 五类检查、背景指令派生等随行更新/新增，1059 项全绿。
+
 ## 0.17.4 — 2026-09-27 · Parallel image fetch, CJK injection wired into build, short-deck calibration line
 
 - **图片获取并行化**：`fetch_images.py` 的逐 query 串行 provider 链改为跨 query 线程池

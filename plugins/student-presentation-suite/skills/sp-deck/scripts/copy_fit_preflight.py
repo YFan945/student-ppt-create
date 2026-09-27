@@ -70,6 +70,35 @@ CJK_EM = 1.0
 LATIN_EM = 0.58
 PUNCT_EM = 0.35
 
+# 与 pptx-helpers.js 的安全字体白名单同源（官方 pptx skill 清单）。
+# LibreOffice 渲染 QA 会用宽度不同的字体替换非安全字体，text-fit 的字宽
+# 算术因此失真——官方实测结论是统一按 +10% 宽度保守估算。
+SAFE_FONTS = frozenset(
+    {
+        "Cambria", "Bookman Old Style", "Century Schoolbook", "Times New Roman",
+        "Arial", "Calibri", "Courier New",
+        "Microsoft YaHei", "SimHei", "DengXian", "DengXian Light", "KaiTi", "SimSun",
+        "FangSong",
+    }
+)
+UNSAFE_FONT_WIDTH_FACTOR = 1.10
+
+
+def font_width_factor(typography: dict[str, Any] | None) -> float:
+    """Art Direction 指定的字体族有任一非安全字体时返回 1.10，否则 1.0。"""
+    typo = typography or {}
+    names = [
+        typo.get("title_font"),
+        typo.get("body_font"),
+        typo.get("cjk_title_font"),
+        typo.get("cjk_body_font"),
+    ]
+    for name in names:
+        text = str(name or "").strip()
+        if text and text not in SAFE_FONTS:
+            return UNSAFE_FONT_WIDTH_FACTOR
+    return 1.0
+
 
 def load_structured(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
@@ -159,6 +188,7 @@ def check_slide(
     title_pt: float,
     body_pt: float,
     max_chars: int,
+    width_factor: float = 1.0,
 ) -> dict[str, Any]:
     title = str(slide.get("title") or "").strip()
     claim = str(slide.get("claim") or slide.get("key_line") or "").strip()
@@ -176,7 +206,7 @@ def check_slide(
     ):
         if not text:
             continue
-        lines, need_h = required_height_in(text, box_w, pt)
+        lines, need_h = required_height_in(text, box_w * width_factor, pt)
         if need_h > box_h + 1e-6:
             problems.append(
                 {
@@ -217,7 +247,7 @@ def check_slide(
     if body_pieces:
         total_h = 0.0
         for piece in body_pieces:
-            _, need_h = required_height_in(piece, body_w, body_pt)
+            _, need_h = required_height_in(piece, body_w * width_factor, body_pt)
             total_h += need_h
         if total_h > regions["body_h"] + 1e-6:
             problems.append(
@@ -265,6 +295,7 @@ def preflight(
     typo = (art_direction or {}).get("typography") or {}
     title_pt = float(typo.get("slide_title_pt") or 32)
     body_pt = float(typo.get("body_pt") or 22)
+    width_factor = font_width_factor(typo)
 
     slides = [item for item in (spec.get("slides") or []) if isinstance(item, dict)]
     results = [
@@ -275,6 +306,7 @@ def preflight(
             title_pt=title_pt,
             body_pt=body_pt,
             max_chars=max_chars,
+            width_factor=width_factor,
         )
         for slide in slides
     ]
@@ -295,6 +327,7 @@ def preflight(
         "ok": not majors,
         "slide_count": len(results),
         "type_scale": {"title_pt": title_pt, "body_pt": body_pt},
+        "font_width_factor": width_factor,
         "regions": {**regions, "content_w": content_w},
         "max_chars": max_chars,
         "counts": {"major": len(majors), "minor": len(minors)},

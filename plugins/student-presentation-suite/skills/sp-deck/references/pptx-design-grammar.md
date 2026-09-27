@@ -160,6 +160,32 @@ allow_freeform: true
 `reference_layouts` 只用于启发。真正的硬约束由 Actual Element Registry、文字适配、package validation、
 artifact readback、Slide Spec freeze 与 render-conditioned visual review 负责。
 
+## 反AI味硬规则（v0.18，编号可引用）
+
+这些规则来自真实渲染的缺陷模式与官方 pptx skill 的实测清单。带 ✔ 的是**机器可查**
+（Actual Element Registry / 渲染门会拦），其余由独立 critic 按 D 编码引用。Builder Packet
+以 `visual_rules` 字段携带全部条目。
+
+- **D1 ✔ 禁止标题正下方强调线。** 标题与正文之间用留白分隔；细长形状（min边≤0.09in
+  且长宽比≥5）或横线出现在注册标题下方 0.45in 内、水平重叠 ≥40% 即构建失败。
+- **D2 ✔ 禁止装饰性细色条/单侧边框。** min边≤0.09in 的细条形状是 AI 模板签名；
+  分隔用留白、hairline rule（登记为 line，≤1pt）或完整面板。registry 出 warning。
+- **D3 ✔ 连接器必须正交。** tokens `lines.connector_style: orthogonal`；斜向连接线
+  出 warning（架构/流程图的跨行连接走横平竖直折线）。
+- **D4 ✔ 内容挤半幅即死区。** 内容整体宽度 <70% 画布且单侧留白 >2.2in → warning；
+  重新配 column 权重或换版式。
+- **D5 正文/列表禁止居中**（rolePolicy 已强制 body/list 左对齐）；只有 label/quote/stat 可居中。
+- **D6 内容页禁止 text-only。** 每个内容页至少一个第二视觉元素：原生图表、图像、
+  结构组件、大数字 stat 或双栏结构；纯段落页交给 claim-focus + typography 语法。
+- **D7 大数字结论用 stat 角色。** rolePolicy `stat`（36-60pt）+ 足够的盒子；
+  不要把大数字塞进等宽卡片（那是 D8）。
+- **D8 连续等宽卡片/三栏是弱结构。** "有 N 项 → N 个等宽矩形"禁止；用
+  weightedColumns 权重、highlight 焦点卡、process/timeline 结构表达主次。
+- **D9 版式几何由引擎执行。** `renderArchetype` 拥有 zones 几何；builder 填槽、调
+  params、换 layout.id；自由坐标必须先在页内注释声明 custom 理由，且过全部几何门。
+- **D10 每页只允许一个 primary focal point**；次要元素围绕焦点降级（颜色/字号/位置），
+  禁止全页等权重并列。
+
 ## Anti-patterns
 
 - 连续三页以上相同的 hero/card/three-column 结构。

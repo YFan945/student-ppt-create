@@ -124,6 +124,8 @@ Art Direction must describe **what to do**, not only what to avoid.
 
 Every deck needs a dominance model. One background/color family should carry roughly 55–75% of the visual weight. Accent colors must be scarce enough to mean something. Avoid distributing four or more colors at equal strength.
 
+**换色测试（swap test，v0.18）**：写完配色承诺后自问一句——*把这套颜色原样换到另一个主题的 deck 上还成立吗？* 成立就说明配色还没被内容驱动：accent 应该指向这个主题里真正要强调的东西（关键数据、结论词、焦点图形），而不是"风格默认给哪就给哪"。配套纪律：accent 主导度 ≲40%（palette gate 以元素计数近似监督，超标记 `accent-element-dominance`）；整副 deck 没有一页把 accent 用过 3% 会被记 `accent-absent`——平淡和花哨都是失分。
+
 ### 2. Bind pages to the style's two palettes
 
 The selected style ships **two** palettes: the light `palette` and the matching `dark_palette`.

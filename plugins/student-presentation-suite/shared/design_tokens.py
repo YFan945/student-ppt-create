@@ -187,6 +187,95 @@ def validate_custom_style(custom: dict[str, Any] | None) -> list[str]:
     return errors
 
 
+# Safe default visual language for custom/legacy styles whose record carries no
+# `visual_language` block (the custom contract requires palette/backgrounds/
+# svg_reference but not visual_language). Mirrors modern-minimal so derived
+# background directives stay deterministic for every deck.
+DEFAULT_VISUAL_LANGUAGE: dict[str, Any] = {
+    "rule": "bracket",
+    "panel": "outlined",
+    "radius": 0.03,
+    "motif_at": "corner-tr",
+    "chart": "columns",
+    "decor": "restrained",
+    "pattern": "none",
+    "emphasis_marker": "square",
+    "cover_band": "corner-block",
+}
+
+PATTERN_KINDS = ("dots", "waves", "grid")
+MOTIF_ANCHORS = ("corner-tr", "corner-tl", "corner-br", "corner-bl")
+BAND_KINDS = ("corner-block", "edge-block", "none")
+
+
+def _clean_enum(value: Any, allowed: tuple[str, ...]) -> str | None:
+    text = str(value or "").strip().lower()
+    return text if text in allowed else None
+
+
+def derive_background_directives(tokens: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Machine-executable background directives derived from visual_language.
+
+    The prose `backgrounds` strings stay the human/art-direction layer; this is
+    the layer the builder executes (pptx-helpers.js renderBackground). Directives
+    reference palette ROLES only, so the same directive renders correctly under
+    the light palette and its dark companion (the dark/light sandwich).
+
+    - cover/section/closing: a same-family gradient field (surface→canvas) plus
+      the style's pattern and motif — the "dark sandwich" gets texture instead
+      of a flat fill.
+    - content: flat canvas; a faint pattern only when the style's decor is
+      standard/expressive, so restrained styles keep quiet body pages.
+    """
+    language = tokens.get("visual_language")
+    if not isinstance(language, dict) or not language:
+        language = DEFAULT_VISUAL_LANGUAGE
+    pattern = _clean_enum(language.get("pattern"), PATTERN_KINDS)
+    motif = _clean_enum(language.get("motif_at"), MOTIF_ANCHORS)
+    band = _clean_enum(language.get("cover_band"), BAND_KINDS)
+    decor = str(language.get("decor") or "standard").strip().lower()
+    radius = language.get("radius")
+    try:
+        radius = max(0.0, min(0.12, float(radius))) if radius is not None else 0.03
+    except (TypeError, ValueError):
+        radius = 0.03
+
+    if decor == "restrained":
+        content_opacity, field_opacity = 0.0, 0.05
+    elif decor == "expressive":
+        content_opacity, field_opacity = 0.07, 0.08
+    else:
+        content_opacity, field_opacity = 0.04, 0.06
+
+    field = {
+        "type": "gradient",
+        "from_role": "surface",
+        "to_role": "canvas",
+        "angle_deg": 135,
+        "pattern": pattern,
+        "pattern_opacity": field_opacity,
+        "motif": motif,
+        "motif_intensity": "standard",
+        "band": band,
+        "radius": radius,
+    }
+    content = {
+        "type": "flat",
+        "pattern": pattern if content_opacity > 0 else None,
+        "pattern_opacity": content_opacity or None,
+        "motif": motif,
+        "motif_intensity": "restrained",
+        "band": None,
+        "radius": radius,
+    }
+    return {
+        "cover": field,
+        "section": {**field, "pattern_opacity": max(0.03, field_opacity - 0.01)},
+        "content": content,
+        "closing": dict(field),
+    }
+
+
 def resolve_design_tokens(
     visual_style: str | None,
     visual_style_custom: dict[str, Any] | None = None,
@@ -236,6 +325,10 @@ def resolve_design_tokens(
     dark = tokens.get("dark_palette")
     if not isinstance(dark, dict) or set(dark) != set(PALETTE_ROLES):
         tokens["dark_palette"] = derive_dark_palette(tokens["palette"])
+
+    # Executable background layer: derived once here so the scaffold, the builder
+    # and any future consumer share one definition (same argument as TOKENS).
+    tokens["background_directives"] = derive_background_directives(tokens)
 
     if warnings:
         tokens["compatibility_warnings"] = warnings

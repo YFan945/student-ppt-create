@@ -65,6 +65,23 @@ FORBIDDEN_ACTIONS = [
     "calibration_preview",
     "soffice",
 ]
+# v0.18 反AI味硬规则（references/pptx-design-grammar.md 的 D1-D10 紧凑投影）。
+# 带 ✔ 的条目有 registry/渲染门做机器执行，其余由 critic 按 D 编码引用；
+# 这里只投影规则文本，不复制判定逻辑——判定阈值单一属于 registry/gate。
+VISUAL_RULES = [
+    "D1 ✔ 标题正下方禁止强调线/细横线（registry 硬拦）：标题与正文之间用留白。",
+    "D2 ✔ 禁止装饰性细色条、单侧色边（min边≤0.09in 的形状条）：分隔用留白、"
+    "hairline line（≤1pt）或完整面板。",
+    "D3 ✔ 连接器必须横平竖直（orthogonal）；跨行走折线，禁止斜线。",
+    "D4 ✔ 内容整体挤在半幅、单侧留白 >2.2in 会记 dead-zone warning：调列权重或换版式。",
+    "D5 正文/列表左对齐，禁止居中；只有 label/quote/stat 居中。",
+    "D6 内容页禁止 text-only：至少一个第二视觉元素（原生图表/图像/结构组件/stat/双栏）。",
+    "D7 大数字结论用 role:'stat'（36-60pt）配足够盒子，不塞等宽卡片。",
+    "D8 禁止'N 项 → N 个等宽矩形'：用 weights/highlight/process/timeline 表达主次。",
+    "D9 整页几何由 pptx-layouts renderArchetype 执行：改 slots/params/layout.id；"
+    "自由坐标先在页内注释声明 custom 理由，几何门照常全检。",
+    "D10 每页只一个 primary focal point，次要元素降级（色/号/位），禁止等权重并列。",
+]
 NO_REREAD = (
     "this packet is the complete task input for its assigned slides: do not re-read "
     "slide-spec-compiled.yaml, slide-spec.yaml, art-direction.yaml, research-pack.json, "
@@ -454,6 +471,7 @@ def build_packet(
         "slides": details,
         "allowed_files": allowed_files,
         "forbidden_actions": FORBIDDEN_ACTIONS,
+        "visual_rules": VISUAL_RULES,
         "do_not_reread": NO_REREAD,
     }
     if warnings:

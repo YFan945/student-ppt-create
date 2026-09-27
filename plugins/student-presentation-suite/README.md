@@ -240,6 +240,18 @@ inputs follow explicit feasible fallback chains. `scripts/visual_system_smoke_ga
 12x6 freeform style-reference galleries, a separate 36-layout reference/fallback gallery, and a
 12-page SVG atlas, with optional rendering.
 
+Since v0.18 the layout library is also **executable**: `pptx-layouts.js renderArchetype()`
+compiles the library's normalized zones into pptxgenjs geometry so scaffolded pages place
+title/claim/body/visual slots through the engine instead of hand-computed coordinates
+(fallback chains swap archetypes when content does not fit). Backgrounds are machine
+directives too — `resolve_design_tokens()` derives per-page-kind `background_directives`
+(dark/light-sandwich gradient fields, patterns, corner motifs, structural bands) from each
+style's `visual_language`, and `pptx-helpers.js renderBackground()` executes them
+deterministically. Anti-slop rules D1–D10 in `pptx-design-grammar.md` are enforced by the
+element registry (title emphasis lines, thin decorative stripes, near-miss alignment,
+non-orthogonal connectors, dead zones) with warnings surfaced through a
+`<pptx>.registry-report.json` sidecar into repair packets.
+
 `deck.js` follows the official generation gotchas in
 `skills/sp-deck/references/pptxgenjs-safety.md` and uses `pptx-helpers.js` for hard safety checks.
 `pptx-composer.js`, `pptx-layouts.js`, `pptx-shapes.js`, `pptx-svg-library.js`, and

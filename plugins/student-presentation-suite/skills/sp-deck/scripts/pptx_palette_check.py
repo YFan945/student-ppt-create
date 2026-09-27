@@ -322,6 +322,62 @@ def theme_colors(archive: zipfile.ZipFile) -> dict[str, str]:
     }
 
 
+def accent_dominance_findings(
+    per_part: dict[str, Counter[str]],
+    light: dict[str, str],
+    dark: dict[str, str],
+) -> list[dict[str, Any]]:
+    """60-30-10 主导度的元素计数近似（advisory）。
+
+    面积占比要几何+z-order，元素计数是它的廉价代理：accent 角色（浅/深、主/次）
+    占一页颜色元素的比例过高 = 花哨；整副 deck 没有一页超过 3% = 平淡无焦点。
+    只出 minor，不翻 gate——精确裁决属于独立 critic 看渲染图。
+    """
+    accents = {
+        light["primary_accent"],
+        dark["primary_accent"],
+        light["secondary_accent"],
+        dark["secondary_accent"],
+    }
+    issues: list[dict[str, Any]] = []
+    shares: list[tuple[int, float]] = []
+    for part, colors in sorted(per_part.items()):
+        slide_match = SLIDE_PART.match(part)
+        if not slide_match:
+            continue
+        total = sum(colors.values())
+        if total < 8:
+            continue  # 颜色元素太少无法判定
+        accent = sum(count for color, count in colors.items() if color in accents)
+        share = accent / total
+        slide_no = int(slide_match.group(1))
+        shares.append((slide_no, share))
+        if share > 0.45:
+            issues.append({
+                "slide": slide_no,
+                "severity": "minor",
+                "code": "accent-element-dominance",
+                "message": (
+                    f"Slide {slide_no}: accent-role elements are {share:.0%} of colour uses "
+                    "(60-30-10 keeps the accent dominant at ≲40%); mute secondary elements "
+                    "toward text roles or surfaces."
+                ),
+            })
+    if shares:
+        judged = [(slide, share) for slide, share in shares if slide != 1] or shares
+        if max(share for _, share in judged) < 0.03:
+            issues.append({
+                "slide": None,
+                "severity": "minor",
+                "code": "accent-absent",
+                "message": (
+                    "No slide uses the accent role beyond 3% of its colour elements — the "
+                    "deck reads flat. Give the takeaway, chart series or key number the accent."
+                ),
+            })
+    return issues
+
+
 def check_pptx(pptx: Path, art_direction: Path) -> dict[str, Any]:
     style, light, dark = approved_colors(art_direction)
     allowed = set(light.values()) | set(dark.values())
@@ -393,6 +449,7 @@ def check_pptx(pptx: Path, art_direction: Path) -> dict[str, Any]:
                 "colors": outside,
                 **({"elements": elements} if elements else {}),
             })
+    issues.extend(accent_dominance_findings(per_part, light, dark))
     return {
         "ok": not any(item["severity"] in {"critical", "major"} for item in issues),
         "pptx": str(pptx.resolve()),

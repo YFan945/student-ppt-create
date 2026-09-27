@@ -197,6 +197,16 @@ PPTX skill 先从三类、每类四种风格中选择一个，或选择“其他
 `scripts/visual_system_smoke_gallery.py` 会生成 12×6 轻量风格参考 gallery、独立
 36 版式参考/兜底 gallery 和 12 页 SVG atlas，并在 LibreOffice/Poppler 可用时渲染。
 
+自 v0.18 起版式库同时**可执行**：`pptx-layouts.js` 的 `renderArchetype()` 把库内
+normalized zones 编译成 pptxgenjs 几何，scaffold 出的页面经引擎放置 title/claim/body/visual
+槽位，不再逐页手算坐标（内容装不下时沿 fallback 链换 archetype）。背景同样机读化——
+`resolve_design_tokens()` 从每个风格的 `visual_language` 派生按页型的
+`background_directives`（深浅三明治渐变场、纹理、角部母题、结构色块），由
+`pptx-helpers.js` 的 `renderBackground()` 确定性执行。`pptx-design-grammar.md` 的反 AI 味
+硬规则 D1–D10 中可几何判定的部分（标题下强调线、装饰细条、近失对齐、非正交连接线、
+内容死区）由 element registry 执行，warning 经 `<pptx>.registry-report.json` sidecar 进
+repair packet。
+
 `deck.js` 遵守 `skills/sp-deck/references/pptxgenjs-safety.md` 中的官方 gotchas，并使用
 `pptx-helpers.js` 执行硬安全检查；`pptx-composer.js`、`pptx-layouts.js`、`pptx-shapes.js`、
 `pptx-svg-library.js` 与 `pptx-visuals.js` 是可选灵感、工具箱和兜底。未锁定的 `layout` 可自由

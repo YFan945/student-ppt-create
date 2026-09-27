@@ -59,6 +59,7 @@ _POLICY_ROWS = {
         "block_structural": False,
         "block_style_major": False,
         "block_regression": False,
+        "block_aesthetic_low": False,
         "score_floor": 5.0,
         "strict_v08": False,
     },
@@ -69,6 +70,9 @@ _POLICY_ROWS = {
         "block_structural": True,
         "block_style_major": False,
         "block_regression": False,
+        # v0.18 美学门：composition / visual_interest 低于 6.0 在 standard 及以上
+        # 阻断——"plain but readable" 不再免费过关。fast 维持 advisory。
+        "block_aesthetic_low": True,
         "score_floor": 5.0,
         "strict_v08": False,
     },
@@ -79,6 +83,7 @@ _POLICY_ROWS = {
         "block_structural": True,
         "block_style_major": True,
         "block_regression": True,
+        "block_aesthetic_low": True,
         "score_floor": 6.0,
         "strict_v08": True,
     },

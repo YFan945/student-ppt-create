@@ -44,8 +44,15 @@ SCORE_FIELDS = ("hierarchy", "focal_point", "composition", "visual_interest", "w
 # delivery failure on their own. Specific defects (overflow, collision, palette
 # violation, content mismatch…) arrive as critic findings with their own severity and
 # block exactly as before.
+# v0.18 美学门：composition / visual_interest 在 standard/rigorous 升为阻断
+# （policy.block_aesthetic_low）——"plain but readable" 不再免费过关；whitespace
+# 维持 advisory（误报面大，且底部死区已由 rendered gate 硬检查）。
 STRUCTURAL_SCORE_FIELDS = ("hierarchy", "focal_point")
-ADVISORY_SCORE_FIELDS = tuple(field for field in SCORE_FIELDS if field not in STRUCTURAL_SCORE_FIELDS)
+AESTHETIC_BLOCKING_FIELDS = ("composition", "visual_interest")
+ADVISORY_SCORE_FIELDS = tuple(
+    field for field in SCORE_FIELDS
+    if field not in STRUCTURAL_SCORE_FIELDS and field not in AESTHETIC_BLOCKING_FIELDS
+)
 REPETITIVE_STRUCTURES = {
     "equal-cards",
     "card-grid",
@@ -262,9 +269,18 @@ def validate_visual_report(
             score = float(raw)
             score_values.append(score)
             minimum = float(policy["score_floor"])
-            floor = 6.0 if (policy["block_structural"] and field in STRUCTURAL_SCORE_FIELDS) else minimum
+            structural = policy["block_structural"] and field in STRUCTURAL_SCORE_FIELDS
+            aesthetic = (
+                policy.get("block_aesthetic_low") and field in AESTHETIC_BLOCKING_FIELDS
+            )
+            floor = 6.0 if (structural or aesthetic) else minimum
+            if structural:
+                severity = structural_severity
+            elif aesthetic:
+                severity = "major"
+            else:
+                severity = ADVISORY_SEVERITY
             if score < floor:
-                severity = structural_severity if field in STRUCTURAL_SCORE_FIELDS else ADVISORY_SEVERITY
                 issues.append(issue(severity, "visual_score_low", f"Slide {slide_no} {field} score {score:g} is below the quality floor {floor:g}.", slide=slide_no, field=field, score=score))
 
         ai_feel = str(item.get("ai_template_feel") or "none").strip().lower()
