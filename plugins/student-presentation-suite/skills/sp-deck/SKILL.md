@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.17.2
+version: 0.17.3
 ---
 
 # Student Presentation PPT
@@ -111,7 +111,7 @@ helper 只把这些已实现页面组装成临时 `calibration/calibration.pptx`
 显式改校准样本时，`builder_packet.py --mode calibration --slides <ids>` 会把 packet 与 `builder-active-round.json` **原子地一起更新**；随后 `next` / `advance` 复用这组 slide ids，不会重新落回默认校准集。不要手改 packet 或只改其中一个文件；builder 对每次页面访问都会重验已登记 packet 的 SHA-256，登记后篡改会立即撤销授权。
 9. **Full Isolated Page Build**：`standard`/`rigorous` 在 Calibration 经独立评审可接受后，`fast` 在 plan 后，spawn `presentation-builder`，传绝对 work-dir 与 `mode=initial`。Builder 保留已校准页面，按它们已建立的 typography/spacing/surface/image language 实现**所有剩余 scaffold 页面**。主会话不得打开逐页源码复核，只接受紧凑信封。
 
-   `fast` 在分片线（8 页）以下只派一个 Builder，使用一个覆盖全部页面的 Packet，避免分片协调和讲稿合并；超过 8 页时按 `next --json` 给出的 `builder_shards` 分 2 片（一个 builder 扛整副长 deck 会把实例上下文推到不可回收）。`standard`/`rigorous` 仅在 `next --json` 明确给出 `builder_shards` 时按分片派工（standard 至多 2 个分片）；每个 Builder 只写自己的页与讲稿片段。
+   `fast` 在分片线（8 页）以下只派一个 Builder，使用一个覆盖全部页面的 Packet，避免分片协调和讲稿合并；超过 8 页按 `next --json` 给出的 `builder_shards` 分 2 片，超过 14 页分 3 片（一个 builder 扛整副长 deck 会把实例上下文推到不可回收，并行分片换墙钟）。`standard`/`rigorous` 仅在 `next --json` 明确给出 `builder_shards` 时按分片派工（standard 至多 2 个分片）；每个 Builder 只写自己的页与讲稿片段。
 10. **Exploration Gates + Production Build**：运行一次 gates orchestrator，只把 blocker 回到主上下文，完整结果写盘；全绿后调用 `advance --brief-json` 自动 build：
 
 ```bash
@@ -133,7 +133,7 @@ Windows 下用这个 python 形式。`edit_ooxml` 走原 OOXML 路径；create/r
 
    **builder 自己不 build、不 render**（渲染与 `calibration_preview.py` 属于主会话，hook 会拒绝）；页面全改完再回报，主会话跑唯一一次 build。若 builder 在 build 之后又改了页，`build` 允许**一次**补差量重建（`carryover_builds`），避免为一处微调单开一轮。
 
-   `fast` 的 repair 在分片线以下只派一个 Builder，一次处理完整 blocker 清单（超线同样按 `builder_shards` 分 2 片）。`standard`/`rigorous` 仅在 `next --json` 给出 `builder_shards` 时分片；无页号的 deck 级 blocker 用一个 Builder。
+   `fast` 的 repair 在分片线以下只派一个 Builder，一次处理完整 blocker 清单（超线同样按 `builder_shards` 分片，最多 3 片）。`standard`/`rigorous` 仅在 `next --json` 给出 `builder_shards` 时分片；无页号的 deck 级 blocker 用一个 Builder。
 
    **减少回合数本身就是目标**：实测每个回合平均只带 ~1.0 个工具调用（发一个、等结果、再发下一个）。合并调用（CD-1）在时间上等价于省钱——一个回合 10~19 秒，13 页的构建阶段每少 30 个回合就是少 5~10 分钟。`page_brief.py --work-dir <wd> --json`（不带 `--slide`）一次给全 deck 每页的契约，不要逐页调。
 

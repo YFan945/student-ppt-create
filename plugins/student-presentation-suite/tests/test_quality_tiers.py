@@ -169,7 +169,11 @@ class EffectiveShardCapTests(unittest.TestCase):
 
     def test_fast_above_the_line_shards_to_two(self) -> None:
         self.assertEqual(2, effective_shard_cap("fast", 9))
-        self.assertEqual(2, effective_shard_cap("fast", 20))
+        self.assertEqual(2, effective_shard_cap("fast", 14))
+
+    def test_fast_above_the_second_line_shards_to_three(self) -> None:
+        self.assertEqual(3, effective_shard_cap("fast", 15))
+        self.assertEqual(3, effective_shard_cap("fast", 30))
 
     def test_fast_without_a_page_count_stays_single(self) -> None:
         self.assertEqual(1, effective_shard_cap("fast"))

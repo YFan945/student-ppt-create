@@ -35,6 +35,10 @@ DEFAULT_TIER = "fast"
 # 2026-09-18 live instance grew to 699K). Above this page count fast sharding
 # to 2 is the cheaper shape.
 FAST_SHARD_PAGE_THRESHOLD = 8
+# Owner-approved speed line (2026-09-27): past this many pages fast shards to
+# 3 — page work wall clock scales ~1/shards and max_parallel_builders is
+# already 3, so the extra coordination round is net-positive from here.
+FAST_SHARD_SECOND_LINE = 14
 
 _POLICY_ROWS = {
     "fast": {
@@ -88,10 +92,15 @@ def effective_shard_cap(value: Any, page_count: int | None = None) -> int:
     """The shard cap for a concrete deck: fast splits only above the page line.
 
     standard/rigorous keep their table caps unconditionally; fast's cap of 1
-    becomes 2 once the deck exceeds FAST_SHARD_PAGE_THRESHOLD pages.
+    becomes 2 above FAST_SHARD_PAGE_THRESHOLD pages and 3 above
+    FAST_SHARD_SECOND_LINE pages.
     """
     policy = tier_policy(value)
     cap = int(policy["shard_cap"])
-    if policy["tier"] == "fast" and page_count is not None and page_count > FAST_SHARD_PAGE_THRESHOLD:
+    if policy["tier"] != "fast" or page_count is None:
+        return cap
+    if page_count > FAST_SHARD_SECOND_LINE:
+        return 3
+    if page_count > FAST_SHARD_PAGE_THRESHOLD:
         return min(cap + 1, 2)
     return cap

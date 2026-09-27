@@ -2,6 +2,14 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.17.3 — 2026-09-27 · Fast second shard line for long decks
+
+- **fast 分片第二道线（owner 批准的提速项）**：`effective_shard_cap` 在原 8 页线（≤8 页 1 片、
+  9–14 页 2 片）之上新增 **14 页速度线——15 页及以上 fast 分 3 片**（契约
+  `max_parallel_builders` 本就是 3）。页面工作墙钟按分片数近似线性下降，代价是主会话多
+  一轮协调；standard/rigorous 档位上限不变。契约注记、SKILL 第 9/15 步与 README 双语对
+  同步更新；新增 15 页 dispatch 级 3 分片测试。
+
 ## 0.17.2 — 2026-09-27 · Sanctioned repair cancellation and build error page location
 
 - **`repair --cancel --reason`**：登记的 repair 事后证明是门侧缺陷（页面工作不存在、重建被

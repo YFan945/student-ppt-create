@@ -146,7 +146,7 @@
   "parallel_builder_min_pages": 4,
   "builder_shard_policy": {
     "per_shard_complexity": 6,
-    "note": "shard_count = min(tier cap, max_parallel_builders, ceil(total slide complexity / per_shard_complexity), known pages); chart/data/compare pages weigh 2, layout_lock adds 1. Tier cap comes from shared/quality_tiers.effective_shard_cap: fast is 1 below the 8-page line and 2 above it (a single builder carrying a long deck inflates its instance context past recovery); standard 2, rigorous 3 unconditional."
+    "note": "shard_count = min(tier cap, max_parallel_builders, ceil(total slide complexity / per_shard_complexity), known pages); chart/data/compare pages weigh 2, layout_lock adds 1. Tier cap comes from shared/quality_tiers.effective_shard_cap: fast is 1 below the 8-page line, 2 above it, and 3 above the 14-page speed line (max_parallel_builders); standard 2, rigorous 3 unconditional."
   },
   "intake_confirmation_required": true,
   "repeat_policy": {

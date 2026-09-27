@@ -2223,6 +2223,17 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.assertEqual(2, payload["builder_shards"]["parallel"])
         self.assertGreaterEqual(len(payload.get("builder_packets") or []), 2)
 
+    def test_fast_deck_above_the_speed_line_offers_three_shards(self) -> None:
+        """Owner-approved speed line (2026-09-27): 15+ fast pages shard to 3 —
+        page-work wall clock scales ~1/shards and coordination stays one round."""
+        self.quality_level = "fast"
+        self.write_spec(15)
+        self.plan(self.files)
+        payload = self.next_dispatch_payload()
+        self.assertEqual(pp.BUILDER_AGENT, payload["agent"])
+        self.assertEqual(3, payload["builder_shards"]["parallel"])
+        self.assertGreaterEqual(len(payload.get("builder_packets") or []), 3)
+
     def test_fast_deck_below_the_shard_line_stays_single_builder(self) -> None:
         self.quality_level = "fast"
         self.write_spec(6)
