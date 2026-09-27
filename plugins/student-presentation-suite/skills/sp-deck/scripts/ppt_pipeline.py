@@ -153,6 +153,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     plan.add_argument("--research-validation", type=Path)
     plan.add_argument("--evidence-map", type=Path)
     plan.add_argument(
+        "--reference-analysis",
+        type=Path,
+        help="reference-deck-analysis.json from reference_deck_analysis.py (PPTAgent-style "
+        "ingestion): per-slide archetype suggestions guide the scaffold; recorded in the manifest",
+    )
+    plan.add_argument(
         "--receipt-policy", choices=["require", "allow-missing"], default=None,
         help="allow-missing: continue without the hook-owned isolated-run receipt "
         "(degraded mode, recorded in the manifest and inherited by later stages of "

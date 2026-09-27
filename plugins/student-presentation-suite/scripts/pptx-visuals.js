@@ -375,32 +375,64 @@ function addMetricDashboard(slide, data, area, tokens, lang) {
     addPanel(slide, cells[index], tokens, { shape, variant: index });
     const value = metric && typeof metric === 'object' ? metric.value : metric;
     const label = metric && typeof metric === 'object' ? metric.label : '';
-    addLabel(
-      slide,
-      value,
-      {
-        x: cells[index].x,
-        y: cells[index].y + cells[index].h * 0.18,
-        w: cells[index].w,
-        h: cells[index].h * 0.3,
-      },
-      tokens,
-      lang,
-      { bold: true, role: 'kpi', shape, color: p.accent, label: `指标值 ${index + 1}` },
+    // v0.19 solveStack：值与标签按各自自然高度在卡内垂直居中，
+    // 替代固定 0.18h/0.48h 比例——大数字不再挤压标签、短标签不再悬空。
+    // 量测预算上限（0.55h/0.36h）并扣除 addLabel 的 roundRect inset：
+    // 量高 = 文本行高 + inset，栈永不溢出；仍溢出时回退旧固定比例。
+    const cellInset = S.safeInsetForShape('roundRect', cells[index]);
+    const measureAt = (text, role) => {
+      const plain = H.plainText(textOf(text));
+      if (!plain) return 0.01;
+      const isCJK = /[぀-ヿ㐀-鿿豈-﫿]/u.test(plain);
+      const sizes = H.fontSizeScale(tokens, lang);
+      const isValue = role === 'kpi';
+      const budgetH = Math.max(0.2, cells[index].h * (isValue ? 0.55 : 0.36) - cellInset.y * 2);
+      const fit = H.fitText(
+        plain,
+        { w: cells[index].w - cellInset.x * 2, h: budgetH },
+        {
+          min: isValue ? Math.max(16, sizes.label) : sizes.label,
+          max: isValue ? 32 : 20,
+          margin: 6,
+          role,
+          isCJK,
+        },
+      );
+      return Math.max(0.01, (fit.lines * (fit.fontSize * 1.18)) / 72 + cellInset.y * 2);
+    };
+    const inner = {
+      x: cells[index].x,
+      y: cells[index].y,
+      w: cells[index].w,
+      h: cells[index].h,
+    };
+    const cellStack = H.solveStack(
+      inner,
+      [
+        { key: 'value', measure: () => measureAt(value, 'kpi'), minFlow: 0.2 },
+        { key: 'label', measure: () => measureAt(label, 'label'), minFlow: 0.15 },
+      ],
+      { gap: H.spacing(tokens, 1), justify: 'center' },
     );
-    addLabel(
-      slide,
-      label,
-      {
-        x: cells[index].x,
-        y: cells[index].y + cells[index].h * 0.48,
-        w: cells[index].w,
-        h: cells[index].h * 0.42,
-      },
-      tokens,
-      lang,
-      { role: 'label', shape, color: p.muted, label: `指标标签 ${index + 1}` },
-    );
+    const valueBox = cellStack.overflow
+      ? { x: inner.x, y: inner.y + inner.h * 0.18, w: inner.w, h: inner.h * 0.3 }
+      : cellStack.boxes.value;
+    const labelBox = cellStack.overflow
+      ? { x: inner.x, y: inner.y + inner.h * 0.48, w: inner.w, h: inner.h * 0.42 }
+      : cellStack.boxes.label;
+    addLabel(slide, value, valueBox, tokens, lang, {
+      bold: true,
+      role: 'kpi',
+      shape,
+      color: p.accent,
+      label: `指标值 ${index + 1}`,
+    });
+    addLabel(slide, label, labelBox, tokens, lang, {
+      role: 'label',
+      shape,
+      color: p.muted,
+      label: `指标标签 ${index + 1}`,
+    });
   });
 }
 
@@ -768,14 +800,38 @@ function addAnnotatedVisual(slide, data, area, tokens, lang) {
     w: area.w * 0.4,
     h: area.h,
   };
-  const cells = H.gridLayout(annotationArea, 1, Math.max(1, annotations.length), {
-    rowGap: H.spacing(tokens, 3),
-  });
+  // v0.19 solveStack：按各条注释的自然高度量测后均匀分布（首尾贴边），
+  // 替代等分行网格——长短不一的注释不再出现大片空行或挤压。
+  const gap = H.spacing(tokens, 3);
+  const labelPt = H.fontSizeScale(tokens, lang).label;
+  const marginIn = 16 / 72;
+  const measureAnnotation = (text) => {
+    const plain = H.plainText(textOf(text));
+    if (!plain) return gap * 2;
+    const isCJK = /[぀-ヿ㐀-鿿豈-﫿]/u.test(plain);
+    const fit = H.estimateTextFit(plain, annotationArea.w - marginIn * 2, 999, labelPt, isCJK);
+    return (fit.lines * (labelPt * 1.18)) / 72 + marginIn * 2 + 0.16;
+  };
+  const stack = H.solveStack(
+    annotationArea,
+    annotations.map((annotation, index) => ({
+      key: `a${index}`,
+      measure: () => measureAnnotation(annotation),
+      minFlow: 0.5,
+    })),
+    { gap, justify: 'between' },
+  );
+  // 溢出（注释总量超过列高）时回退等分行网格——宁可退回旧布局，不越出区域。
+  const fallbackCells =
+    stack.overflow || annotations.length === 0
+      ? H.gridLayout(annotationArea, 1, Math.max(1, annotations.length), { rowGap: gap })
+      : null;
   annotations.forEach((annotation, index) => {
-    addPanel(slide, cells[index], tokens);
-    addLabel(slide, textOf(annotation), cells[index], tokens, lang, {
+    const cell = fallbackCells ? fallbackCells[index] : stack.boxes[`a${index}`];
+    addPanel(slide, cell, tokens);
+    addLabel(slide, textOf(annotation), cell, tokens, lang, {
       align: 'left',
-      fontSize: H.fontSizeScale(tokens, lang).label,
+      fontSize: labelPt,
       margin: 16,
       label: `图像注释 ${index + 1}`,
     });

@@ -766,6 +766,68 @@ function plainText(text) {
 }
 
 /**
+ * Mini stack/flex 求解器（v0.19，html2pptx 折中路线的第一步：不引浏览器，
+ * 用 fit 量测 + 剩余空间分配覆盖手写比例布局）。
+ *
+ * 每个子项先量自然尺寸（显式 height 或 measure(主轴可用尺寸)），
+ * 再按 justify 把剩余空间分配进去：
+ *   start   顶部对齐（阅读型）
+ *   center  整体居中（展示型稀疏栈）
+ *   between 首尾贴边、中间均匀（注释列、KPI 格）
+ *   end     底部对齐
+ *
+ * @param {{x:number,y:number,w:number,h:number}} box 容器
+ * @param {Array<{key:string, height?:number, measure?:(flowUsable:number)=>number,
+ *                 minFlow?:number}>} items
+ *   column 方向：height/measure 返回自然高度（in）；row 方向返回自然宽度。
+ * @param {{direction?:'column'|'row', gap?:number,
+ *          justify?:'start'|'center'|'between'|'end'}} [opts]
+ * @returns {{boxes:Object<string,{x:number,y:number,w:number,h:number}>,
+ *            used:number, overflow:boolean}}
+ */
+function solveStack(box, items, opts = {}) {
+  const direction = opts.direction === 'row' ? 'row' : 'column';
+  const gap = Math.max(0, Number(opts.gap ?? 0));
+  const justify = ['start', 'center', 'between', 'end'].includes(opts.justify)
+    ? opts.justify
+    : 'start';
+  const flowLen = direction === 'column' ? box.h : box.w;
+  const crossLen = direction === 'column' ? box.w : box.h;
+  const sized = (items || []).map((item) => {
+    let natural = Number(item && item.height);
+    if (!Number.isFinite(natural) && typeof (item && item.measure) === 'function') {
+      natural = Number(item.measure(flowLen));
+    }
+    const min = Number(item && item.minFlow);
+    if (!Number.isFinite(natural) || natural < 0) natural = Number.isFinite(min) ? min : 0;
+    return {
+      key: String((item && item.key) || ''),
+      natural: Math.max(natural, Number.isFinite(min) ? min : 0),
+    };
+  });
+  const used =
+    sized.reduce((sum, entry) => sum + entry.natural, 0) + gap * Math.max(0, sized.length - 1);
+  const free = flowLen - used;
+  let between = gap;
+  let lead = 0;
+  if (justify === 'center') lead = Math.max(0, free) / 2;
+  else if (justify === 'end') lead = Math.max(0, free);
+  else if (justify === 'between' && sized.length > 1 && free > 0) {
+    between = gap + free / (sized.length - 1);
+  }
+  const boxes = {};
+  let cursor = (direction === 'column' ? box.y : box.x) + lead;
+  for (const entry of sized) {
+    boxes[entry.key] =
+      direction === 'column'
+        ? { x: box.x, y: cursor, w: crossLen, h: entry.natural }
+        : { x: cursor, y: box.y, w: entry.natural, h: crossLen };
+    cursor += entry.natural + between;
+  }
+  return { boxes, used, overflow: free < 0 };
+}
+
+/**
  * 将安全区切成等宽等高网格，避免生成脚本重复手算坐标。
  */
 function gridLayout(area, columns, rows, opts) {
@@ -1135,6 +1197,7 @@ module.exports = {
   footerArea,
   gridLayout,
   weightedColumns,
+  solveStack,
   spacing,
   cornerRadius,
 

@@ -644,13 +644,24 @@ function _renderOnLayout(ctx, request, layoutId, area) {
           'small for claim + body copy — pick an archetype with a larger body zone (see fallback chain) or trim the body',
       );
     }
-    const claimH = Math.min(claimNeeded, zones.body.h);
+    // 展示页（cover/section/quote/closing）只有 claim 时垂直居中——
+    // 大 zone 顶部贴一句会留下头重脚轻的死区（v0.19 solveStack）。
+    const claimStack = H.solveStack(
+      zones.body,
+      [{ key: 'claim', height: Math.min(claimNeeded, zones.body.h) }],
+      {
+        gap: 0,
+        justify: !withBody && isDisplayFamily(selection.family) ? 'center' : 'start',
+      },
+    );
+    const claimSlot = claimStack.boxes.claim;
+    const claimH = claimSlot.h;
     H.addFittedText(
       slide,
       slots.claim,
       {
         x: claimBox.x,
-        y: zones.body.y,
+        y: claimSlot.y,
         w: claimBox.w,
         h: claimH,
       },
@@ -664,12 +675,12 @@ function _renderOnLayout(ctx, request, layoutId, area) {
       role: 'subtitle',
       text: slots.claim,
       x: claimBox.x,
-      y: zones.body.y,
+      y: claimSlot.y,
       w: claimBox.w,
       h: claimH,
       fontSize: claimFit.fontSize,
     });
-    const claimBottom = zones.body.y + claimH + (withBody ? gap : 0);
+    const claimBottom = claimSlot.y + claimH + (withBody ? gap : 0);
     bodyArea = withBody
       ? {
           x: zones.body.x,

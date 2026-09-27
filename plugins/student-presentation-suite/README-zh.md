@@ -207,6 +207,13 @@ normalized zones 编译成 pptxgenjs 几何，scaffold 出的页面经引擎放�
 内容死区）由 element registry 执行，warning 经 `<pptx>.registry-report.json` sidecar 进
 repair packet。
 
+v0.19 落地 html2pptx 思路的无浏览器部分：`pptx-helpers.js` 的 `solveStack()` 量测子项
+自然尺寸并分配剩余空间（start/center/between/end），稀疏 claim 栈自动居中、注释列均匀
+分布、KPI 值不再挤压标签。同时引入两个机制：PPTAgent 式参考 deck 摄取
+（`reference_deck_analysis.py` + `plan --reference-analysis`，`rebuild_from_source` 可继承
+好参考 deck 的逐页功能类型作为 archetype 建议）；`style_previews.py` 在 intake 渲染 2–3
+份真实两页风格小样，让用户对像素而非形容词做选择（opt-in）。
+
 `deck.js` 遵守 `skills/sp-deck/references/pptxgenjs-safety.md` 中的官方 gotchas，并使用
 `pptx-helpers.js` 执行硬安全检查；`pptx-composer.js`、`pptx-layouts.js`、`pptx-shapes.js`、
 `pptx-svg-library.js` 与 `pptx-visuals.js` 是可选灵感、工具箱和兜底。未锁定的 `layout` 可自由

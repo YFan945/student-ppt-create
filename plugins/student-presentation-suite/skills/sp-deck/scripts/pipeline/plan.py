@@ -314,11 +314,37 @@ def cmd_plan(args: argparse.Namespace) -> int:
             raise RefusedError("source unpack failed")
         scaffold_info = {"slides": len(spec_data.get("slides") or []), "pages": []}
     else:
+        reference_analysis: dict[str, Any] | None = None
+        reference_path = getattr(args, "reference_analysis", None)
+        if reference_path:
+            resolved_reference = Path(str(reference_path)).resolve()
+            if not resolved_reference.is_file():
+                raise RefusedError(f"reference analysis does not exist: {resolved_reference}")
+            try:
+                reference_analysis = json.loads(resolved_reference.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as exc:
+                raise RefusedError(f"reference analysis unreadable: {exc}") from exc
+            import reference_deck_analysis as _ref
+
+            errors = _ref.validate_report(reference_analysis)
+            if errors:
+                raise RefusedError(
+                    "reference analysis invalid — "
+                    + "; ".join(errors[:4])
+                    + f" (regenerate with {_ref.__file__})"
+                )
+            fresh["inputs"]["reference_analysis"] = bind(resolved_reference)
         scaffold_info = _scaffold.scaffold_generator(
             work_dir,
             spec,
             art_direction=Path(str(getattr(args, "art_direction", "") or "")) or None,
+            reference_analysis=reference_analysis,
         )
+        if reference_analysis is not None:
+            fresh["reference_guidance"] = {
+                "slides_guided": scaffold_info.get("reference_guided", 0),
+                "mode": "archetype-suggestions",
+            }
         if mode == "rebuild_from_source":
             analysis = work_dir / "source-analysis.md"
             if not analysis.is_file() or not analysis.read_text(encoding="utf-8").strip():

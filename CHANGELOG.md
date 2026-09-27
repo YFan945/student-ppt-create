@@ -2,6 +2,34 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.19.0 — 2026-09-28 · P2 batch: browser-free layout solver, reference-deck ingestion, style previews at intake
+
+P2 三项（2026-09-28 视觉质量方案的"方向性大注"，owner 批准逐项落地；html2pptx 浏览器
+路线按方案折中为先做无浏览器求解器，价值验证后再议）。
+
+- **mini stack/flex 求解器（P2-9）**：`pptx-helpers.js solveStack()`——量测子项自然尺寸
+  （显式 height 或 `measure(主轴全长)`），按 justify 分配剩余空间（start/center/between/end），
+  支持 column/row，溢出显式返回。三个接入点消灭手写比例布局：展示页（cover/section/
+  quote/closing）只有 claim 时在 body zone 内垂直居中（原来贴顶留死区）；
+  `addAnnotatedVisual` 注释列由等分行网格改为按各条自然高度均匀分布（首尾贴边）；
+  `addMetricDashboard` 的值/标签改为卡内自适应垂直居中（大数字不再挤压标签）。
+- **参考 deck 摄取（P2-10，PPTAgent 机制）**：新增 `reference_deck_analysis.py`——只读
+  解析参考 PPTX，逐页给出 detected_type（cover/section/data/comparison/process/quote/
+  references/closing/image-led/content-text）+ 信号 + 置信度 + 经版式库校验的
+  `suggested_archetypes`；检测优先级中图表/表格证据先于 closing 线索（图表结论面板的
+  英文默认文本含 "conclusion"，实测误判后修正）。`ppt_pipeline.py plan --reference-analysis`
+  校验报告、hash 绑定进 manifest、scaffold 以建议引导 archetype 选择
+  （`manifest.reference_guidance.slides_guided` 可见），容量/禁忌/fallback 约束照常生效。
+  契约文档 `references/reference-deck-ingestion.md`；SKILL 第 5 步同步。
+- **风格先看后选（P2-11，frontend-slides 机制，opt-in）**：`style_previews.py` +
+  `scripts/style_preview_deck.js`——按主题构建 2–3 份真实两页小样（深色封面 + 浅色图表页，
+  经引擎渲染、走与正式 deck 完全相同的视觉系统），LibreOffice 渲染为 PNG +
+  `style-previews.json` manifest；缺 soffice/poppler 时明确报错。intake 规则
+  （`references/presentation-intake.md` 新节）：仅在用户犹豫风格时提供，默认三风格各取
+  一类，成本为 2–3 次渲染、零模型 token，产物是 intake 证据不是交付物。
+- 文档：插件 README 双语对补 v0.19 段；测试新增求解器 5 项、分析器 4 项、预览驱动
+  2 项（渲染链路 env-gated），套件 1084 项。
+
 ## 0.18.0 — 2026-09-28 · Visual quality pass: executable layout engine, machine-readable backgrounds, aesthetic gates
 
 视觉质量专项（来源：外部 JS/AI-skill 生态调研 + 2026-09-28 视觉质量方案，见

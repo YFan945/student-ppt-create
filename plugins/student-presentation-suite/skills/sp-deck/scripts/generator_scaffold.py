@@ -305,8 +305,12 @@ def _visual_payload(slide: dict[str, Any]) -> str:
     return "undefined"
 
 
-def _archetype_context(slide: dict[str, Any]) -> str:
-    """pptx-layouts.suggestLayouts 的选版式上下文，全部来自冻结 spec。"""
+def _archetype_context(slide: dict[str, Any], layout_override: str | None = None) -> str:
+    """pptx-layouts.suggestLayouts 的选版式上下文，全部来自冻结 spec。
+
+    reference_analysis 的逐页建议（P2-10）作为 context.layout 覆盖 spec 自身的
+    layout 提示——引擎的 +40 分会让建议版式稳赢，但容量/禁忌约束仍然生效。
+    """
     visual = slide.get("visual") if isinstance(slide.get("visual"), dict) else {}
     details = visual.get("details") if isinstance(visual.get("details"), dict) else {}
     title = str(slide.get("title") or "")
@@ -318,7 +322,7 @@ def _archetype_context(slide: dict[str, Any]) -> str:
         "slideKind": str(slide.get("kind") or "").strip().lower() or None,
         "role": str(slide.get("role") or "").strip().lower() or None,
         "layoutFamily": visual.get("layout_family"),
-        "layout": slide.get("layout"),
+        "layout": layout_override or slide.get("layout"),
         # claim 会被引擎渲染进 body 区，容量语义上算一个 body item
         # （数据页没有 slide_copy 但 claim 就是 takeaway，body_items≥1 才可行）。
         "itemCount": len(items) + (1 if claim else 0),
@@ -398,11 +402,34 @@ def _inline_tokens_json(spec: dict[str, Any], art_direction: Path | None) -> str
 
 
 def scaffold_generator(
-    work_dir: Path, spec_path: Path, art_direction: Path | None = None
+    work_dir: Path,
+    spec_path: Path,
+    art_direction: Path | None = None,
+    reference_analysis: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Create deck.js + pages/ stubs. Returns counts for the stage summary."""
+    """Create deck.js + pages/ stubs. Returns counts for the stage summary.
+
+    reference_analysis (P2-10): per-slide archetype suggestions from a good
+    reference deck (reference_deck_analysis.py). Suggestions override the
+    spec's `layout` hint per page and are counted as `reference_guided`.
+    """
     spec = load_spec(spec_path)
     slides = spec_slides(spec)
+    suggestions_by_slide: dict[int, str] = {}
+    if isinstance(reference_analysis, dict):
+        for entry in reference_analysis.get("slides") or []:
+            if not isinstance(entry, dict) or not isinstance(entry.get("slide"), int):
+                continue
+            suggestion = next(
+                (
+                    item
+                    for item in entry.get("suggested_archetypes") or []
+                    if isinstance(item, str) and item
+                ),
+                None,
+            )
+            if suggestion:
+                suggestions_by_slide[int(entry["slide"])] = suggestion
     pages_dir = work_dir / "pages"
     composition_dir = work_dir / "composition"
     composition_dir.mkdir(parents=True, exist_ok=True)
@@ -410,10 +437,14 @@ def scaffold_generator(
 
     written_pages = 0
     kept_pages = 0
+    reference_guided = 0
     names: list[str] = []
     for slide in slides:
         name = page_filename(slide)
         names.append(name)
+        suggestion = suggestions_by_slide.get(int(slide["id"]))
+        if suggestion:
+            reference_guided += 1
         sources_line = _source_rail_js(work_dir) if is_closing_slide(slide, slides) else ""
         kind_js, dark_js = _page_background(slide)
         stub = PAGE_STUB.format(
@@ -431,7 +462,7 @@ def scaffold_generator(
             on_screen_block=_on_screen_block(slide),
             kind_js=kind_js,
             dark_js=dark_js,
-            context_js=_archetype_context(slide),
+            context_js=_archetype_context(slide, suggestion),
             visual_js=_visual_payload(slide),
         )
         target = pages_dir / name
@@ -454,6 +485,7 @@ def scaffold_generator(
         "kept_pages": kept_pages,
         "wrote_deck": wrote_deck,
         "pages": names,
+        "reference_guided": reference_guided,
     }
 
 

@@ -85,6 +85,28 @@ If duration is known but slide count is not, recommend:
 - 10 minutes: 10-14 slides
 - 15 minutes: 14-18 slides
 
+## Style preview at intake (opt-in, v0.19)
+
+When the user hesitates between style families ("哪个好看？"), offer **show, don't
+tell**: render 2-3 tiny preview decks and let them react to pixels, not
+adjectives. One command, no model tokens:
+
+```bash
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/style_previews.py" \
+  --topic "<确认的主题>" --styles <style-key-1> <style-key-2> <style-key-3> \
+  --out "${CLAUDE_PROJECT_DIR}/outputs/<topic>-style-previews" --json
+```
+
+- Each preview is a real 2-page deck (dark cover + light chart page) built by
+  the same layout engine the final deck will use — what they see is what they get.
+- Default trio is one style per category (modern-minimal / ocean-tech /
+  coral-energy); prefer content-informed picks per `pptx-art-direction.md` and
+  say in one line why each candidate was picked.
+- Opt-in only: it costs 2-3 renders and an extra user round, so do not run it
+  unprompted when the user already picked a style or when speed was requested.
+- Output PNGs + `style-previews.json` are intake evidence, not deliverables;
+  the confirmed Production Summary still owns the real content.
+
 ## Required Interaction
 
 For an incomplete PPTX request, use `AskUserQuestion` to let the user select

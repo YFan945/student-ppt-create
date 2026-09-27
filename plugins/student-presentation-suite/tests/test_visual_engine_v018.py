@@ -348,5 +348,204 @@ class ScaffoldEngineContractTests(unittest.TestCase):
             self.assertIn('"layoutFamily"', content)
 
 
+class SolveStackTests(unittest.TestCase):
+    """v0.19 P2-9：mini stack/flex 求解器。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.node = shutil.which("node")
+        if not cls.node:
+            raise unittest.SkipTest("node is unavailable")
+
+    def run_node(self, body: str) -> dict:
+        script = (
+            "const path=require('node:path');"
+            f"const SCRIPTS={json.dumps(str(SCRIPTS))};"
+            f"const H=require({json.dumps(str(SCRIPTS / 'pptx-helpers.js'))});"
+            + body
+        )
+        result = subprocess.run(
+            [self.node, "-e", script], capture_output=True, text=True, check=True
+        )
+        return json.loads(result.stdout)
+
+    def test_between_distributes_leftover(self) -> None:
+        out = self.run_node(
+            """
+            const r = H.solveStack({ x: 1, y: 1, w: 4, h: 3 },
+              [{ key: 'a', height: 0.5 }, { key: 'b', height: 1.0 }],
+              { gap: 0.2, justify: 'between' });
+            console.log(JSON.stringify({ a: r.boxes.a.y, b: r.boxes.b.y, bBottom: r.boxes.b.y + r.boxes.b.h, overflow: r.overflow }));
+            """
+        )
+        self.assertAlmostEqual(1.0, out["a"])
+        self.assertAlmostEqual(3.0, out["b"])  # 首尾贴边
+        self.assertAlmostEqual(4.0, out["bBottom"])
+        self.assertFalse(out["overflow"])
+
+    def test_center_centers_a_sparse_stack(self) -> None:
+        out = self.run_node(
+            """
+            const r = H.solveStack({ x: 0, y: 1, w: 4, h: 3 }, [{ key: 'x', height: 0.5 }], { justify: 'center' });
+            console.log(JSON.stringify({ y: r.boxes.x.y }));
+            """
+        )
+        self.assertAlmostEqual(2.25, out["y"])
+
+    def test_measure_uses_natural_size_and_flags_overflow(self) -> None:
+        # measure 收到主轴全长（h=1）→ 自然高 0.3；加 b 0.6 + gap 0.2 = 1.1 > 1 溢出。
+        out = self.run_node(
+            """
+            const r = H.solveStack({ x: 0, y: 0, w: 4, h: 1 },
+              [{ key: 'a', measure: (flowLen) => flowLen * 0.3 }, { key: 'b', height: 0.6 }],
+              { gap: 0.2, justify: 'start' });
+            console.log(JSON.stringify({ aH: r.boxes.a.h, overflow: r.overflow, used: r.used }));
+            """
+        )
+        self.assertAlmostEqual(0.3, out["aH"])
+        self.assertTrue(out["overflow"])
+        self.assertAlmostEqual(1.1, out["used"])
+
+    def test_row_direction_solves_horizontally(self) -> None:
+        out = self.run_node(
+            """
+            const r = H.solveStack({ x: 0, y: 0, w: 4, h: 1 },
+              [{ key: 'l', height: 1.0 }, { key: 'r', height: 2.0 }],
+              { direction: 'row', gap: 0.25, justify: 'between' });
+            console.log(JSON.stringify({ l: r.boxes.l, r: r.boxes.r }));
+            """
+        )
+        self.assertAlmostEqual(0.0, out["l"]["x"])
+        self.assertAlmostEqual(4.0, out["r"]["x"] + out["r"]["w"])
+        self.assertAlmostEqual(1.0, out["l"]["h"])
+        self.assertAlmostEqual(2.0, out["r"]["w"])
+
+    def test_engine_centers_display_claim_without_body(self) -> None:
+        # cover-editorial claim-only：claim 应垂直居中于 body zone，而不是贴顶。
+        out = self.run_node(
+            """
+            const L=require(path.join(SCRIPTS, 'pptx-layouts.js'));
+            const TOKENS=__TOKENS__;
+            function mock(){const calls=[];const rec=(k)=>(...a)=>{calls.push(k);return {};};
+              return {calls,addText:rec('text'),addShape:rec('shape'),addImage:rec('image'),addChart:rec('chart'),addTable:rec('table'),addNotes:rec('notes')};}
+            const slide = mock(); const reg = { registered: [], register(n, el) { this.registered.push(el); } };
+            const res = L.renderArchetype(
+              { slide, tokens: TOKENS, slideNumber: 1, registry: reg },
+              { layout: { id: 'cover-editorial' }, slots: { title: '标题', claim: '一句话主张' } });
+            const claim = reg.registered.find((el) => el.role === 'subtitle');
+            console.log(JSON.stringify({ layout: res.layout, claimY: claim ? claim.y : null,
+              bodyY: res.zones.body ? res.zones.body.y : null,
+              centered: claim ? claim.y > res.zones.body.y + 0.01 : false }));
+            """.replace("__TOKENS__", json.dumps(resolved_tokens()))
+        )
+        self.assertTrue(out["centered"], out)
+
+
+class ReferenceDeckIngestionTests(unittest.TestCase):
+    """v0.19 P2-10：参考 deck 分析器 + plan 接线。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.module = _load(
+            "reference_deck_analysis_test", HERE / "reference_deck_analysis.py"
+        )
+
+    def test_classifies_synthetic_slide_xml(self) -> None:
+        chart_slide = (
+            "<p:sp><a:rPr sz=\"3200\"/><a:t>实验结果对比</a:t></p:sp>"
+            "<c:chart><c:title>Key result</c:title></c:chart>"
+        )
+        entry = self.module.classify_slide(
+            chart_slide, slide_no=3, slide_count=6, slide_w=10.0, slide_h=5.625
+        )
+        self.assertEqual("data", entry["detected_type"])
+        self.assertIn("chart-or-table", entry["signals"])
+        self.assertIn("data-chart-takeaway", entry["suggested_archetypes"])
+
+    def test_chart_evidence_outranks_english_conclusion_word(self) -> None:
+        xml = "<c:chart/>" + "<a:t>State the conclusion supported by this chart.</a:t>"
+        entry = self.module.classify_slide(
+            xml, slide_no=2, slide_count=6, slide_w=10.0, slide_h=5.625
+        )
+        self.assertEqual("data", entry["detected_type"])
+
+    def test_validate_report_rejects_unknown_layout_ids(self) -> None:
+        report = {
+            "slides": [
+                {"slide": 1, "detected_type": "cover", "suggested_archetypes": ["cover-split"]},
+                {"slide": 2, "detected_type": "data", "suggested_archetypes": ["not-a-layout"]},
+            ]
+        }
+        errors = self.module.validate_report(report)
+        self.assertTrue(any("not-a-layout" in error for error in errors))
+
+    def test_scaffold_uses_reference_suggestions(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            spec = work / "spec.json"
+            spec.write_text(
+                json.dumps({
+                    "slides": [
+                        {"id": 1, "kind": "cover", "title": "封面"},
+                        {"id": 2, "kind": "content", "title": "内容页标题测试", "role": "analysis"},
+                    ]
+                }),
+                encoding="utf-8",
+            )
+            analysis = {
+                "slides": [
+                    {"slide": 1, "detected_type": "cover", "suggested_archetypes": ["cover-split"]},
+                    {"slide": 2, "detected_type": "data", "suggested_archetypes": ["data-chart-sidebar"]},
+                ]
+            }
+            result = self.scaffold_for(work, spec, analysis)
+            self.assertEqual(2, result["reference_guided"])
+            cover = (work / "pages" / "p01-cover.js").read_text(encoding="utf-8")
+            content = (work / "pages" / "p02-s02.js").read_text(encoding="utf-8")
+            self.assertIn('"layout": "cover-split"', cover)
+            self.assertIn('"layout": "data-chart-sidebar"', content)
+
+    @staticmethod
+    def scaffold_for(work: Path, spec: Path, analysis: dict):
+        scaffold = _load(
+            "generator_scaffold_ref_test", ROOT / "skills/sp-deck/scripts/generator_scaffold.py"
+        )
+        return scaffold.scaffold_generator(work, spec, reference_analysis=analysis)
+
+
+class StylePreviewTests(unittest.TestCase):
+    """v0.19 P2-11：风格小样驱动（渲染链路 env-gated）。"""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.module = _load("style_previews_test", HERE / "style_previews.py")
+        if not shutil.which("soffice") and not Path(
+            r"C:\Program Files\LibreOffice\program\soffice.exe"
+        ).is_file():
+            raise unittest.SkipTest("LibreOffice unavailable")
+        if not shutil.which("pdftoppm"):
+            raise unittest.SkipTest("poppler unavailable")
+        if not shutil.which("node"):
+            raise unittest.SkipTest("node unavailable")
+
+    def test_single_style_preview_renders_two_pages(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp)
+            argv = ["--topic", "测试主题", "--styles", "modern-minimal", "--out", str(out)]
+            rc = self.module.main(argv)
+            self.assertEqual(0, rc)
+            manifest = json.loads((out / "style-previews.json").read_text(encoding="utf-8"))
+            self.assertEqual(1, len(manifest["previews"]))
+            self.assertEqual(2, len(manifest["previews"][0]["pngs"]))
+            self.assertTrue(all(Path(p).is_file() for p in manifest["previews"][0]["pngs"]))
+
+    def test_default_trio_covers_three_categories(self) -> None:
+        self.assertEqual(3, len(self.module.DEFAULT_STYLES))
+
+
 if __name__ == "__main__":
     unittest.main()

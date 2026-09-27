@@ -252,6 +252,16 @@ element registry (title emphasis lines, thin decorative stripes, near-miss align
 non-orthogonal connectors, dead zones) with warnings surfaced through a
 `<pptx>.registry-report.json` sidecar into repair packets.
 
+v0.19 adds the browser-free part of the html2pptx idea: `pptx-helpers.js solveStack()`
+measures each child's natural size and distributes the leftover space (start / center /
+between / end), so sparse claim stacks center themselves, annotation columns distribute
+evenly, and KPI values keep their labels clear without hand-tuned ratios. Two more
+mechanisms land with it: PPTAgent-style reference-deck ingestion
+(`reference_deck_analysis.py` + `plan --reference-analysis`) lets `rebuild_from_source`
+inherit a good reference deck's per-slide functional types as archetype suggestions, and
+`style_previews.py` renders 2–3 real two-page style samples at intake so the user picks a
+style from pixels instead of adjectives (opt-in).
+
 `deck.js` follows the official generation gotchas in
 `skills/sp-deck/references/pptxgenjs-safety.md` and uses `pptx-helpers.js` for hard safety checks.
 `pptx-composer.js`, `pptx-layouts.js`, `pptx-shapes.js`, `pptx-svg-library.js`, and
