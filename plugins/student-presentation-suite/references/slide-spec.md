@@ -28,7 +28,10 @@ Optional slide fields:
 - `kind`: `cover`, `content`, `section-divider`, `quotation`, `references`, `appendix`, `qa`, or `closing`; defaults conceptually to `content`
 - `visual`: visual type, purpose, optional `layout_family`, asset/alt text, and structured
   details. In v2/high-score/balanced/visual-led production it is required on content slides;
-  exempt slide kinds may omit it when a visual would be decorative.
+  exempt slide kinds may omit it when a visual would be decorative. `details` rides into the
+  component library as render data, so every details string stays within the payload label
+  width (32 em, CJK-weighted — enforced by copy-fit preflight): planning prose belongs in
+  `visual.purpose` (design intent, never rendered), on-screen prose in `slide_copy`.
 - `note_goal`: what the speaker note should accomplish
 - `transition`: transition or handoff sentence; omit on the final slide or when no meaningful transition exists
 

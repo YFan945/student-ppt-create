@@ -72,6 +72,60 @@ class CopyFitPreflightTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertEqual("title", report["problems"][0]["field"])
 
+    def test_planning_prose_in_visual_details_is_blocked(self) -> None:
+        """details 随载荷进组件库：44 字规划句被当焦点标签渲染烧了多轮（2026-09-28 live）。
+
+        设计意图属于 visual.purpose（引擎保证不上屏），成段上屏正文属于 slide_copy
+        （走正文容量检查）——details 里只放一格宽度的数据标签。
+        """
+        prose = (
+            "用左右双轨一次性建立蓝等于光伏、绿等于风电的全局配色语义，"
+            "后面每一页都沿用这一组角色色，任何一页都不得把某一侧的角色色借给另一侧"
+        )
+        spec = {
+            "slides": [
+                {
+                    "id": 1,
+                    "title": "风光互补",
+                    "claim": "两者互补而非替代",
+                    "content": [],
+                    "visual": {
+                        "type": "motif",
+                        "purpose": "建立全局配色语义",
+                        "details": {"note": prose, "rails": ["光伏", "风电"]},
+                    },
+                }
+            ]
+        }
+        code, _, report = self._run(spec)
+        self.assertEqual(2, code)
+        problem = next(p for p in report["problems"] if p["field"] == "visual_details")
+        self.assertEqual("visual.details.note", problem["path"])
+        self.assertGreater(problem["width_em"], problem["max_em"])
+
+    def test_label_sized_details_and_metadata_pass(self) -> None:
+        spec = {
+            "slides": [
+                {
+                    "id": 1,
+                    "title": "成本对比",
+                    "claim": "度电成本已交叉",
+                    "content": [],
+                    "visual": {
+                        "type": "chart",
+                        "purpose": "并列两套口径",
+                        "details": {
+                            "basis": "IRENA《2024年可再生能源发电成本》全球新建项目加权平均",
+                            "series": [{"name": "光伏", "values": [1, 2, 3]}],
+                            "criteria": [{"pv": "方阵用地可原地类管理、实行用地备案"}],
+                        },
+                    },
+                }
+            ]
+        }
+        code, _, report = self._run(spec)
+        self.assertEqual(0, code, report["problems"])
+
     def test_source_lines_are_excluded_from_the_density_cap(self) -> None:
         base = {"slides": [{"id": 1, "title": "标题", "claim": "主张", "content": ["要点一"]}]}
         with_note = {

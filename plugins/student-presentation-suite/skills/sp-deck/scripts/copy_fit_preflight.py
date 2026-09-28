@@ -24,7 +24,11 @@ It checks, per slide:
   * every `slide_copy` / `content` fragment fits the body region;
   * total on-slide characters stay within the confirmed density cap — this is
     `title` + `claim` + body fragments, so a duplicated claim is counted twice
-    because the page genuinely renders it twice.
+    because the page genuinely renders it twice;
+  * every `visual.details` string stays within the payload label width
+    (`DETAILS_STRING_MAX_EM`, CJK-weighted): details ride into the component
+    library as render data, so planning prose belongs in `visual.purpose`
+    (never rendered) or `slide_copy` (body-capacity checked) — not here.
 
 Width model: CJK and full-width punctuation cost one em, Latin letters and digits
 0.58 em, half-width punctuation 0.35 em. Line height uses 1.45x, matching how
@@ -69,6 +73,15 @@ LINE_HEIGHT_FACTOR = 1.45
 CJK_EM = 1.0
 LATIN_EM = 0.58
 PUNCT_EM = 0.35
+
+# `visual.details` 的字符串会随载荷进组件库：落在组件读取的字段上就是上屏文本
+# （焦点标签/数据标签/注释），落在未读取字段上是无害元数据——无论哪种，规划
+# 长句都不该出现在这里。设计意图写 `visual.purpose`（引擎保证不上屏），成段
+# 上屏正文写 `slide_copy`（走上方正文容量检查）。2026-09-28 live：44 字设计
+# 说明被 visual-dominant 当焦点标签渲染，整条 fallback 链装不下，连烧多轮才
+# 定位到"载荷里有规划文本"这一层。上限按 em 宽度折算（与 text_width_in 同
+# 口径），约两行标签/一格表格：实测合法数据最宽约 28em，44em 的规划句被拦下。
+DETAILS_STRING_MAX_EM = 32.0
 
 # 与 pptx-helpers.js 的安全字体白名单同源（官方 pptx skill 清单）。
 # LibreOffice 渲染 QA 会用宽度不同的字体替换非安全字体，text-fit 的字宽
@@ -180,6 +193,39 @@ def is_caption(text: str) -> bool:
     return bool(re.match(r"^\s*(来源|注[:：]|数据来|图\d|表\d)", str(text or "")))
 
 
+def check_visual_details(slide: dict[str, Any]) -> list[dict[str, Any]]:
+    """`visual.details` 载荷字符串宽度上限（口径见 DETAILS_STRING_MAX_EM）。"""
+    visual = slide.get("visual")
+    if not isinstance(visual, dict):
+        return []
+    problems: list[dict[str, Any]] = []
+
+    def walk(node: Any, path: str) -> None:
+        if isinstance(node, str):
+            width_em = text_width_in(node, 72.0)  # 72pt → 1em 基准，直接读出 em 宽
+            if width_em > DETAILS_STRING_MAX_EM + 1e-6:
+                problems.append(
+                    {
+                        "field": "visual_details",
+                        "severity": "major",
+                        "path": path,
+                        "preview": node if len(node) <= 20 else node[:20] + "…",
+                        "width_em": round(width_em, 1),
+                        "max_em": DETAILS_STRING_MAX_EM,
+                    }
+                )
+        elif isinstance(node, dict):
+            for key, value in node.items():
+                walk(value, f"{path}.{key}")
+        elif isinstance(node, list):
+            for index, value in enumerate(node):
+                walk(value, f"{path}[{index}]")
+
+    if visual.get("details") is not None:
+        walk(visual["details"], "visual.details")
+    return problems
+
+
 def check_slide(
     slide: dict[str, Any],
     *,
@@ -275,6 +321,8 @@ def check_slide(
             }
         )
 
+    problems.extend(check_visual_details(slide))
+
     return {
         "id": slide.get("id"),
         "title": title,
@@ -354,6 +402,12 @@ def render(report: dict[str, Any], report_path: Path, *, verbose: bool, max_item
             detail = f"{item['chars']} 字 > 上限 {item['max_chars']}"
         elif field == "claim_duplicates_title":
             detail = f"claim 与 title 重复（{item['chars']} 字）：{item['advice']}"
+        elif field == "visual_details":
+            detail = (
+                f"载荷字符串 {item['width_em']}em > 上限 {item['max_em']}em（{item['path']}）："
+                f"“{item['preview']}” — 设计意图写 visual.purpose（不上屏），"
+                f"上屏正文写 slide_copy，数据标签保持一格宽度"
+            )
         else:
             detail = f"{item['chars']} 字 / {item['estimated_lines']} 行 需 {item['required_h']}in > 可用 {item['available_h']}in"
         lines.append(f"  [{item['severity']}] slide {item['slide']} {field} — {detail}")

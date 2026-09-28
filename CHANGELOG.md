@@ -2,6 +2,23 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.0 — 2026-09-28 · Payload label width gate for visual.details
+
+**新对外规则（owner 批准的 minor）**：`visual.details` 是自由结构，其中任何字符串都会随
+载荷进入组件库——落在组件读取的字段上就是上屏文本（焦点标签/数据标签/注释），落在未
+读取字段上是无害元数据。此前"规划长句混进载荷"只能在 build 阶段以 fit 错误暴露
+（2026-09-28 live：44 字设计说明被当焦点标签渲染，整条 fallback 链装不下，连烧多轮）。
+
+- **copy-fit preflight 新增载荷标签宽度门**：逐页递归检查 `visual.details` 的每个字符串，
+  按既有的 em 宽度模型（CJK=1、Latin=0.58、半角标点=0.35）折算，超过 **32em**
+  （约两行标签/一格表格）记 major、拦截 plan。报错给出字段路径、预览与宽度，并指明
+  去处：设计意图写 `visual.purpose`（引擎保证不上屏），上屏正文写 `slide_copy`
+  （走正文容量检查），数据标签保持一格宽。
+- **不误伤实测**：pv-vs-wind 真实 13 页 spec（最宽 28em 来源注）、golden sample
+  （17em）、high-score 示例（46 字拉丁 takeaway ≈27em）全部通过；schema 层不重复设限
+  （JSON Schema 无法表达 CJK 折算宽度），规则单点归 preflight 所有。
+- `slide-spec.md` 的 `visual` 字段说明同步写明该规则。
+
 ## 0.20.1 — 2026-09-28 · Preview tokens resolve the spec the pipeline actually freezes
 
 - **校准预览 token 解析补上 spec 候选顺序**：0.20.0 的 `calibration_tokens_json` 只认
