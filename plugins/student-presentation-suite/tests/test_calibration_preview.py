@@ -79,12 +79,44 @@ class CalibrationPreviewTests(unittest.TestCase):
         page1 = self.write_page(1)
         page7 = self.write_page(7)
         target = self.work / "calibration-deck.js"
-        calibration.write_calibration_deck(target, [(1, page1.resolve()), (7, page7.resolve())])
+        calibration.write_calibration_deck(
+            target,
+            [(1, page1.resolve()), (7, page7.resolve())],
+            calibration.calibration_tokens_json(self.work),
+        )
         text = target.read_text(encoding="utf-8")
         self.assertIn("n: 1", text)
         self.assertIn("n: 7", text)
         self.assertIn(str(page1.resolve()).replace("\\", "\\\\"), text.replace("\\\\", "\\\\"))
         self.assertNotIn("p04-", text)
+
+    def test_preview_harness_carries_the_production_page_ctx_contract(self) -> None:
+        """Scaffold pages read ctx.tokens — the harness must inject it like deck.js does.
+
+        2026-09-28 live: the harness passed no tokens and applied an empty palette,
+        so every scaffold page crashed in paletteMode (reading dark_palette of
+        undefined) and calibration could never render.
+        """
+        page1 = self.write_page(1)
+        target = self.work / "calibration-deck.js"
+        tokens_json = calibration.calibration_tokens_json(self.work)
+        calibration.write_calibration_deck(target, [(1, page1.resolve())], tokens_json)
+        text = target.read_text(encoding="utf-8")
+        self.assertIn(f"const TOKENS = {tokens_json};", text)
+        self.assertIn("H.applyTokens(pptx, TOKENS, 'chinese');", text)
+        self.assertIn("tokens: TOKENS", text)
+        self.assertIn("slideNumber: item.n", text)
+        self.assertIn("layoutReport", text)
+        self.assertNotIn("H.applyTokens(pptx, {}, 'chinese')", text)
+
+    def test_preview_tokens_resolve_through_the_production_resolver(self) -> None:
+        """Preview colors are production colors: one resolver, not a second derivation."""
+        import generator_scaffold
+
+        art = self.work / "art-direction.yaml"
+        expected = generator_scaffold.inline_tokens_json({"slides": []}, art)
+        self.assertEqual(expected, calibration.calibration_tokens_json(self.work))
+        self.assertIn("dark_palette", json.loads(expected))
 
     def test_manifest_shape_binds_page_and_render_hashes(self) -> None:
         page1 = self.write_page(1)

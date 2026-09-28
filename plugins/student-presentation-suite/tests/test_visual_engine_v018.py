@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import unittest
@@ -60,7 +61,12 @@ class RenderArchetypeTests(unittest.TestCase):
             + body
         )
         result = subprocess.run(
-            [self.node, "-e", script], capture_output=True, text=True, check=True
+            [self.node, "-e", script],
+            capture_output=True,
+            text=True,
+            check=True,
+            # pptx-visuals 内部按裸名 require('pptx-helpers')，靠 NODE_PATH 解析。
+            env={**os.environ, "NODE_PATH": str(SCRIPTS)},
         )
         return json.loads(result.stdout)
 
@@ -114,6 +120,98 @@ class RenderArchetypeTests(unittest.TestCase):
         )
         self.assertEqual("data-chart-takeaway", out["layout"])
         self.assertTrue(out["chart"])
+
+    def test_exhausted_fallback_chain_names_the_pinned_layout_and_the_chain(self) -> None:
+        """链耗尽报错点名请求版式 + 整条链，而不是只剩链尾 archetype 名。
+
+        2026-09-28 live：cover-split 沿链退到 cover-minimal，报错只说 cover-minimal，
+        被误读成 request.layout.id 没生效，白烧一轮 builder 去修不存在的落版问题。
+        """
+        out = self.run_node(
+            """
+            const slide = mock();
+            let message = null;
+            try {
+              L.renderArchetype(
+                { slide, tokens: TOKENS, slideNumber: 1 },
+                { layout: { id: 'cover-split' },
+                  slots: { title: '超'.repeat(400), claim: '装不下任何版式' } });
+            } catch (error) {
+              message = error.message;
+            }
+            console.log(JSON.stringify({ message }));
+            """
+        )
+        message = out["message"] or ""
+        library = json.loads(
+            (ROOT / "skills/sp-deck/references/layout-library.json").read_text(encoding="utf-8")
+        )
+        by_id = {item["id"]: item for item in library["layouts"]}
+        chain = []
+        cursor = by_id["cover-split"]
+        while cursor is not None and cursor["id"] not in chain:
+            chain.append(cursor["id"])
+            cursor = by_id.get(cursor.get("fallback"))
+        self.assertIn('pinned layout "cover-split"', message)
+        self.assertIn(f"[{' -> '.join(chain)}]", message)
+        self.assertIn("all failed", message)
+        self.assertIn("title does not fit", message)
+        # 每条候选各自的失败原因都要在场：一轮交底，一轮修完，不再一次露一条。
+        self.assertIn(f"{chain[0]}: slide", message)
+        self.assertIn(f"{chain[-1]}: slide", message)
+
+    def test_fit_failure_reports_text_and_box_evidence(self) -> None:
+        """同一条 fit 错误连烧三轮的教训：报错必须带文本预览/字数/盒子尺寸。"""
+        out = self.run_node(
+            """
+            const H = require(path.join(SCRIPTS, 'pptx-helpers.js'));
+            const slide = mock();
+            let message = null;
+            try {
+              H.addFittedText(slide, '这一段文本无论如何都放不进这么小的盒子',
+                { x: 1, y: 1, w: 0.3, h: 0.2 }, TOKENS, 'chinese', 'label', { label: '解释焦点' });
+            } catch (error) {
+              message = error.message;
+            }
+            console.log(JSON.stringify({ message }));
+            """
+        )
+        message = out["message"] or ""
+        self.assertIn("cannot fit at", message)
+        self.assertIn("0.30x0.20in", message)
+        self.assertIn("chars)", message)
+
+    def test_visual_purpose_is_design_intent_and_never_on_screen(self) -> None:
+        """visual.purpose 是设计意图（slide-spec.md handoff rules），绝不上屏。
+
+        2026-09-28 live：44 字的 purpose 被 visual-dominant 当焦点标签渲染，
+        在小视觉区连 16pt 下限都装不下，整条 fallback 链炸掉；而装不下的焦点
+        标签本身是装饰，必须静默跳过而不是抛错。
+        """
+        out = self.run_node(
+            """
+            const V = require(path.join(SCRIPTS, 'pptx-visuals.js'));
+            const texts = [];
+            const slide = {
+              addText: (t) => { texts.push(String(t)); return {}; },
+              addShape: () => ({}), addImage: () => ({}),
+              addChart: () => ({}), addTable: () => ({}), addNotes: () => ({}),
+            };
+            const purpose = '用左右双轨一次性建立蓝等于光伏绿等于风电的全局配色语义说明'.repeat(2);
+            let threw = null;
+            try {
+              V.renderVisual(slide, 'visual-dominant', { purpose },
+                { x: 0.5, y: 1, w: 3, h: 2 }, TOKENS, 'chinese');
+              V.renderVisual(slide, 'visual-dominant', { purpose },
+                { x: 0.5, y: 1, w: 1, h: 0.4 }, TOKENS, 'chinese');
+            } catch (error) {
+              threw = error.message;
+            }
+            console.log(JSON.stringify({ threw, texts }));
+            """
+        )
+        self.assertIsNone(out["threw"], out)
+        self.assertFalse([text for text in out["texts"] if "双轨" in text], out["texts"])
 
     def test_empty_visual_payload_draws_no_placeholder(self) -> None:
         out = self.run_node(

@@ -187,7 +187,8 @@ slides:
 
 When `sp-deck` receives Slide Spec YAML:
 - preserve slide order and ownership
-- treat `visual.purpose` as required design intent when `visual` is present
+- treat `visual.purpose` as required design intent when `visual` is present; it is
+  planning prose for the implementer and is never rendered as on-screen text
 - use integer `timing_sec` values to balance speaker notes
 - keep `layout` unless a better layout is needed to prevent crowding
 - implement `layout` as a functional intent, not a fixed visual template

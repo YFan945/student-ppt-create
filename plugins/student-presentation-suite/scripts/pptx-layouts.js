@@ -497,19 +497,29 @@ function renderArchetype(ctx, request = {}) {
     chain.push(cursor.id);
     cursor = cursor.fallback ? layoutsById.get(cursor.fallback) : null;
   }
-  let lastError = null;
+  const failures = [];
   for (const layoutId of chain) {
     try {
       return _renderOnLayout(ctx, request, layoutId, area);
     } catch (error) {
       if (error && error.layoutFit) {
-        lastError = error;
+        failures.push(`${layoutId}: ${error.message}`);
         continue;
       }
       throw error;
     }
   }
-  throw lastError || new Error(`renderArchetype: fallback chain for ${firstId} produced no layout`);
+  // 链耗尽必须点名"钉住/选中的版式 + 整条链 + 每条候选各自的失败原因"：只剩链尾
+  // archetype 名会被误读成 request.layout.id 没生效（2026-09-28 live：cover-split
+  // 沿链退到 cover-minimal），一次只报一条规则又让 builder 一轮只能修一条。
+  const detail = failures.length ? failures.join(' | ') : 'no layout produced a fit';
+  const pinned = Boolean(request.layout && request.layout.id);
+  const exhausted = new RangeError(
+    `${pinned ? 'pinned' : 'selected'} layout "${firstId}" and its fallback chain ` +
+      `[${chain.join(' -> ')}] all failed — ${detail}`,
+  );
+  exhausted.layoutFit = true;
+  throw exhausted;
 }
 
 function _renderOnLayout(ctx, request, layoutId, area) {

@@ -2,6 +2,39 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.20.0 — 2026-09-28 · Calibration harness contract, failure-evidence errors and stale-packet rebuild
+
+2026-09-28 一次真实 `sp-deck` 生产过程暴露的两个管线缺陷（校准阶段连烧三轮定位）：
+
+- **校准预览 harness 注入与生产 `deck.js` 同源的 `ctx.tokens`**：`calibration_preview.py`
+  生成的 `calibration/calibration-deck.js` 此前写死 `H.applyTokens(pptx, {}, 'chinese')` 且
+  调用页面模块时不传 `tokens`，而 scaffold 页面模板与生产 `deck.js` 都从 `ctx.tokens` 取
+  调色板——每个 scaffold 页面都在 `paletteMode` 崩（`dark_palette` of undefined），
+  校准预览永远无法渲染。现改为经 `generator_scaffold.inline_tokens_json`（与生产
+  同源、单一解析器）内联 `TOKENS`，并按生产契约传 `tokens` / `slideNumber` /
+  `layoutReport`，预览配色即成品配色。
+- **fallback 链耗尽的 fit 报错点名请求版式与整条链**：`pptx-layouts.js` 的
+  `renderArchetype` 此前直接重抛链尾 archetype 的错误（如 `cover-minimal`），把
+  "整条链都装不下"误报成"请求的版式没生效"——实测让一轮 builder 白跑去修不存在的
+  落版问题。现在报错写明 `pinned/selected layout "<id>" and its fallback chain
+  [a -> b -> ...] all failed —` 并**逐条**列出每个候选版式各自的失败原因，一轮交底
+  一轮修完，不再一次只露一条规则。
+- **`visual.purpose` 回归"设计意图"语义，绝不上屏**：spec 契约
+  （`slide-spec.md` handoff rules）规定 `visual.purpose` 是给实现者的设计意图，
+  但 `visual-dominant` 组件把它（`title || purpose || 首条 items`）当焦点标签渲染
+  上屏——实测 44 字的规划长句被投进封面视觉区直接触顶，builder 被迫逐轮删根本
+  不该上屏的文本。现组件不再渲染 `purpose`（`slide-spec.md` 同步写明该规则）；
+  装不下的装饰性焦点标签改为静默跳过，不再沿 fallback 链炸整页。
+- **fit 报错携带现场证据**：`pptx-helpers.addFittedText` 的失败信息此前只有
+  `"<标签> cannot fit at 16pt"`，不带文本/字数/盒子尺寸，同类错误连烧三轮都无法
+  判断是文案超长还是盒子太小（实为后者：小视觉区在 16pt 下限装不下任何文字）。
+  现报错内联文本预览、字数与盒子宽高。
+- **builder packet 绑定投影来源哈希，陈旧 packet 就地重建**：冻结 spec 被编辑后，
+  `next` 仍复用旧 packet（claim 还是旧文案），builder 按旧文案实现页面，管线里
+  没有任何东西说出这件事——静默的 spec/packet 分裂。现 packet 记录
+  `inputs`（slide spec / art direction / research pack / QA 报告的 sha256），
+  `active_packet_descriptors` 检测到来源变化即按原分片/任务就地重建再投递。
+
 ## 0.19.1 — 2026-09-28 · Hook scope-isolation fixes and source-repo maintenance pass-through
 
 Hook 作用域隔离补漏（2026-09-28 常规任务影响排查：功能层已隔离，本次修掉残余误伤面）：

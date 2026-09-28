@@ -351,6 +351,48 @@ def report_slide_blockers(report: dict[str, Any], slide: int) -> list[dict[str, 
     return out
 
 
+def packet_inputs(
+    work_dir: Path, qa_reports: list[Path] | None = None
+) -> dict[str, dict[str, str]]:
+    """Source bindings this packet projects, for staleness detection.
+
+    A packet is a byte-level projection of these files, so it is stale the moment
+    any of them changes. 2026-09-28 live: after a frozen spec edit, `next`
+    dispatched a packet still carrying the OLD claims — the builder implemented
+    copy the spec no longer had, and nothing in the pipeline said so.
+    """
+    candidates: list[tuple[str, Path]] = []
+    spec_path = find_spec(work_dir)
+    if spec_path is not None:
+        candidates.append((spec_path.name, spec_path))
+    for name in ("art-direction.yaml", "research-pack.json"):
+        path = work_dir / name
+        if path.is_file():
+            candidates.append((name, path))
+    for report in qa_reports or []:
+        path = Path(report) if Path(report).is_absolute() else work_dir / str(report)
+        if path.is_file():
+            candidates.append((path.name, path))
+    return {
+        name: {"path": str(path.resolve()), "sha256": actual_check.sha256_file(path)}
+        for name, path in candidates
+    }
+
+
+def _inputs_match(packet: dict[str, Any]) -> bool:
+    inputs = packet.get("inputs")
+    if not isinstance(inputs, dict) or not inputs:
+        return False
+    for binding in inputs.values():
+        if not isinstance(binding, dict):
+            return False
+        path = Path(str(binding.get("path") or ""))
+        expected = str(binding.get("sha256") or "")
+        if not expected or not path.is_file() or actual_check.sha256_file(path) != expected:
+            return False
+    return True
+
+
 def build_packet(
     work_dir: Path,
     mode: str,
@@ -452,6 +494,9 @@ def build_packet(
     packet: dict[str, Any] = {
         "schema_version": "1.0",
         "mode": mode,
+        # 投影来源的绑定：任一来源变化即 packet 过期，active_packet_descriptors
+        # 据此就地重建而不是复用旧文案。
+        "inputs": packet_inputs(work_dir, qa_reports),
         # Deck-level constraints the gates read from meta: projected so a
         # packet round never needs to open the spec for them.
         "meta": {
@@ -652,11 +697,16 @@ def active_packet_descriptors(work_dir: Path, mode: str) -> list[dict[str, Any]]
     Dispatch uses this before generating a default calibration packet. Without
     this read-back, a valid CLI override is immediately overwritten by the next
     `next`/`advance` call and builder_guard keeps the old assignment.
+
+    A structurally valid round whose projection inputs have drifted is rebuilt
+    in place (same mode/shard/assignment): the override survives the rebuild,
+    only the stale copy does not (2026-09-28 live: an edited frozen spec left
+    `next` dispatching a packet with the OLD claims — a silent spec/packet split).
     """
     active = active_round(work_dir)
     if not active or active.get("mode") != mode:
         return []
-    descriptors: list[dict[str, Any]] = []
+    loaded: list[tuple[dict[str, Any], Path, dict[str, Any], list[int]]] = []
     for item in active.get("packets") or []:
         if not isinstance(item, dict):
             return []
@@ -675,16 +725,42 @@ def active_packet_descriptors(work_dir: Path, mode: str) -> list[dict[str, Any]]
             )
         ):
             return []
-        descriptors.append(
-            {
-                "shard": packet.get("shard"),
-                "slides": slides,
-                "speaker_notes_target": packet.get("speaker_notes_target"),
-                "packet": str(path.resolve()),
-                "packet_sha256": item.get("packet_sha256"),
-            }
-        )
-    return descriptors
+        loaded.append((item, path, packet, slides))
+    if not all(_inputs_match(packet) for _, _, packet, _ in loaded):
+        rebuilt: list[dict[str, Any]] = []
+        try:
+            for _, _, packet, slides in loaded:
+                path, fresh = write_packet(
+                    work_dir,
+                    mode,
+                    slides,
+                    packet.get("shard"),
+                    [Path(str(report)) for report in packet.get("reports") or []] or None,
+                    convergence=packet.get("repair_convergence"),
+                )
+                rebuilt.append(
+                    {
+                        "shard": fresh.get("shard"),
+                        "slides": list(fresh.get("assigned_slides") or slides),
+                        "speaker_notes_target": fresh.get("speaker_notes_target"),
+                        "packet": str(path.resolve()),
+                        "packet_sha256": actual_check.sha256_file(path),
+                    }
+                )
+        except (OSError, ValueError, RuntimeError, SystemExit):
+            return []
+        record_active_round(work_dir, mode, rebuilt)
+        return rebuilt
+    return [
+        {
+            "shard": packet.get("shard"),
+            "slides": slides,
+            "speaker_notes_target": packet.get("speaker_notes_target"),
+            "packet": str(path.resolve()),
+            "packet_sha256": item.get("packet_sha256"),
+        }
+        for item, path, packet, slides in loaded
+    ]
 
 
 def packet_name(mode: str, shard: int | None) -> str:

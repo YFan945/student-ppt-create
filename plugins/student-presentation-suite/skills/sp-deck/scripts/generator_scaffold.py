@@ -368,11 +368,13 @@ def write_if_scaffoldable(path: Path, contents: str) -> bool:
     return True
 
 
-def _inline_tokens_json(spec: dict[str, Any], art_direction: Path | None) -> str:
+def inline_tokens_json(spec: dict[str, Any], art_direction: Path | None) -> str:
     """Resolved design tokens inlined into deck.js — pages never hand-type colors.
 
     Same source the palette gate judges against (shared/design_tokens), so the
     scaffolded deck cannot disagree with the gate about what a legal color is.
+    calibration_preview.py inlines the same JSON into its harness: the two
+    harnesses must never resolve tokens differently (2026-09-28 live).
     """
     root = Path(
         os.environ.get("CLAUDE_PLUGIN_ROOT") or Path(__file__).resolve().parent.parents[2]
@@ -475,7 +477,7 @@ def scaffold_generator(
     deck = DECK_TEMPLATE.format(
         marker=SCAFFOLD_MARKER,
         requires=requires or "  // no slides",
-        tokens_json=_inline_tokens_json(spec, art_direction),
+        tokens_json=inline_tokens_json(spec, art_direction),
     )
     deck_path = work_dir / "deck.js"
     wrote_deck = write_if_scaffoldable(deck_path, deck)

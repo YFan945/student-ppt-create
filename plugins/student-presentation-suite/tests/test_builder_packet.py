@@ -128,6 +128,43 @@ class BuilderPacketTests(unittest.TestCase):
         self.assertIn("build", packet["forbidden_actions"])
         self.assertIn("render", packet["forbidden_actions"])
 
+    def test_packet_records_projection_input_bindings(self) -> None:
+        _, packet = self.packet.write_packet(self.work, "calibration", [1, 4])
+        inputs = packet["inputs"]
+        for name in ("slide-spec-compiled.yaml", "art-direction.yaml", "research-pack.json"):
+            self.assertIn(name, inputs)
+            self.assertEqual(
+                self.actual.sha256_file(self.work / name), inputs[name]["sha256"]
+            )
+
+    def test_stale_projection_is_rebuilt_in_place_after_a_spec_edit(self) -> None:
+        """改了冻结 spec 却复用旧 packet 是静默失败——绑定哈希必须触发就地重建。
+
+        2026-09-28 live：plan --force 改 spec 后 `next` 仍投递旧 claim 的 packet，
+        builder 按旧文案实现页面，管线里没有任何东西说出这件事。
+        """
+        path, _ = self.packet.write_packet(self.work, "calibration", [1, 2])
+        self.packet.record_active_round(
+            self.work, "calibration", [{"packet": str(path), "slides": [1, 2]}]
+        )
+        first = self.packet.active_packet_descriptors(self.work, "calibration")
+        self.assertEqual([1, 2], first[0]["slides"])
+
+        spec_path = self.work / "slide-spec-compiled.yaml"
+        spec_path.write_text(
+            SPEC.replace("交叉点不等于替代时点", "改过的封面主张"), encoding="utf-8"
+        )
+        refreshed = self.packet.active_packet_descriptors(self.work, "calibration")
+        self.assertEqual(1, len(refreshed), "assignment survives the rebuild")
+        self.assertEqual([1, 2], refreshed[0]["slides"])
+        self.assertNotEqual(first[0]["packet_sha256"], refreshed[0]["packet_sha256"])
+        data = json.loads(Path(refreshed[0]["packet"]).read_text(encoding="utf-8"))
+        claims = {slide["id"]: slide.get("claim") for slide in data["slides"]}
+        self.assertEqual("改过的封面主张", claims[1])
+        # 重建后的绑定指向新内容：再次读取不应再重建。
+        again = self.packet.active_packet_descriptors(self.work, "calibration")
+        self.assertEqual(refreshed[0]["packet_sha256"], again[0]["packet_sha256"])
+
     # --- initial -------------------------------------------------------------
 
     def test_initial_single_packet_covers_remaining_scaffold_slides(self) -> None:

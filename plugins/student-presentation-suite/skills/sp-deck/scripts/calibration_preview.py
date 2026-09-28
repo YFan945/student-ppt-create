@@ -89,7 +89,30 @@ def require_implemented_pages(work_dir: Path, slides: list[int]) -> list[Path]:
     return paths
 
 
-def write_calibration_deck(target: Path, pages: list[tuple[int, Path]]) -> None:
+def calibration_tokens_json(work_dir: Path) -> str:
+    """Design tokens for the preview harness — the production resolver, not a copy.
+
+    2026-09-28 live: the harness used to call applyTokens(pptx, {}) and pass no
+    ctx.tokens, while every scaffold page reads ctx.tokens — all pages crashed in
+    paletteMode and calibration could never render. Same-source with deck.js via
+    generator_scaffold.inline_tokens_json so preview colors are production colors.
+    """
+    import generator_scaffold  # noqa: PLC0415  (same scripts dir on sys.path)
+
+    spec: dict[str, Any] = {}
+    spec_path = work_dir / "slide-spec.json"
+    if spec_path.is_file():
+        try:
+            spec = generator_scaffold.load_spec(spec_path)
+        except ValueError:
+            spec = {}
+    art = work_dir / "art-direction.yaml"
+    return generator_scaffold.inline_tokens_json(spec, art if art.is_file() else None)
+
+
+def write_calibration_deck(
+    target: Path, pages: list[tuple[int, Path]], tokens_json: str
+) -> None:
     rows = ",\n".join(
         f"  {{ n: {number}, mod: require({json.dumps(str(path))}) }}" for number, path in pages
     )
@@ -99,6 +122,9 @@ const HELPERS_DIR = process.env.PPTX_HELPERS_DIR || path.join(process.env.CLAUDE
 const H = require(path.join(HELPERS_DIR, 'pptx-helpers.js'));
 const {{ SlideElementRegistry }} = require(path.join(HELPERS_DIR, 'pptx-element-registry.js'));
 const pptxgen = require('pptxgenjs');
+// 与生产 deck.js 同一 ctx 契约（generator_scaffold.DECK_TEMPLATE）：页面从
+// ctx.tokens 取调色板，缺了会在 paletteMode 崩。
+const TOKENS = {tokens_json};
 const PAGES = [
 {rows}
 ];
@@ -106,12 +132,13 @@ async function main() {{
   const out = process.argv[2];
   if (!out) throw new Error('usage: calibration-deck.js <output.pptx>');
   const pptx = new pptxgen();
-  H.applyTokens(pptx, {{}}, 'chinese');
+  H.applyTokens(pptx, TOKENS, 'chinese');
   const registry = new SlideElementRegistry({{ slideW: H.SLIDE_W_IN, slideH: H.SLIDE_H_IN }});
+  const layoutReport = [];
   for (const item of PAGES) {{
     const slide = pptx.addSlide();
     slide.background = {{ color: H.color({{ palette: {{ canvas: 'FFFFFF' }} }}, 'canvas') }};
-    item.mod({{ pptx, slide, n: item.n, H, registry }});
+    item.mod({{ pptx, slide, n: item.n, H, registry, tokens: TOKENS, slideNumber: item.n, layoutReport }});
   }}
   registry.assertSafe();
   await pptx.writeFile({{ fileName: out }});
@@ -151,7 +178,11 @@ def build_preview(work_dir: Path, slides: list[int]) -> dict[str, Any]:
     # by hand.
     if pptx.exists():
         pptx.unlink()
-    write_calibration_deck(deck_js, list(zip(slides, pages, strict=True)))
+    write_calibration_deck(
+        deck_js,
+        list(zip(slides, pages, strict=True)),
+        calibration_tokens_json(work_dir),
+    )
     run_checked(
         ["node", str(BUILDER), "--output", str(pptx), str(deck_js)],
         "calibration build",

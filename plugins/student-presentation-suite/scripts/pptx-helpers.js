@@ -707,8 +707,16 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
   const fit = placement.fit;
   const textBox = placement.box;
   if (!fit.fits) {
+    // 报错必须带证据（文本预览/字数/盒子尺寸）：2026-09-28 live 的
+    // "解释焦点 cannot fit at 16pt" 不含任何现场信息，三轮都无法判断是文案超长
+    // 还是盒子太小（实为后者：小视觉区在 16pt 下限装不下任何文字）。
+    const plain = plainText(text) || String(text ?? '');
+    const preview = plain.length > 12 ? `${plain.slice(0, 12)}…` : plain;
     throw new RangeError(
-      `${options.label || policy.role} cannot fit at ${fit.fontSize}pt; expand the region, change the layout, compress the copy, or split the slide.`,
+      `${options.label || policy.role} cannot fit at ${fit.fontSize}pt — ` +
+        `text "${preview}" (${plain.length} chars) vs box ` +
+        `${textBox.w.toFixed(2)}x${textBox.h.toFixed(2)}in; ` +
+        `expand the region, change the layout, compress the copy, or split the slide.`,
     );
   }
   const shortReadingText = ['body', 'list'].includes(policy.role) && fit.fillRatio <= 0.45;

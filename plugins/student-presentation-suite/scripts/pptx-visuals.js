@@ -784,14 +784,17 @@ function addAnnotatedVisual(slide, data, area, tokens, lang) {
     );
   } else {
     addPanel(slide, imageBox, tokens, { shape: 'ellipse', fill: p.surface, line: p.accent });
-    addLabel(
-      slide,
-      data.title || data.purpose || textOf(items(data.annotations || data.items)[0], 'Overview'),
-      imageBox,
-      tokens,
-      lang,
-      { bold: true, label: '解释焦点' },
-    );
+    // spec 的 visual.purpose 是设计意图（slide-spec.md handoff rules），绝不上屏；
+    // 这里只落装饰性的焦点短标签。小视觉区放不下就跳过标签而不是抛错——2026-09-28
+    // live：焦点标签在窄视觉区连 16pt 下限都装不下（与字数无关），沿 fallback 链
+    // 把整页炸掉，逼 builder 逐轮删根本不存在的"长文本"。
+    const focus =
+      data.title || data.focus || textOf(items(data.annotations || data.items)[0], 'Overview');
+    try {
+      addLabel(slide, focus, imageBox, tokens, lang, { bold: true, label: '解释焦点' });
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+    }
   }
   const annotations = items(data.annotations || data.items).slice(0, 3);
   const annotationArea = {
