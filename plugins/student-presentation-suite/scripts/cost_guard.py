@@ -38,6 +38,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -216,6 +217,50 @@ REPEAT_INSPECT_LIMIT = 3
 BIG_IMAGE_BYTES = 150 * 1024
 MAIN_SESSION_BIG_IMAGE_BUDGET = 6
 
+# spawn 模板是逐字实例化源（管线契约：固定段逐字复制、只填数据槽），每次 spawn
+# 都要重读对应段落——不是"读一次提炼清单"的政策文档，CD-3 对它们不适用。
+VERBATIM_TEMPLATE_FILES = frozenset({"spawn-templates.md"})
+READ_SPAN_INF = 10**9
+
+
+def _read_span(tool_input: dict) -> tuple[int, int]:
+    """Requested line span of a Read call; (1, INF) when unbounded."""
+    try:
+        start = max(1, int(tool_input.get("offset") or 1))
+    except (TypeError, ValueError):
+        start = 1
+    try:
+        raw_limit = tool_input.get("limit")
+        limit = int(raw_limit) if raw_limit is not None else None
+    except (TypeError, ValueError):
+        limit = None
+    end = start + limit - 1 if limit and limit > 0 else READ_SPAN_INF
+    return (start, max(start, end))
+
+
+def _merge_spans(spans: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    out: list[list[int]] = []
+    for start, end in sorted(spans):
+        if out and start <= out[-1][1] + 1:
+            out[-1][1] = max(out[-1][1], end)
+        else:
+            out.append([start, end])
+    return [(s, e) for s, e in out]
+
+
+def _normalize_spans(raw: Any) -> list[tuple[int, int]]:
+    if not isinstance(raw, list):
+        return []
+    out: list[tuple[int, int]] = []
+    for item in raw:
+        if isinstance(item, list) and len(item) == 2:
+            try:
+                s, e = int(item[0]), int(item[1])
+            except (TypeError, ValueError):
+                continue
+            out.append((max(1, s), max(1, e)))
+    return out
+
 
 def check_inspection_repeat(command: str, cwd: str, session: str, builder: bool = False) -> str | None:
     if not INSPECT_RE.match(command):
@@ -307,10 +352,12 @@ def check_read(
     role: str = "main",
     managed: bool = False,
     is_main: bool = False,
+    span: tuple[int, int] | None = None,
 ) -> str | None:
     raw = Path(path_str)
     path = raw if raw.is_absolute() else Path(cwd) / raw
     suffix = path.suffix.lower()
+    span = span or _read_span({})
     # Render-image discipline (CD-9 dedup, big-image budget) is about render
     # evidence; it applies to images inside the pipeline's work areas only.
     if suffix in IMAGE_EXT and pipeline_context.is_ppt_resource_path(path):
@@ -353,17 +400,42 @@ def check_read(
     # Reference re-read discipline (CD-3) exists so a production session does not
     # reload a policy document it already distilled; only a managed PPT session
     # carries that state, and maintenance sessions re-read freely.
+    # Scope: the requested LINE RANGE must already have been read — a partial
+    # read never blocks a different range. 2026-09-28 live: spawn-templates.md
+    # lines 14-55 (researcher template) had been read; the builder spawn's Read
+    # of lines 42-89 was refused, and the session burned a reasoning loop (or
+    # risks byte-drifting the contract-mandated verbatim fixed segments) instead
+    # of re-reading ~40 lines — the block cost more than the read it prevented.
     if managed and "/references/" in text and text.endswith(".md"):
+        if path.name in VERBATIM_TEMPLATE_FILES:
+            return None  # instantiated per spawn from the pipeline contract, not distilled
         seen = load_seen(cwd, session)
+        refs = seen.setdefault("refs", {})
         key = str(path.resolve())
         digest = sha256_file(path)
-        previous = (seen.get("refs") or {}).get(key)
-        if previous is not None and (digest is None or previous == digest):
+        record = refs.get(key)
+        if isinstance(record, dict):
+            spans = _normalize_spans(record.get("spans"))
+            stale = digest is not None and record.get("digest") != digest
+        else:
+            # Legacy record (bare digest / True): coverage unknown — treat as
+            # "no range provably read" so a range read is allowed and recorded;
+            # a full re-read registers [1, INF] and is blocked from then on.
+            spans, stale = [], False
+        if stale:
+            spans = []
+        covered = record is not None and (
+            digest is None or any(s <= span[0] and span[1] <= e for s, e in spans)
+        )
+        if covered:
             return (
                 f"cost_guard: {path.name} was already read this session (CD-3). "
-                "Use the checklist you extracted; do not reload the full reference."
+                "Use the checklist you extracted; do not reload the same reference range."
             )
-        seen.setdefault("refs", {})[key] = digest or True
+        refs[key] = {
+            "digest": digest or "unknown",
+            "spans": [[s, e] for s, e in _merge_spans(spans + [span])],
+        }
         save_seen(cwd, session, seen)
     return None
 
@@ -407,6 +479,7 @@ def handle(event: dict) -> int:
                 role=context.role,
                 managed=context.managed,
                 is_main=not context.child,
+                span=_read_span(tool_input),
             )
             if path
             else None

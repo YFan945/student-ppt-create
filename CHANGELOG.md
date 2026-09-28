@@ -2,6 +2,21 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.4 — 2026-09-28 · CD-3 re-read guard is range-aware
+
+2026-09-28 live：主会话为 researcher spawn 读过 `spawn-templates.md` 14–55 行，随后
+builder spawn 要读 42–89 行被 CD-3 以"已读过本会话"拒绝——模板是逐字实例化源，会话
+只能空转推理绕路（甚至考虑 byte 级漂移固定段），代价远高于被拦下的那次重读。
+
+- **CD-3 按"已读行范围"判定，不再按"文件是否读过"**：Read 的 offset/limit 折算为行区间
+  存入 seen 账本；只有请求范围被已读区间完全覆盖才拒绝，新范围放行并合并区间。整文件读
+  仍等价旧行为（读后任何范围都算已读）；文件变更（digest 变化）重置记录；旧账本里的
+  裸 digest 记录按"覆盖未知"迁移（放行一次并记录新范围），不会把升级后的会话 newly 卡死。
+- **spawn 模板豁免**：`spawn-templates.md` 是管线契约要求的逐字实例化源，每次 spawn 都要
+  重读对应段落——加入 `VERBATIM_TEMPLATE_FILES` 豁免集，CD-3 永不适用。
+- 语义校验不变：CD-3 仍只在 managed 会话的 `/references/*.md` 上生效，整文件重复读依旧
+  被拒；拒绝文案仅尾句微调（"do not reload the same reference range"）。
+
 ## 0.21.3 — 2026-09-28 · Research depth bands without count quotas
 
 **owner 指令**：网络搜索不设次数限制，移除全部检索/抓取计数配额机制。深度档位

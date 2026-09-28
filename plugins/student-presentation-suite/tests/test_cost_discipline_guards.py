@@ -272,6 +272,47 @@ class CostGuardTests(unittest.TestCase):
         ref.write_text("# CD v2\n", encoding="utf-8")
         self.assertEqual(0, self.run_guard(self.event("Read", file_path=str(ref))))
 
+    def test_partial_reference_read_does_not_block_a_different_range(self) -> None:
+        """2026-09-28 live：spawn-templates 读过 14-55 行（researcher 模板），builder
+        spawn 要读 42-89 行被 CD-3 拒绝——会话只能空转绕路，代价反而高于那次重读。
+        CD-3 必须只覆盖已读过的行范围。"""
+        ref = Path(self.cwd) / "references" / "policy.md"
+        ref.parent.mkdir(parents=True, exist_ok=True)
+        ref.write_text("\n".join(f"line {i}" for i in range(1, 101)), encoding="utf-8")
+        pipeline_context.mark_research_active(Path(self.cwd), {"session_id": "s"})
+        first = {"session_id": "s"}
+
+        self.assertEqual(
+            0,
+            self.run_guard({**self.event("Read", file_path=str(ref), offset=14, limit=42), **first}),
+        )
+        # 已读范围重复读：拒绝
+        self.assertEqual(
+            2,
+            self.run_guard({**self.event("Read", file_path=str(ref), offset=20, limit=10), **first}),
+        )
+        # 未读过的新范围：放行
+        self.assertEqual(
+            0,
+            self.run_guard({**self.event("Read", file_path=str(ref), offset=42, limit=48), **first}),
+        )
+        # 整文件读带来未读内容：放行，并标记全文件已读
+        self.assertEqual(0, self.run_guard({**self.event("Read", file_path=str(ref)), **first}))
+        self.assertEqual(
+            2,
+            self.run_guard({**self.event("Read", file_path=str(ref), offset=90, limit=5), **first}),
+        )
+
+    def test_spawn_template_is_exempt_from_cd3(self) -> None:
+        """spawn 模板是逐字实例化源，每次 spawn 都要重读——不是提炼型政策文档。"""
+        ref = Path(self.cwd) / "references" / "spawn-templates.md"
+        ref.parent.mkdir(parents=True, exist_ok=True)
+        ref.write_text("# templates\n", encoding="utf-8")
+        pipeline_context.mark_research_active(Path(self.cwd), {"session_id": "s"})
+        payload = {**self.event("Read", file_path=str(ref)), "session_id": "s"}
+        self.assertEqual(0, self.run_guard(payload))
+        self.assertEqual(0, self.run_guard(payload))
+
     def test_seen_store_lives_under_the_work_root_guard_dir(self) -> None:
         ref = Path(self.cwd) / "references" / "cost-discipline.md"
         ref.parent.mkdir(parents=True, exist_ok=True)
