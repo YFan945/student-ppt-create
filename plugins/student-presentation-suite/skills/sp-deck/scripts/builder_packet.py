@@ -81,6 +81,16 @@ VISUAL_RULES = [
     "D9 整页几何由 pptx-layouts renderArchetype 执行：改 slots/params/layout.id；"
     "自由坐标先在页内注释声明 custom 理由，几何门照常全检。",
     "D10 每页只一个 primary focal point，次要元素降级（色/号/位），禁止等权重并列。",
+    "D11 meta.include_key_lines 时每页以统一收尾带结尾：细规线（hairline ≤1pt）+ "
+    "COPY.keyLine 结论句（bold primary_text 20-24pt），来源行（11pt secondary_text）在其下；"
+    "statement 页与内容页同一收尾语言——缺失或不一致 critic 记 major"
+    "（2026-09-28 live：页 3 缺收尾带）。",
+    "D12 时间轴/年份序列的节点间距必须与真实时间间隔成比例（引擎 addTimeline 对带年份的 "
+    "stages 自动按比例；自绘时间轴同规），否则不画连续连接轴——等距渲染 2021→2060 把 "
+    "30 年画成 4 年，critic 记 major。",
+    "D13 图表与形状颜色一律走 tokens 角色色（pptx-visuals 的图表 options 已绑定调色板）；"
+    "手写默认黑 000000 / 默认 chrome 会被调色板门记 major（2026-09-28 live：图表框线与"
+    "数据标签 3 处 000000，预览后才被确定性门拦下，多烧一整轮）。",
 ]
 NO_REREAD = (
     "this packet is the complete task input for its assigned slides: do not re-read "
@@ -373,10 +383,19 @@ def packet_inputs(
         path = Path(report) if Path(report).is_absolute() else work_dir / str(report)
         if path.is_file():
             candidates.append((path.name, path))
-    return {
+    out = {
         name: {"path": str(path.resolve()), "sha256": actual_check.sha256_file(path)}
         for name, path in candidates
     }
+    # 校准评审是投影来源：它在 packet 生成**之后**落地（critic 写出）是常态。
+    # 绑定用 "absent" 哨兵记录"当时不存在"——评审一出现即判定 packet 过期，
+    # active_packet_descriptors 就地重建并把 findings 投影进 blockers。
+    review = work_dir / "calibration" / "calibration-visual-review.json"
+    out[review.name] = {
+        "path": str(review.resolve()),
+        "sha256": actual_check.sha256_file(review) if review.is_file() else "absent",
+    }
+    return out
 
 
 def _inputs_match(packet: dict[str, Any]) -> bool:
@@ -388,6 +407,11 @@ def _inputs_match(packet: dict[str, Any]) -> bool:
             return False
         path = Path(str(binding.get("path") or ""))
         expected = str(binding.get("sha256") or "")
+        if expected == "absent":
+            # 记录"当时不存在"的投影源（校准评审）：文件一出现即过期。
+            if path.is_file():
+                return False
+            continue
         if not expected or not path.is_file() or actual_check.sha256_file(path) != expected:
             return False
     return True
@@ -437,7 +461,15 @@ def build_packet(
 
     reports: list[dict[str, Any]] = []
     loaded_reports: list[dict[str, Any]] = []
-    for path in qa_reports or []:
+    report_paths: list[Path] = list(qa_reports or [])
+    if not report_paths and mode == "calibration":
+        # 校准修复轮的 findings 来自校准评审；packet 未显式收到报告时自动投影
+        # 当前评审（若在），使"报告已投影进 packet"的 no_reread 契约始终成立——
+        # 2026-09-28 live：blockers 空 + hook 禁读报告，修复 builder 两头堵死。
+        review = work_dir / "calibration" / "calibration-visual-review.json"
+        if review.is_file():
+            report_paths = [review]
+    for path in report_paths:
         report = load_optional(work_dir / str(path)) if not Path(path).is_absolute() else load_optional(Path(path))
         if isinstance(report, dict):
             loaded_reports.append(report)

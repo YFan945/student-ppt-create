@@ -165,6 +165,71 @@ class BuilderPacketTests(unittest.TestCase):
         again = self.packet.active_packet_descriptors(self.work, "calibration")
         self.assertEqual(refreshed[0]["packet_sha256"], again[0]["packet_sha256"])
 
+    def test_calibration_packet_projects_review_findings_automatically(self) -> None:
+        """校准评审 findings 必须投影进 packet 的 blockers——否则 builder_guard 禁读
+        报告（"已投影进 packet"）而 packet 里 blockers 为空，修复 builder 两头堵死
+        （2026-09-28 live：builder 空转推理多轮后只能靠 PNG 盲修）。"""
+        review = self.work / "calibration" / "calibration-visual-review.json"
+        review.parent.mkdir(parents=True, exist_ok=True)
+        review.write_text(
+            json.dumps(
+                {
+                    "pptx_sha256": "x",
+                    "slides": [
+                        {
+                            "slide": 1,
+                            "issues": [
+                                {
+                                    "code": "closing_band_missing",
+                                    "severity": "major",
+                                    "message": "页尾收束带缺失，key_line 未渲染",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        _, packet = self.packet.write_packet(self.work, "calibration", [1])
+        blockers = packet["slides"][0]["blockers"]
+        self.assertEqual("closing_band_missing", blockers[0]["code"])
+        self.assertEqual("major", blockers[0]["severity"])
+
+    def test_review_appearance_invalidates_the_active_packet(self) -> None:
+        """评审在 packet 之后落地（critic 写出）是常态：absent 绑定必须触发就地重建，
+        否则主会话复用旧 packet 时 blockers 永远为空。"""
+        path, _ = self.packet.write_packet(self.work, "calibration", [1, 2])
+        self.packet.record_active_round(
+            self.work, "calibration", [{"packet": str(path), "slides": [1, 2]}]
+        )
+        first = self.packet.active_packet_descriptors(self.work, "calibration")
+        self.assertEqual(1, len(first))
+
+        review = self.work / "calibration" / "calibration-visual-review.json"
+        review.parent.mkdir(parents=True, exist_ok=True)
+        review.write_text(
+            json.dumps(
+                {
+                    "pptx_sha256": "x",
+                    "slides": [
+                        {
+                            "slide": 2,
+                            "issues": [
+                                {"code": "timeline_encoding", "severity": "major", "message": "等距"}
+                            ],
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        refreshed = self.packet.active_packet_descriptors(self.work, "calibration")
+        self.assertEqual(1, len(refreshed))
+        data = json.loads(Path(refreshed[0]["packet"]).read_text(encoding="utf-8"))
+        blockers = next(s for s in data["slides"] if s["id"] == 2)["blockers"]
+        self.assertEqual("timeline_encoding", blockers[0]["code"])
+
     # --- initial -------------------------------------------------------------
 
     def test_initial_single_packet_covers_remaining_scaffold_slides(self) -> None:

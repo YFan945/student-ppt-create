@@ -9,7 +9,10 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 1. 固定约束段不得增删改，措辞与 agent 定义保持一致。
 2. 数据槽（尖括号 `<...>`）只填路径、页码、数量与**报告路径**。字节级内容（claim /
    来源标题 / 数字）一律传文件路径让子代理自己读原文——门做逐字节判定，模型转抄即失真源。
-3. blocker 列表传 QA/校准报告路径 + 一句话摘要，不转抄报告全文。
+3. blocker 一律由 packet 的 `slides[].blockers` / `deck_blockers` 投影（校准评审 findings
+   同样在内）；prompt 只给 packet 路径 + 一句话摘要。报告原文 hook 禁止 builder 重读——
+   投影就是唯一来源；packet 里 blocker 为空而评审明明有 finding 时，是 packet 过期，
+   让管线重建 packet（或跑 `builder_packet.py` 显式重建），不要把报告内容转抄进 prompt。
 
 ## researcher（presentation-researcher）
 

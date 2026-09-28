@@ -237,6 +237,32 @@ class RenderArchetypeTests(unittest.TestCase):
         if out["threw"] is not None:
             self.assertIn("all failed", out["threw"], out)
 
+    def test_timeline_nodes_follow_real_time_intervals(self) -> None:
+        """D12：带年份的时间轴按真实间隔比例布点——等距渲染 2021→2060 会把 30 年画成
+        4 年（critic 记 major）；序数阶段等距是诚实的，维持原布局。"""
+        out = self.run_node(
+            """
+            const V = require(path.join(SCRIPTS, 'pptx-visuals.js'));
+            function markers(stages) {
+              const shapes = [];
+              const slide = { addText: () => ({}), addShape: (kind, o) => { shapes.push(o); return {}; },
+                addImage: () => ({}), addChart: () => ({}), addTable: () => ({}), addNotes: () => ({}) };
+              V.addTimeline(slide, { stages }, { x: 0.6, y: 1.0, w: 8.8, h: 2.0 }, TOKENS, 'chinese');
+              return shapes.filter((s) => Math.abs(s.h - 0.4) < 0.001).map((s) => +(s.x + 0.2).toFixed(3));
+            }
+            console.log(JSON.stringify({
+              years: markers([{ label: '2021' }, { label: '2025' }, { label: '2030' }, { label: '2060' }]),
+              ordinal: markers([{ label: '阶段一' }, { label: '阶段二' }, { label: '阶段三' }, { label: '阶段四' }]),
+            }));
+            """
+        )
+        years = out["years"]
+        gaps = [round(b - a, 3) for a, b in zip(years, years[1:])]
+        self.assertGreater(gaps[2], gaps[0] * 3, gaps)
+        ordinal = out["ordinal"]
+        equal = [round(b - a, 3) for a, b in zip(ordinal, ordinal[1:])]
+        self.assertTrue(all(abs(g - equal[0]) < 0.01 for g in equal), equal)
+
     def test_visual_purpose_is_design_intent_and_never_on_screen(self) -> None:
         """visual.purpose 是设计意图（slide-spec.md handoff rules），绝不上屏。
 

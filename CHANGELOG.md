@@ -2,6 +2,28 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.7 — 2026-09-28 · Generation-time alignment: builder constraints == critic criteria
+
+owner 指出 builder→检查→修改→critic 反复循环。排查出三个结构性驱动因素，一并收口：
+
+- **校准修复 builder 的"两头堵死"**（本轮最贵的一处）：`builder_guard` 以"已投影进
+  packet"为由禁读 `calibration-visual-review.json`，而校准 packet **从未投影** findings
+  （`slides[].blockers` 为空）——修复 builder 只能靠主会话转抄 + PNG 盲修，空转多轮。
+  现 `build_packet` 对 calibration 模式自动投影当前校准评审 findings 进
+  `slides[].blockers` / `deck_blockers`（`report_items` 本就认识 visual-review 形状，
+  缺的只是喂入）；评审落地晚于 packet 是常态，packet `inputs` 现在以 `"absent"` 哨兵
+  绑定校准评审，评审一出现即判定 packet 过期 → `active_packet_descriptors` 就地重建
+  并投影。spawn-templates 的"blocker 列表传报告路径"改为"blockers 由 packet 投影；
+  报告原文禁读；packet blocker 为空而评审有 finding = packet 过期，重建而不是转抄"。
+- **时间轴诚实编码（引擎级，D12）**：`addTimeline` 对携带单调年份/数值的 stages 按
+  真实间隔比例布点（序数阶段维持等距）——"2021→2060 等距装饰条"在生成时就不会出现，
+  也不再逼 builder 自绘坐标（上一轮页 3 的 6 处 near_miss_alignment 正是自绘坐标引入）。
+- **生成时规则与评审标准对齐（D11/D13）**：key_line 现在随 scaffold 的 `COPY.keyLine`
+  到位（此前不在 stub 里，收尾带全靠 builder 自觉，页间不一致被 critic 记 major）；
+  `VISUAL_RULES` 新增 D11（收尾带一致性）、D13（图表/形状颜色一律角色色——
+  000000 默认黑会在预览的确定性 palette 门才被拦下，多烧一整轮）；critic 仲裁文档
+  同步 D11/D12 同款规则文本——两侧引用同一份标准。
+
 ## 0.21.6 — 2026-09-28 · The preview map carries every path the critic needs
 
 2026-09-28 live（carbon-pv-vs-wind 校准评审）：visual-critic 只有 Read/Write 两个工具、

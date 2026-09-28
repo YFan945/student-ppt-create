@@ -110,12 +110,15 @@ module.exports = function (ctx) {{
   const COPY = {{
     title: {title_js},
     claim: {claim_js},
+    keyLine: {key_line_js},
     slideCopy: {copy_js},{sources_line}
   }};
   /* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */
 
   /* 版式引擎负责整页几何（design grammar D5）：填 slots、调 params、必要时换
-     request.layout.id；自由坐标须先注释声明 custom 理由，几何门照常全检。 */
+     request.layout.id；自由坐标须先注释声明 custom 理由，几何门照常全检。
+     COPY.keyLine 非空时按 D11 收尾带规范渲染（细规线 + 结论句，来源行在其下，
+     全 deck 同一收尾语言——critic 按此判 major）。 */
   const dark = {dark_js};
   H.renderBackground(slide, tokens, {{ kind: {kind_js}, dark }});
   // 深浅三明治：本页文字/阴影也必须用同一盘（否则深底深字不可读）。
@@ -457,6 +460,7 @@ def scaffold_generator(
             title=_comment_safe(str(slide.get("title") or f"Slide {slide['id']}")),
             title_js=js_string(str(slide.get("title") or f"Slide {slide['id']}")),
             claim_js=js_string(str(slide.get("claim") or "")),
+            key_line_js=js_string(str(slide.get("key_line") or "")),
             # slide_copy 可能是列表：嵌成真 JS 数组字面量（str() 会把 Python repr
             # 带引号方括号印到页面上）。字符串走 js_string。
             copy_js=_copy_js(slide),

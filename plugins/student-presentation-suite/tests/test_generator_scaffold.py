@@ -95,6 +95,33 @@ class ScaffoldContractTests(unittest.TestCase):
             self.assertNotIn("slide.addText(COPY.title", stub)
             self.assertNotIn("H.addFittedText(slide, COPY.title", stub)
 
+    def test_page_stub_carries_key_line_for_the_closing_band(self) -> None:
+        """D11 收尾带的 key_line 必须随 stub 到位：此前它不在 COPY 里，收尾带全靠
+        各 builder 实例自觉，页与页不一致被 critic 记 major（2026-09-28 live）。"""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            spec = work / "spec.json"
+            spec.write_text(
+                json.dumps(
+                    {
+                        "slides": [
+                            {
+                                "id": 1,
+                                "title": "封面",
+                                "kind": "cover",
+                                "claim": "主张",
+                                "key_line": "风光不是二选一",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            self.scaffold.scaffold_generator(work, spec)
+            stub = next((work / "pages").glob("p*.js")).read_text(encoding="utf-8")
+            self.assertIn('keyLine: "风光不是二选一"', stub)
+            self.assertIn("D11", stub)
+
     def test_page_stub_carries_the_on_screen_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)

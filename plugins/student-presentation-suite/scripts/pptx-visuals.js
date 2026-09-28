@@ -265,6 +265,22 @@ function addProcessFlow(slide, data, area, tokens, lang) {
   });
 }
 
+/**
+ * 阶段时间值：显式 year/value/at/time 字段，或 label 里的 4 位年份；否则 null。
+ */
+function stageTimeValue(stage) {
+  const explicit = stage && (stage.year ?? stage.value ?? stage.at ?? stage.time);
+  const num = Number(explicit);
+  if (Number.isFinite(num)) return num;
+  const match = textOf(stage).match(/(19|20)\d{2}/);
+  return match ? Number(match[0]) : null;
+}
+
+/**
+ * 时间线：全部阶段携带单调递增的时间值时按**真实间隔比例**布点（等距渲染
+ * 2021→2060 会把 30 年画成 4 年，critic 判 major）；序数阶段（阶段一/二/三）
+ * 等距是诚实的，维持原布局。
+ */
 function addTimeline(slide, data, area, tokens, lang) {
   const stages = items(data.stages || data.items);
   if (stages.length < 3 || stages.length > 6) {
@@ -273,24 +289,43 @@ function addTimeline(slide, data, area, tokens, lang) {
   const p = palette(tokens);
   const axisY = area.y + area.h * 0.52;
   const stepW = area.w / stages.length;
+  const times = stages.map(stageTimeValue);
+  const proportional =
+    times.every((value) => value !== null) &&
+    times.every((value, index) => index === 0 || value > times[index - 1]);
+  const minTime = proportional ? times[0] : 0;
+  const maxTime = proportional ? times[times.length - 1] : stages.length - 1;
+  const inset = Math.min(stepW * 0.5, 0.9);
+  const centerXOf = (index) =>
+    proportional
+      ? area.x +
+        inset +
+        ((times[index] - minTime) / (maxTime - minTime)) * (area.w - inset * 2)
+      : area.x + stepW * (index + 0.5);
+  const firstCenter = centerXOf(0);
+  const lastCenter = centerXOf(stages.length - 1);
   slide.addShape(SHAPE.line, {
-    x: area.x + stepW * 0.5,
+    x: firstCenter,
     y: axisY,
-    w: area.w - stepW,
+    w: lastCenter - firstCenter,
     h: 0,
     line: { color: p.accent, width: 2.5 },
   });
   stages.forEach((stage, index) => {
-    const centerX = area.x + stepW * (index + 0.5);
+    const centerX = centerXOf(index);
     addNumberMarker(slide, { x: centerX - 0.2, y: axisY - 0.2, w: 0.4, h: 0.4 }, tokens);
     const above = index % 2 === 0;
+    // 标签盒宽按等距步长（避免相邻年份标签互相重叠），中心对齐到按比例的节点；
+    // 盒子贴边截断在 area 内。
+    const boxW = stepW;
+    const boxX = Math.max(area.x, Math.min(centerX - boxW / 2, area.x + area.w - boxW));
     addLabel(
       slide,
       textOf(stage),
       {
-        x: centerX - stepW * 0.5,
+        x: boxX,
         y: above ? area.y : axisY + 0.45,
-        w: stepW,
+        w: boxW,
         h: area.h * 0.36,
       },
       tokens,
