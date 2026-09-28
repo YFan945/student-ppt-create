@@ -75,11 +75,9 @@ PLUGIN_PATH = re.compile(
     re.I,
 )
 # The CLI path may be quoted (`python "…/ppt_pipeline.py" next`), which is how the skills
-# write it. A bare `.py\s+next` never matched that form, so the allow-list silently failed.
-PIPELINE_RUN = re.compile(
-    r"ppt_pipeline\.py['\"]?\s+(next|plan|build|render|qa|repair|complete|status|advance)\b",
-    re.I,
-)
+# write it — recognition of a real pipeline run lives in
+# pipeline_context.is_pipeline_invocation (single source; a local regex here
+# once drifted from the other guards' action lists).
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
@@ -260,7 +258,7 @@ def cheap_overview_hint(path: Path) -> str:
 
 
 def check_bash(command: str, builder: bool = False) -> str | None:
-    if PLUGIN_PATH.search(command) and PLUGIN_INSPECT.search(command) and not PIPELINE_RUN.search(command):
+    if PLUGIN_PATH.search(command) and PLUGIN_INSPECT.search(command) and not pipeline_context.is_pipeline_invocation(command):
         if builder:
             return (
                 "cost_guard: the isolated builder must not ls/grep/cat plugin source or the plugin cache. "

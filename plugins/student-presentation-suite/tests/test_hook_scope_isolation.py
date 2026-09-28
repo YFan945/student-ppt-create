@@ -207,8 +207,10 @@ class RuntimeEvidenceScopeTests(ScopeFixture):
 
 
 class ProductionEntryScopeTests(ScopeFixture):
-    # TEST 07 — bypassing the pipeline is refused regardless of session type;
-    # this protection is deliberately NOT scoped to managed PPT sessions.
+    # TEST 07 — bypassing the pipeline is refused in any user project, whatever
+    # the session type; this protection is deliberately NOT scoped to managed
+    # PPT sessions. The one exception is the plugin's own source tree: a
+    # maintenance session there may run internals directly (2026-09-28).
     def test_direct_production_entry_is_refused_outside_ppt_work(self) -> None:
         command = (
             "node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js "
@@ -220,6 +222,62 @@ class ProductionEntryScopeTests(ScopeFixture):
         for command in ("pytest -q", "git status", "python scripts/serve.py"):
             with self.subTest(command=command):
                 self.assertEqual(0, entry_guard.handle(self.event("Bash", command=command)))
+
+    def make_source_repository(self) -> None:
+        marker = (
+            self.project
+            / "plugins"
+            / "student-presentation-suite"
+            / ".claude-plugin"
+            / "plugin.json"
+        )
+        marker.parent.mkdir(parents=True)
+        marker.write_text("{}", encoding="utf-8")
+
+    def test_marketplace_checkout_maintenance_may_run_internals_directly(self) -> None:
+        self.make_source_repository()
+        for command in (
+            "python "
+            f'"{self.project.as_posix()}/plugins/student-presentation-suite/scripts/research_pack_to_evidence.py" '
+            "--work-dir demo",
+            "python "
+            f'"{self.project.as_posix()}/plugins/student-presentation-suite/skills/sp-deck/scripts/composer.py" '
+            "--check",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(0, entry_guard.handle(self.event("Bash", command=command)))
+
+    def test_session_inside_the_plugin_tree_is_maintenance_too(self) -> None:
+        # cwd inside the plugin checkout itself (no marketplace layout above):
+        # maintenance context as well — covers the name + manifest signal.
+        (self.project / "student-presentation-suite").mkdir()
+        (self.project / "student-presentation-suite" / ".claude-plugin").mkdir()
+        (self.project / "student-presentation-suite" / ".claude-plugin" / "plugin.json").write_text(
+            "{}", encoding="utf-8"
+        )
+        plugin_dir = self.project / "student-presentation-suite" / "skills" / "sp-deck" / "scripts"
+        plugin_dir.mkdir(parents=True)
+        env = patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(self.project / "elsewhere")})
+        env.start()
+        self.addCleanup(env.stop)
+        event = {
+            **self.event(
+                "Bash",
+                command=f'python "{(plugin_dir / "calibration_preview.py").as_posix()}" --check',
+            ),
+            "cwd": str(plugin_dir),
+        }
+        self.assertEqual(0, entry_guard.handle(event))
+
+    def test_user_project_without_the_layout_is_still_refused(self) -> None:
+        # A plugin path in the command is not enough: the project must carry
+        # the marketplace layout, otherwise this is plain production.
+        command = (
+            "python "
+            f'"{self.project.as_posix()}/plugins/student-presentation-suite/skills/sp-deck/scripts/composer.py" '
+            "--check"
+        )
+        self.assertEqual(2, entry_guard.handle(self.event("Bash", command=command)))
 
 
 class BuilderPacketScopeTests(ScopeFixture):

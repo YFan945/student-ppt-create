@@ -299,6 +299,23 @@ class RuntimeEvidenceTests(unittest.TestCase):
         data = json.loads(active.read_text(encoding="utf-8"))
         self.assertEqual(data.get("work_ids"), [self.work.name])
 
+    def test_pipeline_text_mention_does_not_arm_scope(self):
+        """2026-09-28: a maintenance command that merely mentions the pipeline
+        (grep / git diff over the plugin source) must not arm research scope —
+        it once blocked same-turn WebSearch in the plugin's own repository
+        because an unrelated stale work dir sat unfinished."""
+        self.event["agent_type"] = "main"
+        code = self.event_call(
+            "PostToolUse",
+            tool_name="Bash",
+            tool_input={
+                "command": 'grep -rn "ppt_pipeline.py plan --work-dir" references/ README.md'
+            },
+        )
+        self.assertEqual(0, code)
+        active = runtime.pipeline_context.research_active_path(self.project, "parent")
+        self.assertFalse(active.exists())
+
     def test_critic_spawn_without_absolute_work_dir_is_refused(self):
         self.prepare_render()
         self.assertEqual(self.critic_spawn(prompt="Review the current deck"), 2)

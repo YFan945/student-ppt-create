@@ -2,6 +2,29 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.19.1 — 2026-09-28 · Hook scope-isolation fixes and source-repo maintenance pass-through
+
+Hook 作用域隔离补漏（2026-09-28 常规任务影响排查：功能层已隔离，本次修掉残余误伤面）：
+
+- **管线文本提及不再误触发检索隔离**：`runtime_evidence` 的 PostToolUse Bash arming
+  从"命令文本含 `ppt_pipeline.py`"收紧为"真实调用（含公共 action）"
+  （`pipeline_context.is_pipeline_invocation`）。此前在插件维护会话里 grep/引用管线
+  命令会把会话标记为 managed，若存在未完成的历史 work dir（如遗留 `producing`
+  状态的目录），同一回合后续的 WebSearch/WebFetch 会被误拒到回合结束。
+- **teammate 命名拦截加作用域门**：`research|critic` 名字拦截（CD-5 fuzzy 拒绝）现在
+  只对已 armed 的管线会话生效，与 Batch 6.1 其余规则一致；普通会话给子代理起名
+  "research-assistant" 不再被拒。精确的插件 agent 类型检查（named/nested spawn 拒绝）
+  保持不分作用域——它们不可能误伤。
+- **管线 action 清单单一来源化**：`pipeline_context.PIPELINE_ACTIONS` +
+  `is_pipeline_invocation()` 成为唯一来源，`production_entry_guard`（放行白名单）、
+  `cost_guard`（真实调用识别）、`runtime_evidence`（arming）三处共用；顺带修复
+  cost_guard 本地正则缺 `doctor` 的既有漂移。
+- **源仓库维护放行（owner 决定，按 patch 发布）**：`production_entry_guard` 新增
+  确定性信号 `in_source_repository`——会话位于插件源码树（marketplace checkout 的
+  `plugins/student-presentation-suite/` 布局，或 cwd 在 `student-presentation-suite`
+  插件树/安装缓存内）时整体放行，维护调试可直接运行内部脚本；用户项目里的 PPT 生产
+  一律不满足这些信号，防护不变。"refused everywhere" 由用户项目语义取代。
+
 ## 0.19.0 — 2026-09-28 · P2 batch: browser-free layout solver, reference-deck ingestion, style previews at intake
 
 P2 三项（2026-09-28 视觉质量方案的"方向性大注"，owner 批准逐项落地；html2pptx 浏览器

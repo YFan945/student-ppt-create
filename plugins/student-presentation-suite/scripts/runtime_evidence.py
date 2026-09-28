@@ -254,7 +254,15 @@ def handle(event: dict) -> int:
         if tool in {"Agent", "SendMessage"}:
             name = str(inputs.get("name") or "").strip()
             dest = str(inputs.get("to") or inputs.get("recipient") or "").strip()
-            if EVIDENCE_NAME_RE.search(f"{name} {dest}"):
+            # CD-5 governs deck evidence work, so the fuzzy name refusal is
+            # scoped to a managed pipeline session like every other Batch 6.1
+            # rule. A plain session naming a teammate "research-assistant" is
+            # not this guard's business; the exact plugin-agent-type checks
+            # below stay unscoped (they cannot false-positive).
+            if (
+                pipeline_context.research_active(project, event)
+                and EVIDENCE_NAME_RE.search(f"{name} {dest}")
+            ):
                 print(NAMED_TEAMMATE_REFUSAL, file=sys.stderr)
                 return 2
         if tool == "Agent" and inputs.get("subagent_type") in {RESEARCHER, CRITIC}:
@@ -323,7 +331,7 @@ def handle(event: dict) -> int:
     if (
         kind == "PostToolUse"
         and tool in {"Bash", "PowerShell"}
-        and "ppt_pipeline.py" in str(inputs.get("command") or "")
+        and pipeline_context.is_pipeline_invocation(str(inputs.get("command") or ""))
     ):
         # A researcher-less deck (D-class structured import, scope-C work) still
         # owns a work-id: record it here so release_if_production_complete can

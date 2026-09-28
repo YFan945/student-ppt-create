@@ -46,7 +46,37 @@ PLUGIN_ROLES = frozenset({"researcher", "builder", "critic", "plugin-agent"})
 # phases run hours, false "inactive" would defeat the isolation.
 RESEARCH_ACTIVE_TTL_SECONDS = 6 * 3600
 
+# Public ppt_pipeline.py actions. Single source shared by runtime_evidence
+# (PostToolUse arming), cost_guard (run recognition) and production_entry_guard
+# (direct-Bash allow-list) — three copies of this list drifted once already
+# (cost_guard lacked `doctor`).
+PIPELINE_ACTIONS = frozenset(
+    {
+        "plan", "build", "render", "qa", "repair", "complete",
+        "status", "next", "advance", "doctor",
+    }
+)
+# Quoted script paths (`python "…/ppt_pipeline.py" next`) are how the skills
+# write the invocation; a bare `.py\s+action` never matched that form.
+_PIPELINE_INVOCATION_RE = re.compile(
+    r"ppt_pipeline\.py['\"]?\s+([A-Za-z0-9_-]+)", re.I
+)
+
 _WORK_ID_SAFE = re.compile(r"[^A-Za-z0-9_-]")
+
+
+def is_pipeline_invocation(command: str) -> bool:
+    """True only when a shell command actually invokes ppt_pipeline.py with a
+    public action.
+
+    Text that merely *mentions* the script — `grep ppt_pipeline.py …`,
+    `git diff` over the plugin source, docs quoting an invocation — must not
+    count: runtime_evidence arms research scope from PostToolUse Bash, and a
+    text mention once armed a maintenance session, blocking its same-turn
+    WebSearch because an unrelated stale work dir sat unfinished (2026-09-28).
+    """
+    match = _PIPELINE_INVOCATION_RE.search(str(command or ""))
+    return bool(match and match.group(1).lower() in PIPELINE_ACTIONS)
 
 
 def project_root(event: dict) -> Path:

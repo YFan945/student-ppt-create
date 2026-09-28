@@ -10,14 +10,28 @@ a small public allow-list and denies every other direct script. It also owns the
 few plugin-root production wrappers that must never be used to bypass the
 pipeline: evidence-map compilation and direct PPTX generation. Normal project
 Bash, other skills, and unrelated plugin-root utilities remain out of scope.
+
+One deliberate exception (owner decision 2026-09-28): the plugin's own source
+tree — the marketplace checkout or the installed cache — is a maintenance
+context, not a production project, so the whole guard passes through there
+(``in_source_repository``). Deterministic marker check only; a user project
+never carries the marketplace layout, so PPT-production enforcement is
+unchanged everywhere it can actually happen.
 """
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
 from typing import Any
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import pipeline_context  # noqa: E402
 
 PUBLIC_DECK_ENTRYPOINTS = frozenset(
     {
@@ -42,12 +56,9 @@ PUBLIC_DECK_ENTRYPOINTS = frozenset(
     }
 )
 BUILDER = "student-presentation-suite:presentation-builder"
-PUBLIC_PIPELINE_ACTIONS = frozenset(
-    {
-        "plan", "build", "render", "qa", "repair", "complete",
-        "status", "next", "advance", "doctor",
-    }
-)
+# Owned by pipeline_context (shared with runtime_evidence arming and cost_guard
+# run recognition); see its PIPELINE_ACTIONS docstring.
+PUBLIC_PIPELINE_ACTIONS = pipeline_context.PIPELINE_ACTIONS
 ROOT_PRODUCTION_INTERNALS = frozenset(
     {
         "research_pack_to_evidence.py",
@@ -147,6 +158,43 @@ def _builder_allowlist() -> str:
     return "; ".join(parts) or "pptx-helpers.js --describe and visual_reference_select.py"
 
 
+def _marketplace_marker(base: Path) -> Path:
+    """The file only the marketplace checkout (or a vendored copy) carries."""
+    return base / "plugins" / "student-presentation-suite" / ".claude-plugin" / "plugin.json"
+
+
+def in_source_repository(event: dict) -> bool:
+    """True when the session lives in the plugin's own source tree.
+
+    Deterministic signals only (Batch 6.1 philosophy, owner decision
+    2026-09-28): the marketplace layout above ``CLAUDE_PROJECT_DIR`` or the
+    event cwd, or the cwd sitting inside a ``student-presentation-suite``
+    plugin tree (source checkout or installed cache). PPT production in a user
+    project satisfies neither, so enforcement there is unchanged; plugin
+    maintenance may run internals directly to debug them.
+    """
+    bases = [
+        str(os.environ.get("CLAUDE_PROJECT_DIR") or ""),
+        str(event.get("cwd") or ""),
+    ]
+    seen: set[Path] = set()
+    for raw in bases:
+        if not raw:
+            continue
+        probe = Path(raw).resolve()
+        for ancestor in (probe, *probe.parents):
+            if ancestor in seen:
+                continue
+            seen.add(ancestor)
+            if _marketplace_marker(ancestor).is_file():
+                return True
+            if ancestor.name == "student-presentation-suite" and (
+                ancestor / ".claude-plugin" / "plugin.json"
+            ).is_file():
+                return True
+    return False
+
+
 def check_bash(command: str, builder: bool = False) -> str | None:
     normalized = (command or "").replace("\\", "/")
 
@@ -198,6 +246,10 @@ def handle(event: dict[str, Any]) -> int:
     if event.get("hook_event_name") not in {None, "PreToolUse"}:
         return 0
     if event.get("tool_name") != "Bash":
+        return 0
+    if in_source_repository(event):
+        # Maintenance session in the plugin's own tree: internals may be run
+        # directly for debugging; pipeline discipline targets production.
         return 0
     command = str((event.get("tool_input") or {}).get("command") or "")
     builder = str(event.get("agent_type") or "") == BUILDER
