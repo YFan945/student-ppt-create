@@ -2,6 +2,21 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.9 — 2026-09-28 · Subagent restriction audit: critic gets read-only discovery
+
+owner：子代理限制太多、无法正常完成任务。全量审计三个隔离代理的限制面（工具集、禁读/
+禁写/禁命令清单、guard 拒绝分支），放开一条真正的阻碍型限制：
+
+- **visual-critic 工具集加入 Grep/Glob（只读发现）**：此前只有 Read/Write，无目录列表与
+  搜索能力，找不到文件只能盲试路径（2026-09-28 live：为找 schema 空试 20+ 次）。发现类
+  需求现在一次 Grep 解决；"路径只来自 preview map"的约束保留——Grep/Glob 用于定位 map
+  未列出的文件，不用于重推 map 内容。agent 契约与 spawn 模板措辞同步。
+
+审计结论（其余限制均为保护型，不挡正常完成路径）：builder 禁 build/render 是成本隔离的
+既定设计（渲染进 builder 上下文会拖累其后每次请求）；inline-script 禁令只拦"内联脚本碰
+work 产物"（node --check / 受许脚本不受影响）；packet 注册制、禁读清单（0.21.7 起与
+blocker 投影对齐）、WebSearch 归属研究员、critic 只写 review_output 均在防串扰而非挡路。
+
 ## 0.21.8 — 2026-09-28 · The closing band is engine-rendered, fonts stay flexible
 
 收尾带从"数据 + 规则"升级为**引擎硬组件**（第二个问题真正剩下的缺口），并按 owner

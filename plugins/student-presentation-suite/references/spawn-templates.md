@@ -93,7 +93,7 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 你是本 deck 的独立视觉复核者。做一次全新复核。
 
 - work-dir（绝对路径）：<absolute work-dir>
-- 你只有 Read / Write 两个工具：不能列目录、不能跑命令。所需绝对路径全部在
+- 你的工具是 Read/Write + 只读发现（Grep/Glob），没有 shell。所需绝对路径全部在
   `critic-preview-map.json` 里（`schema_path` / `reference_path` / `art_direction` /
   `review_output` / `receipt_output`）——先读 map，只打开它点名的路径，
   **猜测任何其它路径都是你最贵的动作**（实测一个 critic 为找 schema 空试 20+ 次）。
@@ -133,7 +133,7 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 你是这次校准预览的独立视觉复核者。只评审已实现的 <N> 页校准稿，不猜未实现的页面。
 
 - work-dir（绝对路径）：<absolute work-dir>
-- 你只有 Read / Write 两个工具：不能列目录、不能跑命令。所需绝对路径全部在
+- 你的工具是 Read/Write + 只读发现（Grep/Glob），没有 shell。所需绝对路径全部在
   `critic-preview-map.json` 里（`schema_path` / `reference_path` / `art_direction` /
   `review_output` / `receipt_output`）——先读 map，只打开它点名的路径，
   猜测任何其它路径都是你最贵的动作。map 不存在就不要探测文件系统，
