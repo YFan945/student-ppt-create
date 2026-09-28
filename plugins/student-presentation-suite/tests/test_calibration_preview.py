@@ -118,6 +118,17 @@ class CalibrationPreviewTests(unittest.TestCase):
         self.assertEqual(expected, calibration.calibration_tokens_json(self.work))
         self.assertIn("dark_palette", json.loads(expected))
 
+    def test_preview_tokens_find_the_yaml_specs_the_pipeline_uses(self) -> None:
+        """实际工作区是 slide-spec*.yaml：spec 找不到时 token 会退化成白盘兜底。"""
+        (self.work / "slide-spec.json").unlink()
+        (self.work / "art-direction.yaml").unlink()
+        (self.work / "slide-spec-compiled.yaml").write_text(
+            'meta:\n  visual_style: "Data Driven"\nslides: []\n', encoding="utf-8"
+        )
+        tokens = json.loads(calibration.calibration_tokens_json(self.work))
+        self.assertIn("dark_palette", tokens)
+        self.assertNotEqual("FFFFFF", tokens["palette"]["canvas"])
+
     def test_manifest_shape_binds_page_and_render_hashes(self) -> None:
         page1 = self.write_page(1)
         page4 = self.write_page(4)

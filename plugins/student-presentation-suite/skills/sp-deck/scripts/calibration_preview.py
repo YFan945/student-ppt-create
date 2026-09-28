@@ -96,12 +96,16 @@ def calibration_tokens_json(work_dir: Path) -> str:
     ctx.tokens, while every scaffold page reads ctx.tokens — all pages crashed in
     paletteMode and calibration could never render. Same-source with deck.js via
     generator_scaffold.inline_tokens_json so preview colors are production colors.
+    The spec is resolved with the same candidate order the pipeline uses — real
+    work dirs carry slide-spec*.yaml, and a spec missed here would drop the
+    meta.visual_style fallback the production scaffold still sees.
     """
     import generator_scaffold  # noqa: PLC0415  (same scripts dir on sys.path)
+    from page_brief import find_spec  # noqa: PLC0415
 
     spec: dict[str, Any] = {}
-    spec_path = work_dir / "slide-spec.json"
-    if spec_path.is_file():
+    spec_path = find_spec(work_dir)
+    if spec_path is not None:
         try:
             spec = generator_scaffold.load_spec(spec_path)
         except ValueError:

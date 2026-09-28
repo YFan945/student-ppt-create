@@ -2,9 +2,17 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.20.1 — 2026-09-28 · Preview tokens resolve the spec the pipeline actually freezes
+
+- **校准预览 token 解析补上 spec 候选顺序**：0.20.0 的 `calibration_tokens_json` 只认
+  `slide-spec.json`，而真实工作区是 `slide-spec-compiled.yaml` / `slide-spec.yaml`
+  （`page_brief.SPEC_CANDIDATES` 顺序）——spec 找不到时预览 token 退化为白盘兜底，
+  一旦 Art Direction 缺 `style_seed` 而冻结 spec 的 `meta.visual_style` 在场，
+  预览配色就会偏离生产 `deck.js`。现改用与管线相同的 `find_spec` 解析 spec。
+
 ## 0.20.0 — 2026-09-28 · Calibration harness contract, failure-evidence errors and stale-packet rebuild
 
-2026-09-28 一次真实 `sp-deck` 生产过程暴露的两个管线缺陷（校准阶段连烧三轮定位）：
+2026-09-28 一次真实 `sp-deck` 生产（两轮）暴露的一批管线缺陷（校准阶段连烧多轮定位）：
 
 - **校准预览 harness 注入与生产 `deck.js` 同源的 `ctx.tokens`**：`calibration_preview.py`
   生成的 `calibration/calibration-deck.js` 此前写死 `H.applyTokens(pptx, {}, 'chinese')` 且
