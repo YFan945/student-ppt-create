@@ -257,10 +257,10 @@ class RenderArchetypeTests(unittest.TestCase):
             """
         )
         years = out["years"]
-        gaps = [round(b - a, 3) for a, b in zip(years, years[1:])]
+        gaps = [round(b - a, 3) for a, b in zip(years, years[1:], strict=False)]
         self.assertGreater(gaps[2], gaps[0] * 3, gaps)
         ordinal = out["ordinal"]
-        equal = [round(b - a, 3) for a, b in zip(ordinal, ordinal[1:])]
+        equal = [round(b - a, 3) for a, b in zip(ordinal, ordinal[1:], strict=False)]
         self.assertTrue(all(abs(g - equal[0]) < 0.01 for g in equal), equal)
 
     def test_visual_purpose_is_design_intent_and_never_on_screen(self) -> None:

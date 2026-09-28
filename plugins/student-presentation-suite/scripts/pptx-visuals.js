@@ -298,9 +298,7 @@ function addTimeline(slide, data, area, tokens, lang) {
   const inset = Math.min(stepW * 0.5, 0.9);
   const centerXOf = (index) =>
     proportional
-      ? area.x +
-        inset +
-        ((times[index] - minTime) / (maxTime - minTime)) * (area.w - inset * 2)
+      ? area.x + inset + ((times[index] - minTime) / (maxTime - minTime)) * (area.w - inset * 2)
       : area.x + stepW * (index + 0.5);
   const firstCenter = centerXOf(0);
   const lastCenter = centerXOf(stages.length - 1);
