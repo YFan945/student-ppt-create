@@ -2,6 +2,23 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.1 — 2026-09-28 · Fallback retries no longer leak drawn elements
+
+真实工作区复跑校准预览时暴露的版式引擎缺陷（旧问题类已被 0.20.x 消除，这是更深一层）：
+
+- **失败的 fallback 尝试不再向 slide 泄漏半成品**：`renderArchetype` 沿链重试时，此前
+  每次尝试"先画后炸"的元素（标题等）都留在真 slide 上——实测页 2 沿链试 3 个候选才落定，
+  slide 上堆了 4 份标题，registry 以 text_overlap 拒绝整副 deck。现改为探针模式：每个
+  候选先在一次性 slide 上试跑（registry/layoutReport 一并屏蔽），成功才真正落笔，
+  layoutReport 因此也只记最终选中的版式。
+- **双栏借用 visual 区必须是横向不相交的侧栏**：claim-text 家族在无视觉载荷时把
+  `zones.visual` 借作第二文本列，但 claim-focus / claim-evidence 的 visual 区在 body
+  投影范围内且两列都按 claimBottom 对齐——必然重叠（页 2 残留 1 处 text_overlap）。
+  现要求两 zone 横向不相交（text-two-column / text-sidebar 形态）才走双栏，否则单栏。
+- **addBody 容量失败参与 fallback 链**：`H.addBody` 的裸 `RangeError` 此前会直接炸掉
+  deck（claim-focus 单栏剩余区装不下两条正文时暴露）。现与 visual 组件的 RangeError
+  同一待遇，包装成 layoutFit 交给链，链耗尽时报错保留原始 fit 证据。
+
 ## 0.21.0 — 2026-09-28 · Payload label width gate for visual.details
 
 **新对外规则（owner 批准的 minor）**：`visual.details` 是自由结构，其中任何字符串都会随

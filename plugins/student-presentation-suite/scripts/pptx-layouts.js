@@ -450,6 +450,48 @@ function _fitError(message) {
 }
 
 /**
+ * 一次性探针 slide：渲染路径的任何方法调用都吞掉、任何属性赋值都放行，
+ * 用于 fallback 链的干跑（失败的尝试不落真迹）。
+ */
+function _probeSlide() {
+  return new Proxy(
+    {},
+    {
+      get(target, prop) {
+        if (typeof prop === 'symbol') return undefined;
+        if (!(prop in target)) target[prop] = () => ({});
+        return target[prop];
+      },
+      set(target, prop, value) {
+        target[prop] = value;
+        return true;
+      },
+    },
+  );
+}
+
+/**
+ * 正文绘制：addBody 的容量失败（裸 RangeError）必须包装成 layoutFit 参与
+ * fallback 链，否则直接炸掉 deck——与 visual 组件的 RangeError 同一待遇。
+ * 2026-09-28 live：claim-focus 单栏剩余区装不下两条正文，未包装的失败
+ * 终止了整条链。
+ */
+function _addBodyWithFit(ctx, layoutId, items, box, tokens, lang, options) {
+  const H = _sibling('pptx-helpers');
+  try {
+    H.addBody(ctx.slide, items, box, tokens, lang, options);
+  } catch (error) {
+    if (error instanceof RangeError) {
+      throw _fitError(
+        `slide ${Number.isInteger(ctx.slideNumber) ? ctx.slideNumber : 0}: ` +
+          `body copy does not fit archetype "${layoutId}" — ${error.message}`,
+      );
+    }
+    throw error;
+  }
+}
+
+/**
  * 执行一个版式 archetype：背景之外的整页几何（标题/claim/正文/视觉组件）。
  *
  * @param {object} ctx - deck.js 传入的 { slide, tokens, registry, lang?, slideNumber?, layoutReport? }
@@ -498,9 +540,15 @@ function renderArchetype(ctx, request = {}) {
     cursor = cursor.fallback ? layoutsById.get(cursor.fallback) : null;
   }
   const failures = [];
+  // 失败的尝试绝不能在真实 slide 上留下半成品：标题等"先画后炸"的元素会与
+  // 后续尝试的输出重叠——2026-09-28 live：页 2 沿链试到第 4 个候选才落定，
+  // slide 上留下 4 份标题，registry 以 text_overlap 拒绝整副 deck。因此先在
+  // 一次性探针 slide 上试跑（registry/layoutReport 一并屏蔽），成功才把该
+  // 候选真正画到 ctx.slide 上。
+  const probeCtx = { ...ctx, slide: _probeSlide(), registry: undefined, layoutReport: undefined };
   for (const layoutId of chain) {
     try {
-      return _renderOnLayout(ctx, request, layoutId, area);
+      _renderOnLayout(probeCtx, request, layoutId, area);
     } catch (error) {
       if (error && error.layoutFit) {
         failures.push(`${layoutId}: ${error.message}`);
@@ -508,6 +556,7 @@ function renderArchetype(ctx, request = {}) {
       }
       throw error;
     }
+    return _renderOnLayout(ctx, request, layoutId, area);
   }
   // 链耗尽必须点名"钉住/选中的版式 + 整条链 + 每条候选各自的失败原因"：只剩链尾
   // archetype 名会被误读成 request.layout.id 没生效（2026-09-28 live：cover-split
@@ -610,11 +659,18 @@ function _renderOnLayout(ctx, request, layoutId, area) {
     : slots.body
       ? [String(slots.body)]
       : [];
+  // 双栏的第二列借用 zones.visual，两列都会按 claimBottom 对齐——这只有在
+  // 两个 zone 横向不相交（真正的"侧栏"形态，如 text-two-column / text-sidebar）
+  // 时才安全。claim-focus / claim-evidence 的 visual 区在 body 区投影范围内，
+  // 借作第二列会与第一列文本重叠（2026-09-28 live：页 2 残留 1 处
+  // text_overlap）；这类版式走单栏堆叠，装不下就交给 fallback 链。
+  const sideColumn =
+    Boolean(zones.body) &&
+    Boolean(zones.visual) &&
+    (zones.visual.x >= zones.body.x + zones.body.w - 1e-6 ||
+      zones.body.x >= zones.visual.x + zones.visual.w - 1e-6);
   const twoColumn =
-    selection.family === 'claim-text' &&
-    !component &&
-    bodyItems.length >= 2 &&
-    Boolean(zones.visual);
+    selection.family === 'claim-text' && !component && bodyItems.length >= 2 && sideColumn;
   let bodyArea = zones.body;
   let columnB = zones.visual;
   if (slots.claim && zones.body) {
@@ -714,8 +770,12 @@ function _renderOnLayout(ctx, request, layoutId, area) {
     // 第一列从 claim 之下的剩余区开始（bodyArea），不能整占 zones.body。
     const columnA = bodyArea || zones.body;
     const half = Math.ceil(bodyItems.length / 2);
-    H.addBody(slide, bodyItems.slice(0, half), columnA, tokens, lang, { bullet: false });
-    H.addBody(slide, bodyItems.slice(half), columnB, tokens, lang, { bullet: false });
+    _addBodyWithFit(ctx, selection.id, bodyItems.slice(0, half), columnA, tokens, lang, {
+      bullet: false,
+    });
+    _addBodyWithFit(ctx, selection.id, bodyItems.slice(half), columnB, tokens, lang, {
+      bullet: false,
+    });
     register({
       type: 'text',
       role: 'body',
@@ -729,7 +789,9 @@ function _renderOnLayout(ctx, request, layoutId, area) {
       ...columnB,
     });
   } else if (bodyItems.length && bodyArea && bodyArea.h > 0.25) {
-    H.addBody(slide, bodyItems, bodyArea, tokens, lang, { bullet: bodyItems.length > 1 });
+    _addBodyWithFit(ctx, selection.id, bodyItems, bodyArea, tokens, lang, {
+      bullet: bodyItems.length > 1,
+    });
     register({ type: 'text', role: 'body', text: bodyItems.join('\n'), ...bodyArea });
   } else if (bodyItems.length && !zones.body) {
     throw _fitError(

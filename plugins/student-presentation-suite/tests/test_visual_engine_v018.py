@@ -181,6 +181,62 @@ class RenderArchetypeTests(unittest.TestCase):
         self.assertIn("0.30x0.20in", message)
         self.assertIn("chars)", message)
 
+    def test_failed_fallback_attempts_leave_nothing_on_the_slide(self) -> None:
+        """失败尝试不得在真 slide 上留半成品（2026-09-28 live：页 2 沿链试 3 个
+        候选落 text-two-column，slide 上留下 4 份标题，assertSafe 以 text_overlap
+        拒绝整副 deck）。探针模式：成功才落真迹。"""
+        out = self.run_node(
+            """
+            const R = require(path.join(SCRIPTS, 'pptx-element-registry.js'));
+            const registry = new R.SlideElementRegistry({ slideW: 10, slideH: 5.625 });
+            let titles = 0, total = 0;
+            const slide = { addText: (t) => { total++; if (String(t).includes('双碳目标')) titles++; return {}; },
+              addShape: () => ({}), addImage: () => ({}), addChart: () => ({}), addTable: () => ({}), addNotes: () => ({}) };
+            const report = [];
+            L.renderArchetype(
+              { slide, tokens: TOKENS, slideNumber: 2, registry, layoutReport: report },
+              { layout: { id: 'data-kpi-row' },
+                context: { slideId: 2, slideKind: 'content', layoutFamily: 'dashboard', itemCount: 3, titleChars: 13 },
+                slots: { title: '双碳目标把风光推成主力增量',
+                  claim: '2030年非化石能源消费比重25%左右，风光总装机12亿千瓦以上',
+                  body: ['2060年非化石能源消费比重80%以上', '两个目标均引自2021年中央文件口径'] } });
+            const analysis = registry.analyzeDeck();
+            console.log(JSON.stringify({ titles, total, reportLen: report.length, ok: analysis.ok }));
+            """
+        )
+        self.assertEqual(1, out["titles"], out)
+        self.assertEqual(1, out["reportLen"], out)
+        self.assertTrue(out["ok"], out)
+
+    def test_borrowed_visual_column_must_be_a_disjoint_side_column(self) -> None:
+        """claim-focus 的 visual 区在 body 投影内：借作双栏第二列会与第一列重叠
+        （2026-09-28 live 页 2 残留 1 处 text_overlap）。非侧栏形态走单栏，装不下
+        交 fallback 链——addBody 的容量失败必须以 layoutFit 参与链，而不是裸
+        RangeError 炸掉 deck。"""
+        out = self.run_node(
+            """
+            const R = require(path.join(SCRIPTS, 'pptx-element-registry.js'));
+            const registry = new R.SlideElementRegistry({ slideW: 10, slideH: 5.625 });
+            const slide = { addText: () => ({}), addShape: () => ({}), addImage: () => ({}),
+              addChart: () => ({}), addTable: () => ({}), addNotes: () => ({}) };
+            let threw = null;
+            try {
+              L.renderArchetype(
+                { slide, tokens: TOKENS, slideNumber: 2, registry },
+                { layout: { id: 'claim-focus' },
+                  slots: { title: '标题',
+                    claim: '2030年非化石能源消费比重25%左右，风光总装机12亿千瓦以上',
+                    body: ['2060年非化石能源消费比重80%以上', '两个目标均引自2021年中央文件口径'] } });
+            } catch (error) { threw = error.message; }
+            const analysis = registry.analyzeDeck();
+            const overlaps = analysis.errors.filter((e) => e.code === 'text_overlap').length;
+            console.log(JSON.stringify({ threw, overlaps }));
+            """
+        )
+        self.assertEqual(0, out["overlaps"], out)
+        if out["threw"] is not None:
+            self.assertIn("all failed", out["threw"], out)
+
     def test_visual_purpose_is_design_intent_and_never_on_screen(self) -> None:
         """visual.purpose 是设计意图（slide-spec.md handoff rules），绝不上屏。
 
