@@ -2,6 +2,23 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.2 — 2026-09-28 · One hook process per tool call instead of five
+
+owner 观察到"维护会话还是触发了许多钩子"。排查结论：**阻塞边界**（拦不拦）在 0.19.1
+已经作用域化且实测全部静默放行；不清晰的是**执行边界**——hooks.json 为每个 guard 单独
+注册，matcher 只匹配工具名，无法表达"仅管线会话"，于是只要插件启用，每次 Bash 起
+4 个 python 进程（PreToolUse 4 个 + PostToolUse 1 个 = 5 次/调用），每次 ~85-120ms，
+几乎全是非管线会话里的空跑。
+
+- **PreToolUse 合并为单 dispatcher**：新 `scripts/hook_dispatcher.py` 一次读入事件、
+  按工具名在进程内路由到各 guard（路由表与旧逐脚本 matcher 逐工具等价，测试钉死），
+  保留各 guard 自己的输出与退出码（首个拒绝生效、单个 guard 崩溃不阻塞其余）。
+  Bash 每次调用 5 次触发 → 2 次（dispatcher + PostToolUse），实测 ~400ms → ~106ms。
+- `cost_guard` / `hook_health` 抽出 `handle(event)` 供进程内路由（CLI stdin 入口不变，
+  其余三个 guard 本就有 handle）；hooks.json 的 PostToolUse / Stop / SubagentStart /
+  SubagentStop 本就是单 guard，维持直连。
+- 各 guard 职责与阻塞语义零变化；README 的职责描述保持准确，无需修改。
+
 ## 0.21.1 — 2026-09-28 · Fallback retries no longer leak drawn elements
 
 真实工作区复跑校准预览时暴露的版式引擎缺陷（旧问题类已被 0.20.x 消除，这是更深一层）：

@@ -368,14 +368,8 @@ def check_read(
     return None
 
 
-def main(argv: list[str] | None = None) -> int:
-    del argv  # stdin event; CLI flags unused
-    try:
-        event = json.loads(sys.stdin.read() or "{}")
-    except json.JSONDecodeError:
-        return 0
-    if not isinstance(event, dict):
-        return 0
+def handle(event: dict) -> int:
+    """Process one PreToolUse event; hook_dispatcher routes in-process."""
     context = pipeline_context.resolve(event)
     name = str(event.get("tool_name") or event.get("tool") or "")
     tool_input = event.get("tool_input") or event.get("input") or {}
@@ -419,6 +413,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         return refuse(msg) if msg else 0
     return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    del argv  # stdin event; CLI flags unused
+    try:
+        event = json.loads(sys.stdin.read() or "{}")
+    except json.JSONDecodeError:
+        return 0
+    if not isinstance(event, dict):
+        return 0
+    return handle(event)
 
 
 if __name__ == "__main__":

@@ -163,13 +163,8 @@ def enforce_pipeline_plan_bootstrap(argv: list[str] | None = None) -> None:
         raise SystemExit(2) from None
 
 
-def main() -> int:
-    try:
-        event = json.loads(sys.stdin.read() or "{}")
-    except json.JSONDecodeError:
-        return 0
-    if not isinstance(event, dict):
-        return 0
+def handle(event: dict) -> int:
+    """Process one PreToolUse event; hook_dispatcher routes in-process."""
     try:
         arm(event)
     except OSError as exc:
@@ -177,6 +172,16 @@ def main() -> int:
         # pipeline's verifier will emit the user-facing fail-fast explanation.
         print(f"hook_health: could not write health receipt: {exc}", file=sys.stderr)
     return 0
+
+
+def main() -> int:
+    try:
+        event = json.loads(sys.stdin.read() or "{}")
+    except json.JSONDecodeError:
+        return 0
+    if not isinstance(event, dict):
+        return 0
+    return handle(event)
 
 
 if __name__ == "__main__":
