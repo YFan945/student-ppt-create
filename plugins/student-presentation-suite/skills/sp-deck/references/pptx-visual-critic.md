@@ -130,9 +130,10 @@ direction 在生产时被丢失。
 - **Image crop**：是不是一个决定性 crop，还是图片被缩成右侧小矩形；
 - **Chart**：takeaway 是否先于图表被读到，是否仍是默认 chart chrome；
 - **Cover/closing**：是否有可记忆的 visual thesis 和视觉呼应；
-- **收尾带一致性（D11）**：`include_key_lines` 的 deck 里每页是否都以统一收尾带结尾
-  （细规线 + key_line 结论句，来源行在其下）——某页缺失或换了收尾语言记 major（会扩散：
-  剩余页将各自发明收尾方式）；
+- **收尾带一致性（D11）**：`include_key_lines` 的 deck 里每页必须以统一收尾带结尾
+  （细规线 + key_line 结论句，字号自适应；来源行在其下）——该收尾带由版式引擎自动
+  渲染（`slots.key_line`），缺失即说明页面没传 key_line 或绕过了引擎渲染，记 major
+  （会扩散：剩余页将各自发明收尾方式）；
 - **时间轴诚实编码（D12）**：年份/时间序列的节点间距是否与真实间隔成比例；等距渲染
   不等长时间轴（如 2021/2025/2030/2060）会误导读着，记 major（与 builder 侧
   `VISUAL_RULES` D12 同源——该规则两侧一致，builder 生成时即应遵守）。

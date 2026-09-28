@@ -120,6 +120,7 @@ class ScaffoldContractTests(unittest.TestCase):
             self.scaffold.scaffold_generator(work, spec)
             stub = next((work / "pages").glob("p*.js")).read_text(encoding="utf-8")
             self.assertIn('keyLine: "风光不是二选一"', stub)
+            self.assertIn("key_line: COPY.keyLine", stub)
             self.assertIn("D11", stub)
 
     def test_page_stub_carries_the_on_screen_contract(self) -> None:

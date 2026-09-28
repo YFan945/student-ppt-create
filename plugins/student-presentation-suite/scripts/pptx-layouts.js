@@ -581,6 +581,25 @@ function _renderOnLayout(ctx, request, layoutId, area) {
   const selection = getLayout(layoutId);
   const resolved = resolveLayout(selection.id, area, { mirror: params.mirror === true });
   const zones = resolved.zones;
+  // D11 收尾带：slots.key_line 存在时由引擎统一渲染（细规线 + 结论句），并从
+  // 安全区底部预留 band 高度——builder 不再手画收尾带，页间收尾语言就不会各画
+  // 各的（2026-09-28 live：收尾带缺失/不一致被 critic 记 major，而 key_line 此前
+  // 根本不在 stub 数据里）。来源行走 footer 区（安全区之下），不受影响。
+  const keyLine = slots.key_line ? String(slots.key_line).trim() : '';
+  let keyBand = null;
+  if (keyLine) {
+    // 固定预留高度，字号交给 fitText 在 16-24pt 自适应（不锁死固定值）；
+    // 渲染 margin 0——内边距会把可用高压破字号下限。
+    const bandH = 0.72;
+    const bandTop = area.y + area.h - bandH;
+    for (const name of ['title', 'body', 'visual']) {
+      const zone = zones[name];
+      if (zone && zone.y + zone.h > bandTop + 1e-6) {
+        zone.h = Math.max(0.25, bandTop - 0.08 - zone.y);
+      }
+    }
+    keyBand = { x: area.x, y: bandTop, w: area.w, h: bandH };
+  }
   if (ctx.layoutReport && Number.isInteger(ctx.slideNumber)) {
     ctx.layoutReport.push({
       slide: ctx.slideNumber,
@@ -797,6 +816,44 @@ function _renderOnLayout(ctx, request, layoutId, area) {
     throw _fitError(
       `slide ${n}: archetype "${selection.id}" has no body zone but slots.body was supplied — drop the body copy or let the fallback chain pick an archetype with a body zone`,
     );
+  }
+
+  // D11 收尾带（引擎统一渲染）：细规线 + key_line 结论句（bold body 角色），
+  // 来源行由 builder 画在更下方的 footer 区。key_line 过长时宁缺勿炸：
+  // 跳过收尾带（critic 的 D11 会把缺失当 finding 抓出来），不许炸整页。
+  if (keyLine && keyBand) {
+    try {
+      const ruleY = keyBand.y - 0.04;
+      H.addDivider(slide, keyBand.x, ruleY, keyBand.w, tokens, 'hairline');
+      register({
+        type: 'line',
+        x1: keyBand.x,
+        y1: ruleY,
+        x2: keyBand.x + keyBand.w,
+        y2: ruleY,
+      });
+      const textBox = {
+        x: keyBand.x,
+        y: keyBand.y + 0.07,
+        w: keyBand.w,
+        h: keyBand.h - 0.14,
+      };
+      H.addFittedText(slide, keyLine, textBox, tokens, lang, 'body', {
+        bold: true,
+        margin: 0,
+        min: 14,
+        max: 24,
+        label: `S${n} key_line`,
+      });
+      register({
+        type: 'text',
+        role: 'subtitle',
+        text: keyLine,
+        ...textBox,
+      });
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+    }
   }
 
   return {

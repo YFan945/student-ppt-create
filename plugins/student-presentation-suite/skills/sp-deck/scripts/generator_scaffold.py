@@ -117,8 +117,8 @@ module.exports = function (ctx) {{
 
   /* 版式引擎负责整页几何（design grammar D5）：填 slots、调 params、必要时换
      request.layout.id；自由坐标须先注释声明 custom 理由，几何门照常全检。
-     COPY.keyLine 非空时按 D11 收尾带规范渲染（细规线 + 结论句，来源行在其下，
-     全 deck 同一收尾语言——critic 按此判 major）。 */
+     slots.key_line 非空时 D11 收尾带由引擎自动渲染（细规线 + 结论句）——
+     不要再手画第二条；来源行（11pt）画在更下方的 footer 区。 */
   const dark = {dark_js};
   H.renderBackground(slide, tokens, {{ kind: {kind_js}, dark }});
   // 深浅三明治：本页文字/阴影也必须用同一盘（否则深底深字不可读）。
@@ -129,6 +129,7 @@ module.exports = function (ctx) {{
     slots: {{
       title: COPY.title,
       claim: COPY.claim || undefined,
+      key_line: COPY.keyLine || undefined,
       body: Array.isArray(COPY.slideCopy)
         ? COPY.slideCopy
         : COPY.slideCopy

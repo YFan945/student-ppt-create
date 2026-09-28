@@ -81,10 +81,10 @@ VISUAL_RULES = [
     "D9 整页几何由 pptx-layouts renderArchetype 执行：改 slots/params/layout.id；"
     "自由坐标先在页内注释声明 custom 理由，几何门照常全检。",
     "D10 每页只一个 primary focal point，次要元素降级（色/号/位），禁止等权重并列。",
-    "D11 meta.include_key_lines 时每页以统一收尾带结尾：细规线（hairline ≤1pt）+ "
-    "COPY.keyLine 结论句（bold primary_text 20-24pt），来源行（11pt secondary_text）在其下；"
-    "statement 页与内容页同一收尾语言——缺失或不一致 critic 记 major"
-    "（2026-09-28 live：页 3 缺收尾带）。",
+    "D11 meta.include_key_lines 时收尾带由版式引擎自动渲染（slots.key_line 非空即出"
+    "细规线 + 结论句，字号 fitText 16-24pt 自适应不锁死）——builder 不要手画第二条；"
+    "来源行画在更下方的 footer 区。缺失 = 页面没把 key_line 传进 slots 或覆写了渲染，"
+    "critic 记 major。",
     "D12 时间轴/年份序列的节点间距必须与真实时间间隔成比例（引擎 addTimeline 对带年份的 "
     "stages 自动按比例；自绘时间轴同规），否则不画连续连接轴——等距渲染 2021→2060 把 "
     "30 年画成 4 年，critic 记 major。",

@@ -2,6 +2,19 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.8 — 2026-09-28 · The closing band is engine-rendered, fonts stay flexible
+
+收尾带从"数据 + 规则"升级为**引擎硬组件**（第二个问题真正剩下的缺口），并按 owner
+指示去掉锁死的字号逻辑：
+
+- **D11 收尾带由版式引擎自动渲染**：`slots.key_line` 非空即在安全区底部出"细规线 +
+  结论句"，并自动为收尾带收缩 title/body/visual 区——builder 不再手画，页间收尾语言
+  结构上无法再各画各的。来源行走更下方的 footer 区，不受影响。
+- **字号不锁死**：结论句由 fitText 在 **16–24pt 自适应**（选最大可读），带高固定预留、
+  不做逐 pt 算高；key_line 超长时收尾带宁缺勿炸（跳过并由 critic 的 D11 抓缺失）。
+- D11 规则两侧措辞同步更新；stub 传 `key_line` 进 slots（0.21.7 起 COPY.keyLine 到位，
+  本版起引擎直接消费）。
+
 ## 0.21.7 — 2026-09-28 · Generation-time alignment: builder constraints == critic criteria
 
 owner 指出 builder→检查→修改→critic 反复循环。排查出三个结构性驱动因素，一并收口：

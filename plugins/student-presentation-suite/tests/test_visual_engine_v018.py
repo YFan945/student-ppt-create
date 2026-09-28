@@ -263,6 +263,38 @@ class RenderArchetypeTests(unittest.TestCase):
         equal = [round(b - a, 3) for a, b in zip(ordinal, ordinal[1:], strict=False)]
         self.assertTrue(all(abs(g - equal[0]) < 0.01 for g in equal), equal)
 
+    def test_key_line_renders_the_uniform_closing_band(self) -> None:
+        """D11 收尾带由引擎统一渲染：slots.key_line 一到，细规线 + 结论句落在
+        安全区底部，builder 不再手画（2026-09-28 live：收尾带缺失/不一致被
+        critic 记 major）。"""
+        out = self.run_node(
+            """
+            const R = require(path.join(SCRIPTS, 'pptx-element-registry.js'));
+            const registry = new R.SlideElementRegistry({ slideW: 10, slideH: 5.625 });
+            const texts = [], shapes = [];
+            const slide = {
+              addText: (t, o) => { texts.push({ text: String(t).slice(0, 12), y: +Number(o.y).toFixed(2) }); return {}; },
+              addShape: (kind, o) => { shapes.push(o); return {}; },
+              addImage: () => ({}), addChart: () => ({}), addTable: () => ({}), addNotes: () => ({}) };
+            L.renderArchetype(
+              { slide, tokens: TOKENS, slideNumber: 3, registry },
+              { layout: { id: 'claim-focus' },
+                slots: { title: '标题', claim: '主张一句话', body: ['要点一', '要点二'],
+                  key_line: '约束先定死，风光才有主力增量的位置' } });
+            const key = texts.find((t) => t.text.startsWith('约束先定死'));
+            const analysis = registry.analyzeDeck();
+            console.log(JSON.stringify({
+              hasKey: Boolean(key), keyY: key && key.y,
+              rules: shapes.filter((s) => Math.abs(s.h) < 0.001).map((s) => +Number(s.y).toFixed(2)),
+              errors: analysis.errors.map((e) => e.code),
+            }));
+            """
+        )
+        self.assertTrue(out["hasKey"], out)
+        self.assertTrue(out["keyY"] > 4.5, out)
+        self.assertTrue(any(abs(y - (out["keyY"] - 0.08)) < 0.06 for y in out["rules"]), out)
+        self.assertEqual([], out["errors"], out)
+
     def test_visual_purpose_is_design_intent_and_never_on_screen(self) -> None:
         """visual.purpose 是设计意图（slide-spec.md handoff rules），绝不上屏。
 
