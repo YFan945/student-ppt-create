@@ -152,14 +152,24 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     "run the validator (or read the schema) BEFORE writing slide-spec.yaml — "
                     "authoring by intuition cost 5 extra rounds on 2026-09-19 (integer ids, "
                     "required content/timing_sec/owner, required visual object per slide)",
+                    "research-backed deck: author the spec AFTER the validated research pack "
+                    "exists — one pass, verified numbers in place; do NOT freeze a placeholder "
+                    "spec and rewrite it when research lands (plan injects the evidence map and "
+                    "E-ids itself; a second spec pass also forces re-validate + re-scaffold)",
                     "validate BEFORE plan: plan refuses without the --validation-report file",
                 ],
             },
             "notes": (
                 "intake first; do not grep plugin source — this command is the discovery API. "
-                "If research-pack.json exists in the work-dir, plan compiles evidence-map.json "
-                "itself (do not pass --evidence-map). Spawn presentation-researcher from the "
-                "MAIN session without `name`."
+                "Sequence when external facts are needed: spawn presentation-researcher from the "
+                "MAIN session without `name` (the claim list comes from the Production Summary — "
+                "no spec needed to spawn it), wait for a zero-blocker research-pack.json, THEN "
+                "author slide-spec.yaml once from the validated pack (verified numbers in place; "
+                "uncovered dimensions stay qualitative with caliber caveats). If "
+                "research-pack.json exists in the work-dir, plan compiles evidence-map.json "
+                "itself (do not pass --evidence-map). Freezing a placeholder spec before research "
+                "and rewriting it afterwards is the most expensive duplication in this flow "
+                "(2026-09-28 live)."
             ),
         }
     else:

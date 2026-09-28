@@ -2,6 +2,24 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.5 — 2026-09-28 · Author the Slide Spec once, after the research pack
+
+owner 指出的流程浪费：研究型 deck 的主会话**先写一份 spec**（缺口维度定性表述、数字
+留白），research 传回后再**大段回填**——spec 写两遍，还连带 re-validate、`plan --force`
+重 scaffold、页面 COPY 重同步。而管线本来就有正确的依赖方向：`plan` 自己把 pack 编译成
+evidence map 与带 E-ids 的 spec，`evidence-and-citations.md` 也明令"禁止手抄 ledger"。
+缺的只是把"pack 在手后一次性写 spec"钉进顺序指引。
+
+- **SKILL 工作流第 3 步补上 spec 撰写时点**：研究员的 claim 清单来自 Production
+  Summary，**不需要先有 spec**；pack 验证零 blocker 后一次性撰写 Slide Spec（数字用已
+  核实值、缺口维度定性 + 口径限制），此后 research 不再触发 spec 重写；禁止占位 spec +
+  事后回填。
+- **`next --json` 无 manifest 派发载荷改为显式顺序**：intake → 研究员（claim 来自
+  summary）→ 零 blocker pack → 一次性写 spec → validate → plan；`spec_authoring.must`
+  新增同款规则（占位 spec + 回填是最贵的重复，第二轮 spec 还会强制 re-validate +
+  re-scaffold）。
+- 预期收益：研究型 deck 少一整轮 spec 重写及其级联（validation/plan/packet/COPY 同步）。
+
 ## 0.21.4 — 2026-09-28 · CD-3 re-read guard is range-aware
 
 2026-09-28 live：主会话为 researcher spawn 读过 `spawn-templates.md` 14–55 行，随后
