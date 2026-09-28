@@ -241,6 +241,28 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual("rigorous", payload["quality_level"])
         self.assertEqual("production", payload["scope"])
 
+    def test_preview_map_carries_every_reference_path_the_critic_needs(self):
+        """critic 只有 Read/Write、不能列目录：schema/参考文档/art-direction 的绝对
+        路径必须由 hook 写进 map，解析自**已安装插件根**（2026-09-28 live：critic 为找
+        schema 空试 20+ 次后从 marketplace 检出副本读到了错误版本）。"""
+        (self.work / "art-direction.yaml").write_text("style_seed: Modern Minimal\n", encoding="utf-8")
+        self.prepare_render()
+        payload = runtime.critic_preview.materialize(self.work)
+        plugin_root = runtime.critic_preview.ROOT
+        self.assertTrue(payload["schema_path"])
+        self.assertTrue(Path(payload["schema_path"]).is_file())
+        self.assertEqual(
+            Path(payload["schema_path"]), (plugin_root / "references/visual-review.schema.json").resolve()
+        )
+        self.assertTrue(Path(payload["reference_path"]).is_file())
+        self.assertEqual(
+            Path(payload["reference_path"]),
+            (plugin_root / "skills/sp-deck/references/pptx-visual-critic.md").resolve(),
+        )
+        self.assertEqual(
+            Path(payload["art_direction"]), (self.work / "art-direction.yaml").resolve()
+        )
+
     def test_critic_preview_artifacts_are_hook_owned(self):
         preview = self.work / runtime.critic_preview.PREVIEW_DIR_NAME / "p01.jpg"
         preview.parent.mkdir(parents=True)

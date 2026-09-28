@@ -90,14 +90,20 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 你是本 deck 的独立视觉复核者。做一次全新复核。
 
 - work-dir（绝对路径）：<absolute work-dir>
+- 你只有 Read / Write 两个工具：不能列目录、不能跑命令。所需绝对路径全部在
+  `critic-preview-map.json` 里（`schema_path` / `reference_path` / `art_direction` /
+  `review_output` / `receipt_output`）——先读 map，只打开它点名的路径，
+  **猜测任何其它路径都是你最贵的动作**（实测一个 critic 为找 schema 空试 20+ 次）。
+  map 不存在就不要探测文件系统，直接回报"hook 未物化预览映射"。
 - <work-dir>/critic-preview-map.json 在 spawn 前必须已存在：dispatch 在 critic 边界物化
   它（hook 启用时会在 spawn 时刷新）。先读 map：`scope` 必须是 `production`，档位看
   `quality_level`，哈希绑定取 `pptx_sha256`、overview 条目与 `entries[].source_sha256`——
-  **不读冻结 Spec 或 build-manifest.json**。再逐张读 overview（如有）和每个 `entries[].preview`，
+  **不读 slide-spec.yaml / slide-spec-compiled.yaml / build-manifest.json（任何目的）**。
+  再逐张读 overview（如有）和每个 `entries[].preview_path`，
   不要绕过 map 直接猜 render 路径。
 - 当前渲染：第 <N> 次 build（<pptx 文件名>）已重渲染。此前所有报告绑定的都是旧哈希、
   已全部失效——只依据当前 preview map 独立判断，不沿用任何旧结论。
-- 报告形状的唯一来源：<CLAUDE_PLUGIN_ROOT>/references/visual-review.schema.json：
+- 报告形状的唯一来源是 map 里的 `schema_path`（hook 写入的已安装插件绝对路径）：
   先读它，再写 map 的 `review_output`（即 <work-dir>/visual-review.json），绑定当前 SHA256，
   slides 数组恰好覆盖 1..<page_count> 每一页。
 - 判断准绳：<work-dir>/art-direction.yaml；高杠杆页：<ids>。
@@ -124,10 +130,16 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 你是这次校准预览的独立视觉复核者。只评审已实现的 <N> 页校准稿，不猜未实现的页面。
 
 - work-dir（绝对路径）：<absolute work-dir>
+- 你只有 Read / Write 两个工具：不能列目录、不能跑命令。所需绝对路径全部在
+  `critic-preview-map.json` 里（`schema_path` / `reference_path` / `art_direction` /
+  `review_output` / `receipt_output`）——先读 map，只打开它点名的路径，
+  猜测任何其它路径都是你最贵的动作。map 不存在就不要探测文件系统，
+  直接回报"hook 未物化预览映射"。
 - <work-dir>/critic-preview-map.json 在 spawn 前必须已存在：dispatch 在 critic 边界物化它
   （hook 启用时会在 spawn 时刷新）。先确认 map 的 `scope` 是 `calibration`，再逐张读取
-  `pages[].preview`；这些 preview 保留原始 slide id，并绑定 calibration.pptx 与原始 PNG 哈希。
-- 报告形状的唯一来源：<CLAUDE_PLUGIN_ROOT>/references/visual-review.schema.json；
+  `entries[].preview_path`；这些 preview 保留原始 slide id，并绑定 calibration.pptx 与原始 PNG 哈希。
+  不读 slide-spec.yaml / slide-spec-compiled.yaml / build-manifest.json（任何目的）。
+- 报告形状的唯一来源是 map 里的 `schema_path`（hook 写入的已安装插件绝对路径）；
   写到 map 的 `review_output`（即 <work-dir>/calibration/calibration-visual-review.json），`slides` 恰好覆盖
   <calibration slide ids>（不是 1..N），`pptx_sha256` 用 calibration.pptx 的哈希。
 - 判断准绳：<work-dir>/art-direction.yaml。

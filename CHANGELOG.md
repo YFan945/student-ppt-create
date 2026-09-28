@@ -2,6 +2,25 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.6 — 2026-09-28 · The preview map carries every path the critic needs
+
+2026-09-28 live（carbon-pv-vs-wind 校准评审）：visual-critic 只有 Read/Write 两个工具、
+不能列目录，而 spawn 契约里的 schema 路径是 `<CLAUDE_PLUGIN_ROOT>` 占位符（主会话实例化时
+丢失）、agent 契约里又是相对路径——critic 为找 `visual-review.schema.json` **空试了 20+
+个路径**，最终从 marketplace 检出副本（版本可能与安装缓存不一致）读到 schema，还借
+"不为其打开 spec"的措辞漏洞通读了 300 行冻结 spec。评审本身只要 ~1.4M token，探路 +
+无效读取占掉了可观的一部分。
+
+- **preview map 携带 critic 需要的全部绝对路径**：`materialize` 现在写入 `schema_path`
+  （已安装插件根的 `references/visual-review.schema.json`）、`reference_path`
+  （`skills/sp-deck/references/pptx-visual-critic.md`）、`art_direction`（work-dir 内）。
+  hook 以安装根解析——顺带消灭了"从 marketplace 检出副本读到错误版本"的漂移面。
+- **critic 契约与 spawn 模板改为"路径只来自 map"**：明确"你只有 Read/Write，不能列目录；
+  猜路径是最贵的动作；map 不存在就如实回报 hook 未物化，禁止探测"；禁读
+  slide-spec.yaml / slide-spec-compiled.yaml / build-manifest.json 从"哈希用途"收紧为
+  "任何目的"；spawn 模板里的 `entries[].preview` 修正为 `preview_path`，
+  `<CLAUDE_PLUGIN_ROOT>` 占位符路径全部替换为 map 字段引用。
+
 ## 0.21.5 — 2026-09-28 · Author the Slide Spec once, after the research pack
 
 owner 指出的流程浪费：研究型 deck 的主会话**先写一份 spec**（缺口维度定性表述、数字

@@ -190,6 +190,12 @@ def materialize(
         manifest = _load_json(work_dir / "build-manifest.json")
     except (OSError, ValueError, json.JSONDecodeError):
         manifest = {}
+
+    def _plugin_file(relative: str) -> str | None:
+        candidate = (ROOT / relative).resolve()
+        return str(candidate) if candidate.is_file() else None
+
+    art_direction = work_dir / "art-direction.yaml"
     payload = {
         "version": 1,
         "work_id": work_dir.name,
@@ -200,6 +206,14 @@ def materialize(
         "pptx_sha256": evidence["pptx_sha256"],
         "review_output": evidence["review_output"],
         "receipt_output": evidence["receipt_output"],
+        # The critic has only Read/Write (no directory listing, no shell): every
+        # reference path it needs must be HERE, resolved against the installed
+        # plugin root. 2026-09-28 live: a critic spent 20+ failed Reads guessing
+        # the schema location and finally validated against a marketplace
+        # checkout of the wrong version.
+        "schema_path": _plugin_file("references/visual-review.schema.json"),
+        "reference_path": _plugin_file("skills/sp-deck/references/pptx-visual-critic.md"),
+        "art_direction": str(art_direction.resolve()) if art_direction.is_file() else None,
         "long_edge": long_edge,
         "quality": quality,
         "entries": entries,
