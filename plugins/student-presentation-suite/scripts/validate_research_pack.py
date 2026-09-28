@@ -3,8 +3,10 @@
 
 `research-pack.schema.json` pins the shape; this module enforces the semantic
 rules that keep a deck honest: reference integrity, source strength, independent
-cross-validation, budget caps, traceability, D-mode provenance and explicit
-bookkeeping for degraded or blocked retrieval.
+cross-validation, traceability, D-mode provenance and explicit bookkeeping for
+degraded or blocked retrieval. Search/fetch counts are NOT capped here — the
+owner forbids runtime count quotas (2026-09-28); the band is an advisory depth
+tier, the stop condition is sufficient evidence, not an exhausted quota.
 
 Exit codes: 0 = ok (minor findings allowed), 2 = blocker present.
 """
@@ -22,11 +24,6 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "references" / "research-pack.schema.json"
 
-BUDGET_CAPS = {
-    "simple": {"queries": 3, "sources": 5},
-    "standard": {"queries": 8, "sources": 12},
-    "deep": {"queries": 15, "sources": 25},
-}
 STRONG_TIERS = {"S", "A"}
 ACCEPTABLE_DATA_TIERS = {"S", "A", "B"}
 TIER_ORDER = {"S": 0, "A": 1, "B": 2, "C": 3, "D": 4}
@@ -327,74 +324,6 @@ def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def _extension_headroom(pack: dict[str, Any]) -> int | None:
-    """User-approved query headroom, or None when the extension record is invalid.
-
-    2026-09-17: a live gap-fill round pushed a deep-band pack to 16/15 queries;
-    the only compliant exit was discarding the whole round. A recorded
-    `budget_extension` (extra_queries / approved_by: user / reason) is the
-    honest overage path — deleting executed queries to fit the cap never is.
-    """
-    extension = pack.get("budget_extension")
-    if extension in (None, {}, ""):
-        return 0
-    if not isinstance(extension, dict):
-        return None
-    try:
-        extra = int(extension.get("extra_queries"))
-    except (TypeError, ValueError):
-        return None
-    if extra < 1:
-        return None
-    if str(extension.get("approved_by") or "") != "user":
-        return None
-    if not str(extension.get("reason") or "").strip():
-        return None
-    return extra
-
-
-def budget_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    band = str(pack.get("budget") or "")
-    caps = BUDGET_CAPS.get(band)
-    if caps is None:
-        return out
-    headroom = _extension_headroom(pack)
-    if headroom is None:
-        out.append(
-            issue(
-                "major",
-                "budget_extension_invalid",
-                "budget_extension requires extra_queries >= 1, approved_by == 'user' "
-                "and a non-empty reason",
-                budget=band,
-            )
-        )
-        headroom = 0
-    queries = pack.get("queries") or []
-    sources = pack.get("sources") or []
-    if len(queries) > caps["queries"] + headroom:
-        out.append(
-            issue(
-                "major",
-                "budget_exceeded",
-                f"{len(queries)} queries exceed the {band} cap of {caps['queries']}"
-                + (f" (+{headroom} user-approved)" if headroom else ""),
-                budget=band,
-            )
-        )
-    if len(sources) > caps["sources"]:
-        out.append(
-            issue(
-                "major",
-                "budget_exceeded",
-                f"{len(sources)} sources exceed the {band} cap of {caps['sources']}",
-                budget=band,
-            )
-        )
-    return out
-
-
 def hygiene_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     cited: set[str] = set()
@@ -551,7 +480,6 @@ def validate(pack: dict[str, Any]) -> dict[str, Any]:
         + cross_validation_issues(pack)
         + contract_issues(pack)
         + must_verify_issues(pack)
-        + budget_issues(pack)
         + hygiene_issues(pack)
     )
     blockers = [p for p in problems if p["severity"] in {"critical", "major"}]

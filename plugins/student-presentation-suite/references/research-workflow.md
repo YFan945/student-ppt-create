@@ -35,7 +35,7 @@ PPTX                 最终怎么呈现
 | --- | --- | --- |
 | **A 必须查** | 时效性内容：最新数据、最新政策、最新版本、最新榜单、某机构最新预测、产品现状 | 必须联网；查不到就进 `unresolved`，不得用模型记忆冒充 |
 | **B 最好查** | 模型大概率知道，但结论会被打分的内容：课程答辩、论文汇报、竞赛、正式提交 | 查；拿不到就降级为"模型常识"并**在页面标注无来源**，不得假装有出处 |
-| **C 不用查** | 与外部事实无关的任务：过渡页、把已有材料概括成三点、重排用户提供的结构 | 不消耗检索预算 |
+| **C 不用查** | 与外部事实无关的任务：过渡页、把已有材料概括成三点、重排用户提供的结构 | 不产生检索 |
 | **D 禁止查** | 用户明确限定范围："只根据我上传的论文 / 只用课程 PPT / 不要用外部资料" | 立即停止检索；用 `import_user_materials.py` 确定性导入用户材料（不派研究员子代理），只整理用户材料 |
 
 D 类默认走确定性导入（`import_user_materials.py` → Research Pack + `research-import.json` 凭据，无子代理）；仅当用户点名要研究员整理时才 spawn 隔离研究员。D 类是硬约束：一旦触发，`sp-research` 不发起任何检索，只把用户材料整理成 Research Pack
@@ -140,53 +140,45 @@ Source C  35 亿   → 量级不一致 → confidence: low，conflict: true，
 
 标出类型与优先级即可，**具体画法由 Art Direction 和 Composition 决定**。
 
-## 七、预算
+## 七、检索深度档位
 
-| 档位 | max queries | max sources | 适用 |
-| --- | --- | --- | --- |
-| `simple` | 3 | 5 | 普通课程展示、小组作业 |
-| `standard` | 8 | 12 | 课程答辩、结题答辩 |
-| `deep` | 15 | 25 | 论文汇报、竞赛答辩、毕业答辩 |
+| 档位 | 适用 |
+| --- | --- |
+| `simple` | 普通课程展示、小组作业 |
+| `standard` | 课程答辩、结题答辩 |
+| `deep` | 论文汇报、竞赛答辩、毕业答辩 |
 
-检索还要限制页面抓取次数：`simple` 12 次、`standard` 30 次、`deep` 50 次
-`WebFetch`。同一 URL 复用已抓取结果，失败最多重试一次。达到上限后，优先保留
-会上屏的关键论断；其余记入 `unresolved`，不得把未经核实的数字写成已验证。
+档位是**深度建议，不是次数上限**：检索与页面抓取均不设次数配额。纪律靠证据规则而不是
+计数器——同一 URL 复用已抓取结果，失败最多重试一次；优先把检索花在会上屏的关键论断上，
+其余记入 `unresolved`，不得把未经核实的数字写成已验证。
 `research-execution.json` 记录实际 `WebSearch` / `WebFetch` 次数，供成本复盘。
 
 默认由 `scenario` 推导，用户可覆盖。硬约束是：**不要为了某一页的一句话搜索二十个网页。**
-超限由 `validate_research_pack.py` 拦截。
 
 **档位必须按证据需求选，scenario 只定默认**：需核验的数据点/claims ≥ 10 或 slide_count ≥ 12
-时至少 `standard`；≥ 18 或 slide_count ≥ 15 时用 `deep`。宁可初始档位高一级——cap 触发后的
-gap-fill 重入实测代价约 7 个请求（主会话 SendMessage + 等待 + 核验，研究员重入 + 重校验；
-2026-09-19 实测），而同样的检索在第一次暖上下文里多跑只多 1–2 个请求。上限拦截的本意是防
-"为一句话搜二十个网页"，不是把 8 个维度的 deck 压进 5 个维度的预算（2026-09-17 live：
-deep 16/15 被迫整轮回退、12 页压成 10 页——那就是档位选低了，不是研究员浪费）。
+时至少 `standard`；≥ 18 或 slide_count ≥ 15 时用 `deep`。宁可初始档位高一级——gap-fill
+重入实测代价约 7 个请求（主会话 SendMessage + 等待 + 核验，研究员重入 + 重校验；
+2026-09-19 实测），而同样的检索在第一次暖上下文里多跑只多 1–2 个请求。档位选低的表现是
+把 8 个维度的 deck 压进 5 个维度（2026-09-17 live），不是研究员搜多了。
 
 ### 启动前声明与停止条件
 
 检索开始前，Research Pack 必须先列出 **3–5 条 `must_verify` claim**（真正决定内容成立与否的
-待证论断）并选定预算档。停止条件是**收益充分**，不是预算用尽：
+待证论断）并选定深度档位。停止条件是**收益充分**，不是次数用尽：
 
 - 每条 claim 达到 ≥2 个交叉验证的分级来源，或明确记入 `unresolved`（写明对交付的影响）；
-- 全部 claim 处理完毕即停止检索——剩余查询配额不是目标；
+- 全部 claim 处理完毕即停止检索——多搜不是为了凑数；
 - `validate_research_pack.py` 对 standard/deep 档校验声明数量与逐条覆盖
   （`must_verify_count` / `must_verify_uncovered`），simple 档降级为建议。
 
 2026-09-22 实测：一个研究员为有时效数据的主题跑了 42 分钟 / 4.0M token，其中相当部分超出
 "足够来源"——声明先行、逐条关门才是刹车。
 
-### 补检（gap-fill）与预算申报
+### 补检（gap-fill）
 
-- 授权补检前，主会话必须先报告**剩余额度**（`ppt_pipeline.py next` 在 work-dir 有
-  pack 时会给出 `budget: {band, used, cap, approved_headroom, remaining}`），授权消息
-  必须写明剩余次数；研究员耗尽即停。
-- 补检确实需要超出档位上限时，唯一合规路径是在 pack 里写
-  `budget_extension: {extra_queries: N, approved_by: user, reason: ...}`——必须由用户
-  明确批准。**禁止删除已执行的 queries 记录来迎合上限**（2026-09-17 live：deep 档
-  16/15 被迫回退整轮 gap-fill，12 页压成 10 页）。
-- `validate_research_pack.py` 按 `cap + extra_queries` 放行；申报字段不完整（缺
-  reason / approved_by 不是 user / extra_queries < 1）判 `budget_extension_invalid`。
+- 授权补检时写明本次要核验的 claim 清单；研究员按 claim 收益决定检索量，不受次数配额。
+- **禁止删除已执行的 queries 记录**——pack 是审计记录，只追加不改写（2026-09-17 live：
+  为迎合上限删记录的路径已被废除，上限本身也不复存在）。
 
 ## 八、上下文防火墙
 

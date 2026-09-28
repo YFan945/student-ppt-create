@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://student-presentation-suite.local/research-pack.schema.json",
   "title": "Research Pack",
-  "description": "sp-research 的唯一交付物：把互联网原始信息压缩为可追溯、可引用的结构化结论，供 sp-outline 与 sp-deck 直接消费。规则见 research-workflow.md；本文件只约束形状，语义检查（来源分级、交叉验证、预算）见 scripts/validate_research_pack.py。",
+  "description": "sp-research 的唯一交付物：把互联网原始信息压缩为可追溯、可引用的结构化结论，供 sp-outline 与 sp-deck 直接消费。规则见 research-workflow.md；本文件只约束形状，语义检查（来源分级、交叉验证）见 scripts/validate_research_pack.py。",
   "type": "object",
   "required": ["version", "topic", "budget", "queries", "findings", "sources"],
   "additionalProperties": false,
@@ -12,23 +12,12 @@
     "generated_at": {"type": "string", "description": "ISO 8601"},
     "budget": {
       "enum": ["simple", "standard", "deep"],
-      "description": "决定 queries / sources 的上限；映射规则见 research-workflow.md"
+      "description": "检索深度档位（建议值，不设次数上限）；选择规则见 research-workflow.md"
     },
     "queries": {
       "type": "array",
       "description": "实际执行过的检索词，用于复现与审计。只记录执行了的，不记录计划中的。",
       "items": {"type": "string", "minLength": 1}
-    },
-    "budget_extension": {
-      "type": "object",
-      "description": "用户批准的检索预算例外：把 queries 上限放宽 extra_queries 次。来源：live 会话中 gap-fill 第 2 轮把 deep 档做到 16/15，唯一出路是回退整轮；本字段让超支有合规申报路径，审计零删除。",
-      "required": ["extra_queries", "approved_by", "reason"],
-      "additionalProperties": false,
-      "properties": {
-        "extra_queries": {"type": "integer", "minimum": 1},
-        "approved_by": {"const": "user"},
-        "reason": {"type": "string", "minLength": 1, "description": "用户批准补检的原因，进入审计"}
-      }
     },
     "findings": {
       "type": "array",

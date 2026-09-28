@@ -38,21 +38,19 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
 1. Read the passed Brief / draft spec and classify claims:
    - A: current/time-sensitive -> must search; no memory substitution.
    - B: graded factual claim -> search when possible; unavailable evidence is explicitly downgraded.
-   - C: no external fact needed -> no search budget.
+   - C: no external fact needed -> no search at all.
    - D: user restricted sources -> **no web retrieval**; `queries=[]`, every source is `user-file`.
-2. Choose budget from scenario: simple 3/5, standard 8/12, deep 15/25 queries/sources. Never exceed it.
-   Also budget page retrieval: simple 12, standard 30, deep 50 WebFetch calls.
+2. Choose a depth band from scenario: simple / standard / deep. Bands are depth
+   guidance, NOT count quotas — web searches and WebFetch calls have no caps.
    Reuse an already fetched URL and retry a failed URL at most once. Prioritize
-   primary sources for claims that will appear on slides. At the fetch limit,
-   record remaining claims in `unresolved` instead of continuing exploratory reads.
-   Gap-fill rounds: the authorization message must state the exact remaining query quota; stop
-   once it is exhausted. Exceeding the band cap is only legal with a user-approved
-   `budget_extension` (`extra_queries`, `approved_by: user`, `reason`) recorded in the pack —
-   never delete executed queries to fit the cap.
+   primary sources for claims that will appear on slides; record claims you
+   could not verify in `unresolved` instead of continuing exploratory reads.
+   Gap-fill rounds: the authorization message names the claims to verify; search
+   per claim benefit. Never delete executed queries — the pack is an audit log.
 3. Search per claim, not per topic. Record every executed query and every source `url`/`locator` plus `independence_group`.
 4. Grade sources S/A/B/C/D. Tier D is opinion only. Do not self-promote a source above the type ceiling enforced by the validator.
 5. Cross-check numbers across independent groups. High-confidence numbers require >=2 groups. Conflicts become `confidence: low`, `conflict: true`, explanatory `notes`, and a `conflicts` record.
-6. Record blocked/paywalled/missing/out-of-budget retrieval in `unresolved` with concrete `impact`; silent degradation is forbidden.
+6. Record blocked/paywalled/missing retrieval in `unresolved` with concrete `impact`; silent degradation is forbidden.
 7. Mark `knowledge_gaps` and `visual_candidates` (type + priority only; visual treatment belongs downstream).
 8. Validate until zero blockers:
 

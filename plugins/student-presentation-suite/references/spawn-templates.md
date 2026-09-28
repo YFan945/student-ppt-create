@@ -22,16 +22,12 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   <work-dir>/research-pack-validation.json。
 - Deck 背景：<主题 / 场景 / 语言 / 时长与页数 / 核心论断，各一行>
 - 证据要求：<必须覆盖的 claims；每个数据点绑定年份与来源机构；宁缺毋滥，无法核实的标 unverified>
-- 检索预算：<band>（cap <N> 次）；当前已用 <X> 次，剩余 <Y> 次。
-  页面抓取预算：<F> 次 WebFetch（simple 12 / standard 30 / deep 50）；
-  同一 URL 复用已抓取结果，失败最多重试一次，超出预算的论断记入 unresolved。
-  gap-fill 授权必须写明剩余次数，耗尽即停；超出档位上限只有用户批准的
-  budget_extension 可用，禁止删除已执行的 queries 记录。
-  上限以本槽填写的 <N> 为准，不必读取 validate_research_pack.py 源码确认
-  （标准档 8 次检索 / 12 来源；2026-09-19 实测：为确认上限多花一次读取）。
-  计数口径 = pack 内 queries 成功记录条数；一次并发批次内多条算多条；
-  未产出结果的失败调用不占额，但必须在 research/search-log.json 的
-  search_executions 标 status: failed。
+- 检索深度档位：<band>（深度建议，不设次数上限——检索与 WebFetch 均无配额）。
+  同一 URL 复用已抓取结果，失败最多重试一次；无法核实的论断记入 unresolved，
+  禁止把未经核实的数字写成已验证。
+  gap-fill 授权写明本次要核验的 claim 清单，研究员按 claim 收益决定检索量。
+  pack 是审计记录：queries 只追加不改写；未产出结果的失败调用必须在
+  research/search-log.json 的 search_executions 标 status: failed。
 - gap-fill 轮结束时，把补检的每次检索**追加**进 research/search-log.json
   （n 续号），再更新 pack——日志与 pack 必须能对上。
 - 禁止嵌套 spawn 任何其它 subagent。

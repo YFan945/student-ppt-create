@@ -2,6 +2,23 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.3 — 2026-09-28 · Research depth bands without count quotas
+
+**owner 指令**：网络搜索不设次数限制，移除全部检索/抓取计数配额机制。深度档位
+（simple / standard / deep）保留为**建议值**，停止条件回到"收益充分"而非"次数用尽"。
+
+- **validate_research_pack.py 移除 `BUDGET_CAPS` 强制**：queries / sources 超档不再产生
+  `budget_exceeded` blocker；`budget_extension`（extra_queries / approved_by / reason）
+  申报机制连同 `budget_extension_invalid` 一起删除——上限没有了，申报通道随之失去存在意义。
+- **移除配额余量上报**：`pipeline/plan.py` 的 `_research_budget` 与 `next --json` 的
+  `budget: {band, used, cap, approved_headroom, remaining}` 载荷删除。
+- **文档同步**：research-workflow.md 第七节改为"检索深度档位"（无 max queries/sources 列、
+  无 WebFetch 12/30/50 抓取上限）；spawn-templates 的检索预算槽改为深度档位 + 审计纪律
+  （pack 只追加不改写）；sp-research SKILL 与 researcher agent 契约同步。保留的纪律：
+  同一 URL 复用抓取结果、失败最多重试一次、不可核实记 `unresolved`、pack 是审计记录。
+- 历史教训存档：2026-09-17 的"deep 16/15 整轮回退"正是上限机制的代价——本版之后该失败
+  模式在结构上不可能再发生。
+
 ## 0.21.2 — 2026-09-28 · One hook process per tool call instead of five
 
 owner 观察到"维护会话还是触发了许多钩子"。排查结论：**阻塞边界**（拦不拦）在 0.19.1

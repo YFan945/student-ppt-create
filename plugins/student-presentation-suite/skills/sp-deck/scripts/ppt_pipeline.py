@@ -121,7 +121,7 @@ from pipeline.deliverables import (  # noqa: E402,F401
 )
 from pipeline.dispatch import build_next_payload, cmd_next  # noqa: E402,F401
 from pipeline.doctor import cmd_doctor  # noqa: E402,F401
-from pipeline.plan import _research_budget, cmd_plan, compile_research_for_plan  # noqa: E402,F401
+from pipeline.plan import cmd_plan, compile_research_for_plan  # noqa: E402,F401
 from pipeline.qa import cmd_qa  # noqa: E402,F401
 from pipeline.render import cmd_render, make_contact_sheet, make_contact_thumb  # noqa: E402,F401
 from pipeline.repair import cmd_repair  # noqa: E402,F401

@@ -44,9 +44,6 @@ from pipeline.deliverables import (  # noqa: E402
     deliverables_are_current,
     requested_prepared_deliverables,
 )
-from pipeline.plan import (  # noqa: E402
-    _research_budget,
-)
 from pipeline.scheduler import (  # noqa: E402
     builder_instance_reuse,
     builder_shards,
@@ -133,7 +130,6 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
     python = f'"{sys.executable}"'
     pipeline = HERE / "ppt_pipeline.py"
     if not manifest:
-        budget = _research_budget(work_dir)
         validator = str(ROOT / "scripts" / "validate_slide_spec.py")
         payload = {
             "state": "(absent)",
@@ -166,12 +162,6 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 "MAIN session without `name`."
             ),
         }
-        if budget is not None:
-            payload["budget"] = budget
-            payload["notes"] += (
-                " Gap-fill authorization must state the exact remaining query quota; exceeding"
-                " the band cap requires a user-approved budget_extension recorded in the pack."
-            )
     else:
         state = str(manifest.get("state") or "(absent)")
         policy = tier_policy(manifest.get("quality_level"))
