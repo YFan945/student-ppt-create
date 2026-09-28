@@ -8,7 +8,7 @@
  *
  * Usage from a deck.js:
  *
- *   const I = require('pptx-icons');
+ *   const I = require('./pptx-icons.js');
  *   I.addIconFromLibrary(slide, 'check', { x: 0.5, y: 0.5, w: 0.3, h: 0.3 }, tokens);
  *   const svg = I.iconSVG('warning', 'B85042'); // raw SVG string
  *

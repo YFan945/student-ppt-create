@@ -37,8 +37,8 @@
       "reread_inputs_covered_by_packet": false,
       "no_reread_files": [
         "slide-spec-compiled",
-        "art-direction",
-        "research-pack",
+        "art-direction.",
+        "research-pack.",
         "build-manifest",
         "pipeline-qa",
         "pre-qa",

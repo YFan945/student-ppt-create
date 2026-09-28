@@ -112,6 +112,44 @@ class BuilderGuardTests(BuilderGuardFixture, unittest.TestCase):
                 event = self.shell_event(command, agent_type=guard.BUILDER, agent_id="builder-child")
                 self.assertEqual(0, guard.handle(event))
 
+    def test_grep_c_flag_is_not_an_inline_program(self) -> None:
+        """2026-09-28 live: `node --check pages/x.js && grep -c marker pages/x.js`
+        被以"内联脚本碰 work 产物"拒绝——grep -c 的 -c 不是 python -c，拒绝理由与
+        命令完全不符，builder 只能放弃语法检查。"""
+        command = (
+            'cd "$WD" && node --check pages/p01-cover.js && echo "SYNTAX_OK" && '
+            'grep -c "student-presentation-suite-scaffold" pages/p01-cover.js'
+        )
+        event = self.shell_event(command, agent_type=guard.BUILDER, agent_id="builder-child")
+        self.assertEqual(0, guard.handle(event))
+
+    def test_inline_require_of_a_page_module_stays_refused(self) -> None:
+        command = (
+            "cd \"$WD\" && node -e \"const m=require('./pages/p03-s03.js'); console.log(typeof m)\""
+        )
+        event = self.shell_event(command, agent_type=guard.BUILDER, agent_id="builder-child")
+        self.assertEqual(2, guard.handle(event))
+
+    def test_cross_work_dir_bash_is_refused(self) -> None:
+        """2026-09-28 live: builder 用 Bash glob 翻了 8 个其它项目的 pages 仿样式
+        （其中一个 work-id 同名）。一个实例只有一个 work-dir；两种路径方言都算。"""
+        for command in (
+            "ls /e/学习/Daima_Codes/2/outputs/.pptx-work/other-deck/pages/p01-cover.js",
+            'ls "E:/学习/Daima_Codes/2/outputs/.pptx-work/other-deck/pages"',
+        ):
+            with self.subTest(command=command):
+                event = self.shell_event(command, agent_type=guard.BUILDER, agent_id="builder-child")
+                self.assertEqual(2, guard.handle(event))
+        own = (
+            'cd "$WD" && node --check pages/p01-cover.js'
+        )
+        event = self.shell_event(own, agent_type=guard.BUILDER, agent_id="builder-child")
+        self.assertEqual(0, guard.handle(event))
+
+    def test_cross_work_dir_reads_are_refused_for_builders(self) -> None:
+        foreign = Path("E:/elsewhere/outputs/.pptx-work/other/pages/p01-cover.js")
+        self.assertEqual(2, guard.handle(self.builder(foreign, "Read")))
+
     def test_parent_session_inline_node_is_not_policed(self) -> None:
         command = "node -e \"console.log(require('./build-manifest.json').state)\""
         self.assertEqual(0, guard.handle(self.shell_event(command)))
@@ -241,6 +279,15 @@ class BuilderPacketScopeTests(BuilderGuardFixture, unittest.TestCase):
         return json.loads(path.read_text(encoding="utf-8"))
 
     def test_no_reread_artifact_is_refused_for_a_packed_builder(self) -> None:
+        self.assertEqual(2, guard.handle(self.builder(self.art, "Read")))
+
+    def test_art_direction_check_is_readable_but_art_direction_is_not(self) -> None:
+        """no_reread 只匹配真正投影进 packet 的文件：art-direction-check.json 是 AD
+        校验报告，从未投影——此前被谎称"projected into your Builder Packet"拒绝
+        （2026-09-28 live）。"""
+        check = self.work / "art-direction-check.json"
+        check.write_text("{}", encoding="utf-8")
+        self.assertEqual(0, guard.handle(self.builder(check, "Read")))
         self.assertEqual(2, guard.handle(self.builder(self.art, "Read")))
 
     def test_main_session_still_reads_the_same_artifact(self) -> None:

@@ -2,9 +2,9 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const H = require('pptx-helpers');
-const L = require('pptx-layouts');
-const V = require('pptx-visuals');
+const H = require('./pptx-helpers.js');
+const L = require('./pptx-layouts.js');
+const V = require('./pptx-visuals.js');
 
 // 同一 asset 路径在一次 deck 构建里最多被探测 5 次（每页 preflight + render 各一次），
 // 网络盘下 IO 放大明显。构建是一次性进程，按绝对路径缓存存在性即可。

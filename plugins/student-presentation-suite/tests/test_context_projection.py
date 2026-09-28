@@ -42,7 +42,7 @@ class NoRereadGapTests(unittest.TestCase):
         )
         files = contract["presentation_builder"]["packet"]["no_reread_files"]
         for fragment in (
-            "slide-spec-compiled", "slide-spec.yaml", "art-direction", "research-pack",
+            "slide-spec-compiled", "slide-spec.yaml", "art-direction.", "research-pack.",
             "build-manifest", "pipeline-qa", "pre-qa", "qa-", "visual-review",
             "calibration-style-contract", "page_brief",
         ):

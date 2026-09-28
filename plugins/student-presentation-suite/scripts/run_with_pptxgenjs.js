@@ -73,7 +73,7 @@ const runtime = resolveRuntime();
 const existing = process.env.NODE_PATH ? process.env.NODE_PATH.split(path.delimiter) : [];
 const moduleRoot =
   runtime.source === 'global' ? runtime.root : path.join(runtime.root, 'node_modules');
-// 把 scripts 目录也加入 NODE_PATH，让生成的 deck 可以 require("pptx-helpers")
+// 把 scripts 目录也加入 NODE_PATH，让生成的 deck 可以 require('./pptx-helpers.js')
 const scriptsDir = __dirname;
 process.env.NODE_PATH = [scriptsDir, moduleRoot, ...existing].filter(Boolean).join(path.delimiter);
 process.env.PPTX_HELPERS_DIR = scriptsDir;

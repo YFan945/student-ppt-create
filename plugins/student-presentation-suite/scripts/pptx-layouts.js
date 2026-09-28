@@ -902,3 +902,30 @@ module.exports = {
   visualComponentFor,
   registry,
 };
+
+if (require.main === module) {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--describe')) {
+    const entries = Object.entries(module.exports).map(([name, fn]) => ({
+      name,
+      kind: typeof fn,
+      arity: typeof fn === 'function' ? fn.length : undefined,
+    }));
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          usage:
+            'renderArchetype(ctx, request): ctx {slide, tokens, registry?, slideNumber?, layoutReport?}; ' +
+            'request {context?, layout?: {id}, slots: {title?, claim?, body?, visual?, key_line?}, params?: {mirror}}. ' +
+            'slots.key_line 非空自动渲染 D11 收尾带；fallback 链耗尽报错含逐候选原因。',
+          entries,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  } else {
+    process.stdout.write('Usage: node scripts/pptx-layouts.js --describe\n');
+    process.exit(argv.length ? 2 : 0);
+  }
+}

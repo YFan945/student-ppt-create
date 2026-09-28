@@ -2,6 +2,29 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.10 — 2026-09-28 · Subagent tool-call contradictions, fixed one by one
+
+逐条检查 subagent transcript（carbon-pv-vs-wind 实战）里"工具调用与实际相违背"的记录，
+修掉四类；顺带量化思维链空转的根因：
+
+- **`grep -c` 被误判成内联脚本**：INLINE_EVAL 全局匹配 `-c`，于是
+  `node --check pages/x.js && grep -c marker pages/x.js` 被拒，理由还错说"内联脚本读
+  JSON/YAML 或改写页面"——与命令完全不符。判定改为按 shell 段进行、flag 只归属解释器
+  自己的 flag 段（`node -e` / `python -c` / heredoc 碰 work 产物仍拒）。
+- **builder 跨 work-dir 巡览零防护**：实测一个 builder 用 Bash glob 翻了 **8 个其它项目**
+  的 pages 仿样式（含一个同名 work-id 的项目）。新增 `_foreign_work_refs`：Read/Write/
+  Edit 与 Bash 中的绝对 `.pptx-work` 引用（盘符与 MSYS `/e/` 两种方言）必须落在本项目
+  的 work 树内，否则拒绝。
+- **no_reread 撒谎**：`art-direction` 通配把从未投影的 `art-direction-check.json` 拒为
+  "projected into your Builder Packet"。片段精确为 `art-direction.` / `research-pack.`
+  （带点：覆盖 .yaml/.json，排除 `-check` / `-validation` 后缀）。
+- **builder 没有 API 正门**：ls / --help 插件 scripts 目录全被拒，而 `--describe` 只有
+  pptx-helpers 一个入口——摸不到 layouts/visuals API 只能盲试。`pptx-layouts.js` /
+  `pptx-visuals.js` 现支持 `--describe`，builder 提示指向全部三个入口；兄弟引用改为
+  相对路径 require（顺带解除 NODE_PATH 依赖）。
+- **思维链空转的根因量化**：该实战 17 个 subagent 合计 ~304 万字符纯思维链（最大单实例
+  62.5 万），主体是错误拒绝后的重试/绕路与盲探路径——修掉上述拒绝面即砍掉空转源。
+
 ## 0.21.9 — 2026-09-28 · Subagent restriction audit: critic gets read-only discovery
 
 owner：子代理限制太多、无法正常完成任务。全量审计三个隔离代理的限制面（工具集、禁读/

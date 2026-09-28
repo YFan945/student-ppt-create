@@ -4,7 +4,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const pptxgen = require('pptxgenjs');
-const C = require('pptx-composer');
+const C = require('./pptx-composer.js');
 
 const [output, specPath, tokensPath, assetManifestPath] = process.argv.slice(2);
 if (!output || !specPath || !tokensPath || ['--help', '-h'].includes(output)) {

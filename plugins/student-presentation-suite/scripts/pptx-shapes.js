@@ -1,7 +1,7 @@
 'use strict';
 
 const pptxgen = require('pptxgenjs');
-const H = require('pptx-helpers');
+const H = require('./pptx-helpers.js');
 const SHAPE = new pptxgen().ShapeType;
 
 const SUPPORTED_SHAPES = Object.freeze([

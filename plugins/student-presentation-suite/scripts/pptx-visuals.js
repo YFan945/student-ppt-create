@@ -7,9 +7,9 @@
 
 const pptxgen = require('pptxgenjs');
 const fs = require('fs');
-const H = require('pptx-helpers');
-const S = require('pptx-shapes');
-const SVG = require('pptx-svg-library');
+const H = require('./pptx-helpers.js');
+const S = require('./pptx-shapes.js');
+const SVG = require('./pptx-svg-library.js');
 const { imageSize } = require('image-size');
 
 const SHAPE = new pptxgen().ShapeType;
@@ -994,3 +994,30 @@ module.exports = {
   renderVisual,
   renderVisualSpec,
 };
+
+if (require.main === module) {
+  const argv = process.argv.slice(2);
+  if (argv.includes('--describe')) {
+    const entries = Object.entries(module.exports).map(([name, fn]) => ({
+      name,
+      kind: typeof fn,
+      arity: typeof fn === 'function' ? fn.length : undefined,
+    }));
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          usage:
+            'renderVisual(slide, component, data, area, tokens, lang): component 由 ' +
+            'pptx-layouts.visualComponentFor 派发；data 为扁平载荷（details 展开）。' +
+            '颜色一律走 tokens 角色色（图表 options 已绑定调色板）。',
+          entries,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  } else {
+    process.stdout.write('Usage: node scripts/pptx-visuals.js --describe\n');
+    process.exit(argv.length ? 2 : 0);
+  }
+}

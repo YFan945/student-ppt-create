@@ -48,11 +48,15 @@ from pathlib import Path
 BUILDER = "student-presentation-suite:presentation-builder"
 SHELL_TOOLS = {"Bash", "PowerShell"}
 # Any interpreter that can take a program on the command line.
-INTERPRETER = re.compile(
-    r"(?<![\w.-])(?:python[0-9.]*|py|node|nodejs|perl|ruby|php|pwsh|powershell)(?:\.exe)?(?=\s|$)",
+SEGMENT_SPLIT = re.compile(r"[;&|\n]+")
+INTERPRETER_WORD = re.compile(
+    r"^(?:.*[/\\])?(?:python[0-9.]*|py|node|nodejs|perl|ruby|php|pwsh|powershell)(?:\.exe)?$",
     re.I,
 )
-INLINE_EVAL = re.compile(r"(?<![\w-])-(?:c|e|command)\b", re.I)
+# 内联 flag 只归属**解释器自己的 flag 段**：`grep -c` / `cut -c` 的 -c 不是 python -c
+# （2026-09-28 live：`node --check pages/x.js && grep -c ...` 被误判成"内联脚本碰 work
+# 产物"拒绝，理由与命令完全不符，builder 只能重试或放弃语法检查）。
+INLINE_FLAG = re.compile(r"--?(?:c|e|command|eval)$", re.I)
 HEREDOC = re.compile(r"<<\s*['\"]?[A-Za-z_][A-Za-z0-9_]*")
 STDIN_PROGRAM = re.compile(r"(?<![\w-])-\s*(?:<<|$|[\r\n])")
 # Work-dir artifacts the projection tool (or a plain Edit) is meant to replace digging by hand.
@@ -96,6 +100,32 @@ def _is_page_module(path: Path, project: Path) -> bool:
         return False
     # <work-id>/pages/pNN-*.js; hidden .guard and other work artifacts are not covered.
     return len(rel.parts) >= 3 and rel.parts[1] == "pages" and path.suffix.lower() == ".js"
+
+
+_FOREIGN_WORK_DIR = re.compile(r"(?:[A-Za-z]:[/\\]|/[A-Za-z]/)[^\s\"'|;]*?\.pptx-work", re.I)
+
+
+def _foreign_work_refs(text: str, project: Path) -> str | None:
+    """Absolute `.pptx-work` references outside THIS project's work tree.
+
+    2026-09-28 live: a builder globbed pages out of eight OTHER projects'
+    work dirs (even one with the same work-id) to imitate their layout — a
+    boundary the packet never drew because it only scoped writes. Both path
+    dialects count (drive-letter and MSYS `/e/...`). Returns the offending
+    reference, or None.
+    """
+    root = (project / "outputs" / ".pptx-work").resolve()
+    for match in _FOREIGN_WORK_DIR.finditer(text):
+        raw = match.group(0).rstrip("\\/")
+        if len(raw) >= 3 and raw[0] == "/" and raw[2] == "/":
+            raw = f"{raw[1].upper()}:{raw[2:]}"  # MSYS /e/... -> E:/...
+        candidate = Path(raw)
+        try:
+            candidate.resolve().relative_to(root)
+            continue
+        except (OSError, ValueError):
+            return raw
+    return None
 
 
 def _record_instance(project: Path, agent_id: str, work_id: str) -> None:
@@ -142,12 +172,26 @@ def _record_instance(project: Path, agent_id: str, work_id: str) -> None:
 
 
 def _runs_inline_program(command: str) -> bool:
-    if not INTERPRETER.search(command):
-        return False
-    if INLINE_EVAL.search(command) or HEREDOC.search(command):
-        return True
-    # `python -` / `python - <<'PY'` reads the program from stdin.
-    return bool(STDIN_PROGRAM.search(command))
+    """True only when an INTERPRETER takes a program inline.
+
+    按 shell 段判定，flag 必须落在解释器自己的 flag 段里：`node --check x.js` 与
+    `grep -c pat file` 都不是内联程序；`node -e "..."` / `python -c "..."` /
+    `python - <<'PY'` / `node <<'JS'` 才是。
+    """
+    for segment in SEGMENT_SPLIT.split(command):
+        words = [w for w in segment.strip().split() if not re.match(r"^\w+=", w)]
+        if not words or not INTERPRETER_WORD.match(words[0]):
+            continue
+        for word in words[1:]:
+            if not word.startswith("-"):
+                break
+            if INLINE_FLAG.match(word):
+                return True
+        if len(words) > 1 and STDIN_PROGRAM.match(words[1]):
+            return True
+        if HEREDOC.search(segment):
+            return True
+    return False
 
 
 def _touches_work_artifacts(command: str) -> bool:
@@ -394,6 +438,15 @@ def handle(event: dict) -> int:
         if event.get("agent_type") != BUILDER or not event.get("agent_id"):
             return 0
         command = str(inputs.get("command") or "")
+        foreign = _foreign_work_refs(command, _project(event))
+        if foreign:
+            print(
+                f"builder_guard: refused — 一个实例只有一个 work-dir（2026-09-28 live：builder "
+                f"跨项目翻其它 deck 的页面仿样式）。引用了别的 work 区：{foreign}。"
+                "风格依据走 packet 的 calibration_style / style-summary，不是别人家的页面。",
+                file=sys.stderr,
+            )
+            return 2
 
         if RENDER_OWNED.search(command):
             print(
@@ -432,6 +485,15 @@ def handle(event: dict) -> int:
     path = Path(raw)
     if not path.is_absolute():
         path = Path(event.get("cwd") or project) / path
+    if event.get("agent_type") == BUILDER and event.get("agent_id"):
+        foreign = _foreign_work_refs(str(path), project)
+        if foreign:
+            print(
+                f"builder_guard: refused — 一个实例只有一个 work-dir；{foreign} 属于别的 work 区。"
+                "风格依据走 packet 的 calibration_style / style-summary。",
+                file=sys.stderr,
+            )
+            return 2
     if not _is_page_module(path, project):
         # Builders with an active packet are still scope-checked on non-page files:
         # no_reread artifacts (spec/AD/manifest/QA projections) may not be re-read.

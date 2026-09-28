@@ -56,7 +56,7 @@ function isDecorative(el) {
 function fontWidthFactorFor(fontFace) {
   if (!fontFace) return 1;
   try {
-    const H = require('pptx-helpers');
+    const H = require('./pptx-helpers.js');
     if (typeof H.fontWidthFactor === 'function') return H.fontWidthFactor(fontFace);
   } catch {
     try {

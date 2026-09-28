@@ -2,7 +2,7 @@
  * 共享 pptxgenjs 布局辅助函数。
  *
  * 生成的 deck.js 通过以下方式引入：
- *   const H = require("pptx-helpers");
+ *   const H = require('./pptx-helpers.js');
  *
  * run_with_pptxgenjs.js 会自动将 scripts/ 目录加入 NODE_PATH。
  */
@@ -1131,7 +1131,7 @@ function addStyleMotif(slide, area, tokens, intensity = 'standard') {
   if (!name || String(name).toLowerCase() === 'none') return slide;
   let SVG;
   try {
-    SVG = require('pptx-svg-library');
+    SVG = require('./pptx-svg-library.js');
   } catch {
     // 无 NODE_PATH 的独立调用（单测/直接 node）：回退同目录文件
     SVG = require(require('node:path').join(__dirname, 'pptx-svg-library.js'));

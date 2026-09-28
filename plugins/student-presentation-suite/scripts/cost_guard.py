@@ -192,6 +192,10 @@ def builder_hint() -> str:
     """
     select = plugin_root() / "skills" / "sp-deck" / "scripts" / "visual_reference_select.py"
     parts = [f"`{helpers_hint()}`"]
+    for api in ("pptx-layouts.js", "pptx-visuals.js"):
+        candidate = plugin_root() / "scripts" / api
+        if candidate.is_file():
+            parts.append(f'`node "{candidate}" --describe`')
     if select.is_file():
         parts.append(
             f'`"{sys.executable}" "{select}" --role <role> --grammar <grammar> '
