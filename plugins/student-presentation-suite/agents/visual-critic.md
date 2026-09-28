@@ -55,11 +55,9 @@ text carrier, so that carrier is exempt from `triple-encoding` /
 `left-rail-duplicates` / `dual-value-per-bar`, and a chart may omit its direct
 label for a value the page already states in text. Only when the value is
 unreadable *anywhere* on the page may "missing direct label" be a finding. The
-full arbitration is in the map's `reference_path`
-(`skills/sp-deck/references/pptx-visual-critic.md` inside the installed plugin).
+full arbitration is in the map's `reference_path`.
 
-The report shape is pinned by the map's `schema_path` (the installed plugin's
-`references/visual-review.schema.json`) — read it
+The report shape is pinned by the map's `schema_path` — read that path
 first and emit exactly that shape (a live critic once submitted an `issues`
 top-level structure from memory and the QA gate rejected it; the main session
 then had to paste the full schema into every spawn). `pptx_sha256`, `contact_sheet_sha256` and `page_sha256` (one-based string page

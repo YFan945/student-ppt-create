@@ -28,9 +28,8 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 
 ## visual-review.json
 
-形状的**唯一 canonical 来源是已安装插件的 `references/visual-review.schema.json`**——绝对路径由
-preview map 的 `schema_path` 携带（hook 以安装根解析，勿从 marketplace 检出副本读，版本可能不一致；
-本示例与它逐字段一致）。
+形状的**唯一 canonical 来源是 preview map 的 `schema_path`**（hook 以安装根解析的绝对路径；
+勿从 marketplace 检出副本读，版本可能不一致；本示例与它逐字段一致）。
 2026-09-17 live 教训：critic 首轮按一份过时示例的记忆交了 `issues` 顶层结构，QA 门只回了派生
 错误（“must contain a slides array”），主会话此后每次 spawn 手贴完整 schema 四次。
 不要再凭记忆写形状；不确定时读 schema 文件。

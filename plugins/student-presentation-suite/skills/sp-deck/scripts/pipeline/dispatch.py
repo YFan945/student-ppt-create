@@ -134,7 +134,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
         payload = {
             "state": "(absent)",
             "read": [],
-            "forbidden_to_read": ["${CLAUDE_PLUGIN_ROOT}/references/*.md"],
+            "forbidden_to_read": [f"{ROOT / 'references'}/*.md"],
             "read_images": [],
             "next_command": (
                 f'{python} "{pipeline}" plan --work-dir "{work_dir}" '

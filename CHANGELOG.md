@@ -2,6 +2,20 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.11 — 2026-09-28 · Last path-probe bait removed from docs and payloads
+
+继续检查（主会话日志 + 新增 7 个 subagent）：0.21.10 的四类矛盾在旧缓存上仍复现
+（`node --check` 被拒 ×5、critic 首探错 schema 路径 ×3、no_reread 误拒 ×1），另修掉
+两处仍在诱发探路的残留：
+
+- **critic 文档去掉相对路径拼写**：schema 与仲裁文档的相对路径写法会诱导模型先试
+  项目相对位置（三个 critic 各浪费一次首探）。现在只指向 preview map 的
+  `schema_path` / `reference_path` 字段，不再拼写任何相对路径。
+- **派发载荷展开 `${CLAUDE_PLUGIN_ROOT}` 占位符**：`forbidden_to_read` 原样输出占位符，
+  逼主会话自己解析插件根（实测引发 wc/grep 摸目录找 slide-spec.md）。现直接给绝对路径。
+- 确认 `production_entry_guard` 拒绝主会话直跑内部脚本（art_direction_check.py）为
+  **正确保护**（拒绝文案已指向 ppt_pipeline 正路），不改。
+
 ## 0.21.10 — 2026-09-28 · Subagent tool-call contradictions, fixed one by one
 
 逐条检查 subagent transcript（carbon-pv-vs-wind 实战）里"工具调用与实际相违背"的记录，
