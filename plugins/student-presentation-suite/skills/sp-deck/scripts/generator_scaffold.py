@@ -54,6 +54,7 @@ const path = require('node:path');
 const HELPERS_DIR =
   process.env.PPTX_HELPERS_DIR || path.join(process.env.CLAUDE_PLUGIN_ROOT || '', 'scripts');
 const H = require(path.join(HELPERS_DIR, 'pptx-helpers.js'));
+const L = require(path.join(HELPERS_DIR, 'pptx-layouts.js'));
 const {{ SlideElementRegistry }} = require(path.join(HELPERS_DIR, 'pptx-element-registry.js'));
 const pptxgen = require('pptxgenjs');
 
@@ -79,7 +80,14 @@ function main() {{
   PAGES.forEach((mod, index) => {{
     const n = index + 1;
     const slide = pptx.addSlide();
-    mod({{ pptx, slide, n, H, registry, tokens: TOKENS, slideNumber: n, layoutReport }});
+    const ctx = {{ pptx, slide, n, H, registry, tokens: TOKENS, slideNumber: n, layoutReport }};
+    if (typeof mod === 'function') {{
+      // 函数式页面（自定义坐标的 D9 转义口）：glue 由页面自己执行。
+      mod(ctx);
+    }} else {{
+      // 声明式页面：只填槽位，glue 由 renderDeclaredPage 统一执行。
+      L.renderDeclaredPage(ctx, mod);
+    }}
   }});
   registry.assertSafe();
   // 完整几何分析（含 warning）写 sidecar，供确定性 QA 带进 repair packet。
@@ -103,43 +111,39 @@ PAGE_STUB = """\
 /* {marker} */
 /** Slide {n} — {title} */
 {on_screen_block}
-const L = require('pptx-layouts');
+const COPY = {{
+  title: {title_js},
+  claim: {claim_js},
+  keyLine: {key_line_js},
+  slideCopy: {copy_js},{sources_line}
+}};
+/* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */
 
-module.exports = function (ctx) {{
-  const {{ slide, n, H, registry, tokens }} = ctx;
-  const COPY = {{
-    title: {title_js},
-    claim: {claim_js},
-    keyLine: {key_line_js},
-    slideCopy: {copy_js},{sources_line}
-  }};
-  /* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */
-
-  /* 版式引擎负责整页几何（design grammar D5）：填 slots、调 params、必要时换
-     request.layout.id；自由坐标须先注释声明 custom 理由，几何门照常全检。
-     slots.key_line 非空时 D11 收尾带由引擎自动渲染（细规线 + 结论句）——
-     不要再手画第二条；来源行（11pt）画在更下方的 footer 区。 */
-  const dark = {dark_js};
-  H.renderBackground(slide, tokens, {{ kind: {kind_js}, dark }});
-  // 深浅三明治：本页文字/阴影也必须用同一盘（否则深底深字不可读）。
-  const pageTokens = H.paletteMode(tokens, dark ? 'dark' : 'light');
-
-  L.renderArchetype({{ ...ctx, tokens: pageTokens }}, {{
-    context: {context_js},
-    slots: {{
-      title: COPY.title,
-      claim: COPY.claim || undefined,
-      key_line: COPY.keyLine || undefined,
-      body: Array.isArray(COPY.slideCopy)
-        ? COPY.slideCopy
-        : COPY.slideCopy
-          ? [COPY.slideCopy]
-          : undefined,
-      visual: {visual_js},
-    }},
-  }});
-  /* 追加元素时登记 registry（几何门依赖），讲稿：slide.addNotes(正文)——
-     每页一次、纯文本，质量门读 PPTX 备注区。 */
+/* 声明式页面：只填槽位与参数，glue（背景/深浅盘/版式渲染/D11 收尾带/notes）由
+   deck.js 的 L.renderDeclaredPage 统一执行。需要自定义坐标时才改回函数式页面
+   （module.exports = function (ctx) {{…}}）并在页内注释声明 custom 理由；几何门
+   照常全检。slots.key_line 非空时 D11 收尾带自动渲染，不要手画第二条；来源行
+   （11pt）画在更下方的 footer 区。 */
+module.exports = {{
+  dark: {dark_js},
+  kind: {kind_js},
+  context: {context_js},
+  /* 需要钉版式时填 id（如 "cover-split"）；留空由引擎按 context 自选。 */
+  layout: undefined,
+  slots: {{
+    title: COPY.title,
+    claim: COPY.claim || undefined,
+    key_line: COPY.keyLine || undefined,
+    body: Array.isArray(COPY.slideCopy)
+      ? COPY.slideCopy
+      : COPY.slideCopy
+        ? [COPY.slideCopy]
+        : undefined,
+    visual: {visual_js},
+  }},
+  params: {{}},
+  /* 每页一次、纯文本讲稿（PPTX 备注区，质量门读它）。 */
+  notes: "",
 }};
 """
 

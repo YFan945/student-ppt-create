@@ -2,6 +2,23 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.22.0 — 2026-09-29 · Declarative pages: builders fill slots, the engine writes the glue
+
+**新能力（minor）**：页面模块从"手写 100–150 行 JS"收敛为**声明式槽位**——builder 只填
+`COPY` 字面量与 `{ dark, kind, context, layout, slots, params, notes }`，背景/深浅盘/
+版式渲染/D11 收尾带/notes 全部由 `L.renderDeclaredPage` 统一执行。这是
+"builder 完成 → 校验 → 返工"循环的根治项：几何/配色/溢出类缺陷出自手写胶水，胶水
+不再手写，缺陷就结构性消失。
+
+- **deck.js 双路径**：声明式模块走 `renderDeclaredPage`；函数式模块（D9 自定义坐标
+  转义口）原样执行，旧页面零迁移。
+- **stub 声明化**：`PAGE_STUB` 生成声明式骨架（COPY 字面量保留，page_copy_fidelity
+  逐字节门照常工作；`slots.key_line` 自动渲染收尾带）。
+- **self_check 同步支持双路径**，并新增两项检查：scaffold 存根未实现、缺讲稿。
+- builder 契约与 spawn 模板改为"声明式优先，自定义坐标才写函数式"。
+- 附带事实澄清：pre-QA 的 blockers 计数本就只含 critical/major（minor 已是
+  advisory），无需改动——51 个 blocker 全是真实 major。
+
 ## 0.21.15 — 2026-09-29 · Builders self-verify: dry-run check before BUILDER_DONE
 
 针对"builder 完成 → 校验 → 返工"循环的根治项（owner 拍板）：给 builder 一个**受许的

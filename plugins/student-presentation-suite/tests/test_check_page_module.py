@@ -84,6 +84,39 @@ class CheckPageModuleTests(unittest.TestCase):
         self.assertIn("registry", codes)
         self.assertIn("off-palette", codes)
 
+    def test_declarative_page_runs_through_the_same_glue(self) -> None:
+        page = """'use strict';
+const COPY = { title: '声明式页标题', claim: '一句话主张，长度合理', keyLine: '收尾结论句', slideCopy: ['要点一'] };
+module.exports = {
+  dark: false,
+  kind: 'content',
+  context: { slideId: 3, slideKind: 'content', itemCount: 1, titleChars: 6 },
+  slots: { title: COPY.title, claim: COPY.claim, key_line: COPY.keyLine, body: COPY.slideCopy },
+  params: {},
+  notes: '本页讲稿。',
+};
+"""
+        code, report = self.run_check({"pages/p03-decl.js": page})
+        self.assertEqual(0, code, report)
+
+    def test_missing_notes_and_scaffold_marker_are_reported(self) -> None:
+        notesless = """'use strict';
+const COPY = { title: '无讲稿页标题', claim: '一句话主张，长度合理' };
+module.exports = { dark: false, kind: 'content', context: { slideId: 4, itemCount: 0 },
+  slots: { title: COPY.title, claim: COPY.claim }, params: {}, notes: '' };
+"""
+        stub = """'use strict';
+/* student-presentation-suite-scaffold */
+module.exports = function () {};
+"""
+        code, report = self.run_check(
+            {"pages/p04-nonotes.js": notesless, "pages/p05-stub.js": stub}
+        )
+        self.assertEqual(1, code)
+        kinds = {f["kind"] for f in report["findings"]}
+        self.assertIn("notes", kinds)
+        self.assertIn("scaffold", kinds)
+
     def test_throwing_page_module_is_reported(self) -> None:
         code, report = self.run_check(
             {"pages/p03-throw.js": "module.exports = function(){ throw new Error('boom'); };"}

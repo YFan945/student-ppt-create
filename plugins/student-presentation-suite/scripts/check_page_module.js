@@ -148,18 +148,34 @@ for (const rel of pages) {
     slideH: 5.625,
   });
   const layoutReport = [];
+  const source = fs.readFileSync(pagePath, 'utf-8');
+  if (source.includes('student-presentation-suite-scaffold')) {
+    findings.push({
+      page: rel,
+      kind: 'scaffold',
+      message: '页面仍是 scaffold 存根（未实现）——先实现再自检',
+    });
+    continue;
+  }
   try {
     const mod = require(pagePath);
-    mod({
+    const n = Number((rel.match(/p(\d+)-/) || [])[1] || 0);
+    const ctx = {
       pptx: {},
       slide,
-      n: Number((rel.match(/p(\d+)-/) || [])[1] || 0),
+      n,
       H: require(path.join(SCRIPTS_DIR, 'pptx-helpers.js')),
       registry,
       tokens,
-      slideNumber: Number((rel.match(/p(\d+)-/) || [])[1] || 0),
+      slideNumber: n,
       layoutReport,
-    });
+    };
+    if (typeof mod === 'function') {
+      mod(ctx);
+    } else {
+      // 声明式页面：glue 与 deck.js 同一入口。
+      require(path.join(SCRIPTS_DIR, 'pptx-layouts.js')).renderDeclaredPage(ctx, mod);
+    }
   } catch (error) {
     findings.push({
       page: rel,
@@ -167,6 +183,13 @@ for (const rel of pages) {
       message: String((error && error.message) || error).slice(0, 300),
     });
     continue;
+  }
+  if (!calls.some((c) => c.kind === 'notes')) {
+    findings.push({
+      page: rel,
+      kind: 'notes',
+      message: '缺少讲稿：声明式填 notes 字段，函数式 slide.addNotes(...)——每页一次、纯文本',
+    });
   }
   const analysis = registry.analyzeDeck();
   for (const err of analysis.errors || []) {

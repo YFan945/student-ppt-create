@@ -263,6 +263,27 @@ class RenderArchetypeTests(unittest.TestCase):
         equal = [round(b - a, 3) for a, b in zip(ordinal, ordinal[1:], strict=False)]
         self.assertTrue(all(abs(g - equal[0]) < 0.01 for g in equal), equal)
 
+    def test_render_declared_page_executes_the_full_glue(self) -> None:
+        """声明式页面：glue（背景/版式/收尾带/notes）由 renderDeclaredPage 统一执行。"""
+        out = self.run_node(
+            """
+            const slide = mock();
+            const report = [];
+            const res = L.renderDeclaredPage(
+              { slide, tokens: TOKENS, slideNumber: 3, layoutReport: report },
+              { dark: false, kind: 'content',
+                context: { slideId: 3, slideKind: 'content', itemCount: 1, titleChars: 6 },
+                slots: { title: '声明式页标题', claim: '一句话主张', key_line: '收尾结论句',
+                  body: ['要点一'] },
+                notes: '本页讲稿。' });
+            console.log(JSON.stringify({ layout: res.layout, reportLen: report.length,
+              notes: slide.calls.includes('notes'), shapes: slide.calls.length }));
+            """
+        )
+        self.assertTrue(out["layout"], out)
+        self.assertEqual(1, out["reportLen"], out)
+        self.assertTrue(out["notes"], out)
+
     def test_key_line_renders_the_uniform_closing_band(self) -> None:
         """D11 收尾带由引擎统一渲染：slots.key_line 一到，细规线 + 结论句落在
         安全区底部，builder 不再手画（2026-09-28 live：收尾带缺失/不一致被
@@ -596,9 +617,9 @@ class ScaffoldEngineContractTests(unittest.TestCase):
             cover = (work / "pages" / "p01-cover.js").read_text(encoding="utf-8")
             content = (work / "pages" / "p02-s02.js").read_text(encoding="utf-8")
             closing = (work / "pages" / "p03-closing.js").read_text(encoding="utf-8")
-            self.assertIn("const dark = true;", cover)
-            self.assertIn("const dark = false;", content)
-            self.assertIn("const dark = true;", closing)
+            self.assertIn("dark: true,", cover)
+            self.assertIn("dark: false,", content)
+            self.assertIn("dark: true,", closing)
             # 列表 slide_copy 嵌成真 JS 数组
             self.assertIn('["要点一", "要点二"]', content)
             # visual 载荷直通

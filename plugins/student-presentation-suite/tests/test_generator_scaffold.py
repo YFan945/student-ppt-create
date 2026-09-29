@@ -53,7 +53,9 @@ class ScaffoldContractTests(unittest.TestCase):
             self.assertIn("background_directives", tokens)
             self.assertIn("gradient", tokens["background_directives"]["cover"]["type"])
             stub = (work / "pages" / "p01-cover.js").read_text(encoding="utf-8")
-            self.assertIn('H.renderBackground(slide, tokens, { kind: "cover", dark })', stub)
+            # 声明式页面：背景指令由 kind/dark 字段携带，glue 在 renderDeclaredPage。
+            self.assertIn('kind: "cover"', stub)
+            self.assertIn("dark: true", stub)
 
     def test_deck_writes_the_cjk_map_sidecar(self) -> None:
         """deck.js 必须把 Latin→CJK 映射交给构建器，normalize 同步注入 <a:ea>。
@@ -87,12 +89,13 @@ class ScaffoldContractTests(unittest.TestCase):
             )
             self.scaffold.scaffold_generator(work, spec)
             stub = next((work / "pages").glob("p*.js")).read_text(encoding="utf-8")
-            self.assertIn("L.renderArchetype(", stub)
-            self.assertIn("H.renderBackground(slide, tokens,", stub)
-            self.assertIn("H.paletteMode(tokens, dark ? 'dark' : 'light')", stub)
+            self.assertIn("module.exports = {", stub)
+            self.assertIn("slots: {", stub)
             self.assertIn("COPY.title", stub)
-            self.assertIn("slide.addNotes", stub)
+            self.assertIn('notes: ""', stub)
+            self.assertIn("D11", stub)
             self.assertNotIn("slide.addText(COPY.title", stub)
+            self.assertNotIn("H.renderBackground(slide, tokens,", stub)
             self.assertNotIn("H.addFittedText(slide, COPY.title", stub)
 
     def test_page_stub_carries_key_line_for_the_closing_band(self) -> None:
@@ -243,7 +246,9 @@ class ScaffoldContractTests(unittest.TestCase):
             stub = (work / "pages" / result["pages"][0]).read_text(encoding="utf-8")
             self.assertIn("a * / b", stub)
             self.assertIn("c * / d", stub)
-            head, _, _ = stub.partition("\nmodule.exports")
+            # 声明式 stub 的 COPY 块在 module.exports 之前且是代码（字符串里的
+            # */ 伤不到注释）——注释平衡只统计注释区（COPY 之前）。
+            head, _, _ = stub.partition("const COPY = {")
             self.assertEqual(
                 head.count("/*"),
                 head.count("*/"),

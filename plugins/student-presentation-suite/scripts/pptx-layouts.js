@@ -573,6 +573,30 @@ function renderArchetype(ctx, request = {}) {
   throw exhausted;
 }
 
+/**
+ * 声明式页面的统一 glue：背景、深浅盘、版式渲染、D11 收尾带、notes。
+ * 页面模块只导出 { dark, kind, context, layout, slots, params, notes }，
+ * 函数式页面（D9 自定义坐标转义口）仍由页面自己执行。
+ */
+function renderDeclaredPage(ctx, spec = {}) {
+  const H = _sibling('pptx-helpers');
+  const { slide, tokens } = ctx;
+  const dark = Boolean(spec.dark);
+  H.renderBackground(slide, tokens, { kind: String(spec.kind || 'content'), dark });
+  const pageTokens = H.paletteMode(tokens, dark ? 'dark' : 'light');
+  const result = renderArchetype(
+    { ...ctx, tokens: pageTokens },
+    {
+      context: spec.context || {},
+      layout: spec.layout ? { id: spec.layout } : undefined,
+      slots: spec.slots || {},
+      params: spec.params || {},
+    },
+  );
+  if (spec.notes) slide.addNotes(String(spec.notes));
+  return result;
+}
+
 function _renderOnLayout(ctx, request, layoutId, area) {
   const H = _sibling('pptx-helpers');
   const V = _sibling('pptx-visuals');
@@ -895,6 +919,7 @@ function resolveLayout(id, safeArea, options = {}) {
 }
 
 module.exports = {
+  renderDeclaredPage,
   getLayout,
   suggestLayouts,
   selectLayouts,

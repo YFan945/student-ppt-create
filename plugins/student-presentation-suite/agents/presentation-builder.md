@@ -33,6 +33,22 @@ For `calibration` mode:
 - before returning, write `calibration/style-summary.json` recording what you actually established: `{"established": {"title_treatment": "…", "body_treatment": "…", "surface_language": "…", "image_language": "…", "chart_language": "…", "rhythm": "…"}, "do_not_repeat": ["…"]}` — one line per key, facts only; the pipeline assembles later builders' style contract from these bytes;
 - return the changed slide ids; do not implement the rest of the deck.
 
+## Page modules are DECLARATIVE (default shape)
+
+The scaffold stub exports a plain object — fill it, do not hand-write glue:
+
+- `COPY` keeps the verbatim string literals (title/claim/keyLine/slideCopy) —
+  page_copy_fidelity_check reads them byte-exact from this file;
+- `module.exports = { dark, kind, context, layout, slots, params, notes }` — the
+  harness's `L.renderDeclaredPage` executes background / paletteMode /
+  renderArchetype / D11 closing band / notes for you. `slots.key_line` is
+  rendered as the closing band automatically — never hand-draw it;
+- set `layout` to a catalog id only to pin one; leave undefined to let the
+  engine choose from `context`;
+- write a FUNCTION module (`module.exports = function (ctx) {…}`) ONLY for
+  custom coordinates (D9 escape hatch: comment the custom reason, registry
+  gates still apply) — everything else stays declarative.
+
 ## Self-check before returning (all modes)
 
 The packet's `self_check` field carries a ready-to-run command (mock slide +

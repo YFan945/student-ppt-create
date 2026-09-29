@@ -84,6 +84,8 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   轮、critic 尚未运行）或 pipeline-qa.json（正式 QA blocker）>。有 packet 时其
   slides[].blockers / deck_blockers / must_not_regress 就是报告投影，不要读报告原文。
 - **本轮只服务这一轮**：不接受"继续同一个实例"的延续指令，也不假设见过上一轮页面。
+- 页面默认是**声明式**：只填 COPY 字面量与 module.exports 的槽位（dark/kind/context/layout/slots/params/notes），glue 由 deck.js 的 renderDeclaredPage 统一执行；
+  只有自定义坐标（D9）才写函数式页面。收尾带由 slots.key_line 自动渲染，不要手画。
 - 返回前先跑 packet 的 `self_check` 命令（mock 幻灯片 + registry 干跑你负责的页面），
   把 text_overlap / near_miss / 溢出 / 非调色板色值修到 0 再返回——一次命令比一轮返工便宜。
 - 完成后只回契约信封：BUILDER_DONE / BUILDER_BLOCKED（字段以 agent 契约为准）。
