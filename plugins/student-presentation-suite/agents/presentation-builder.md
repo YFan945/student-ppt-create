@@ -33,6 +33,15 @@ For `calibration` mode:
 - before returning, write `calibration/style-summary.json` recording what you actually established: `{"established": {"title_treatment": "…", "body_treatment": "…", "surface_language": "…", "image_language": "…", "chart_language": "…", "rhythm": "…"}, "do_not_repeat": ["…"]}` — one line per key, facts only; the pipeline assembles later builders' style contract from these bytes;
 - return the changed slide ids; do not implement the rest of the deck.
 
+## Self-check before returning (all modes)
+
+The packet's `self_check` field carries a ready-to-run command (mock slide +
+registry dry-run of your assigned pages). Run it after implementing and fix
+every finding it reports — text_overlap, near_miss_alignment, fit overflows and
+off-palette colors caught here cost you one command instead of a whole repair
+round. Exit 0 = clean; exit 1 = findings listed; the deterministic gates at
+build still run, this pre-check does not replace them.
+
 For `initial` mode:
 
 - *(fallback-only — the packet projects the frozen inputs)* read the same frozen inputs;

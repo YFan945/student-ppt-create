@@ -2,6 +2,21 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.15 — 2026-09-29 · Builders self-verify: dry-run check before BUILDER_DONE
+
+针对"builder 完成 → 校验 → 返工"循环的根治项（owner 拍板）：给 builder 一个**受许的
+干跑校验正门**——mock 幻灯片 + 真 registry 干跑自己负责的页面，把确定性失败
+（text_overlap / near_miss_alignment / fit 溢出 / 非调色板色值）挡在 builder 自己的
+回合里，而不是等主会话 build 后再返工一轮。
+
+- 新增 `scripts/check_page_module.js`：从 deck.js 提取 TOKENS（与生产同源），按
+  deck.js 同一 ctx 契约执行页面模块，registry.analyzeDeck 全检 + fit 异常捕获 +
+  非调色板色值扫描；exit 0 = 干净 / 1 = findings 清单。兄弟 require 改相对路径
+  （builder 运行无需 NODE_PATH）。
+- packet 新增 `self_check` 字段：按分片页号生成现成命令（builder 直接复制运行）；
+  agent 契约与 spawn 模板加"返回前先跑 self_check、修到 0"步骤。
+- 确定性 build 门照常运行——干跑是预检，不是绕过；builder 仍然不 build/render。
+
 ## 0.21.14 — 2026-09-29 · 0.21.12 first live run: three engine gaps it exposed, closed
 
 分享会话复盘（pv-wind-carbon-neutral，首个真正跑在 0.21.12 上的过程）：0.20.0–0.21.12

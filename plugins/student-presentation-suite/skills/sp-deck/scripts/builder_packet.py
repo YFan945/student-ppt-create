@@ -647,6 +647,16 @@ def build_packet(
         )
     else:
         packet["art_direction"] = full_ad
+    # 干跑自检正门：builder 返回 BUILDER_DONE 之前先自己跑一遍 mock 幻灯片 +
+    # registry 校验，把 text_overlap / near_miss / 溢出 / 非调色板色值挡在
+    # 自己的回合里，而不是等主会话 build 后再返工一轮（2026-09-29）。
+    page_args = ",".join(modules[slide] for slide in targets if slide in modules)
+    if page_args:
+        plugin_root = HERE.parents[2]
+        packet["self_check"] = (
+            f'node "{plugin_root / "scripts" / "check_page_module.js"}" '
+            f'--work-dir "{work_dir}" --pages "{page_args}"'
+        )
     return packet
 
 
