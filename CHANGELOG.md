@@ -2,6 +2,24 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.14 — 2026-09-29 · 0.21.12 first live run: three engine gaps it exposed, closed
+
+分享会话复盘（pv-wind-carbon-neutral，首个真正跑在 0.21.12 上的过程）：0.20.0–0.21.12
+修掉的旧问题类**零复现**（无路径盲探墙、无 grep -c 误拒、无评审禁读、无 spec 回写）；
+新暴露三个引擎/边界缺口，本轮关闭：
+
+- **时间线标签 margin 挤爆**：`addTimeline` 的阶段标签默认 6pt 内边距把短标签盒的
+  可用高压破 16pt 下限——"2021 双碳目标写入中…"15 字在 2.20×0.71in 差 2% 放不下，
+  校准构建连败。margin 收到 2pt，字号仍由 fitText 下探。
+- **"no feasible layout" 一句话炸死**：选择器全库无可行候选（容量/禁忌全卡死）时直接
+  抛错终结整副 deck。现保底 `claim-focus` 起渲染（几何门照常全检；真装不下会沿
+  fallback 链报逐候选原因）。
+- **critic spawn 的 work-dir 判定**：`_critic_work_dir` 要求"恰好一个"work-dir 出现在
+  提示词里，但 root/cwd 推导在 ZCode 环境可能落空——实测 spawn 三连拒、离线复现同
+  input 却成功。现提示词显式写的 `.pptx-work/<id>` 可反推（多个/零个仍拒绝）；
+  `pptx-visuals.js` 的兄弟引用改相对路径（顺带解除 NODE_PATH 依赖，`--describe`
+  正门不再撞 MODULE_NOT_FOUND）。
+
 ## 0.21.13 — 2026-09-29 · Calibration rounds are counted by the preview itself
 
 分享会话复盘（carbon-pv-vs-wind 新过程）确认的轮次记账盲区：**校准轮次只在 advance 里

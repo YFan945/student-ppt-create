@@ -523,9 +523,11 @@ function renderArchetype(ctx, request = {}) {
       picked = pickLayout({ ...relaxed, titleChars: null }, tokens, request.history || []);
     }
     if (!picked) {
-      throw new Error(
-        'renderArchetype: no feasible layout for the given context — widen the context or pass request.layout.id',
-      );
+      // 保底版式：全库无可行候选（容量/禁忌全卡死）时不让 deck 死在这里——
+      // 用 claim-focus 强行起渲染，几何门照常全检；真装不下会沿它的 fallback
+      // 链报出逐候选原因（2026-09-29 live："no feasible layout" 一句话炸死，
+      // builder 无从下手，校准构建连败）。
+      picked = getLayout('claim-focus');
     }
     firstId = picked.id;
   }

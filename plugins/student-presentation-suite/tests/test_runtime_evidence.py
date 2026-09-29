@@ -230,6 +230,25 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(self.critic_spawn(), 2)
         self.assertFalse((self.work / runtime.critic_preview.MAP_NAME).exists())
 
+    def test_critic_spawn_prompt_reference_resolves_ambiguous_root(self):
+        """ZCode 等环境下 root/cwd 推导可能落空：提示词显式写了 .pptx-work/<id>
+        时以其为准；命名了多个或零个仍拒绝（2026-09-29 live：0.21.12 下 spawn
+        三连拒，离线复现同 input 却成功——root 推导的环境差异）。"""
+        (self.work / "demo-a").mkdir(exist_ok=True)
+        (self.work / "demo-b").mkdir(exist_ok=True)
+        inputs = {
+            "prompt": (
+                "work-dir（绝对路径）：E:\\proj\\outputs\\.pptx-work\\demo-a\n只评审 demo-a。"
+            ),
+            "description": "校准稿复核",
+            "subagent_type": "student-presentation-suite:visual-critic",
+        }
+        result = runtime._critic_work_dir(inputs, self.work)
+        self.assertIsNotNone(result)
+        self.assertEqual("demo-a", result.name)
+        inputs.pop("prompt")
+        self.assertIsNone(runtime._critic_work_dir(inputs, self.work))
+
     def test_preview_map_carries_the_delivery_tier(self):
         """The critic reads quality_level from the map, never from the frozen spec."""
         self.prepare_render()

@@ -295,6 +295,51 @@ class RenderArchetypeTests(unittest.TestCase):
         self.assertTrue(any(abs(y - (out["keyY"] - 0.08)) < 0.06 for y in out["rules"]), out)
         self.assertEqual([], out["errors"], out)
 
+    def test_timeline_labels_fit_with_tight_margin(self) -> None:
+        """2026-09-29 live："2021 双碳目标写入中…" 15 字在默认 6pt 内边距下差 2%
+        放不下，校准构建连败。margin 2 后 16pt 两行可容纳。"""
+        out = self.run_node(
+            """
+            const V = require(path.join(SCRIPTS, 'pptx-visuals.js'));
+            const slide = { addText: () => ({}), addShape: () => ({}), addImage: () => ({}),
+              addChart: () => ({}), addTable: () => ({}), addNotes: () => ({}) };
+            let threw = null;
+            try {
+              V.addTimeline(slide, { stages: [
+                { label: '2021 双碳目标写入中' },
+                { label: '2025 非化石装机过半' },
+                { label: '2030 碳达峰' },
+                { label: '2060 碳中和' }] },
+                { x: 0.6, y: 1.0, w: 8.8, h: 2.0 }, TOKENS, 'chinese');
+            } catch (error) { threw = error.message; }
+            console.log(JSON.stringify({ threw }));
+            """
+        )
+        self.assertIsNone(out["threw"], out)
+
+    def test_no_feasible_context_falls_back_instead_of_dying(self) -> None:
+        """容量/禁忌全卡死时不再"no feasible layout"一句话炸死：保底 claim-focus
+        起渲染（2026-09-29 live：校准构建连败于该死路）。"""
+        out = self.run_node(
+            """
+            const slide = mock();
+            let threw = null, layout = null;
+            try {
+              const res = L.renderArchetype(
+                { slide, tokens: TOKENS, slideNumber: 9 },
+                { context: { slideId: 9, slideKind: 'definition-example', itemCount: 50,
+                  titleChars: 500, contraindications: ['text-only', 'equal-width-cards'] },
+                  slots: { title: '标题', claim: '主张', body: ['要点'] } });
+              layout = res.layout;
+            } catch (error) { threw = error.message; }
+            console.log(JSON.stringify({ threw, layout }));
+            """
+        )
+        if out["threw"] is not None:
+            self.assertIn("all failed", out["threw"], out)
+        else:
+            self.assertTrue(out["layout"], out)
+
     def test_visual_purpose_is_design_intent_and_never_on_screen(self) -> None:
         """visual.purpose 是设计意图（slide-spec.md handoff rules），绝不上屏。
 

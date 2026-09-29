@@ -194,7 +194,18 @@ def _critic_work_dir(inputs: dict, root: Path) -> Path | None:
         absolute = str(child.resolve())
         if absolute in text or absolute.replace("\\", "/") in normalized:
             matches.append(child.resolve())
-    return matches[0] if len(matches) == 1 else None
+    if len(matches) == 1:
+        return matches[0]
+    # ZCode 等环境下 root/cwd 推导可能落空：提示词里显式写了
+    # `.pptx-work/<work-id>` 时，以提示词自认的那个 work-dir 为准——仍是
+    # "显式传入的绝对 work-dir"，只是解析更宽容；命名了多个或零个仍拒绝
+    # （2026-09-29 live：0.21.12 下 spawn 三连拒，离线复现同 input 却成功）。
+    named: set = set()
+    for match in re.finditer(r"\.pptx-work[/\\]([\w.-]+)", normalized):
+        candidate = root / match.group(1)
+        if candidate.is_dir():
+            named.add(candidate.resolve())
+    return named.pop().resolve() if len(named) == 1 else None
 
 
 def _hook_owned_preview_path(path: Path, root: Path) -> bool:

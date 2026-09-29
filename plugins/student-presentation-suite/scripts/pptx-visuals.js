@@ -328,7 +328,14 @@ function addTimeline(slide, data, area, tokens, lang) {
       },
       tokens,
       lang,
-      { bold: true, label: `时间线阶段 ${index + 1}` },
+      {
+        bold: true,
+        label: `时间线阶段 ${index + 1}`,
+        // margin 2：默认 6pt 内边距会把短标签盒的可用高压破 16pt 下限
+        // （2026-09-29 live："2021 双碳目标写入中…" 15 字在 2.20x0.71in
+        // 差 2% 放不下，校准构建连败）。字号仍由 fitText 下探。
+        margin: 2,
+      },
     );
   });
 }
