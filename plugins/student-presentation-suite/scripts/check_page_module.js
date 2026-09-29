@@ -64,7 +64,7 @@ function extractTokens(deckJs) {
       if (depth === 0) {
         try {
           return JSON.parse(body.slice(0, i + 1));
-        } catch (error) {
+        } catch (_error) {
           return null;
         }
       }
