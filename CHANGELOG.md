@@ -2,6 +2,27 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.22.2 — 2026-09-29 · Retrieval mechanics: a dead search backend is no longer a SERP crawl
+
+**缺陷修复（patch）**：检索阶段的墙钟去哪了——2026-09-29 线上实测定位并修复。
+
+- **病因**：研究员一次运行里 31 次 `WebSearch` 有 30 次返回 `No links found`
+  （摘要里是伪 `<tool_call>`，即内置检索后端没有返回结果），随后退化成**抓搜索引擎结果页**：
+  135 次 `WebFetch` 里 81 次是 bing / so.com / sogou / duckduckgo / brave / mojeek / yahoo
+  的结果页与 `link?m=` 跳转，中位 8.5 秒、最长 32.6 秒，占该轮检索墙钟 1256 秒中的
+  **1176 秒（94%）**，其中 24 次返回不足 400 字符；复核抓回来的多是"国家"这类与查询无关的
+  泛化条目。同期 `WebFetch` 直取主源页（gov.cn 政策原文）则逐字回报了标题、发文机关、
+  日期与全部量化目标。
+- **并发上限**：同一回合发 8 条检索，5 条返回 `user concurrency limit exceeded`——
+  从此"批处理省回合"对 `WebSearch` 明确不适用（`cost-discipline.md` CD-11 加例外条款）。
+- **契约修正**：研究员 agent、spawn 固定段、`research-workflow.md` §七"检索机制"、
+  `sp-research` SKILL 四处口径一致——检索一次一条；**禁止抓搜索引擎结果页**
+  （结果页是定位手段，永远不是来源）；后端空返回不换词重搜，改走**主源直取**
+  （发布方文档页 / 报告 PDF / 论文原文），会上屏的数字要求逐字引用。
+- **留痕口径**：`unresolved.reason` 新增 `search_unavailable`（后端没返回结果），
+  与 `not_found`（有覆盖但检索不到）、`access_blocked`（有覆盖但打不开）分开记录；
+  退休配额时代残留的 `out_of_budget`。§九与"可验证标准"两处陈旧的上限措辞一并清除。
+
 ## 0.22.1 — 2026-09-29 · Declarative hardening: derived context, source lints
 
 声明式页面的三项缺陷加固（缺陷清单逐条落解）：

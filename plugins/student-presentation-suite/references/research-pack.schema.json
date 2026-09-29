@@ -205,14 +205,14 @@
     },
     "unresolved": {
       "type": "array",
-      "description": "执行受阻的记录。检索打不开、来源不可得时必须写在这里，不许静默降级。",
+      "description": "执行受阻的记录。检索打不开、来源不可得时必须写在这里，不许静默降级。reason 区分受阻机制：search_unavailable 是检索后端没返回结果（不是没有覆盖），not_found 是有覆盖但检索不到，access_blocked 是有覆盖但打不开。",
       "items": {
         "type": "object",
         "required": ["query", "reason", "impact"],
         "additionalProperties": false,
         "properties": {
           "query": {"type": "string"},
-          "reason": {"enum": ["access_blocked", "not_found", "tier_unavailable", "paywalled", "out_of_budget"]},
+          "reason": {"enum": ["access_blocked", "not_found", "tier_unavailable", "paywalled", "search_unavailable"]},
           "impact": {"type": "string", "minLength": 1, "description": "对 PPT 论断的影响" }
         }
       }

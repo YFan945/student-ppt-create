@@ -319,6 +319,12 @@ Claude Code 把一条消息的 content blocks 拆成多行，逐行数就永远�
    `page_brief.py --json`（不带 `--slide`）一次拿全 deck 的契约。三个 agent 定义里都写了这条。
 2. **并行分片**：页面拆给多个隔离 builder，构建阶段墙钟 ÷N（CD-11 下一条）。
 
+**例外：检索不并行（2026-09-29 实测）。** 检索后端有**每用户并发上限**——同一回合发出 8 条
+`WebSearch`，5 条直接返回 `user concurrency limit exceeded`，那一回合等于白花。检索的瓶颈是
+**成功率**不是往返数，所以 `WebSearch` 一次一条；文件读取、`WebFetch` 抓取与页面写入照常
+并行。同理，后端返回空（`No links found`）时不要靠换词重搜来补——那是后端没返回结果，
+换词不解决，改走主源直取（见 `research-workflow.md` §七"检索机制"）。
+
 **注意**：这条端点收到的是**精简版 system prompt**（实测 5.9K 字符 / 10 段），
 其中**不含** CLI 自带的 `# Using your tools`（"Maximize use of parallel tool calls"）。
 所以并行调用必须由**插件自己的指令面**要求——agent 定义确实会进 prompt

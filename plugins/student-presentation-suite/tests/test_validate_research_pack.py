@@ -218,6 +218,27 @@ class ResearchPackContractTests(unittest.TestCase):
         self.assertFalse(report["ok"])
         self.assertIn("schema_violation", [p["code"] for p in report["problems"]])
 
+    def test_backend_unavailable_is_a_valid_reason_distinct_from_not_found(self) -> None:
+        pack = base_pack()
+        pack["unresolved"] = [
+            {
+                "query": "国家能源局 2025年全国电力工业统计数据",
+                "reason": "search_unavailable",
+                "impact": "装机数据降级为区间表述，页面标注无来源",
+            }
+        ]
+        report = self.module.validate(pack)
+        self.assertTrue(report["ok"], report["problems"])
+
+    def test_budget_reason_is_no_longer_accepted(self) -> None:
+        pack = base_pack()
+        pack["unresolved"] = [
+            {"query": "某数据", "reason": "out_of_budget", "impact": "降级为常识表述"}
+        ]
+        report = self.module.validate(pack)
+        self.assertFalse(report["ok"], "the removed budget vocabulary must not validate")
+        self.assertIn("schema_violation", [p["code"] for p in report["problems"]])
+
     def test_unknown_visual_reference_is_major_not_minor(self) -> None:
         pack = base_pack()
         pack["visual_candidates"][0]["data_point_ids"] = ["D99"]

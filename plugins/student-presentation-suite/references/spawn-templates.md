@@ -30,7 +30,13 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   禁止把未经核实的数字写成已验证。
   gap-fill 授权写明本次要核验的 claim 清单，研究员按 claim 收益决定检索量。
   pack 是审计记录：queries 只追加不改写；未产出结果的失败调用必须在
-  research/search-log.json 的 search_executions 标 status: failed。
+  research/search-log.json 的 search_executions 标 status: failed（并发被拒 /
+  后端空返回同样标 failed）。
+- 检索机制（2026-09-29 实测）：检索一次一条——后端有每用户并发上限，同回合多发会被拒；
+  禁止抓搜索引擎结果页（bing / so.com / sogou / duckduckgo / brave / mojeek / yahoo /
+  `*/search?…` 与 `link?m=` 跳转）；后端返回空（`No links found`）时不要换词重搜，
+  改走主源直取（发布方文档页 / 报告 PDF / 论文原文），按机制记
+  `unresolved.reason: search_unavailable`；会上屏的数字要求逐字引用。
 - gap-fill 轮结束时，把补检的每次检索**追加**进 research/search-log.json
   （n 续号），再更新 pack——日志与 pack 必须能对上。
 - 禁止嵌套 spawn 任何其它 subagent。

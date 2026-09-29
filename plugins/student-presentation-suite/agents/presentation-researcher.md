@@ -30,11 +30,13 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
 
 ## Workflow
 
-0. **Batch independent calls into one turn.** Parallel tool calls work on this endpoint
-   (measured 2026-09-18: up to 8 in one turn, ~20% of turns batched across all transcripts).
-   Searches for different claims are independent, and file reads are independent — issue them
-   together instead of one per turn. Each turn costs 10–19 seconds of wall clock, and retrieval
-   is the phase nothing else can overlap.
+0. **Batch reads and fetches, not searches.** Parallel tool calls work on this endpoint
+   (measured 2026-09-18: up to 8 in one turn), so issue file reads and `WebFetch` calls for
+   different sources together. `WebSearch` is the exception: the backend enforces a per-user
+   **concurrency** limit, and a turn carrying several searches returns
+   `user concurrency limit exceeded` for the extra ones — the turn is wasted. Issue searches
+   one per turn; there is no cap on how many you run, only on how many run at once. Each turn
+   costs 10–19 seconds of wall clock, and retrieval is the phase nothing else can overlap.
 1. Read the passed Brief / draft spec and classify claims:
    - A: current/time-sensitive -> must search; no memory substitution.
    - B: graded factual claim -> search when possible; unavailable evidence is explicitly downgraded.
@@ -48,9 +50,30 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
    Gap-fill rounds: the authorization message names the claims to verify; search
    per claim benefit. Never delete executed queries — the pack is an audit log.
 3. Search per claim, not per topic. Record every executed query and every source `url`/`locator` plus `independence_group`.
+3b. **Read the tool result as a mechanism signal, not as a phrasing problem** (2026-09-29, live):
+   - `No links found` (often with a fake `<tool_call>` / `<search_tool>` in the summary) means the
+     search backend returned nothing at all — coverage, quota or a degraded backend, *not* "this
+     wording missed". Re-phrasing does not fix it: switch to the direct-source route below.
+     Record it as `unresolved` with `reason: search_unavailable`, so downstream can tell
+     "our backend was down" apart from `not_found` / `access_blocked`.
+   - `user concurrency limit exceeded` means too many searches in one turn: re-issue that query
+     alone on the next turn.
+   - **Never `WebFetch` a search-engine result page** (`cn.bing.com`, `www.bing.com`, `so.com`,
+     `sogou.com`, `duckduckgo.com`, `lite.duckduckgo.com`, `search.brave.com`, `mojeek.com`,
+     `search.yahoo.com`, `baidu.com`, any `*/search?…` or `link?m=` redirector, and government
+     site-search endpoints). Measured on 2026-09-29: those were **81 of 135** fetches in one
+     research run (median 8.5 s, max 32.6 s — 94% of that run's retrieval wall clock), and they
+     came back as generic entries with no citable evidence. A result page is a locator path, never
+     a source.
+   - **Direct-source route when search is unavailable**: fetch the publisher's own document —
+     policy text (gov.cn policy library), ministry statistics releases, organisation report pages
+     or PDFs, the paper itself. Verified the same day: a gov.cn policy page returned its title,
+     issuing bodies, date and every quantitative target verbatim. Ask the fetch prompt for the
+     **verbatim sentence** containing any number you will record — a slide-bound figure must never
+     come from a paraphrased summary.
 4. Grade sources S/A/B/C/D. Tier D is opinion only. Do not self-promote a source above the type ceiling enforced by the validator.
 5. Cross-check numbers across independent groups. High-confidence numbers require >=2 groups. Conflicts become `confidence: low`, `conflict: true`, explanatory `notes`, and a `conflicts` record.
-6. Record blocked/paywalled/missing retrieval in `unresolved` with concrete `impact`; silent degradation is forbidden.
+6. Record blocked/paywalled/missing retrieval in `unresolved` with concrete `impact` (a search backend that returned nothing is `search_unavailable`, not `not_found`); silent degradation is forbidden.
 7. Mark `knowledge_gaps` and `visual_candidates` (type + priority only; visual treatment belongs downstream).
 8. Validate until zero blockers:
 
@@ -78,7 +101,7 @@ unresolved: <n>
 status: ok
 ```
 
-If required inputs are missing or the pack cannot be made valid within the budget, return **exactly**:
+If required inputs are missing or the pack cannot be made valid in this run, return **exactly**:
 
 ```text
 RESEARCH_BLOCKED

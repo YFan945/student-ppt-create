@@ -156,5 +156,68 @@ class ResearchHardeningRegressionTests(unittest.TestCase):
             self.assertTrue(payload["ok"], payload["errors"])
 
 
+class RetrievalMechanicsContractTests(unittest.TestCase):
+    """2026-09-29: a dead search backend turned the research phase into a SERP crawl.
+
+    The researcher spent 1176 of its 1256 retrieval seconds fetching search-result
+    pages (81 of 135 fetches, median 8.5 s) after `No links found` came back for 30
+    of 31 searches. These assertions keep the corrected mechanics in every surface
+    the executor actually reads.
+    """
+
+    AGENT = ROOT / "agents" / "presentation-researcher.md"
+    WORKFLOW = ROOT / "references" / "research-workflow.md"
+    SPAWN = ROOT / "references" / "spawn-templates.md"
+    COST = ROOT / "references" / "cost-discipline.md"
+    SKILL = ROOT / "skills" / "sp-research" / "SKILL.md"
+    SCHEMA = ROOT / "references" / "research-pack.schema.json"
+
+    def read(self, path: Path) -> str:
+        return path.read_text(encoding="utf-8")
+
+    def test_searches_are_not_batched_by_instruction(self) -> None:
+        agent = self.read(self.AGENT)
+        self.assertNotIn("Batch independent calls into one turn", agent)
+        self.assertIn("concurrency", agent.lower())
+        self.assertIn("one per turn", agent)
+
+    def test_result_pages_are_banned_as_sources(self) -> None:
+        # The agent prompt is English, the references are Chinese: assert the ban
+        # in each surface's own language, and that both name the hosts actually fetched.
+        bans = {
+            self.AGENT: "search-engine result page",
+            self.WORKFLOW: "结果页",
+            self.SPAWN: "结果页",
+        }
+        for path, phrase in bans.items():
+            text = self.read(path)
+            with self.subTest(path=path.name):
+                self.assertIn(phrase, text)
+                self.assertTrue(
+                    "so.com" in text and "duckduckgo" in text,
+                    "the ban must name the hosts that were actually fetched",
+                )
+
+    def test_backend_failure_has_its_own_reason(self) -> None:
+        schema = json.loads(self.read(self.SCHEMA))
+        reasons = schema["properties"]["unresolved"]["items"]["properties"]["reason"]["enum"]
+        self.assertIn("search_unavailable", reasons)
+        self.assertNotIn("out_of_budget", reasons, "budget vocabulary is retired")
+        for path in (self.AGENT, self.WORKFLOW, self.SPAWN, self.SKILL):
+            with self.subTest(path=path.name):
+                self.assertIn("search_unavailable", self.read(path))
+
+    def test_direct_source_route_is_documented(self) -> None:
+        agent = self.read(self.AGENT)
+        self.assertIn("Direct-source route", agent)
+        self.assertIn("verbatim", agent)
+        self.assertIn("主源直取", self.read(self.WORKFLOW))
+
+    def test_batching_exception_is_stated_where_batching_is_taught(self) -> None:
+        cost = self.read(self.COST)
+        self.assertIn("检索不并行", cost)
+        self.assertIn("WebSearch", cost)
+
+
 if __name__ == "__main__":
     unittest.main()
