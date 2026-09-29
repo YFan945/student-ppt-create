@@ -2,6 +2,23 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.22.1 — 2026-09-29 · Declarative hardening: derived context, source lints
+
+声明式页面的三项缺陷加固（缺陷清单逐条落解）：
+
+- **字段填错的静默性 → context 自动推导**：`renderDeclaredPage` 从槽位推导
+  `itemCount` / `titleChars` / `slideKind`，builder 只在确要覆盖时才写 context
+  （显式值优先于推导）——手工填错面最小化。
+- **COPY 与 slots 双源 → self_check 源码防线**：声明式页的 slots 块出现裸字符串
+  字面量（不引用 `COPY.*`）即报 `copy-source` finding——逐字节文案门的前提在
+  builder 回合被守住。
+- **偷懒函数式侵蚀收益 → 转义口纪律机械化**：函数式页面未在页内注释声明
+  custom 理由（D9）即报 `escape-hatch` finding。
+
+表达力天花板与引擎爆炸半径两项为演进性风险，对策不变：archetype 按实战需求
+持续补进引擎（时间轴、收尾带先例），引擎回归套 + CI render-matrix + builder
+干跑三层防线兜底。
+
 ## 0.22.0 — 2026-09-29 · Declarative pages: builders fill slots, the engine writes the glue
 
 **新能力（minor）**：页面模块从"手写 100–150 行 JS"收敛为**声明式槽位**——builder 只填

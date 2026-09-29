@@ -584,12 +584,24 @@ function renderDeclaredPage(ctx, spec = {}) {
   const dark = Boolean(spec.dark);
   H.renderBackground(slide, tokens, { kind: String(spec.kind || 'content'), dark });
   const pageTokens = H.paletteMode(tokens, dark ? 'dark' : 'light');
+  // context 缺省字段从槽位自动推导（itemCount/titleChars/slideKind）：少一层
+  // 手工填错面——builder 只在确要覆盖时才写 context（显式值优先于推导）。
+  const slots = spec.slots || {};
+  const bodyItems = Array.isArray(slots.body)
+    ? slots.body.filter(Boolean)
+    : slots.body
+      ? [slots.body]
+      : [];
+  const derived = {};
+  derived.itemCount = bodyItems.length + (slots.claim ? 1 : 0);
+  if (typeof slots.title === 'string') derived.titleChars = [...slots.title].length;
+  if (spec.kind && String(spec.kind) !== 'content') derived.slideKind = String(spec.kind);
   const result = renderArchetype(
     { ...ctx, tokens: pageTokens },
     {
-      context: spec.context || {},
+      context: { ...derived, ...(spec.context || {}) },
       layout: spec.layout ? { id: spec.layout } : undefined,
-      slots: spec.slots || {},
+      slots: slots,
       params: spec.params || {},
     },
   );

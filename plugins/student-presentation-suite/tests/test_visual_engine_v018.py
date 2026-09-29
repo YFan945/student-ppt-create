@@ -284,6 +284,23 @@ class RenderArchetypeTests(unittest.TestCase):
         self.assertEqual(1, out["reportLen"], out)
         self.assertTrue(out["notes"], out)
 
+    def test_declared_page_derives_context_from_slots(self) -> None:
+        """context 缺省字段从槽位自动推导（itemCount/titleChars）——手工填错面最小化。"""
+        out = self.run_node(
+            """
+            const slide = mock();
+            const res = L.renderDeclaredPage(
+              { slide, tokens: TOKENS, slideNumber: 6 },
+              { dark: false, kind: 'content',
+                slots: { title: '推导上下文页', claim: '一句话主张',
+                  body: ['要点一', '要点二'], key_line: '收尾句' },
+                notes: '讲稿。' });
+            console.log(JSON.stringify({ layout: res.layout, calls: slide.calls.length }));
+            """
+        )
+        self.assertTrue(out["layout"], out)
+        self.assertGreaterEqual(out["calls"], 3, out)
+
     def test_key_line_renders_the_uniform_closing_band(self) -> None:
         """D11 收尾带由引擎统一渲染：slots.key_line 一到，细规线 + 结论句落在
         安全区底部，builder 不再手画（2026-09-28 live：收尾带缺失/不一致被

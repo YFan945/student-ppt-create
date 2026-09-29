@@ -184,6 +184,41 @@ for (const rel of pages) {
     });
     continue;
   }
+  const functionPage = /module\.exports\s*=\s*function/.test(source);
+  if (functionPage && !/custom|自定义/i.test(source)) {
+    findings.push({
+      page: rel,
+      kind: 'escape-hatch',
+      message: '函数式页面须在页内注释声明 custom 理由（D9）；非自定义坐标请用声明式页面',
+    });
+  }
+  if (!functionPage) {
+    // COPY 双源防线：slots 的字符串字面量必须引用 COPY.*（逐字节文案门的前提）；
+    // visual 槽允许字面量（数据载荷）。按花括号配平截取 slots 块，避免误伤块外字段。
+    const slotsAt = source.search(/slots:\s*\{/);
+    if (slotsAt >= 0) {
+      let depth = 0;
+      let block = '';
+      for (let i = source.indexOf('{', slotsAt); i < source.length; i++) {
+        const ch = source[i];
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+          depth--;
+          if (depth === 0) break;
+        }
+        block += ch;
+      }
+      const head = block.split(/visual:/)[0];
+      if (/['"]/.test(head)) {
+        findings.push({
+          page: rel,
+          kind: 'copy-source',
+          message:
+            '槽位值应引用 COPY.* 字面量，不要在 slots 里直接写字符串（page_copy_fidelity 的前提）',
+        });
+      }
+    }
+  }
   if (!calls.some((c) => c.kind === 'notes')) {
     findings.push({
       page: rel,

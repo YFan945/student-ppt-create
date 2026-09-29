@@ -18,6 +18,7 @@ SCRIPT = ROOT / "scripts" / "check_page_module.js"
 
 GOOD_PAGE = """'use strict';
 const L = require('pptx-layouts');
+/* custom 理由：演示 legacy 函数式路径（D9 声明）。 */
 module.exports = function (ctx) {
   const { slide, registry, tokens, H } = ctx;
   const dark = false;
@@ -116,6 +117,27 @@ module.exports = function () {};
         kinds = {f["kind"] for f in report["findings"]}
         self.assertIn("notes", kinds)
         self.assertIn("scaffold", kinds)
+
+    def test_slots_bypassing_copy_are_flagged(self) -> None:
+        """COPY 双源防线：slots 里直接写字符串会破坏逐字节文案门的前提。"""
+        page = """'use strict';
+const COPY = { title: '合规页标题', claim: '一句话主张，长度合理' };
+module.exports = { dark: false, kind: 'content', context: { slideId: 5, itemCount: 0 },
+  slots: { title: '裸写标题字面量', claim: COPY.claim }, params: {}, notes: '讲稿。' };
+"""
+        code, report = self.run_check({"pages/p06-literal.js": page})
+        self.assertEqual(1, code)
+        self.assertIn("copy-source", {f["kind"] for f in report["findings"]})
+
+    def test_function_page_without_custom_declaration_is_flagged(self) -> None:
+        page = """'use strict';
+module.exports = function (ctx) {
+  ctx.slide.addNotes('讲稿。');
+};
+"""
+        code, report = self.run_check({"pages/p07-fn.js": page})
+        self.assertEqual(1, code)
+        self.assertIn("escape-hatch", {f["kind"] for f in report["findings"]})
 
     def test_throwing_page_module_is_reported(self) -> None:
         code, report = self.run_check(
