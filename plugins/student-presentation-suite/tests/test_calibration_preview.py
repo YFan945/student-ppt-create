@@ -90,6 +90,36 @@ class CalibrationPreviewTests(unittest.TestCase):
         self.assertIn(str(page1.resolve()).replace("\\", "\\\\"), text.replace("\\\\", "\\\\"))
         self.assertNotIn("p04-", text)
 
+    def test_successful_preview_counts_one_calibration_round(self) -> None:
+        """一次成功预览 = 一轮，计数归 preview 本身：手动直跑也要烧预算
+        （2026-09-28 live：绕过 advance 直跑 4 次不记账，校准超限到第 4 轮复核）。"""
+        self.write_page(1)
+        original_run, original_palette = calibration.run_checked, calibration.pptx_palette_check.check_pptx
+
+        def fake_run(argv: list[str], label: str) -> None:
+            if label == "calibration build":
+                output = Path(argv[argv.index("--output") + 1])
+                output.write_bytes(b"pptx")
+            elif label == "calibration render":
+                out_dir = Path(argv[argv.index("--output-dir") + 1])
+                out_dir.mkdir(parents=True, exist_ok=True)
+                (out_dir / "calibration-1.png").write_bytes(b"one")
+
+        calibration.run_checked = fake_run
+        calibration.pptx_palette_check.check_pptx = lambda *_: {"ok": True, "issues": []}
+        try:
+            from unittest.mock import patch
+
+            for expected_rounds in (1, 2):
+                argv = ["calibration_preview.py", "--work-dir", str(self.work), "--slides", "1", "--json"]
+                with patch.object(__import__("sys"), "argv", argv):
+                    self.assertEqual(0, calibration.main())
+                manifest = json.loads((self.work / "build-manifest.json").read_text(encoding="utf-8"))
+                self.assertEqual(expected_rounds, manifest["calibration"]["rounds"])
+        finally:
+            calibration.run_checked = original_run
+            calibration.pptx_palette_check.check_pptx = original_palette
+
     def test_preview_harness_carries_the_production_page_ctx_contract(self) -> None:
         """Scaffold pages read ctx.tokens — the harness must inject it like deck.js does.
 

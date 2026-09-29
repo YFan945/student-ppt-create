@@ -2,6 +2,17 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.13 — 2026-09-29 · Calibration rounds are counted by the preview itself
+
+分享会话复盘（carbon-pv-vs-wind 新过程）确认的轮次记账盲区：**校准轮次只在 advance 里
+加一**，主会话绕过 advance 手动跑 `calibration_preview.py` 时完全不记账——实测直跑 4 次
+后校准烧到第 4 轮复核（rigorous 预算 2 轮），预算形同虚设。
+
+- **轮次计数归 preview 本身**：`calibration_preview.py` 每次成功渲染预览即对
+  `build-manifest.json` 的 `calibration.rounds` +1（advance 走同一路径，自动被计）；
+  手动直跑与管线运行从此烧同样的预算。
+- `advance` 移除自己的加一（避免双重计数）。
+
 ## 0.21.12 — 2026-09-28 · Pre-QA reports project in full, refusals carry a way out
 
 再次仔细检查（35 个 subagent，重点生产/QA 阶段新增 17 个）：旧四类矛盾在旧缓存上继续

@@ -196,15 +196,10 @@ def cmd_advance(args: argparse.Namespace) -> int:
                     detail = (proc.stderr or proc.stdout or "").strip()
                     raise RefusedError(f"calibration preview failed: {detail[:300]}")
                 actions.append("calibration_preview")
-                # One preview == one calibration round. The tier budget (standard 1,
-                # rigorous 2) is counted here because this is the one mechanical step
-                # every round must pass through exactly once.
-                manifest = load_manifest(work_dir)
-                if manifest is not None:
-                    calibration = dict(manifest.get("calibration") or {})
-                    calibration["rounds"] = int(calibration.get("rounds") or 0) + 1
-                    manifest["calibration"] = calibration
-                    save_manifest(work_dir, manifest)
+                # One preview == one calibration round — counted inside
+                # calibration_preview.py itself, so MANUAL preview runs (bypassing
+                # advance) cost the same budget. 2026-09-28 live: four manual runs went
+                # uncounted here and calibration burned past its tier budget.
                 continue
             if " render " in bordered:
                 _run_quietly(cmd_render, argparse.Namespace(work_dir=work_dir, cols=3, prefix="slide"))

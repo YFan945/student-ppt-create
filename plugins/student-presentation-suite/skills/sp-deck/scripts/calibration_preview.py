@@ -265,6 +265,21 @@ def main() -> int:
     except (OSError, ValueError, RuntimeError) as exc:
         print(f"calibration_preview: {exc}", file=sys.stderr)
         return 2
+    # 一次成功预览 = 一个校准轮次。计数归 preview 本身而不是 advance：手动重跑预览
+    # （2026-09-28 live：主会话绕过 advance 直跑 4 次）此前不记账，轮次预算
+    # （standard 1 / rigorous 2）因此失效，校准烧到第 4 轮复核。
+    manifest_path = args.work_dir / "build-manifest.json"
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            calibration = dict(manifest.get("calibration") or {})
+            calibration["rounds"] = int(calibration.get("rounds") or 0) + 1
+            manifest["calibration"] = calibration
+            manifest_path.write_text(
+                json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+            )
+        except (OSError, json.JSONDecodeError):
+            pass
     if args.json:
         print(json.dumps(result, ensure_ascii=False))
     else:
