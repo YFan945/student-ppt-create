@@ -32,11 +32,14 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   pack 是审计记录：queries 只追加不改写；未产出结果的失败调用必须在
   research/search-log.json 的 search_executions 标 status: failed（并发被拒 /
   后端空返回同样标 failed）。
-- 检索机制（2026-09-29 实测）：检索一次一条——后端有每用户并发上限，同回合多发会被拒；
-  禁止抓搜索引擎结果页（bing / so.com / sogou / duckduckgo / brave / mojeek / yahoo /
-  `*/search?…` 与 `link?m=` 跳转）；后端返回空（`No links found`）时不要换词重搜，
-  改走主源直取（发布方文档页 / 报告 PDF / 论文原文），按机制记
-  `unresolved.reason: search_unavailable`；会上屏的数字要求逐字引用。
+- 检索机制（2026-09-29 实测）：检索批次保持小（后端对并发敏感，批次 8 实测 5 条被拒；
+  批次 2–3 正常）——不要退化成串行；结果页（bing / so.com / sogou / duckduckgo / brave /
+  mojeek / yahoo / baidu / google / `*/search?…` 与 `link?m=` 跳转）永远不是来源，定位交给
+  检索工具，取正文用确定性的
+  `pptx_tool.py fetch-text --url <doc> --scope <A|B> --out-dir <work-dir>/research/fetched`
+  （原文 + 抽取文本 + 两份 sha256 一起落盘，不经小模型转述；`--scope` 是权限门，C/D 拒绝）；
+  后端返回空（`No links found`）时按机制记 `unresolved.reason: search_unavailable`，
+  不写成 not_found、不用模型记忆顶替；会上屏的数字逐字取自 `text_path`。
 - gap-fill 轮结束时，把补检的每次检索**追加**进 research/search-log.json
   （n 续号），再更新 pack——日志与 pack 必须能对上。
 - 禁止嵌套 spawn 任何其它 subagent。

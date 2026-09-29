@@ -30,13 +30,13 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
 
 ## Workflow
 
-0. **Batch reads and fetches, not searches.** Parallel tool calls work on this endpoint
-   (measured 2026-09-18: up to 8 in one turn), so issue file reads and `WebFetch` calls for
-   different sources together. `WebSearch` is the exception: the backend enforces a per-user
-   **concurrency** limit, and a turn carrying several searches returns
-   `user concurrency limit exceeded` for the extra ones — the turn is wasted. Issue searches
-   one per turn; there is no cap on how many you run, only on how many run at once. Each turn
-   costs 10–19 seconds of wall clock, and retrieval is the phase nothing else can overlap.
+0. **Batch independent calls into one turn.** Parallel tool calls work on this endpoint
+   (measured 2026-09-18: up to 8 in one turn). File reads, fetches and searches for different
+   claims are independent — issue them together instead of one per turn. One measured caveat
+   (2026-09-29): the search backend rejects **large** search batches (`user concurrency limit
+   exceeded` on a batch of 8, while batches of 2–3 returned results), so keep search batches
+   small — do not serialize them. Each turn costs 10–19 seconds of wall clock, and retrieval
+   is the phase nothing else can overlap.
 1. Read the passed Brief / draft spec and classify claims:
    - A: current/time-sensitive -> must search; no memory substitution.
    - B: graded factual claim -> search when possible; unavailable evidence is explicitly downgraded.
@@ -50,27 +50,44 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
    Gap-fill rounds: the authorization message names the claims to verify; search
    per claim benefit. Never delete executed queries — the pack is an audit log.
 3. Search per claim, not per topic. Record every executed query and every source `url`/`locator` plus `independence_group`.
-3b. **Read the tool result as a mechanism signal, not as a phrasing problem** (2026-09-29, live):
+3b. **Read the tool result as a mechanism signal** (2026-09-29, live):
    - `No links found` (often with a fake `<tool_call>` / `<search_tool>` in the summary) means the
-     search backend returned nothing at all — coverage, quota or a degraded backend, *not* "this
-     wording missed". Re-phrasing does not fix it: switch to the direct-source route below.
-     Record it as `unresolved` with `reason: search_unavailable`, so downstream can tell
+     search backend returned nothing at all — a backend/coverage signal, **not** evidence that the
+     claim is unsupportable. Keep working the claim through the routes below and record what you
+     could not retrieve as `unresolved` with `reason: search_unavailable`, so downstream can tell
      "our backend was down" apart from `not_found` / `access_blocked`.
-   - `user concurrency limit exceeded` means too many searches in one turn: re-issue that query
-     alone on the next turn.
-   - **Never `WebFetch` a search-engine result page** (`cn.bing.com`, `www.bing.com`, `so.com`,
+   - `user concurrency limit exceeded` means the search batch was too large: re-issue those queries
+     in a smaller batch on the next turn.
+   - **A search-engine result page is never a source** (`cn.bing.com`, `www.bing.com`, `so.com`,
      `sogou.com`, `duckduckgo.com`, `lite.duckduckgo.com`, `search.brave.com`, `mojeek.com`,
-     `search.yahoo.com`, `baidu.com`, any `*/search?…` or `link?m=` redirector, and government
-     site-search endpoints). Measured on 2026-09-29: those were **81 of 135** fetches in one
-     research run (median 8.5 s, max 32.6 s — 94% of that run's retrieval wall clock), and they
-     came back as generic entries with no citable evidence. A result page is a locator path, never
-     a source.
-   - **Direct-source route when search is unavailable**: fetch the publisher's own document —
-     policy text (gov.cn policy library), ministry statistics releases, organisation report pages
-     or PDFs, the paper itself. Verified the same day: a gov.cn policy page returned its title,
-     issuing bodies, date and every quantitative target verbatim. Ask the fetch prompt for the
-     **verbatim sentence** containing any number you will record — a slide-bound figure must never
-     come from a paraphrased summary.
+     `search.yahoo.com`, `baidu.com`, `google.com`, any `*/search?…` or `link?m=` redirector).
+     Diagnosis is the job of a search tool, not of a page reader: through a page reader these render
+     as unrelated boilerplate (2026-09-29: 24 of 81 such fetches came back under 400 characters,
+     and a re-test returned generic "国家" entries for a statistics query), and `fetch-text`
+     refuses them mechanically. Use the search tool to locate, then read the **document** it
+     points at (a publisher's own record endpoint, e.g. `sousuo.www.gov.cn/search-gov/data`,
+     is a locator — not a source).
+   - **Read documents with the deterministic fetcher, not with a summarizing reader.** A page
+     reader answers *your prompt* through a small model, so a number that passes through it is a
+     paraphrase, while slide-bound numbers must be verbatim:
+
+     ```bash
+     python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" fetch-text \
+       --url <document URL> [--url <another>] --scope <A|B> \
+       --out-dir <work-dir>/research/fetched
+     ```
+
+     `--scope` is the permission gate: only A/B authorize web retrieval (C/D are refused — the
+     D-class rule, enforced by the tool instead of by reminder). The report in
+     `research/fetched/fetch-text-report.json` carries `raw_path` / `text_path` / `raw_sha256` /
+     `text_sha256` / `charset` / `title` per URL; quote verbatim from `text_path`, record the
+     **document URL** (never a redirect link), and a failed or refused fetch is logged with its
+     `reason` so the pack's `unresolved` can name the mechanism.
+   - **Direct-source route**: when search is unavailable or returns nothing, go to the claim's own
+     publisher — policy text (gov.cn policy library), ministry statistics releases, organisation
+     report pages or PDFs, the paper itself. Verified 2026-09-29: a gov.cn policy page came back
+     with its title, issuing bodies, date and every quantitative target verbatim (8210 characters
+     of body text plus the two hashes that bind the quote).
 4. Grade sources S/A/B/C/D. Tier D is opinion only. Do not self-promote a source above the type ceiling enforced by the validator.
 5. Cross-check numbers across independent groups. High-confidence numbers require >=2 groups. Conflicts become `confidence: low`, `conflict: true`, explanatory `notes`, and a `conflicts` record.
 6. Record blocked/paywalled/missing retrieval in `unresolved` with concrete `impact` (a search backend that returned nothing is `search_unavailable`, not `not_found`); silent degradation is forbidden.

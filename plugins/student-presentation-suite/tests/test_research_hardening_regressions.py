@@ -161,8 +161,12 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
 
     The researcher spent 1176 of its 1256 retrieval seconds fetching search-result
     pages (81 of 135 fetches, median 8.5 s) after `No links found` came back for 30
-    of 31 searches. These assertions keep the corrected mechanics in every surface
-    the executor actually reads.
+    of 31 searches. The first cut over-fitted that outage — it told the executor to
+    issue searches one per turn and to abandon re-phrasing — which would have taxed
+    every later healthy run. What is pinned here is the corrected doctrine: result
+    pages are not sources (an evidence rule, environment-independent), search batches
+    stay small rather than serial, and a backend that returned nothing is recorded as
+    `search_unavailable` instead of being read as "no evidence exists".
     """
 
     AGENT = ROOT / "agents" / "presentation-researcher.md"
@@ -175,19 +179,25 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
     def read(self, path: Path) -> str:
         return path.read_text(encoding="utf-8")
 
-    def test_searches_are_not_batched_by_instruction(self) -> None:
+    def test_searches_are_not_serialized_by_instruction(self) -> None:
         agent = self.read(self.AGENT)
-        self.assertNotIn("Batch independent calls into one turn", agent)
-        self.assertIn("concurrency", agent.lower())
-        self.assertIn("one per turn", agent)
+        self.assertIn("Batch independent calls into one turn", agent)
+        self.assertNotIn("Issue searches", agent, "serializing searches costs a turn each")
+        self.assertIn("keep search batches", agent)
+        self.assertIn("do not serialize them", agent)
 
-    def test_result_pages_are_banned_as_sources(self) -> None:
-        # The agent prompt is English, the references are Chinese: assert the ban
+    def test_small_batches_are_the_stated_remedy(self) -> None:
+        cost = self.read(self.COST)
+        self.assertIn("不是**退化成一次一条", cost)
+        self.assertIn("检索批次", cost)
+
+    def test_result_pages_are_never_sources(self) -> None:
+        # The agent prompt is English, the references are Chinese: assert the rule
         # in each surface's own language, and that both name the hosts actually fetched.
         bans = {
-            self.AGENT: "search-engine result page",
-            self.WORKFLOW: "结果页",
-            self.SPAWN: "结果页",
+            self.AGENT: "never a source",
+            self.WORKFLOW: "结果页永远不是来源",
+            self.SPAWN: "永远不是来源",
         }
         for path, phrase in bans.items():
             text = self.read(path)
@@ -195,7 +205,7 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
                 self.assertIn(phrase, text)
                 self.assertTrue(
                     "so.com" in text and "duckduckgo" in text,
-                    "the ban must name the hosts that were actually fetched",
+                    "the rule must name the hosts that were actually fetched",
                 )
 
     def test_backend_failure_has_its_own_reason(self) -> None:
@@ -207,16 +217,23 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
             with self.subTest(path=path.name):
                 self.assertIn("search_unavailable", self.read(path))
 
-    def test_direct_source_route_is_documented(self) -> None:
+    def test_the_deterministic_route_is_documented_where_the_executor_reads(self) -> None:
+        for path in (self.AGENT, self.WORKFLOW, self.SPAWN, self.SKILL):
+            text = self.read(path)
+            with self.subTest(path=path.name):
+                self.assertIn("fetch-text", text)
+                self.assertIn("--scope", text)
         agent = self.read(self.AGENT)
+        self.assertIn("text_sha256", agent, "the quote must be bound to the fetched artifact")
+        self.assertIn("not with a summarizing reader", agent)
+
+    def test_a_dead_backend_is_not_read_as_absent_evidence(self) -> None:
+        agent = self.read(self.AGENT)
+        self.assertIn("not** evidence that the\n     claim is unsupportable", agent)
         self.assertIn("Direct-source route", agent)
         self.assertIn("verbatim", agent)
         self.assertIn("主源直取", self.read(self.WORKFLOW))
-
-    def test_batching_exception_is_stated_where_batching_is_taught(self) -> None:
-        cost = self.read(self.COST)
-        self.assertIn("检索不并行", cost)
-        self.assertIn("WebSearch", cost)
+        self.assertNotIn("停止换词重搜", self.read(self.WORKFLOW))
 
 
 if __name__ == "__main__":

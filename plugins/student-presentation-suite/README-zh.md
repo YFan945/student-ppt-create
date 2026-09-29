@@ -35,6 +35,11 @@ sp-research → sp-outline → sp-deck → sp-review
 证据支持的论断并把它坐实"。它不决定版式、不设计页面、不生成 PPTX、不改视觉风格、
 不撰写成段讲稿；职责混在一起会污染后面每一层的产物。
 
+会上屏的数字要求**逐字**，所以取原文这一层是确定性的：`pptx_tool.py fetch-text` 直接取
+HTTP 原文与抽取文本并落盘，两份 sha256 一起写进 provenance——中间不经过会改写数字的小模型。
+`--scope` 是权限门（只有 A/B 授权联网取原文，C/D 一律拒绝），搜索引擎结果页由工具机械拒绝
+（定位是检索工具的职责，不是来源）。规则见 `references/research-workflow.md` §七。
+
 它同时是**上下文防火墙**——而且是**机制**，不是提示词约定：主流程通过 Agent 工具
 **显式 spawn `agents/presentation-researcher.md`**（`subagent_type:
 student-presentation-suite:presentation-researcher`，不传 `name`），检索因此**不在主对话

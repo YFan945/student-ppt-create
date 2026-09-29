@@ -3,6 +3,8 @@
 from .cjk_fonts import apply_cjk_fonts, parse_font_map
 from .edit import add_slide, clean_package, delete_slide, reorder_slides
 from .fetch_images import fetch_images
+from .fetch_text import fetch_many as fetch_text_many
+from .fetch_text import write_report as write_fetch_text_report
 from .package import pack_directory, safe_extract_package
 from .validate import validate_pptx
 from .visual_baseline import compare_baseline, record_baseline
@@ -11,6 +13,8 @@ __all__ = [
     "add_slide",
     "apply_cjk_fonts",
     "fetch_images",
+    "fetch_text_many",
+    "write_fetch_text_report",
     "record_baseline",
     "compare_baseline",
     "parse_font_map",

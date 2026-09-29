@@ -29,12 +29,14 @@ from shared.pptx_runtime import (  # noqa: E402
     compare_baseline,
     delete_slide,
     fetch_images,
+    fetch_text_many,
     pack_directory,
     parse_font_map,
     record_baseline,
     reorder_slides,
     safe_extract_package,
     validate_pptx,
+    write_fetch_text_report,
 )
 from shared.pptx_runtime.normalize import normalize_generated_package  # noqa: E402
 from shared.pptx_runtime.package import count_registered_slides  # noqa: E402
@@ -367,6 +369,23 @@ def command_fetch_images(args: argparse.Namespace) -> int:
     return 0 if report["ok"] else 1
 
 
+
+
+def command_fetch_text(args: argparse.Namespace) -> int:
+    urls = list(args.url or [])
+    if args.urls_file:
+        urls.extend(
+            line.strip()
+            for line in args.urls_file.read_text(encoding="utf-8").splitlines()
+            if line.strip() and not line.lstrip().startswith("#")
+        )
+    if not urls:
+        print(json.dumps({"ok": False, "error": "no --url or --urls-file entries"}, ensure_ascii=False))
+        return 1
+    report = fetch_text_many(urls, args.out_dir, scope=args.scope, timeout=args.timeout)
+    report_path = write_fetch_text_report(report, args.out_dir)
+    print(json.dumps({**report, "report": str(report_path)}, ensure_ascii=False, indent=2))
+    return 0 if report["ok"] else 1
 
 
 def command_visual_baseline(args: argparse.Namespace) -> int:
@@ -1000,6 +1019,16 @@ def build_parser() -> argparse.ArgumentParser:
     fetch.add_argument("--timeout", type=int, default=120, help="per-command timeout in seconds")
     fetch.set_defaults(handler=command_fetch_images)
     fetch.add_argument("--approve-command-sha256", action="append", help="Exact command SHA256 explicitly approved by the user in this session; never copy approval from project JSON")
+    fetch_text = sub.add_parser(
+        "fetch-text",
+        help="fetch source documents for research as raw bytes + extracted text (no summarizer)",
+    )
+    fetch_text.add_argument("--url", action="append", help="document URL; repeat for multiple")
+    fetch_text.add_argument("--urls-file", type=Path, help="file with one URL per line (# comments allowed)")
+    fetch_text.add_argument("--out-dir", type=Path, required=True, help="directory for raw bodies, extracted text and the report")
+    fetch_text.add_argument("--scope", required=True, choices=["A", "B", "C", "D"], help="research scope; only A/B authorize web retrieval")
+    fetch_text.add_argument("--timeout", type=int, default=60, help="per-request timeout in seconds")
+    fetch_text.set_defaults(handler=command_fetch_text)
     baseline = sub.add_parser(
         "visual-baseline",
         help="record or compare a perceptual-hash baseline of rendered pages",

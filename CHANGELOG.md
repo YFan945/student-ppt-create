@@ -2,6 +2,38 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.23.0 — 2026-09-29 · Deterministic retrieval: `fetch-text`, and the over-fitted rules retired
+
+**新能力（minor）+ 对上一条的纠偏。** 0.22.2 把"后端当天坏了"写成了永久规则（"检索一次一条"、
+"空返回就不再换词"）——测量站得住，处方不成立：那等于用"放弃发现能力"换速度（研究员并不知道
+主源 URL，找到 URL 恰恰是检索存在的理由），而且串行会让每次检索独占一个回合。本版两步一起落地。
+
+**A · 撤掉过度规则**
+
+- 检索批次回到"保持小"，不再是"串行"：同日实测批次 8 里 5 条被拒，而批次 2–3 大多正常返回；
+  串行 = 每次检索白花 10–19 秒一个回合。
+- `No links found` 仍按机制区分（`search_unavailable` ≠ `not_found`，不得用模型记忆顶替），
+  但不再据此让检索停在半路——该 claim 继续按路线处理。
+
+**B · 检索路径确定化（新能力）**：`pptx_tool.py fetch-text`
+
+- HTTP 原文（`*.raw`）与抽取文本（`*.txt`）一起落盘，两份 sha256 写进 provenance——
+  中间**没有会改写数字的小模型**。"读这个网页并回答我的问题"返回的是转述，而会上屏的数字
+  要求逐字。
+- `--scope` 是**权限门**：只有 A/B 授权联网取原文，C/D 一律拒绝——D 类"禁止联网"由工具
+  机械执行，不靠提醒。
+- 搜索引擎结果页被机械拒绝（`reason: search_result_page` + 可执行提示），发布方自有
+  **记录端点**（如 `sousuo.www.gov.cn/search-gov/data`）作为定位器放行；代码里的 host 表与
+  `research-workflow.md` §七 的文档清单有测试对齐，不允许两边漂移。
+- 安全与保真：仅 http/https、字面回环/私有地址拒绝、按 content-type 抽取（二进制不硬解）、
+  CJK 编码链（gb2312/gb18030/big5 不再解成乱码）、失败与拒绝一并留痕（`reason` + `detail`）。
+- 实测（同一次线上验证）：gov.cn 政策原文 = 8210 字符正文 + 标题 + 两份 sha256，含
+  "风电、太阳能发电总装机容量达到12亿千瓦以上"的逐字整句。
+
+契约同步：researcher agent / spawn 固定段 / `research-workflow.md` §七 / `sp-research` SKILL /
+`cost-discipline` CD-11 / 插件 README（EN+ZH）口径一致。新增 15 项 `fetch-text` 测试 +
+1 项文档-代码对齐测试；全套 1153 通过。
+
 ## 0.22.2 — 2026-09-29 · Retrieval mechanics: a dead search backend is no longer a SERP crawl
 
 **缺陷修复（patch）**：检索阶段的墙钟去哪了——2026-09-29 线上实测定位并修复。
