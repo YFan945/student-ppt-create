@@ -232,6 +232,39 @@ class BuilderPacketTests(unittest.TestCase):
 
     # --- initial -------------------------------------------------------------
 
+    def test_pre_qa_report_paths_collects_every_report(self) -> None:
+        """投影必须全量：硬编码名单漏掉的报告 hook 又禁读 builder（2026-09-28 live）。"""
+        for name in (
+            "pre-qa-static-risk.json",
+            "pre-qa-structural-contract.json",
+            "pre-qa-quality.json",
+            "unrelated.json",
+        ):
+            (self.work / name).write_text("{}", encoding="utf-8")
+        names = [p.name for p in self.packet.pre_qa_report_paths(self.work)]
+        self.assertEqual(
+            ["pre-qa-quality.json", "pre-qa-static-risk.json", "pre-qa-structural-contract.json"],
+            names,
+        )
+
+    def test_repair_packet_projects_all_pre_qa_findings(self) -> None:
+        report = self.work / "pre-qa-static-risk.json"
+        report.write_text(
+            json.dumps(
+                {
+                    "problems": [
+                        {"code": "text_overflow", "severity": "major", "message": "文本溢出", "slide": 1}
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        _, packet = self.packet.write_packet(
+            self.work, "repair", [1], qa_reports=self.packet.pre_qa_report_paths(self.work)
+        )
+        codes = [b["code"] for b in packet["slides"][0]["blockers"]]
+        self.assertIn("text_overflow", codes)
+
     def test_initial_single_packet_covers_remaining_scaffold_slides(self) -> None:
         path, packet = self.packet.write_packet(self.work, "initial")
         self.assertEqual([1, 2, 3, 4], packet["assigned_slides"])

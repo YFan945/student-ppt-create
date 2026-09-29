@@ -290,6 +290,33 @@ class BuilderPacketScopeTests(BuilderGuardFixture, unittest.TestCase):
         self.assertEqual(0, guard.handle(self.builder(check, "Read")))
         self.assertEqual(2, guard.handle(self.builder(self.art, "Read")))
 
+    def test_qa_fragment_does_not_block_stage_summaries(self) -> None:
+        """"qa-" 子串此前把 dispatch 明确要读的 stage-qa-summary.md 也拒了；^qa-
+        只拦 qa-*.json（2026-09-28 live）。"""
+        summary = self.work / "stage-qa-summary.md"
+        summary.write_text("stage summary", encoding="utf-8")
+        self.assertEqual(0, guard.handle(self.builder(summary, "Read")))
+        qa = self.work / "qa-quality.json"
+        qa.write_text("{}", encoding="utf-8")
+        self.assertEqual(2, guard.handle(self.builder(qa, "Read")))
+
+    def test_refusals_name_the_available_packets(self) -> None:
+        """拒绝文案要给出一步恢复指引：可用 packet 及其页号（2026-09-28 live：builder
+        连吃 5 次拒绝才找对 packet）。"""
+        packet_dir = self.work / "builder-packets"
+        packet_dir.mkdir(parents=True, exist_ok=True)
+        (packet_dir / "repair-shard-02.json").write_text(
+            json.dumps({"assigned_slides": [11, 12]}), encoding="utf-8"
+        )
+        import io
+        from contextlib import redirect_stderr
+
+        buf = io.StringIO()
+        with redirect_stderr(buf):
+            code = guard.handle(self.builder(self.page, "Read"))
+        self.assertEqual(2, code)
+        self.assertIn("repair-shard-02.json=[11, 12]", buf.getvalue())
+
     def test_main_session_still_reads_the_same_artifact(self) -> None:
         event = self.event("Read")
         event["tool_input"] = {"file_path": str(self.art)}

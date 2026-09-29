@@ -496,11 +496,10 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 # Builder Packet (v0.15 Batch 2): repair packet per instance, blockers
                 # projected from the pre-QA reports instead of the builder re-reading them.
                 try:
-                    pre_qa_reports = [
-                        name
-                        for name in ("pre-qa-actual-content.json", "pre-qa-rendered.json", "pre-qa-quality.json")
-                        if (work_dir / name).is_file()
-                    ]
+                    # 全量投影（pre_qa_report_paths 单一属主）：只挑几个名字会把
+                    # pre-qa-static-risk / pre-qa-structural-contract-* 挡在 packet
+                    # 之外，而 hook 又禁读它们——两头堵死（2026-09-28 live）。
+                    pre_qa_reports = _packet.pre_qa_report_paths(work_dir)
                     packets = _packet.prepare_packets(
                         work_dir, "repair", fixable or None, pre_qa_reports,
                         single_builder=basic,

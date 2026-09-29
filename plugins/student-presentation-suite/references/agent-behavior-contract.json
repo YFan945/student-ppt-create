@@ -44,7 +44,7 @@
         "pre-qa",
         "page_brief",
         "slide-spec.yaml",
-        "qa-",
+        "^qa-",
         "visual-review",
         "calibration-style-contract"
       ]

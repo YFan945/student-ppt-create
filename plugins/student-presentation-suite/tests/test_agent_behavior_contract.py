@@ -190,13 +190,19 @@ class PageBriefStrategyProjectionTests(unittest.TestCase):
                 bullets[-1] += "\n" + line
         entry = next((b for b in bullets if "唯一任务输入" in b), "")
         self.assertTrue(entry, "builder 模板必须有 packet 任务输入条目")
+
+        def stem(token: str) -> str:
+            # 契约片段可带锚点/后缀（^qa- / art-direction.），模板用人类拼写
+            # （qa-*.json / art-direction.yaml）——点名同一对象即合格。
+            return token.lstrip("^").rstrip(".")
+
         for token in tokens:
-            self.assertIn(token, entry, f"packet 条目必须点名禁重读对象：{token}")
+            self.assertIn(stem(token), entry, f"packet 条目必须点名禁重读对象：{token}")
         for bullet in bullets:
             if bullet is entry:
                 continue
             for token in tokens:
-                if token in bullet:
+                if stem(token) in bullet:
                     self.assertTrue(
                         any(gate in bullet for gate in gates),
                         f"builder 模板里提到 '{token}' 的条目必须是 fallback-gated（有 packet 时不得重读）：\n{bullet}",

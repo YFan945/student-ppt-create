@@ -2,6 +2,23 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.21.12 — 2026-09-28 · Pre-QA reports project in full, refusals carry a way out
+
+再次仔细检查（35 个 subagent，重点生产/QA 阶段新增 17 个）：旧四类矛盾在旧缓存上继续
+复现之外，暴露出三个新缺口——
+
+- **pre-QA 报告投影不全（两头堵死重演）**：repair 派发只投影三个硬编码名字
+  （actual-content/rendered/quality），`pre-qa-static-risk.json`、
+  `pre-qa-structural-contract*.json` 被漏掉——而 hook 又禁读它们。现收集归
+  `builder_packet.pre_qa_report_paths`（单一属主），`pre-qa-*.json` **全量投影**。
+- **`qa-` 片段误伤阶段摘要**：dispatch 自己列为必读的 `stage-qa-summary.md` 被
+  no_reread 以"已投影进 packet"拒绝。片段改行首锚定 `^qa-`（只拦 qa-*.json）。
+- **拒绝文案不给活路**：repair builder 连吃 5 次拒绝才找对 packet（4 次"先读 packet"
+  不说读哪个、1 次"不在绑定内"不说哪个在）。两条拒绝现附
+  `可用 packet：<名字=页号>…` 一步恢复指引。
+- 确认 `production_entry_guard` 拒绝 subagent 直跑 `composition_candidate_check.py`
+  为正确保护（内部校验走管线），不动。
+
 ## 0.21.11 — 2026-09-28 · Last path-probe bait removed from docs and payloads
 
 继续检查（主会话日志 + 新增 7 个 subagent）：0.21.10 的四类矛盾在旧缓存上仍复现

@@ -238,8 +238,17 @@ def _sha256(path: Path) -> str:
 
 
 def _matches_no_reread(path: Path) -> bool:
+    """`^` 前缀 = 文件名行首锚定（^qa- 只拦 qa-*.json，不拦 stage-qa-summary.md
+    ——后者是 dispatch 明确要读的阶段摘要，此前被 "qa-" 子串误拒）。"""
     name = _norm(path.name)
-    return any(_norm(fragment) in name for fragment in _contract_packet_policy().get("no_reread_files") or [])
+    for fragment in _contract_packet_policy().get("no_reread_files") or []:
+        text = _norm(str(fragment))
+        if text.startswith("^"):
+            if name.startswith(text[1:]):
+                return True
+        elif text and text in name:
+            return True
+    return False
 
 
 def _page_number(path: Path) -> int | None:
@@ -298,6 +307,29 @@ def _write_binding(project: Path, agent_id: str, binding: dict) -> None:
     except OSError:
         pass  # enforcement bookkeeping must not take the work down
 
+
+
+def _packet_inventory(work_dir: Path) -> str:
+    """builder-packets/*.json 清单（名字 + 页号），给拒绝文案做一步恢复指引。
+
+    2026-09-28 live：builder 连吃 5 次拒绝才找对 packet——前 4 次"先读 packet"
+    没说读哪个，第 5 次"不在绑定内"没说哪个在。
+    """
+    entries = []
+    try:
+        for path in sorted((work_dir / "builder-packets").glob("*.json")):
+            if path.name in {"active-round.json", "fallbacks.json"}:
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if isinstance(data, dict):
+                slides = data.get("assigned_slides") or []
+                entries.append(f"{path.name}={list(slides)}")
+    except OSError:
+        pass
+    return "; ".join(entries) or "(builder-packets/ 为空)"
 
 def _enforce_packet_scope(event: dict, path: Path, work_dir: Path) -> str | None:
     """Runtime packet boundary for the isolated builder; None means allowed.
@@ -385,10 +417,10 @@ def _enforce_packet_scope(event: dict, path: Path, work_dir: Path) -> str | None
     binding = _load_binding(project, event_agent, work_dir, round_at)
     if binding is None:
         return (
-            f"builder_guard: refused — no packet binding for this instance. Read your Builder "
-            f"Packet first (it is your task input under builder-packets/); that read registers "
+            "builder_guard: refused — no packet binding for this instance. Read your Builder "
+            "Packet first (it is your task input under builder-packets/); that read registers "
             f"your shard scope ({contract_ref()}#presentation_builder.read_other_shard_page_modules "
-            "= false). Page access before registration is refused."
+            f"= false). Page access before registration is refused. 可用 packet：{_packet_inventory(work_dir)}"
         )
     if page not in (binding.get("allowed_slides") or []):
         return (
@@ -397,7 +429,7 @@ def _enforce_packet_scope(event: dict, path: Path, work_dir: Path) -> str | None
             f"pages/p{page:02d}-* is outside it "
             f"({contract_ref()}#presentation_builder.read_other_shard_page_modules = false). "
             "If your task genuinely needs different pages, return BUILDER_BLOCKED and let the "
-            "main session re-shard."
+            f"main session re-shard. 可用 packet：{_packet_inventory(work_dir)}"
         )
     return None
 

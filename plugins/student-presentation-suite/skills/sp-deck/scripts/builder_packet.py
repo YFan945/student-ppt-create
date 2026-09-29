@@ -361,6 +361,14 @@ def report_slide_blockers(report: dict[str, Any], slide: int) -> list[dict[str, 
     return out
 
 
+
+def pre_qa_report_paths(work_dir: Path) -> list[Path]:
+    """全部 pre-qa-*.json 报告。投影必须全量：漏掉的报告 hook 又禁读 builder，
+    两头堵死（2026-09-28 live：pre-qa-static-risk / structural-contract 被硬编码
+    名单漏掉）。"""
+    return sorted(path for path in (work_dir.glob("pre-qa-*.json")) if path.is_file())
+
+
 def packet_inputs(
     work_dir: Path, qa_reports: list[Path] | None = None
 ) -> dict[str, dict[str, str]]:
