@@ -4,3 +4,6 @@
 # .bat 保留 CRLF。
 * text eol=lf
 *.bat text eol=crlf
+# 二进制资产必须显式排除：显式 `text` 属性会跳过 git 的二进制探测，
+# CRLF 归一化会破坏 PNG（v0.23.3 的 assets/logo.png 曾因此损坏）。
+*.png binary
