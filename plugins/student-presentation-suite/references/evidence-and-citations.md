@@ -36,9 +36,10 @@ Rules:
 
 1. Research Pack is the sole entry point for external facts. Numbers, factual claims and direct quotations must trace to a `finding`, `data_point`, or `quote`, then to source(s).
 2. `confidence: low` or `conflict: true` must survive into the ledger limitation and into qualified/range wording on the slide.
-3. Tier D sources are opinion-only; they cannot become factual support.
-4. Blocked/paywalled/missing retrieval remains in `unresolved`; affected slide wording must be downgraded rather than silently treated as verified.
-5. `E<n>` ids are **compiler-owned**, never model-authored:
+3. Source tier letters (S/A/B/C/D) are **attribution metadata only** — they shape how the footer cites a source, never whether a claim passes, never the confidence level, and never a reason to keep searching. The gates are traceability (every source has `url`/`locator`; user files carry the import receipt) and independent corroboration (`high` requires ≥2 independent sources).
+4. Opinion sources (community / personal-blog / vendor-blog) are opinion-only; they cannot become the sole factual support for a number.
+5. Blocked/paywalled/missing retrieval remains in `unresolved`; affected slide wording must be downgraded rather than silently treated as verified.
+6. `E<n>` ids are **compiler-owned**, never model-authored:
 
    ```text
    findings sorted by id
@@ -47,8 +48,8 @@ Rules:
    → E01, E02, ...
    ```
 
-6. The compiler can write a non-destructive **compiled Slide Spec**. Draft `evidence_refs` may use F/D/Q ids; the compiler rewrites them to E ids, replaces the Research Evidence Ledger, and recomputes `used_on_slides` mechanically.
-7. `validate_research_pack.py` binds its report to `research_pack_sha256`; `evidence-map.json` binds the pack, validation report and compiled Slide Spec hashes. `slide_spec_guard.py freeze` verifies the whole provenance chain before accepting a research-backed plan.
+7. The compiler can write a non-destructive **compiled Slide Spec**. Draft `evidence_refs` may use F/D/Q ids; the compiler rewrites them to E ids, replaces the Research Evidence Ledger, and recomputes `used_on_slides` mechanically.
+8. `validate_research_pack.py` binds its report to `research_pack_sha256`; `evidence-map.json` binds the pack, validation report and compiled Slide Spec hashes. `slide_spec_guard.py freeze` verifies the whole provenance chain before accepting a research-backed plan.
 
 ## Delegated retrieval
 

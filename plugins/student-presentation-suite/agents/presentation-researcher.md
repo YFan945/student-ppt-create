@@ -41,9 +41,14 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
    - D: user restricted sources -> **no web retrieval**; `queries=[]`, every source is `user-file`.
 2. Choose a depth band from scenario: simple / standard / deep. Bands are depth
    guidance, NOT count quotas — web searches and WebFetch calls have no caps.
-   Reuse an already fetched URL and retry a failed URL at most once. Prioritize
-   primary sources for claims that will appear on slides; record claims you
-   could not verify in `unresolved` instead of continuing exploratory reads.
+   Reuse an already fetched URL and retry a failed URL at most once. Settle each
+   claim with **traceable** sources (url/locator; user files carry the import
+   receipt) and record what you could not verify in `unresolved` instead of
+   continuing exploratory reads. **Never search to climb a source tier**: the
+   S/A/B/C/D letter is attribution metadata for the slide footer, not a goal.
+   Go direct-to-primary for exactly two reasons — verbatim fidelity for a
+   slide-bound number, or restatements that conflict with each other. Nothing
+   else justifies more searching.
    Gap-fill rounds: the authorization message names the claims to verify; search
    per claim benefit. Never delete executed queries — the pack is an audit log.
    `must_verify` entries are the facts or numbers your slides will assert — phrase them as
@@ -91,18 +96,22 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
      `text_sha256` / `charset` / `title` per URL; quote verbatim from `text_path`, record the
      **document URL** (never a redirect link), and a failed fetch is logged with its `reason` so the
      pack's `unresolved` can name the mechanism.
-   - **Closing a claim is per claim, and it is the stop condition**: a claim is closed when ≥2
-     independent groups agree at the grade the deck needs — **or** closed at a lower grade when only
-     restatements are obtainable: keep those `source_ids` on the `must_verify` entry, set its
-     `status: unresolved`, and name the missing primary in `unresolved` with mechanism + impact.
-     That closes it; do not keep querying it. `status: verified` means settled at the needed grade,
-     not "some source exists".
+   - **Closing a claim is per claim, and it is the stop condition**: a claim is closed when it has
+     traceable sources and no conflict (mark `high` when ≥2 independent groups agree) — **or**
+     closed as a downgrade when only restatements are obtainable: keep those `source_ids` on the
+     `must_verify` entry, set its `status: unresolved`, and name the missing primary in
+     `unresolved` with mechanism + impact. That closes it; do not keep querying it.
+     `status: verified` means "traceable and conflict-free", not "reached some tier".
    - **Direct-source route**: when search is unavailable or returns nothing, go to the claim's own
      publisher — policy text (gov.cn policy library), ministry statistics releases, organisation
      report pages or PDFs, the paper itself. Verified 2026-09-29: a gov.cn policy page came back
      with its title, issuing bodies, date and every quantitative target verbatim (8210 characters
      of body text plus the two hashes that bind the quote).
-4. Grade sources S/A/B/C/D. Tier D is opinion only. Do not self-promote a source above the type ceiling enforced by the validator.
+4. Type and grade every source honestly (S/A/B/C/D). The grade is **attribution metadata only** —
+   it never blocks a claim, never sets confidence, and never justifies more searching. Type it
+   honestly too: the validator's type ceilings are still applied for now as a transitional
+   backstop. Opinion sources (community / personal-blog / vendor-blog) cannot be a factual
+   number's sole support.
 5. Cross-check numbers across independent groups. High-confidence numbers require >=2 groups. Conflicts become `confidence: low`, `conflict: true`, explanatory `notes`, and a `conflicts` record.
 6. Record blocked/paywalled/missing retrieval in `unresolved` with concrete `impact` (a search backend that returned nothing is `search_unavailable`, not `not_found`); silent degradation is forbidden.
 7. Mark `knowledge_gaps` and `visual_candidates` (type + priority only; visual treatment belongs downstream).

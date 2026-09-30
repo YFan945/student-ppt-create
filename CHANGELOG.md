@@ -2,6 +2,31 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.23.2 — 2026-09-30 · Source tiers demoted to attribution metadata (docs-only)
+
+**缺陷修复（patch，纯文档口径）**，owner 裁定："太在意等级了，对于整体搜索的环境"——
+等级门（`data_point` 至少 S/A/B、high 需要 S/A、类型上限表）在当前检索环境下是
+"搜很多次都找不到"的根因：中文官方站常被 captcha 拦、索引覆盖差，"往上升一级"的
+边际成本是几十次搜索，收益只是页脚一行字。
+
+- **S/A/B/C/D 降级为页脚标注元数据**：等级表保留但改定性（"来源类型与标注参考，不是门槛"）；
+  它不决定置信度、不驱动检索、不构成任何门禁。观点类来源（论坛/个人博客/厂商博客）不能
+  单独支撑事实数字——这是来源*种类*的底线，不是等级。
+- **证据体系的硬门只有两条**（均与等级无关，且现状已强制）：可追溯（`url`/`locator`，
+  用户文件有导入回执绑定）；独立印证（`confidence: high` = ≥2 个有效独立来源互相印证）。
+- **claim 收口语义随之修正**：`verified` = 可追溯来源支撑且无冲突（≥2 独立来源印证可标
+  `high`）；"找到官方出处"不再是可以存在于契约里的任务形态。直连主源的理由只有两个：
+  **逐字保真**与**转述冲突**，"把 B 升成 S"永远不构成继续检索的理由。
+- **validator 代码本版不动**：tier 下限检查（`weak_source_for_data_point` 等）作为过渡兜底
+  保留（满足零成本，主流媒体转述即 B），文档明示其过渡性质，防止被读回旧口径；代码级移除
+  待行为确认后另行处理。
+- **独立性的机械化预告**：同注册域名/同 URL 默认视为同一独立组（文档先行，validator 后续落地）。
+
+同步面：`research-workflow.md` §四/§五/§七/可验证标准、researcher agent（step 2/4/收口）、
+`sp-research` SKILL、spawn 固定段、`research-pack.schema.json`（tier 与 must_verify 的
+description）、`evidence-and-citations.md`（Rules 重排：等级=标注元数据）。新增钉子测试
+（tier-is-metadata，含"最低要求表不得回流"的反向断言）；全套 1153 通过。
+
 ## 0.23.1 — 2026-09-29 · Retrieval: incidental signals out, real completion logic in
 
 **缺陷修复（patch）**，按 owner 三条指示；依据是那次真实运行留下的 86 条 `search_executions`

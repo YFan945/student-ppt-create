@@ -240,6 +240,29 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
             with self.subTest(path=path.name):
                 self.assertIn("search_unavailable", self.read(path))
 
+    def test_tier_is_annotation_metadata_not_a_gate(self) -> None:
+        """Owner ruling 2026-09-30: tier obsession caused the tier-climbing searches.
+
+        The S/A/B/C/D letter is slide-footer metadata. The only evidence gates are
+        traceability and independent corroboration. The validator's tier floors stay
+        as a transitional backstop and the docs must say so explicitly, so nobody
+        reads their existence as permission to chase tiers again.
+        """
+        workflow = self.read(self.WORKFLOW)
+        self.assertIn("标注元数据，不是门槛", workflow)
+        self.assertIn("硬门只有两条", workflow)
+        self.assertIn("暂时保留为兜底", workflow)
+        self.assertNotIn("不同用途的最低要求", workflow, "the tier-floor table is retired")
+        agent = self.read(self.AGENT)
+        self.assertIn("Never search to climb a source tier", agent)
+        self.assertNotIn("Prioritize\n   primary sources", agent)
+        self.assertIn("attribution metadata only", agent)
+        self.assertIn("硬门只有两条", self.read(self.SKILL))
+        self.assertIn("不要为等级 letter 检索", self.read(self.SPAWN))
+        schema = json.loads(self.read(self.SCHEMA))
+        tier_description = schema["properties"]["sources"]["items"]["properties"]["tier"]["description"]
+        self.assertIn("页脚标注元数据（不是门禁）", tier_description)
+
     def test_the_deterministic_route_is_documented_where_the_executor_reads(self) -> None:
         for path in (self.AGENT, self.WORKFLOW, self.SPAWN, self.SKILL):
             text = self.read(path)
