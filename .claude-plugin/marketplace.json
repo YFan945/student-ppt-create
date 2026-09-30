@@ -10,7 +10,7 @@
       "displayName": "Student Presentation Suite",
       "source": "./plugins/student-presentation-suite",
       "description": "University presentation research, planning, PPTX generation, and review skills.",
-      "version": "0.23.2",
+      "version": "0.23.3",
       "author": {
         "name": "YFan945"
       },
@@ -25,6 +25,7 @@
         "defense"
       ],
       "category": "Productivity",
+      "icon": "https://raw.githubusercontent.com/YFan945/student-ppt-create/main/assets/logo.png",
       "homepage": "https://github.com/YFan945/student-ppt-create/tree/main",
       "repository": "https://github.com/YFan945/student-ppt-create/tree/main",
       "license": "MIT"

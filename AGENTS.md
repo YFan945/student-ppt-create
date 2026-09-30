@@ -24,6 +24,9 @@ implementation line and is not supported here.
 - `.github/workflows/dep-freshness.yml`: monthly pip-audit plus a pin-drift
   report on the frozen constraints, upserted into one tracking issue.
 - `.editorconfig`: cross-editor formatting baseline (indentation, line endings).
+- `assets/logo.png`: plugin logo (1024×1024 transparent PNG) referenced by the
+  marketplace entry's `icon` HTTPS URL. ZCode renders marketplace icons; Claude
+  Code currently has no icon field and ignores it.
 - `plugins/student-presentation-suite/`: complete installable Claude Code plugin.
 - `scripts/install_claude_plugin.ps1`: install, migrate, update, and dependency setup.
 - `scripts/check_marketplace_release.py`: repository-level release validation.
@@ -231,9 +234,10 @@ python plugins/student-presentation-suite/scripts/check_plugin_release.py --json
 python scripts/check_marketplace_release.py --json
 python plugins/student-presentation-suite/scripts/check_claude_pptx_env.py --json --strict
 
-# Claude manifest validation
+# Claude manifest validation (root manifest non-strict: it carries ZCode
+# presentation fields such as icon that Claude ignores but --strict rejects)
 claude plugin validate --strict .\plugins\student-presentation-suite
-claude plugin validate --strict .
+claude plugin validate .
 git diff --check
 ```
 

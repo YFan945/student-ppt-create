@@ -4,6 +4,7 @@
 !**/outputs/.gitkeep
 **/*.pptx
 **/*.png
+!assets/logo.png
 **/__pycache__/
 **/.pytest_cache/
 **/.ruff_cache/

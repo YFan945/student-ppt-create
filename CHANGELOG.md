@@ -2,6 +2,19 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.23.3 — 2026-09-30 · Plugin logo and marketplace icon
+
+- **新增插件 logo**：`assets/logo.png`（1024×1024 透明底 PNG；由 owner 提供的 1448×1086
+  原图 1:1 黑画布补边、清噪导出，不改动原构图）。
+- **marketplace 条目新增 `icon` 字段**（HTTPS URL 指向上述资产，raw.githubusercontent@main）：
+  这是 ZCode marketplace 规范的正式呈现字段，ZCode 在市场列表/已装列表渲染插件图标；
+  Claude Code 目前没有 icon 字段、加载时忽略未知字段——字段就位，未来支持即生效。
+- **根 manifest 校验由 `--strict` 降为普通校验**（插件 manifest 保持 strict）：Claude 校验器
+  把 `icon` 判为 unknown-field 警告并注明"加载时忽略、保留安全"，但 `--strict` 会把警告
+  升级为错误。`validate.yml` 的 claude-manifest job 与 AGENTS.md 验证块同步调整。
+- `.gitignore`/`.zcodeignore` 增加 `!assets/logo.png` 豁免：全局 `**/*.png` 排除（生成产物
+  边界）的唯一例外，仅此一个品牌资产。
+
 ## 0.23.2 — 2026-09-30 · Source tiers demoted to attribution metadata (docs-only)
 
 **缺陷修复（patch，纯文档口径）**，owner 裁定："太在意等级了，对于整体搜索的环境"——

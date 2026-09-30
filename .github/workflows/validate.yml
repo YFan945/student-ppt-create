@@ -174,7 +174,11 @@ jobs:
       - name: Strict Claude validation
         run: |
           claude plugin validate --strict ./plugins/student-presentation-suite
-          claude plugin validate --strict .
+          # The marketplace manifest carries ZCode presentation fields (icon);
+          # Claude Code ignores them at load time, but --strict promotes the
+          # unknown-field warning to an error, so the root manifest is
+          # validated non-strict while the plugin manifest stays strict.
+          claude plugin validate .
 
   render-matrix:
     runs-on: ubuntu-latest
