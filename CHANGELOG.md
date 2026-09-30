@@ -2,6 +2,26 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.23.9 — 2026-09-30 · Audit thresholds calibrated against their own false positives; minors get a forced consumer
+
+**缺陷修复（patch）**，owner 指示修复"还剩的两条"——n=1 魔法阈值与无消费者的 advisory：
+
+- **① 阈值校准（修误报面，不修到不敢报）**：
+  - `reworded_retry` 新增**数字集相等**前提——两条失败查询换掉了数字（2025→2026）
+    就是换了一个可回答单元，不是换措辞；n=1 字符集包含度会把"换年份再问一次"冤枉成
+    重试，现在数字不同直接不报。数字相同、措辞不同、双双失败 → 照报（这正是
+    09-29 那 49/86 浪费的主体）。
+  - `over_broad_query` 从"长度/词数猜测"改成**事后归因**：只有"句式像整句 **且实际失败**"
+    的查询才标——日志里 49 字符首发成功的长句是旧口径最清晰的误报；成功的查询
+    不需要被马后炮。
+- **② minor 强制有下游消费者**：advisory 不再死在没人翻的报告里——
+  validator 一行输出固定追加 `retrieval audit — N advisory: codes×count`（不依赖
+  --verbose）；`research_pack_to_evidence.py` 的 ok 行透传同一行（--json 模式走
+  stderr）。主管道本来就读编译器的输出，所以主流程**不可能错过**审计结果——
+  消费者问题从"文字要求研究员自觉"变成"输出面强制"。
+- §九 同步写明校准后判定与强制出口。测试 +4（2025≠2026 回归 / 成功长句不报而失败
+  长句报 / render 固定行 / 编译器透传）；全套 **1181** 通过。
+
 ## 0.23.8 — 2026-09-30 · Retrieval-trail audit hardened against a crashing public API
 
 **缺陷修复（patch）**，兑现 0.23.7 记下的"0.23.8 必须处理"两条异常——逐条**真实复现后**分别处置：

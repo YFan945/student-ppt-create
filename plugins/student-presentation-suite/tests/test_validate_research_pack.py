@@ -492,6 +492,44 @@ class RetrievalAuditTests(unittest.TestCase):
         }
         self.assertIn("reworded_retry", self.codes(pack, search_log=log))
 
+    def test_changing_the_number_is_a_new_unit_not_a_reworded_retry(self) -> None:
+        # 0.23.9 threshold calibration: 2025→2026 asks for different data. The n=1
+        # char-set containment flagged these; numbers must match before a retry
+        # counts as re-wording.
+        pack = base_pack()
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "IRENA renewable capacity statistics 2025 solar wind GW", "status": "failed"},
+                {"n": 2, "query": "IRENA renewable capacity statistics 2026 solar wind GW", "status": "failed"},
+            ]
+        }
+        codes = self.codes(pack, search_log=log)
+        self.assertNotIn("reworded_retry", codes)
+
+    def test_a_long_query_that_succeeded_is_never_called_over_broad(self) -> None:
+        # Over-broad is attributed post-hoc: only a claim-shaped query that actually
+        # failed earns the flag (the 49-char success in the n=1 log was the false
+        # positive this removes).
+        long_ok = "国家能源局 2025年 风电 光伏 累计装机 全年 新增装机 亿千瓦"
+        log_ok = {"search_executions": [{"n": 1, "query": long_ok, "status": "ok"}]}
+        pack = base_pack()
+        pack["queries"] = [long_ok]
+        self.assertNotIn("over_broad_query", self.codes(pack, search_log=log_ok))
+        log_failed = {"search_executions": [{"n": 1, "query": long_ok, "status": "failed"}]}
+        self.assertIn("over_broad_query", self.codes(pack, search_log=log_failed))
+
+    def test_render_always_shows_the_retrieval_advisory_line(self) -> None:
+        pack = self._pack_with_queries()
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "国家能源局 2025年全国电力工业统计数据", "status": "ok"},
+                {"n": 2, "query": "国家能源局 2025年全国电力工业统计数据", "status": "ok"},
+            ]
+        }
+        report = self.module.validate(pack, search_log=log)
+        text = self.module.render(report, Path("r.json"), verbose=False, max_items=12)
+        self.assertIn("retrieval audit — 1 advisory: duplicate_query", text)
+
     def test_pasted_claim_sentence_query_is_flagged(self) -> None:
         pack = self._pack_with_queries()
         log = {

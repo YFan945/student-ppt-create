@@ -201,6 +201,42 @@ class ResearchPackToEvidenceTests(unittest.TestCase):
         self.assertEqual(1, len(stdout.splitlines()))
         self.assertTrue(stdout.startswith("research_pack_to_evidence: ok"))
 
+    def test_cli_surfaces_retrieval_advisories_from_the_validation_report(self) -> None:
+        # 0.23.9: a minor nobody reads is a minor that does not exist — the
+        # compiler's ok line must carry the retrieval-audit advisories forward,
+        # because the pipeline reads THIS output, not the validation report.
+        pack = base_pack()
+        pack["queries"] = ["IRENA capacity statistics 2026 solar wind"]
+        pack_path = self.write_pack(pack)
+        log = self.tmp / "search-log.json"
+        log.write_text(
+            json.dumps(
+                {
+                    "search_executions": [
+                        {"n": 1, "query": "IRENA capacity statistics 2026 solar wind", "status": "failed"},
+                        {"n": 2, "query": "IRENA capacity statistics 2026 solar wind total", "status": "failed"},
+                    ]
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        validation = self.tmp / "validation.json"
+        result = subprocess.run(
+            [
+                sys.executable, str(VALIDATOR), str(pack_path),
+                "--output", str(validation), "--search-log", str(log),
+            ],
+            check=False, capture_output=True, text=True, encoding="utf-8",
+        )
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+        code, stdout = self.invoke(
+            [str(pack_path), "--validation-report", str(validation), "--output", str(self.tmp / "m.json")]
+        )
+        self.assertEqual(0, code)
+        self.assertIn("retrieval audit", stdout)
+        self.assertIn("reworded_retry", stdout)
+
     def test_missing_pack_exits_two(self) -> None:
         code, _ = self.invoke([str(self.tmp / "absent.json")])
         self.assertEqual(2, code)

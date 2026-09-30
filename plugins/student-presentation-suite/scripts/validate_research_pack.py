@@ -635,6 +635,22 @@ def _unit_overlap(left: str, right: str) -> float:
     return len(smaller & larger) / len(smaller)
 
 
+_NUMBER = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _number_tokens(text: str) -> frozenset[str]:
+    """Numeric tokens carry the query's target — 主体+指标+时间. Two queries whose
+    number sets differ are different units (2025→2026 asks for different data),
+    not a re-wording of the same question (owner-calibration, 2026-09-30)."""
+    return frozenset(_NUMBER.findall(str(text or "")))
+
+
+def _is_broad_shape(query: str) -> bool:
+    """A query shaped like a pasted claim sentence: clause-stacked rather than
+    one 主体+指标+时间 unit."""
+    return len(query) > 60 or len(query.split()) > 6
+
+
 def _coerce_trail(source: Any, label: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """Accept a parsed mapping or a path to one — an unreadable trail is an advisory,
     never a crash. The audit is advisory by contract, and `validate()` is a public
@@ -739,18 +755,25 @@ def retrieval_audit_issues(
                     )
                 )
             failed = [
-                (_normalize_query(str(entry.get("query") or "")), entry)
+                (
+                    _normalize_query(str(entry.get("query") or "")),
+                    str(entry.get("query") or ""),
+                    entry,
+                )
                 for entry in executions
                 if str(entry.get("status") or "") == "failed"
             ]
             retried: list[tuple[str, str]] = []
-            for index, (norm, _entry) in enumerate(failed):
+            for index, (norm, raw, _entry) in enumerate(failed):
                 if len(norm) < 9:
                     continue
-                for other_norm, _other in failed[index + 1 :]:
-                    if len(other_norm) >= 9 and _unit_overlap(norm, other_norm) >= 0.8:
-                        retried.append((norm, other_norm))
-                        break
+                for other_norm, other_raw, _other in failed[index + 1 :]:
+                    if len(other_norm) < 9 or _unit_overlap(norm, other_norm) < 0.8:
+                        continue
+                    if _number_tokens(raw) != _number_tokens(other_raw):
+                        continue  # different numbers = a different unit, not a re-word
+                    retried.append((norm, other_norm))
+                    break
             if retried:
                 out.append(
                     issue(
@@ -761,11 +784,15 @@ def retrieval_audit_issues(
                         "is not a new channel; switch channel (research-workflow §七)",
                     )
                 )
+            # Over-broad is attributed post-hoc, never guessed: only a query that
+            # is BOTH claim-shaped AND failed counts — a successful long query was
+            # the n=1 sample's clearest false positive (a 49-char hit on the first
+            # try), and flagging successes would train nobody.
             broad = [
                 str(entry.get("query") or "")
                 for entry in executions
-                if len(str(entry.get("query") or "")) > 60
-                or len(str(entry.get("query") or "").split()) > 6
+                if str(entry.get("status") or "") == "failed"
+                and _is_broad_shape(str(entry.get("query") or ""))
             ]
             if broad:
                 out.append(
@@ -835,6 +862,41 @@ def validate(
     }
 
 
+# Codes produced by retrieval_audit_issues; exported so the evidence compiler and
+# the pipeline can surface the advisories downstream — a minor nobody reads is a
+# minor that does not exist (owner fix 2, 2026-09-30).
+RETRIEVAL_ADVISORY_CODES = frozenset(
+    {
+        "query_unlogged",
+        "search_log_empty",
+        "duplicate_query",
+        "reworded_retry",
+        "over_broad_query",
+        "result_page_fetched",
+        "retrieval_log_unreadable",
+    }
+)
+
+
+def retrieval_advisories(report: dict[str, Any]) -> list[dict[str, Any]]:
+    """The retrieval-audit minors inside a validation report, in stable order."""
+    found = [p for p in report.get("problems", []) if str(p.get("code") or "") in RETRIEVAL_ADVISORY_CODES]
+    return sorted(found, key=lambda p: (str(p.get("code")), str(p.get("message"))))
+
+
+def retrieval_advisory_line(report: dict[str, Any]) -> str:
+    """One-line summary every consumer prints; empty when the audit is clean."""
+    advisories = retrieval_advisories(report)
+    if not advisories:
+        return ""
+    tally: dict[str, int] = {}
+    for item in advisories:
+        code = str(item.get("code"))
+        tally[code] = tally.get(code, 0) + 1
+    joined = ", ".join(f"{code}×{count}" if count > 1 else code for code, count in sorted(tally.items()))
+    return f"retrieval audit — {len(advisories)} advisory: {joined}"
+
+
 def render(report: dict[str, Any], path: Path, *, verbose: bool, max_items: int) -> str:
     inv = report["inventory"]
     counts = report["counts"]
@@ -846,6 +908,9 @@ def render(report: dict[str, Any], path: Path, *, verbose: bool, max_items: int)
         f"{inv['conflicts']}C/{inv['visual_candidates']}V/{inv['unresolved']}U | "
         f"budget {report['budget']} | report: {path}"
     ]
+    audit_line = retrieval_advisory_line(report)
+    if audit_line:
+        lines.append(f"  {audit_line}")
     visible = (
         report["problems"]
         if verbose

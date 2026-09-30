@@ -423,14 +423,18 @@ def schema_issues(report: dict[str, Any]) -> list[str]:
     ]
 
 
-def render(report: dict[str, Any], path: Path, compiled_spec: Path | None) -> str:
+def render(
+    report: dict[str, Any], path: Path, compiled_spec: Path | None, audit_line: str = ""
+) -> str:
     blocked = bool(report["unresolved_refs"])
     state = "blocked" if blocked else "ok"
     suffix = f" | compiled spec: {compiled_spec}" if compiled_spec else ""
+    audit = f"  {audit_line}\n" if audit_line else ""
     return (
         f"research_pack_to_evidence: {state} — {len(report['evidence_ledger'])} ledger entries from "
         f"{len(report['ref_map'])} F/D/Q/S entities | {len(report['source_index'])} sources | "
         f"unresolved refs {len(report['unresolved_refs'])} | map: {path}{suffix}\n"
+        + audit
         + "".join(f"  [major] {line}\n" for line in report["unresolved_refs"])
     )
 
@@ -468,12 +472,17 @@ def main(argv: list[str] | None = None) -> int:
 
     pack_hash = sha256_file(args.pack)
     validation_hash: str | None = None
+    audit_line = ""
     if args.validation_report:
         valid, error = validate_report_for_pack(args.validation_report, pack_hash)
         if not valid:
             print(f"research_pack_to_evidence: {error}", file=sys.stderr)
             return 2
         validation_hash = sha256_file(args.validation_report)
+        # Carry the retrieval-audit advisories into this command's output: the
+        # pipeline consumes the compiler's ok line, so a minor advisory is read
+        # by the main flow instead of dying in a report nobody opens (0.23.9).
+        audit_line = pack_validator.retrieval_advisory_line(load_json(args.validation_report))
 
     spec = None
     if args.slide_spec:
@@ -516,8 +525,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
+        if audit_line:
+            print(f"research_pack_to_evidence: {audit_line}", file=sys.stderr)
     else:
-        print(render(report, report_path, args.compiled_slide_spec), end="")
+        print(render(report, report_path, args.compiled_slide_spec, audit_line), end="")
     return 2 if report["unresolved_refs"] else 0
 
 

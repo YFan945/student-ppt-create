@@ -308,6 +308,13 @@ search-log 停在初始 7 条，gap-fill 第 8 条检索只存在于 pack，日�
 （`reworded_retry`）、把整句话粘进检索框（`over_broad_query`）、抓取结果页当证据
 （`result_page_fetched`）——全部 minor：审计提示行为，不设门禁、不数次数。
 
+判定口径经过一轮校准（0.23.9），只抓站得住的信号：`reworded_retry` 要求两条失败查询的
+**数字集完全相同**——换了数字（2025→2026）就是另一个可回答单元，不是换措辞；
+`over_broad_query` **只归因实际失败的长查询**（成功的首发长句不算错，n=1 样本里那 49 字符
+成功查询就是旧口径的误报）。advisory 有强制出口：validator 一行输出与 Evidence 编译器的
+ok 行都固定带 `retrieval audit — N advisory: …`，主管道读编译器输出就看见——不依赖谁
+主动去翻 validation 报告。
+
 ```yaml
 unresolved:
   - query: "IPCC AR6 WGIII 原始表格"
