@@ -249,8 +249,9 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
         The S/A/B/C/D letter is slide-footer metadata. The only evidence gates are
         traceability and independent corroboration (mechanical since 0.23.3: same
         registrable domain is one origin, an independence_note override leaves a
-        minor advisory, and opinion sources cannot solely support a fact). The
-        validator's tier floors and type ceilings are removed, and the docs must
+        minor advisory; opinion-source support is a minor wording hint since the
+        owner's 2026-09-30 "too strict" ruling). The validator's tier floors and
+        type ceilings are removed, and the docs must
         record that so nobody reads them back into the strategy.
         """
         workflow = self.read(self.WORKFLOW)
@@ -270,6 +271,31 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
         schema = json.loads(self.read(self.SCHEMA))
         tier_description = schema["properties"]["sources"]["items"]["properties"]["tier"]["description"]
         self.assertIn("页脚标注元数据（不是门禁）", tier_description)
+
+    def test_closure_is_one_ledger_and_the_trail_is_audited(self) -> None:
+        """0.23.7: the two soft residuals are gone.
+
+        (1) The re-typed-source closure path is closed: verified entries must
+        link entity_ids when the pack has F/D entities — the docs and the schema
+        must state that, not just offer it. (2) The §七 behavior rules have a
+        machine consumer: the validation command carries --search-log and
+        --fetch-report in every surface that states it, and the workflow records
+        that the audit exists and is advisory-only.
+        """
+        workflow = self.read(self.WORKFLOW)
+        self.assertIn("must_verify_unlinked", workflow)
+        self.assertIn("must_verify_orphan_source", workflow)
+        self.assertIn("唯一合法声明", workflow)
+        self.assertIn("--search-log", workflow)
+        self.assertIn("--fetch-report", workflow)
+        agent = self.read(self.AGENT)
+        self.assertIn("must_verify_unlinked", agent)
+        self.assertIn("--search-log", agent)
+        self.assertIn("must_verify_unlinked", self.read(self.SKILL))
+        self.assertIn("--search-log", self.read(self.SPAWN))
+        schema = json.loads(self.read(self.SCHEMA))
+        must_verify = json.dumps(schema["properties"]["must_verify"], ensure_ascii=False)
+        self.assertIn("must_verify_unlinked", must_verify)
 
     def test_the_deterministic_route_is_documented_where_the_executor_reads(self) -> None:
         for path in (self.AGENT, self.WORKFLOW, self.SPAWN, self.SKILL):

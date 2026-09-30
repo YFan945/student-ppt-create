@@ -326,6 +326,49 @@ class ResearchPackContractTests(unittest.TestCase):
         self.assertTrue(report["ok"], report["problems"])
         self.assertIn("must_verify_count", self.codes(pack, "minor"))
 
+    def test_verified_entry_must_link_entities_when_the_pack_has_them(self) -> None:
+        # 0.23.7: the re-typed-source path is closed — bare source_ids closure is refused
+        # so the ledger exists in exactly one place (the entity), the closure points at it.
+        pack = base_pack()
+        pack["must_verify"] = [
+            {"claim": "对象幻觉是 LVLM 最常见的幻觉类型之一", "status": "verified", "source_ids": ["S01", "S02"]},
+        ]
+        self.assertIn("must_verify_unlinked", self.codes(pack, "major"))
+
+    def test_sources_listed_by_a_linked_claim_must_be_used_by_the_entity(self) -> None:
+        pack = base_pack()
+        pack["must_verify"] = [
+            {
+                "claim": "对象幻觉是 LVLM 最常见的幻觉类型之一",
+                "status": "verified",
+                "entity_ids": ["F01"],
+                "source_ids": ["S01", "S02"],
+            },
+        ]
+        # F01 rests on S01+S02 so both travel; an orphan is S99-style extra — craft one:
+        pack["must_verify"][0]["entity_ids"] = ["D01"]  # D01 also uses S01+S02
+        self.assertNotIn("must_verify_orphan_source", self.codes(pack, "major"))
+        pack["sources"].append(
+            {"id": "S03", "title": "extra", "type": "news", "tier": "B", "independence_group": "e"}
+        )
+        pack["must_verify"][0]["source_ids"] = ["S01", "S02", "S03"]
+        self.assertIn("must_verify_orphan_source", self.codes(pack, "major"))
+
+    def test_d_class_import_pack_still_closes_with_bare_sources(self) -> None:
+        # No F/D entities (D-class import) keeps the legacy path by definition.
+        pack = base_pack()
+        pack["findings"] = []
+        pack["data_points"] = []
+        pack["visual_candidates"] = []
+        pack["must_verify"] = [
+            {"claim": "c1", "status": "verified", "source_ids": ["S01"]},
+            {"claim": "c2", "status": "verified", "source_ids": ["S01"]},
+            {"claim": "c3", "status": "verified", "source_ids": ["S01"]},
+        ]
+        report = self.module.validate(pack)
+        self.assertTrue(report["ok"], report["problems"])
+
+
     def test_budget_reason_is_no_longer_accepted(self) -> None:
         pack = base_pack()
         pack["unresolved"] = [
@@ -402,6 +445,127 @@ class ResearchPackContractTests(unittest.TestCase):
     def test_missing_file_exits_two(self) -> None:
         with TemporaryDirectory() as tmp:
             self.assertEqual(2, self.module.main([str(Path(tmp) / "absent.json")]))
+
+
+class RetrievalAuditTests(unittest.TestCase):
+    """§七 behavior rules audited against the run's own telemetry (all minor, never blocking)."""
+
+    def setUp(self) -> None:
+        self.module = load_module(SCRIPT)
+
+    def codes(self, pack, search_log=None, fetch_report=None):
+        report = self.module.validate(pack, search_log=search_log, fetch_report=fetch_report)
+        return [p["code"] for p in report["problems"]]
+
+    def _pack_with_queries(self):
+        pack = base_pack()
+        pack["queries"] = ["国家能源局 2025年全国电力工业统计数据"]
+        return pack
+
+    def test_query_absent_from_log_is_flagged(self) -> None:
+        log = {"search_executions": [{"n": 1, "query": "完全不同的问题", "status": "ok"}]}
+        self.assertIn("query_unlogged", self.codes(self._pack_with_queries(), search_log=log))
+
+    def test_empty_log_with_queries_is_flagged(self) -> None:
+        self.assertIn(
+            "search_log_empty", self.codes(self._pack_with_queries(), search_log={"search_executions": []})
+        )
+
+    def test_exact_repeated_query_is_flagged(self) -> None:
+        pack = self._pack_with_queries()
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "国家能源局 2025年全国电力工业统计数据", "status": "ok"},
+                {"n": 2, "query": "国家能源局 2025年 全国电力工业统计 数据", "status": "failed"},
+            ]
+        }
+        self.assertIn("duplicate_query", self.codes(pack, search_log=log))
+
+    def test_reworded_retry_of_a_failed_query_is_flagged(self) -> None:
+        pack = base_pack()
+        pack["queries"] = ["IRENA renewable capacity statistics 2026 solar wind"]
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "IRENA renewable capacity statistics 2026 solar wind GW", "status": "failed"},
+                {"n": 2, "query": "IRENA renewable capacity statistics 2026 solar wind total GW", "status": "failed"},
+            ]
+        }
+        self.assertIn("reworded_retry", self.codes(pack, search_log=log))
+
+    def test_pasted_claim_sentence_query_is_flagged(self) -> None:
+        pack = self._pack_with_queries()
+        log = {
+            "search_executions": [
+                {
+                    "n": 1,
+                    "query": "中共中央 国务院 完整准确全面贯彻新发展理念 做好碳达峰碳中和工作 意见 2030年前碳达峰 2060年前碳中和 非化石能源消费比重25%",
+                    "status": "failed",
+                }
+            ]
+        }
+        self.assertIn("over_broad_query", self.codes(pack, search_log=log))
+
+    def test_result_page_fetches_are_flagged(self) -> None:
+        report = {"records": [{"url": "https://www.so.com/s?q=x", "host_class": "search_engine", "ok": True}]}
+        self.assertIn("result_page_fetched", self.codes(base_pack(), fetch_report=report))
+
+    def test_clean_trail_produces_no_audit_flags(self) -> None:
+        pack = self._pack_with_queries()
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "国家能源局 2025年全国电力工业统计数据", "status": "ok"}
+            ]
+        }
+        fetch = {"records": [{"url": "https://www.gov.cn/x.htm", "host_class": "public", "ok": True}]}
+        codes = self.codes(pack, search_log=log, fetch_report=fetch)
+        for audit in ("query_unlogged", "duplicate_query", "reworded_retry", "over_broad_query", "result_page_fetched"):
+            self.assertNotIn(audit, codes)
+
+    def test_audit_flags_never_block(self) -> None:
+        pack = self._pack_with_queries()
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "国家能源局 2025年全国电力工业统计数据", "status": "failed"},
+                {"n": 2, "query": "国家能源局 2025年 全国电力工业统计 数据", "status": "failed"},
+            ]
+        }
+        report = self.module.validate(pack, search_log=log)
+        self.assertTrue(report["ok"], report["problems"])
+        self.assertEqual(0, report["counts"]["blockers"])
+
+    def test_cli_binds_trail_files_and_stays_advisory(self) -> None:
+        import contextlib
+        import io
+
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pack_path = root / "research-pack.json"
+            pack = base_pack()
+            pack["queries"] = ["国家能源局 2025年全国电力工业统计数据"]
+            pack_path.write_text(json.dumps(pack, ensure_ascii=False), encoding="utf-8")
+            log = root / "search-log.json"
+            log.write_text(
+                json.dumps(
+                    {
+                        "search_executions": [
+                            {"n": 1, "query": "国家能源局 2025年全国电力工业统计数据", "status": "ok"},
+                            {"n": 2, "query": "国家能源局 2025年 全国电力工业统计 数据", "status": "ok"},
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            report_path = root / "validation.json"
+            buffer = io.StringIO()
+            with contextlib.redirect_stdout(buffer):
+                code = self.module.main(
+                    [str(pack_path), "--output", str(report_path), "--search-log", str(log), "--json"]
+                )
+            self.assertEqual(0, code, "audit findings are minor and never block")
+            payload = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertIn("duplicate_query", [p["code"] for p in payload["problems"]])
+            self.assertEqual(64, len(payload["retrieval"]["search_log"]["sha256"]))
 
 
 if __name__ == "__main__":

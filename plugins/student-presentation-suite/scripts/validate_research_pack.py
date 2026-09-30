@@ -564,6 +564,34 @@ def must_verify_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                 )
             )
             continue
+        if entity_ids and not entity_refs:
+            out.append(
+                issue(
+                    "major",
+                    "must_verify_unlinked",
+                    f"must-verify claim {entry.get('claim')!r} is verified via bare source_ids while "
+                    "the pack has findings/data_points — settle the claim as a finding or "
+                    "data_point and link it with entity_ids; sources travel with the entity, "
+                    "they are not re-typed into the closure ledger",
+                    entry=entry.get("claim"),
+                )
+            )
+        if refs and entity_refs:
+            entity_sources = {
+                str(ref) for eid in entity_refs for ref in entity_ids[eid].get("source_ids") or []
+            }
+            orphans = sorted(set(refs) - entity_sources)
+            if orphans:
+                out.append(
+                    issue(
+                        "major",
+                        "must_verify_orphan_source",
+                        f"must-verify claim {entry.get('claim')!r} lists sources {orphans} that no "
+                        "linked entity rests on — either the entity is missing them or the "
+                        "entry over-claims; keep one ledger",
+                        entry=entry.get("claim"),
+                    )
+                )
         missing = sorted(set(refs) - known_sources)
         if missing:
             out.append(
@@ -588,7 +616,142 @@ def must_verify_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def validate(pack: dict[str, Any]) -> dict[str, Any]:
+def _normalize_query(text: str) -> str:
+    """Fold whitespace/case/punctuation: CJK queries have no word boundaries, and
+    "2025年 光伏" vs "2025年光伏" is the same query typed twice — the audit must
+    not call that two different questions."""
+    lowered = str(text or "").lower()
+    return re.sub(r"[^0-9a-z\u3400-\u9fff]+", "", lowered)
+
+
+def _unit_overlap(left: str, right: str) -> float:
+    """Containment of the smaller char set in the larger — a word-boundary-free
+    similarity that works for CJK. Two failed queries that restate the same
+    主体+指标 share almost all characters even when re-worded."""
+    a, b = set(left.replace(" ", "")), set(right.replace(" ", ""))
+    if not a or not b:
+        return 0.0
+    smaller, larger = (a, b) if len(a) <= len(b) else (b, a)
+    return len(smaller & larger) / len(smaller)
+
+
+def retrieval_audit_issues(
+    pack: dict[str, Any],
+    search_log: dict[str, Any] | None,
+    fetch_report: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Advisory audit of the retrieval trail against the research-workflow §七 rules.
+
+    These are the behavior rules that cannot be enforced at call time (query
+    shape, no re-wording, result pages are not sources) — they are audited
+    afterwards against the researcher's own telemetry: research/search-log.json
+    and research/fetched/fetch-text-report.json. Everything here is minor on
+    purpose: the audit informs, it never blocks delivery, and it counts nothing
+    — no quotas, per owner standing rule.
+    """
+    out: list[dict[str, Any]] = []
+    if search_log is not None:
+        executions = search_log.get("search_executions") or []
+        queries = [str(entry.get("query") or "") for entry in executions]
+        normalized = [_normalize_query(q) for q in queries]
+        if not executions:
+            if pack.get("queries"):
+                out.append(
+                    issue(
+                        "minor",
+                        "search_log_empty",
+                        "pack executed queries but search-log.json has no search_executions — "
+                        "the retrieval audit has nothing to check (research-workflow §九)",
+                    )
+                )
+        else:
+            logged = {norm for norm in normalized if norm}
+            unlogged = [
+                str(q) for q in (pack.get("queries") or []) if _normalize_query(q) not in logged
+            ]
+            if unlogged:
+                out.append(
+                    issue(
+                        "minor",
+                        "query_unlogged",
+                        f"{len(unlogged)} pack queries absent from search-log.json "
+                        f"(first: {unlogged[0][:60]!r}) — log ⊇ queries is the audit contract",
+                    )
+                )
+            seen: dict[str, int] = {}
+            for norm in normalized:
+                if norm:
+                    seen[norm] = seen.get(norm, 0) + 1
+            repeats = sorted(norm for norm, count in seen.items() if count > 1)
+            if repeats:
+                out.append(
+                    issue(
+                        "minor",
+                        "duplicate_query",
+                        f"{len(repeats)} query executed more than once in this run "
+                        f"(first: {repeats[0][:60]!r}) — a repeat returns the same nothing",
+                    )
+                )
+            failed = [
+                (_normalize_query(str(entry.get("query") or "")), entry)
+                for entry in executions
+                if str(entry.get("status") or "") == "failed"
+            ]
+            retried: list[tuple[str, str]] = []
+            for index, (norm, _entry) in enumerate(failed):
+                if len(norm) < 9:
+                    continue
+                for other_norm, _other in failed[index + 1 :]:
+                    if len(other_norm) >= 9 and _unit_overlap(norm, other_norm) >= 0.8:
+                        retried.append((norm, other_norm))
+                        break
+            if retried:
+                out.append(
+                    issue(
+                        "minor",
+                        "reworded_retry",
+                        f"{len(retried)} failed queries restate an earlier failed one "
+                        f"(e.g. {retried[0][0][:50]!r} ≈ {retried[0][1][:50]!r}) — re-wording "
+                        "is not a new channel; switch channel (research-workflow §七)",
+                    )
+                )
+            broad = [
+                str(entry.get("query") or "")
+                for entry in executions
+                if len(str(entry.get("query") or "")) > 60
+                or len(str(entry.get("query") or "").split()) > 6
+            ]
+            if broad:
+                out.append(
+                    issue(
+                        "minor",
+                        "over_broad_query",
+                        f"{len(broad)} queries look like pasted claim sentences rather than one "
+                        f"answerable unit (e.g. {broad[0][:60]!r}) — cut to 主体+指标+时间 "
+                        "(research-workflow §七 查询构造)",
+                    )
+                )
+    if fetch_report is not None:
+        records = fetch_report.get("records") or []
+        serp = [str(record.get("url") or "") for record in records if record.get("host_class") == "search_engine"]
+        if serp:
+            out.append(
+                issue(
+                    "minor",
+                    "result_page_fetched",
+                    f"{len(serp)} fetches were search-result pages ({serp[0][:60]!r}…) — locators "
+                    "only; never citable sources (research-workflow §七)",
+                )
+            )
+    return out
+
+
+def validate(
+    pack: dict[str, Any],
+    *,
+    search_log: dict[str, Any] | None = None,
+    fetch_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     problems = (
         schema_issues(pack)
         + id_issues(pack)
@@ -597,6 +760,7 @@ def validate(pack: dict[str, Any]) -> dict[str, Any]:
         + cross_validation_issues(pack)
         + contract_issues(pack)
         + must_verify_issues(pack)
+        + retrieval_audit_issues(pack, search_log, fetch_report)
         + hygiene_issues(pack)
     )
     blockers = [p for p in problems if p["severity"] in {"critical", "major"}]
@@ -657,15 +821,45 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--verbose", action="store_true", help="also list minor findings")
     parser.add_argument("--max-items", type=int, default=12)
+    parser.add_argument(
+        "--search-log",
+        type=Path,
+        help="research/search-log.json — audits query shape, repeats and re-worded retries (all minor)",
+    )
+    parser.add_argument(
+        "--fetch-report",
+        type=Path,
+        help="research/fetched/fetch-text-report.json — audits result-page fetches among evidence reads (all minor)",
+    )
     args = parser.parse_args(argv)
 
     if not args.pack.is_file():
         print(f"validate_research_pack: Research Pack does not exist: {args.pack}", file=sys.stderr)
         return 2
 
-    report = validate(load(args.pack))
+    search_log = None
+    if args.search_log:
+        search_log = (
+            json.loads(args.search_log.read_text(encoding="utf-8"))
+            if args.search_log.is_file()
+            else {"search_executions": []}
+        )
+    fetch_report = None
+    if args.fetch_report and args.fetch_report.is_file():
+        fetch_report = json.loads(args.fetch_report.read_text(encoding="utf-8"))
+
+    report = validate(load(args.pack), search_log=search_log, fetch_report=fetch_report)
     report["research_pack"] = str(args.pack.resolve())
     report["research_pack_sha256"] = sha256_file(args.pack)
+    if args.search_log or args.fetch_report:
+        binding: dict[str, Any] = {}
+        for label, path in (("search_log", args.search_log), ("fetch_report", args.fetch_report)):
+            if path:
+                binding[label] = {
+                    "path": str(path.resolve()),
+                    "sha256": sha256_file(path) if path.is_file() else None,
+                }
+        report["retrieval"] = binding
     report_path = args.output or (args.pack.parent / "research-pack-validation.json")
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

@@ -2,6 +2,25 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.23.7 — 2026-09-30 · Closure is one ledger; the §七 behavior rules get a machine consumer
+
+**缺陷修复（patch）**，owner 指示修复"第三层软性残留"两处：
+
+- **① 账本单轨（强制化）**：`verified` 条目的支撑声明从"首选 entity_ids"升级为**强制**——
+  pack 有 F/D 实体时，裸 `source_ids` 关门被拒（`must_verify_unlinked`，major）；条目列出的来源
+  必须被某个链接实体使用（`must_verify_orphan_source`，major）。D 类无实体导入 pack 天然豁免。
+  0.23.6 预告的"等一轮真实运行再强制化"被 owner 直接裁定提前。
+- **② 检索留痕获得机器消费方**：`validate_research_pack.py` 新增 `--search-log` /
+  `--fetch-report`，对研究员自己的遥测做 §七 行为审计——`query_unlogged`（pack.queries 不在
+  日志）、`search_log_empty`、`duplicate_query`（规范化后重复：空白/大小写/标点折叠，CJK 无词
+  边界也可判同）、`reworded_retry`（两条失败查询字符集包含度 ≥0.8：换措辞不是新通道）、
+  `over_broad_query`（>60 字符或 >6 词条：整句粘进检索框）、`result_page_fetched`（抓取
+  host_class=search_engine 的记录）。**全部 minor**：审计提示行为、不设门禁、不数次数；
+  校验报告新增 `retrieval` 绑定块（两份留痕文件的 sha256）。agent / spawn 固定段 / sp-research
+  SKILL 的校验命令行同步接入；research-workflow §九 写明"留痕不是纸面承诺"。
+- 测试：强制化 3 例（unlinked / orphan / D 类豁免）+ 审计 9 例（六项信号、干净留痕零提示、
+  不阻断、CLI 绑定）+ 契约钉 1 例（账本单轨与审计入口不得回退）；全套 1174 通过。
+
 ## 0.23.6 — 2026-09-30 · must_verify closure made machine-checkable (entity_ids)
 
 **缺陷修复（patch）**，owner 指示"逐一修复"must_verify 的三处审计发现（偏严 / 冗余 / 口径差）：

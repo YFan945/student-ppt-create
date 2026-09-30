@@ -198,13 +198,14 @@ Source C  35 亿   → 量级不一致 → confidence: low，conflict: true，
 
 | 出口 | 条件 | 记录方式 |
 | --- | --- | --- |
-| 已坐实 | 可追溯来源支撑且无冲突；≥2 个独立来源互相印证时可标 `high` | `must_verify.status: verified` + **`entity_ids`**（指向坐实它的 findings/data_points，来源随实体传递，不必在 source_ids 重抄）或 `source_ids` |
+| 已坐实 | 可追溯来源支撑且无冲突；≥2 个独立来源互相印证时可标 `high` | `must_verify.status: verified` + **`entity_ids`** 链到坐实它的 findings/data_points（来源随实体传递，**不在 source_ids 重抄**；pack 有实体时这是唯一合法声明，`must_verify_unlinked` 为 major）；仅当 pack 没有 F/D 实体（D 类导入）才允许直接 `source_ids` |
 | 降级收口 | 只有转述可拿、主源不可达 | **保留已拿到的 `source_ids`**，`status: unresolved`，并在 `unresolved` 写明缺失的主源 + 机制 + 影响 |
 
 `status: verified` 的含义是"**可追溯且无冲突**"，不是"爬到了某个等级"——等级是页脚标注
 元数据（§四）。validator 按此执行：verified 条目的 `entity_ids` 必须指向存在且未冲突的实体
-（`must_verify_unknown_entity` / `must_verify_conflicted_entity`）。清单条数 3–5 越界是
-minor 提示，不是门禁——小 deck 不该为凑数编 claim。
+（`must_verify_unknown_entity` / `must_verify_conflicted_entity`）；条目列出的来源必须被某个
+链接实体使用（`must_verify_orphan_source`）——账本只记一份，两处记数必然漂移。清单条数 3–5
+越界是 minor 提示，不是门禁——小 deck 不该为凑数编 claim。
 
 2026-09-30 结论：**等级门就是"搜很多次"的根因。** 直连主源的理由只有两个——**逐字保真**
 （上屏数字要原文）与**转述相互冲突**（需要原始出处仲裁）；"把 B 升成 S"永远不构成继续
@@ -301,6 +302,11 @@ Research Pack    ~8k tokens
 必须**追加**写入该日志（`n` 续号），不得只改 pack。`pack.queries` 只记成功拿到结果的检索，
 失败调用不进 `queries`——但没有日志留痕，就无法审计两者之间的差额（2026-09-19 实测：
 search-log 停在初始 7 条，gap-fill 第 8 条检索只存在于 pack，日志与事实脱节）。
+
+这份留痕**不是纸面承诺**：校验步骤必须带 `--search-log` 与 `--fetch-report`，validator 机械审计
+日志与 pack 的差额（`query_unlogged`）、重复查询（`duplicate_query`）、换措辞重试
+（`reworded_retry`）、把整句话粘进检索框（`over_broad_query`）、抓取结果页当证据
+（`result_page_fetched`）——全部 minor：审计提示行为，不设门禁、不数次数。
 
 ```yaml
 unresolved:

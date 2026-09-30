@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.23.6
+version: 0.23.7
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
@@ -57,7 +57,7 @@ arguments: [work_id, brief_path, scope, materials_path]
 5. **补缺口与可视化候选**：模糊陈述进入 `knowledge_gaps`；可画图内容进入 `visual_candidates`，只标类型与优先级。
 6. **逐条收口（停止条件）**：`must_verify` 逐条关门——`verified`（可追溯且无冲突；支撑用 `entity_ids` 链到坐实它的 F/D，来源随实体传递，不重复记账）或 `unresolved`（保留已拿到的 source_ids + 写明缺失主源与影响）；claim 写成内容，不写成"找到 X 的官方出处"；条数 3–5 越界是 minor 提示。完整语义 canonical：`../../references/research-workflow.md` §七。
 7. **受阻留痕**：打不开、付费、不可得、**索引没返回结果（`search_unavailable`）**全部写 `unresolved.reason + impact`，禁止静默降级。
-8. **校验**：运行 `validate_research_pack.py <pack> --output <work-dir>/research-pack-validation.json`；有 blocker 就修 pack 再验。
+8. **校验**：运行 `validate_research_pack.py <pack> --output <work-dir>/research-pack-validation.json --search-log <work-dir>/research/search-log.json --fetch-report <work-dir>/research/fetched/fetch-text-report.json`；有 blocker 就修 pack 再验。留痕审计项（重复查询、换措辞重试、整句粘进检索框、抓取结果页）全部 minor 不阻断，但必须读并纠正行为或在 pack notes 说明误报——那是 §七 行为规则唯一的机器消费方；`verified` 条目在有 F/D 实体时必须 `entity_ids` 链接（`must_verify_unlinked` 为 major）。
 
 ## 输出契约
 

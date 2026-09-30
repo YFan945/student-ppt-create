@@ -161,7 +161,7 @@
     },
     "must_verify": {
       "type": "array",
-      "description": "检索前声明的待证论断（3–5 条；条数越界为 minor 提示，不是门禁），也是逐条停止条件。claim 写成会上屏的事实/数字，不写成“找到 X 的官方出处”这类没有终点的检索任务：主源打不开时后者永远关不上，只能反复重试（2026-09-29：一次运行 86 次检索里 49 次白费）。闭合只有两种：status=verified（有可追溯来源支撑且无冲突；≥2 个独立来源印证可标 high），或 status=unresolved 且在 unresolved 里写明缺失的主源与机制。支撑用 entity_ids 链到坐实它的 findings/data_points（首选，来源随实体传递，不重复记账），或直接写 source_ids。不要为等级 letter 检索——S/A/B/C/D 只是页脚标注元数据。",
+      "description": "检索前声明的待证论断（3–5 条；条数越界为 minor 提示，不是门禁），也是逐条停止条件。claim 写成会上屏的事实/数字，不写成“找到 X 的官方出处”这类没有终点的检索任务：主源打不开时后者永远关不上，只能反复重试（2026-09-29：一次运行 86 次检索里 49 次白费）。闭合只有两种：status=verified（有可追溯来源支撑且无冲突；≥2 个独立来源印证可标 high），或 status=unresolved 且在 unresolved 里写明缺失的主源与机制。verified 的支撑必须用 entity_ids 链到坐实它的 findings/data_points（来源随实体传递，账本只记一份；有实体而不链接 = must_verify_unlinked major）；仅 D 类无实体 pack 允许直接 source_ids。不要为等级 letter 检索——S/A/B/C/D 只是页脚标注元数据。",
       "items": {
         "type": "object",
         "required": ["claim"],
@@ -174,7 +174,7 @@
           "entity_ids": {
             "type": "array",
             "items": { "type": "string", "pattern": "^(F|D)[0-9]{2,}$" },
-            "description": "坐实该 claim 的 findings/data_points（首选的支撑声明方式）：validator 检查它们存在且未冲突，来源随实体传递，不必在 source_ids 里重抄一遍。"
+            "description": "坐实该 claim 的 findings/data_points——有实体时 verified 条目的强制声明方式（validator 检查其存在且未冲突），来源随实体传递，不在 source_ids 重抄。"
           },
           "source_ids": {
             "type": "array",

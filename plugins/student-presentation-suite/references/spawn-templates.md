@@ -22,7 +22,9 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - work-dir（唯一写盘位置）：<absolute work-dir>
 - Research Pack 写到 <work-dir>/research-pack.json；validation 用
   <CLAUDE_PLUGIN_ROOT>/scripts/validate_research_pack.py <pack> --output
-  <work-dir>/research-pack-validation.json。
+  <work-dir>/research-pack-validation.json --search-log <work-dir>/research/search-log.json
+  --fetch-report <work-dir>/research/fetched/fetch-text-report.json
+  （留痕审计项全部 minor 不阻断，但必须读并纠正行为，或在 pack notes 说明误报）。
 - Deck 背景：<主题 / 场景 / 语言 / 时长与页数 / 核心论断，各一行>
 - 证据要求：<必须覆盖的 claims；每个数据点绑定年份与来源机构；宁缺毋滥，无法核实的标 unverified>
 - 检索深度档位：<band>（深度建议，不设次数上限——检索与 WebFetch 均无配额）。

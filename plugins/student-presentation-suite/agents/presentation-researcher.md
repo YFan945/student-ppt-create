@@ -100,8 +100,10 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
      traceable sources and no conflict (mark `high` when ≥2 independent groups agree) — **or**
      closed as a downgrade (`status: unresolved`) naming the missing primary and mechanism, keeping
      whatever `source_ids` you did obtain. Declare support with **`entity_ids`** pointing at the
-     findings/data_points that settle the claim — sources travel with the entity, do not re-type
-     them in `source_ids`. Canonical closure semantics: `references/research-workflow.md` §七.
+     findings/data_points that settle the claim — when the pack has entities, a `verified` entry
+     without `entity_ids` is refused (`must_verify_unlinked`), and listing sources that no linked
+     entity uses is refused (`must_verify_orphan_source`): sources travel with the entity, do not
+     re-type them. Canonical closure semantics: `references/research-workflow.md` §七.
    - **Direct-source route**: when search is unavailable or returns nothing, go to the claim's own
      publisher — policy text (gov.cn policy library), ministry statistics releases, organisation
      report pages or PDFs, the paper itself. Verified 2026-09-29: a gov.cn policy page came back
@@ -122,10 +124,15 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_research_pack.py" \
-  <research-pack.json> --output <work-dir>/research-pack-validation.json
+  <research-pack.json> --output <work-dir>/research-pack-validation.json \
+  --search-log <work-dir>/research/search-log.json \
+  --fetch-report <work-dir>/research/fetched/fetch-text-report.json
 ```
 
-The validation report must be `ok: true` and hash-bound to the exact pack. An invalid pack is not a deliverable.
+The validation report must be `ok: true` and hash-bound to the exact pack. An invalid pack is not a
+deliverable. The two trail files are audited as well (all minor advisories: unlogged queries,
+duplicate/re-worded queries, pasted-sentence queries, result-page fetches) — read them and fix the
+behavior, or note why the flag is a false positive; they never block delivery.
 
 ## Handoff
 
