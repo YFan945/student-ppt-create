@@ -62,14 +62,18 @@ class MustVerifyStopConditionTests(unittest.TestCase):
         self.assertEqual(2, len(problems), "claims without source_ids must be covered or unresolved")
         self.assertEqual({"major"}, {item["severity"] for item in problems})
 
-    def test_simple_band_downgrades_to_advisory(self) -> None:
-        pack = base_pack(
-            budget="simple",
-            must_verify=[{"claim": "c1"}],
-        )
-        problems = validator.must_verify_issues(pack)
-        self.assertTrue(problems)
-        self.assertEqual({"minor"}, {item["severity"] for item in problems})
+    def test_claim_count_is_minor_in_every_band(self) -> None:
+        # Owner ruling 2026-09-30: a small deck must not pad claims to reach 3.
+        for budget in ("simple", "standard", "deep"):
+            with self.subTest(budget=budget):
+                pack = base_pack(budget=budget, must_verify=[{"claim": "c1", "source_ids": ["S1"]}])
+                count_items = [
+                    item
+                    for item in validator.must_verify_issues(pack)
+                    if item["code"] == "must_verify_count"
+                ]
+                self.assertEqual(1, len(count_items))
+                self.assertEqual({"minor"}, {item["severity"] for item in count_items})
 
     def test_unknown_source_reference_is_reported(self) -> None:
         pack = base_pack(must_verify=[

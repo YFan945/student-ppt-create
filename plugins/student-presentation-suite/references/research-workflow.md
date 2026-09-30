@@ -198,12 +198,13 @@ Source C  35 亿   → 量级不一致 → confidence: low，conflict: true，
 
 | 出口 | 条件 | 记录方式 |
 | --- | --- | --- |
-| 已坐实 | 可追溯来源支撑且无冲突；≥2 个独立来源互相印证时可标 `high` | `must_verify.status: verified` + `source_ids` |
+| 已坐实 | 可追溯来源支撑且无冲突；≥2 个独立来源互相印证时可标 `high` | `must_verify.status: verified` + **`entity_ids`**（指向坐实它的 findings/data_points，来源随实体传递，不必在 source_ids 重抄）或 `source_ids` |
 | 降级收口 | 只有转述可拿、主源不可达 | **保留已拿到的 `source_ids`**，`status: unresolved`，并在 `unresolved` 写明缺失的主源 + 机制 + 影响 |
 
 `status: verified` 的含义是"**可追溯且无冲突**"，不是"爬到了某个等级"——等级是页脚标注
-元数据（§四）。2026-09-29 那一次 5 条 claim 全部写成 `verified`，而 `unresolved` 里 8 条
-写明它们其实只有媒体转述、主源打不开：问题不在"该不该降级"，而在它继续为了升级反复检索。
+元数据（§四）。validator 按此执行：verified 条目的 `entity_ids` 必须指向存在且未冲突的实体
+（`must_verify_unknown_entity` / `must_verify_conflicted_entity`）。清单条数 3–5 越界是
+minor 提示，不是门禁——小 deck 不该为凑数编 claim。
 
 2026-09-30 结论：**等级门就是"搜很多次"的根因。** 直连主源的理由只有两个——**逐字保真**
 （上屏数字要原文）与**转述相互冲突**（需要原始出处仲裁）；"把 B 升成 S"永远不构成继续
@@ -253,15 +254,16 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" fetch-text \
 ### 启动前声明与停止条件
 
 检索开始前，Research Pack 必须先列出 **3–5 条 `must_verify` claim**（真正决定内容成立与否的
-待证论断）并选定深度档位。**claim 写成内容，不写成检索任务**——"2030 年风光总装机目标
+待证论断；条数越界是 minor 提示，小 deck 不凑数）并选定深度档位。**claim 写成内容，不写成
+检索任务**——"2030 年风光总装机目标
 1200GW" 可以关门，"找到 12 亿千瓦目标的官方出处" 在主源打不开时永远关不上，于是只能反复重试。
 停止条件是**收益充分**，不是次数用尽，出口只有两个（逐条收口，见上"检索机制"）：
 
 - 每条 claim 有可追溯来源支撑且无冲突（≥2 个独立来源印证可标 `high`），**或**
 - 只有转述可拿时保留 `source_ids` 并把该条标 `status: unresolved` + 写明缺失主源与影响；
 - 全部 claim 处理完毕即停止检索——多搜不是为了凑数，换措辞重试同一 claim 不算新证据；
-- `validate_research_pack.py` 对 standard/deep 档校验声明数量与逐条覆盖
-  （`must_verify_count` / `must_verify_uncovered`），simple 档降级为建议。
+- `validate_research_pack.py` 校验逐条覆盖（`must_verify_uncovered` 等，major）；
+  声明数量 3–5 越界（`must_verify_count`）是 minor 提示，不是门禁。
 
 2026-09-22 实测：一个研究员为有时效数据的主题跑了 42 分钟 / 4.0M token，其中相当部分超出
 "足够来源"——声明先行、逐条关门才是刹车。2026-09-29 实测的教训是另一半：那次**声明写得像

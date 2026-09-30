@@ -98,10 +98,10 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
      pack's `unresolved` can name the mechanism.
    - **Closing a claim is per claim, and it is the stop condition**: a claim is closed when it has
      traceable sources and no conflict (mark `high` when ≥2 independent groups agree) — **or**
-     closed as a downgrade when only restatements are obtainable: keep those `source_ids` on the
-     `must_verify` entry, set its `status: unresolved`, and name the missing primary in
-     `unresolved` with mechanism + impact. That closes it; do not keep querying it.
-     `status: verified` means "traceable and conflict-free", not "reached some tier".
+     closed as a downgrade (`status: unresolved`) naming the missing primary and mechanism, keeping
+     whatever `source_ids` you did obtain. Declare support with **`entity_ids`** pointing at the
+     findings/data_points that settle the claim — sources travel with the entity, do not re-type
+     them in `source_ids`. Canonical closure semantics: `references/research-workflow.md` §七.
    - **Direct-source route**: when search is unavailable or returns nothing, go to the claim's own
      publisher — policy text (gov.cn policy library), ministry statistics releases, organisation
      report pages or PDFs, the paper itself. Verified 2026-09-29: a gov.cn policy page came back

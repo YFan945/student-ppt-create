@@ -39,10 +39,12 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   永远不是来源，定位交给检索工具，取正文用确定性的
   `pptx_tool.py fetch-text --url <doc> --scope <A|B> --out-dir <work-dir>/research/fetched`
   （原文 + 抽取文本 + 两份 sha256 一起落盘，不经小模型转述；`--scope` 是权限门，C/D 拒绝）。
-  claim 逐条收口：有可追溯来源支撑且无冲突 = `verified`（≥2 个独立来源印证可标 high）；
-  只拿得到转述则**保留 source_ids** 并把该条标 `unresolved` + 写明缺失主源与影响，机制记
-  `search_unavailable` / `not_found` / `access_blocked`——这就是关门，不要继续问同一个问题。
-  不要为等级 letter 检索：S/A/B/C/D 只是页脚标注元数据，直连主源的理由只有逐字保真与转述冲突。
+  claim 逐条收口即停止条件（语义 canonical：research-workflow.md §七）：
+  verified = 可追溯来源支撑且无冲突（≥2 个独立来源印证可标 high），支撑用 **entity_ids**
+  链到坐实它的 F/D；只拿得到转述则**保留 source_ids** 并把该条标 `unresolved` + 写明缺失
+  主源与影响，机制记 `search_unavailable` / `not_found` / `access_blocked`——关门后不要
+  继续问同一个问题。不要为等级 letter 检索：S/A/B/C/D 只是页脚标注元数据，直连主源的
+  理由只有逐字保真与转述冲突。
 - gap-fill 轮结束时，把补检的每次检索**追加**进 research/search-log.json
   （n 续号），再更新 pack——日志与 pack 必须能对上。
 - 禁止嵌套 spawn 任何其它 subagent。

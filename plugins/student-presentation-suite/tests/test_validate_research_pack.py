@@ -275,6 +275,57 @@ class ResearchPackContractTests(unittest.TestCase):
         report = self.module.validate(pack)
         self.assertTrue(report["ok"], report["problems"])
 
+    def test_entity_link_satisfies_closure_without_retyped_sources(self) -> None:
+        # 0.23.6: entity_ids is the preferred support declaration — sources travel
+        # with the entity, so must_verify does not re-type them in source_ids.
+        pack = base_pack()
+        pack["must_verify"] = [
+            {"claim": "对象幻觉是 LVLM 最常见的幻觉类型之一", "status": "verified", "entity_ids": ["F01", "D01"]},
+            {"claim": "幻觉率约 38%", "status": "verified", "entity_ids": ["D01"]},
+            {"claim": "原文表格无法获取", "status": "unresolved"},
+        ]
+        report = self.module.validate(pack)
+        self.assertTrue(report["ok"], report["problems"])
+
+    def test_unknown_entity_reference_is_major(self) -> None:
+        pack = base_pack()
+        pack["must_verify"] = [
+            {"claim": "对象幻觉是 LVLM 最常见的幻觉类型之一", "status": "verified", "entity_ids": ["F99"]},
+        ]
+        self.assertIn("must_verify_unknown_entity", self.codes(pack, "major"))
+
+    def test_verified_claim_on_a_conflicted_entity_is_refused(self) -> None:
+        pack = base_pack()
+        pack["findings"][0]["conflict"] = True
+        pack["findings"][0]["confidence"] = "low"
+        pack["findings"][0]["notes"] = "两项研究结论方向相反"
+        pack["conflicts"] = [
+            {
+                "id": "C01",
+                "topic": "幻觉率口径",
+                "entries": [
+                    {"value": "38%", "source_id": "S01"},
+                    {"value": "52%", "source_id": "S02"},
+                ],
+                "affected_ids": ["F01"],
+            }
+        ]
+        pack["must_verify"] = [
+            {"claim": "对象幻觉是 LVLM 最常见的幻觉类型之一", "status": "verified", "entity_ids": ["F01"]},
+        ]
+        codes = self.codes(pack, "major")
+        self.assertIn("must_verify_conflicted_entity", codes)
+
+    def test_claim_count_is_minor_not_blocking(self) -> None:
+        pack = base_pack()
+        pack["must_verify"] = [
+            {"claim": "c1", "status": "verified", "entity_ids": ["F01"]},
+            {"claim": "c2", "status": "verified", "entity_ids": ["D01"]},
+        ]
+        report = self.module.validate(pack)
+        self.assertTrue(report["ok"], report["problems"])
+        self.assertIn("must_verify_count", self.codes(pack, "minor"))
+
     def test_budget_reason_is_no_longer_accepted(self) -> None:
         pack = base_pack()
         pack["unresolved"] = [

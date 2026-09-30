@@ -493,12 +493,21 @@ def contract_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def must_verify_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
-    """Pre-declared stop condition: 3-5 must-verify claims, each covered or named.
+    """Pre-declared stop condition: every must-verify claim closed or named.
 
     The researcher lists the claims that actually decide the deck BEFORE
-    retrieval starts and stops when every one is cross-validated or explicitly
-    unresolved — a leftover budget is not a goal (2026-09-22: one researcher
-    spent 42 minutes / 4.0M tokens largely beyond sufficiency).
+    retrieval starts and stops when every one is closed — a leftover budget is
+    not a goal (2026-09-22: one researcher spent 42 minutes / 4.0M tokens
+    largely beyond sufficiency). Closure semantics live canonically in
+    references/research-workflow.md §七: a verified entry needs traceable,
+    conflict-free support — which since 0.23.6 can be declared via ``entity_ids``
+    pointing at the findings/data_points that settle it, so the pack does not
+    re-type the same sources in two ledgers.
+
+    Severity: only the *count* is a minor everywhere (owner 2026-09-30 — a small
+    deck must not pad claims to reach a quota); malformed entries, uncovered
+    claims and dangling references stay major because they break the stop
+    condition itself.
     """
     entries = pack.get("must_verify")
     if entries is None:
@@ -506,32 +515,50 @@ def must_verify_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(entries, list):
         return [issue("major", "must_verify_invalid", "must_verify must be a list of claim entries")]
     out: list[dict[str, Any]] = []
-    budget = pack.get("budget")
-    band = str((budget or {}).get("band") if isinstance(budget, dict) else budget or "").lower()
-    severity = "minor" if band == "simple" else "major"
     if not 3 <= len(entries) <= 5:
         out.append(
             issue(
-                severity,
+                "minor",
                 "must_verify_count",
-                f"must_verify declares {len(entries)} claims; 3-5 are required before retrieval starts",
+                f"must_verify declares {len(entries)} claims; 3-5 keep the stop condition "
+                "focused (fewer usually means the deck's load-bearing claims were not all "
+                "declared) — advisory, not a blocker",
             )
         )
     known_sources = {str(entry.get("id")) for entry in items(pack, "sources")}
+    entity_ids = {
+        str(entry.get("id")): entry
+        for key in ("findings", "data_points")
+        for entry in items(pack, key)
+    }
     for entry in entries:
         if not isinstance(entry, dict) or not str(entry.get("claim") or "").strip():
-            out.append(issue(severity, "must_verify_claim_missing", "each must_verify entry needs a claim statement"))
+            out.append(issue("major", "must_verify_claim_missing", "each must_verify entry needs a claim statement"))
             continue
+        entity_refs = [str(value) for value in (entry.get("entity_ids") or [])]
+        unknown_entities = sorted(set(entity_refs) - set(entity_ids))
+        if unknown_entities:
+            out.append(
+                issue(
+                    "major",
+                    "must_verify_unknown_entity",
+                    f"must-verify claim {entry.get('claim')!r} references unknown entities "
+                    f"{unknown_entities} (entity_ids must name findings F…/data_points D…)",
+                    entry=entry.get("claim"),
+                )
+            )
+            entity_refs = [ref for ref in entity_refs if ref in entity_ids]
         if str(entry.get("status") or "") == "unresolved":
             continue
         refs = [str(value) for value in (entry.get("source_ids") or [])]
-        if not refs:
+        covered = bool(refs) or bool(entity_refs)
+        if not covered:
             out.append(
                 issue(
-                    severity,
+                    "major",
                     "must_verify_uncovered",
-                    f"must-verify claim {entry.get('claim')!r} has no source_ids and is not "
-                    "marked unresolved — cover it with sources or record it as unresolved "
+                    f"must-verify claim {entry.get('claim')!r} has no source_ids/entity_ids and is "
+                    "not marked unresolved — cover it with sources or record it as unresolved "
                     "(keep whatever source_ids you did obtain and name the missing primary; "
                     "that is the stop condition, not more searching)",
                 )
@@ -541,12 +568,23 @@ def must_verify_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
         if missing:
             out.append(
                 issue(
-                    severity,
+                    "major",
                     "must_verify_unknown_source",
                     f"must-verify claim {entry.get('claim')!r} references unknown sources {missing}",
                     entry=entry.get("claim"),
                 )
             )
+        for ref in entity_refs:
+            if entity_ids[ref].get("conflict"):
+                out.append(
+                    issue(
+                        "major",
+                        "must_verify_conflicted_entity",
+                        f"must-verify claim {entry.get('claim')!r} is marked verified but linked "
+                        f"entity {ref} is flagged conflicting — resolve or downgrade the claim",
+                        entry=entry.get("claim"),
+                    )
+                )
     return out
 
 

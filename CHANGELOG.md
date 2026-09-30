@@ -2,6 +2,23 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.23.6 — 2026-09-30 · must_verify closure made machine-checkable (entity_ids)
+
+**缺陷修复（patch）**，owner 指示"逐一修复"must_verify 的三处审计发现（偏严 / 冗余 / 口径差）：
+
+- **① 条数检查全档位降为 minor**：`must_verify_count`（3–5 条）不再是门禁——小 deck 不该为
+  凑数编 claim。声明缺失（`must_verify_claim_missing`）、未覆盖（`must_verify_uncovered`）、
+  悬空引用（`must_verify_unknown_source`）保持 major，它们才是收口实质。
+- **② 新增 `entity_ids`（schema 可选字段，指向 F/D 实体）**：收口支撑的首选声明方式——
+  来源随实体传递，must_verify 不必把 source_ids 重抄一遍（冗余消除）。validator 新增两条
+  检查：`must_verify_unknown_entity`（major，链接到不存在的实体）与
+  `must_verify_conflicted_entity`（major，claim 标 verified 但链接的实体带冲突标记）——
+  文档语义（verified = 可追溯且无冲突）自此机器可查。
+- **③ 收口语义 canonical 归并**：完整语义只留 `research-workflow.md` §七（含 entity_ids 与
+  条数提示），agent / SKILL / spawn 模板改为精简操作行 + 指向，消除五处复述的漂移面。
+- 测试：+4（entity 链接覆盖收口、未知实体、冲突实体拒绝、条数 minor 全档位）+
+  更新 import 侧条数用例；全套 1161 通过。
+
 ## 0.23.5 — 2026-09-30 · Opinion-only support demoted to an advisory
 
 **缺陷修复（patch）**，owner 裁定："太严格了，不应该直接拒绝"。

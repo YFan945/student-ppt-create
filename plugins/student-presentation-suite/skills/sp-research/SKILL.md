@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.23.5
+version: 0.23.6
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
@@ -55,7 +55,7 @@ arguments: [work_id, brief_path, scope, materials_path]
 3. **逐 Claim 检索**：只查需要被证明的论断；一个查询只放一个可回答单元（主体+指标+时间，不把 claim 句子粘进检索框，不回显已有数字）；失败签名决定换通道（发布方记录端点 → 直连文档 → 按机制记 `search_unavailable`），不决定换措辞；结果页不是来源（定位交给检索工具，只读它给出的文档）；取正文用确定性的 `pptx_tool.py fetch-text --url <doc> --scope <A|B> --out-dir <work-dir>/research/fetched`（原文 + 抽取文本 + 两份 sha256，不经小模型转述；`--scope` 是权限门，C/D 拒绝），数字逐字取自 `text_path`；每个来源记录 `url` 或 `locator` 与 `independence_group`。
 4. **硬门只有两条：可追溯 + 独立印证**：来源必须有 `url`/`locator`（用户文件有导入回执绑定）；`confidence: high` 必须 ≥2 个独立来源印证；冲突则 `confidence: low` + `notes` + `conflicts`。S/A/B/C/D 只是页脚标注元数据——不为它检索、不由它定置信度。条目只靠观点类来源（论坛/个人博客/厂商博客）支撑时**不拒绝**，但记 minor advisory（`opinion_only_support`），页面须表述为"社区/厂商观点"并标注来源类型。
 5. **补缺口与可视化候选**：模糊陈述进入 `knowledge_gaps`；可画图内容进入 `visual_candidates`，只标类型与优先级。
-6. **逐条收口（停止条件）**：`must_verify` claim 写成内容（会上屏的事实/数字），不写成"找到 X 的官方出处"这类没有终点的检索任务；每条要么有可追溯来源支撑且无冲突（≥2 个独立来源印证可标 `high`），要么**保留已拿到的 source_ids** 并标 `unresolved` + 写明缺失主源与影响——两者都算关门，不要继续问同一个问题。
+6. **逐条收口（停止条件）**：`must_verify` 逐条关门——`verified`（可追溯且无冲突；支撑用 `entity_ids` 链到坐实它的 F/D，来源随实体传递，不重复记账）或 `unresolved`（保留已拿到的 source_ids + 写明缺失主源与影响）；claim 写成内容，不写成"找到 X 的官方出处"；条数 3–5 越界是 minor 提示。完整语义 canonical：`../../references/research-workflow.md` §七。
 7. **受阻留痕**：打不开、付费、不可得、**索引没返回结果（`search_unavailable`）**全部写 `unresolved.reason + impact`，禁止静默降级。
 8. **校验**：运行 `validate_research_pack.py <pack> --output <work-dir>/research-pack-validation.json`；有 blocker 就修 pack 再验。
 

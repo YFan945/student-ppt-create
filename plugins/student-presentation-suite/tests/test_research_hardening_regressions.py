@@ -207,12 +207,15 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
         workflow = self.read(self.WORKFLOW)
         self.assertIn("status: verified", workflow)
         self.assertIn("保留已拿到的 `source_ids`", workflow)
-        self.assertIn("claim 写成内容，不写成检索任务", workflow)
+        self.assertIn("claim 写成内容", workflow)
         self.assertIn("永远关不上", workflow)
+        self.assertIn("entity_ids", workflow, "the closure support declaration is the entity link")
+        self.assertIn("minor 提示，不是门禁", workflow, "the count is an advisory everywhere")
         schema = json.loads(self.read(self.SCHEMA))
         descriptions = json.dumps(schema["properties"]["must_verify"], ensure_ascii=False)
         self.assertIn("降级收口", descriptions)
         self.assertIn("没有终点的检索任务", descriptions)
+        self.assertIn("entity_ids", descriptions)
 
     def test_result_pages_are_never_sources(self) -> None:
         # The agent prompt is English, the references are Chinese: assert the rule
