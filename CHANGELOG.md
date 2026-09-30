@@ -2,6 +2,24 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.23.8 — 2026-09-30 · Retrieval-trail audit hardened against a crashing public API
+
+**缺陷修复（patch）**，兑现 0.23.7 记下的"0.23.8 必须处理"两条异常——逐条**真实复现后**分别处置：
+
+- **(1) 确认并修复**：`retrieval_audit_issues` 对非 dict 入参直接 `AttributeError`
+  （`validate()` 是公共 API，smoke 工具与测试会直接调用）。新增 `_coerce_trail`：
+  接受已解析 dict **或** 文件路径 str/Path；打不开/非法 JSON/错误类型一律产出
+  minor `retrieval_log_unreadable`，审计被跳过而不是校验器崩溃。回归测试三条：
+  str 路径与 dict 行为一致、缺文件不崩且 ok 不变、`search_log=42` 同样只出 minor。
+- **(2) 证伪并钉死**：所谓"D 类 import pack 仍触发 `must_verify_unlinked`"用**真实
+  importer 端到端**复跑——无 F/D 实体时豁免逻辑正常（must_verify 零 major）。当初
+  "删掉 visual_candidates 才通过"是测试 fixture 的副作用（V01→D01 悬空引用），
+  不是 validator 缺陷。新增 `test_d_class_closure_with_bare_sources_needs_no_entity_link`
+  把该结论钉成回归测试。
+
+全套 1176 通过；lint 全绿。教训入记忆：面向用户的数字与"缺陷"判定只写实测，
+不写推断——本轮两条"异常"一条真、一条是 fixture 假象，都是先复现再定性。
+
 ## 0.23.7 — 2026-09-30 · Closure is one ledger; the §七 behavior rules get a machine consumer
 
 **缺陷修复（patch）**，owner 指示修复"第三层软性残留"两处：

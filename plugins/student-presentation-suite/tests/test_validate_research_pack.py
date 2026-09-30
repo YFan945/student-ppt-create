@@ -521,6 +521,34 @@ class RetrievalAuditTests(unittest.TestCase):
         for audit in ("query_unlogged", "duplicate_query", "reworded_retry", "over_broad_query", "result_page_fetched"):
             self.assertNotIn(audit, codes)
 
+    def test_trail_arguments_may_be_paths_and_never_crash_the_validator(self) -> None:
+        # 0.23.8: validate() is a public API; a caller handing the audit a path
+        # string must work, and a caller handing it a broken or impossible value
+        # must get a minor flag — never an AttributeError (reproduced live).
+        pack = self._pack_with_queries()
+        with TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            good = root / "search-log.json"
+            good.write_text(
+                json.dumps(
+                    {
+                        "search_executions": [
+                            {"n": 1, "query": "完全不同的问题", "status": "ok"},
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                encoding="utf-8",
+            )
+            codes = self.codes(pack, search_log=str(good))
+            self.assertIn("query_unlogged", codes)  # str path behaves like the dict
+            codes = self.codes(pack, search_log=str(root / "missing.json"))
+            self.assertIn("retrieval_log_unreadable", codes)
+            report = self.module.validate(pack, search_log=str(root / "missing.json"))
+            self.assertTrue(report["ok"], "an unreadable trail is advisory, never a blocker")
+            codes = self.codes(pack, search_log=42)  # not a dict, not a path
+            self.assertIn("retrieval_log_unreadable", codes)
+
     def test_audit_flags_never_block(self) -> None:
         pack = self._pack_with_queries()
         log = {

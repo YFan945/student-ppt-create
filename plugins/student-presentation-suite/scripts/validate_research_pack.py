@@ -635,21 +635,67 @@ def _unit_overlap(left: str, right: str) -> float:
     return len(smaller & larger) / len(smaller)
 
 
+def _coerce_trail(source: Any, label: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Accept a parsed mapping or a path to one — an unreadable trail is an advisory,
+    never a crash. The audit is advisory by contract, and `validate()` is a public
+    API (tools and tests call it directly), so a caller passing a path string or a
+    half-written file must not take the whole validation down (0.23.8 reproved this).
+    """
+    if source is None:
+        return None, []
+    if isinstance(source, dict):
+        return source, []
+    if isinstance(source, (str, Path)):
+        try:
+            loaded = json.loads(Path(source).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            return None, [
+                issue(
+                    "minor",
+                    "retrieval_log_unreadable",
+                    f"{label} {str(source)[:80]!r} could not be read ({type(exc).__name__}) — "
+                    "the trail audit was skipped, not failed",
+                )
+            ]
+        if isinstance(loaded, dict):
+            return loaded, []
+        return None, [
+            issue(
+                "minor",
+                "retrieval_log_unreadable",
+                f"{label} {str(source)[:80]!r} is not a JSON object — the trail audit was skipped",
+            )
+        ]
+    return None, [
+        issue(
+            "minor",
+            "retrieval_log_unreadable",
+            f"{label} got {type(source).__name__}; expected a parsed JSON object or a path "
+            "to one — the trail audit was skipped",
+        )
+    ]
+
+
 def retrieval_audit_issues(
     pack: dict[str, Any],
-    search_log: dict[str, Any] | None,
-    fetch_report: dict[str, Any] | None,
+    search_log: Any,
+    fetch_report: Any,
 ) -> list[dict[str, Any]]:
     """Advisory audit of the retrieval trail against the research-workflow §七 rules.
 
     These are the behavior rules that cannot be enforced at call time (query
     shape, no re-wording, result pages are not sources) — they are audited
     afterwards against the researcher's own telemetry: research/search-log.json
-    and research/fetched/fetch-text-report.json. Everything here is minor on
-    purpose: the audit informs, it never blocks delivery, and it counts nothing
-    — no quotas, per owner standing rule.
+    and research/fetched/fetch-text-report.json (a parsed mapping or a path to
+    one; an unreadable trail yields a minor flag, never an exception).
+    Everything here is minor on purpose: the audit informs, it never blocks
+    delivery, and it counts nothing — no quotas, per owner standing rule.
     """
     out: list[dict[str, Any]] = []
+    search_log, search_load = _coerce_trail(search_log, "search-log")
+    fetch_report, fetch_load = _coerce_trail(fetch_report, "fetch-report")
+    out.extend(search_load)
+    out.extend(fetch_load)
     if search_log is not None:
         executions = search_log.get("search_executions") or []
         queries = [str(entry.get("query") or "") for entry in executions]
@@ -749,8 +795,8 @@ def retrieval_audit_issues(
 def validate(
     pack: dict[str, Any],
     *,
-    search_log: dict[str, Any] | None = None,
-    fetch_report: dict[str, Any] | None = None,
+    search_log: Any = None,
+    fetch_report: Any = None,
 ) -> dict[str, Any]:
     problems = (
         schema_issues(pack)

@@ -116,6 +116,29 @@ class StructuredImportTests(unittest.TestCase):
             self.assertTrue((work / "research-pack-validation.json").is_file())
             self.assertTrue((work / "research-import.json").is_file())
 
+    def test_d_class_closure_with_bare_sources_needs_no_entity_link(self) -> None:
+        # Counter-evidence for a flagged "anomaly": the must_verify_unlinked rule was
+        # said to misfire on real import packs. Reproduced end-to-end against the
+        # actual importer output: no F/D entities exist, so the bare-source closure
+        # path is exempt by construction and stays clean.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            material = root / "materials.md"
+            material.write_text("# 实验记录\n采样率 48kHz\n", encoding="utf-8")
+            work = root / "outputs" / ".pptx-work" / "work-d2"
+            work.mkdir(parents=True)
+            payload = self.run_import(work, [material])
+            self.assertTrue(payload["ok"], payload)
+            pack = json.loads((work / "research-pack.json").read_text(encoding="utf-8"))
+            source_id = pack["sources"][0]["id"]
+            pack["must_verify"] = [
+                {"claim": "采样率 48kHz", "status": "verified", "source_ids": [source_id]},
+                {"claim": "另一条", "status": "verified", "source_ids": [source_id]},
+                {"claim": "第三条", "status": "unresolved"},
+            ]
+            problems = validator.must_verify_issues(pack)
+            self.assertEqual([], [p for p in problems if p["severity"] in {"critical", "major"}], problems)
+
     def test_missing_material_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
