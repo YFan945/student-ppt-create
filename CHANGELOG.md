@@ -2,6 +2,31 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.23.4 — 2026-09-30 · Tier gates removed from code, independence made mechanical
+
+**缺陷修复（patch）**：兑现 0.23.2 的另一半（owner 指示"AC修复"）。契约（等级=标注元数据，
+硬门=可追溯+独立印证）自此与代码一致。
+
+- **撤掉三个 tier 门**：`weak_source_for_high_confidence`（high 需要 S/A）、
+  `weak_source_for_data_point`（数字至少 S/A/B）、`tier_above_type_ceiling`（类型上限表）
+  连同 `STRONG_TIERS` / `ACCEPTABLE_DATA_TIERS` / `TIER_CEILING_BY_TYPE` / `TIER_ORDER`
+  一并移除——等级 letter 从此在 validator 里无任何强制语义。
+- **观点源底线（种类，不是等级）**：新 `opinion_only_support`（major）——论坛/个人博客/
+  厂商博客这类观点来源不能单独支撑 medium/high 的 factual 条目。它看的是来源*种类*，
+  一个 type=paper tier=D 的来源不会触发（等级不再参与判定）。
+- **独立性机械化**：独立性按**并查集**从两条关系推导——同声明组、同注册域名
+  （gov.cn / com.cn / co.uk 等两段后缀正确处理，www.nea.gov.cn 与 www.gov.cn 不同域）。
+  同域转载声明成两组再也凑不出 high confidence。确属独立的同域来源（如同一门户下两份
+  不同机构的报告）写 `independence_note` 按声明组计，并产生 minor advisory
+  `independence_override_used` 供人工复核。无 URL 的来源（用户文件、arXiv locator）
+  按声明组合并——与 D 类导入按文件名分组的既有行为对齐。
+- **C：参考文献双轨修复**：`build_support_outputs.references_markdown` 从 `source_ledger`
+  渲染（契约"Match against the sources"），不再从 `evidence_ledger`（claim 文本）渲染——
+  渲染出的参考文献与 reference-area 质量门核对的记录集从此同源。
+- schema：`sources` 增加可选 `independence_note`；文档同步（workflow §四过渡段改为"已移除"、
+  agent step 4、evidence-and-citations rule 3/4）。测试重写 +4（同域并组、跨域独立、
+  note 覆盖+advisory、观点底线与种类判定）；全套 1157 通过。
+
 ## 0.23.3 — 2026-09-30 · Plugin logo and marketplace icon
 
 - **新增插件 logo**：`assets/logo.png`（1024×1024 透明底 PNG；由 owner 提供的 1448×1086

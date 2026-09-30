@@ -108,10 +108,12 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
      with its title, issuing bodies, date and every quantitative target verbatim (8210 characters
      of body text plus the two hashes that bind the quote).
 4. Type and grade every source honestly (S/A/B/C/D). The grade is **attribution metadata only** —
-   it never blocks a claim, never sets confidence, and never justifies more searching. Type it
-   honestly too: the validator's type ceilings are still applied for now as a transitional
-   backstop. Opinion sources (community / personal-blog / vendor-blog) cannot be a factual
-   number's sole support.
+   it never blocks a claim, never sets confidence, and never justifies more searching; the
+   validator does not police grades at all. Type it honestly anyway: opinion sources (community /
+   personal-blog / vendor-blog) cannot be a factual number's sole support
+   (`opinion_only_support`). Independence is judged mechanically: same registrable domain counts
+   as one origin unless you record an `independence_note` explaining the exception (which raises
+   a minor advisory for human review).
 5. Cross-check numbers across independent groups. High-confidence numbers require >=2 groups. Conflicts become `confidence: low`, `conflict: true`, explanatory `notes`, and a `conflicts` record.
 6. Record blocked/paywalled/missing retrieval in `unresolved` with concrete `impact` (a search backend that returned nothing is `search_unavailable`, not `not_found`); silent degradation is forbidden.
 7. Mark `knowledge_gaps` and `visual_candidates` (type + priority only; visual treatment belongs downstream).

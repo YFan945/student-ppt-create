@@ -18,12 +18,13 @@ class SupportOutputTests(unittest.TestCase):
         module = load_module(SCRIPT)
         data = {
             "meta": {"topic": "Demo", "citation_style": "APA"},
-            "evidence_ledger": [
+            "source_ledger": [
                 {
-                    "id": "e1",
+                    "id": "S01",
                     "title": "Source",
-                    "locator": "https://example.test",
-                    "confidence": "high",
+                    "publisher": "Demo Org",
+                    "year": 2026,
+                    "url": "https://example.test",
                 }
             ],
             "slides": [
@@ -43,7 +44,9 @@ class SupportOutputTests(unittest.TestCase):
         references = module.references_markdown(data)
         self.assertIn("Explain it.", teleprompter)
         self.assertIn("Likely question", cards)
-        self.assertIn("https://example.test", references)
+        # References render from source_ledger (the records the reference-area gate
+        # matches), not from evidence_ledger claims — evidence-and-citations.md.
+        self.assertIn("[S01] Demo Org. (2026). Source. https://example.test.", references)
 
     def test_cli_generates_only_confirmed_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

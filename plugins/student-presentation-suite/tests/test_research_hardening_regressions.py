@@ -244,19 +244,24 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
         """Owner ruling 2026-09-30: tier obsession caused the tier-climbing searches.
 
         The S/A/B/C/D letter is slide-footer metadata. The only evidence gates are
-        traceability and independent corroboration. The validator's tier floors stay
-        as a transitional backstop and the docs must say so explicitly, so nobody
-        reads their existence as permission to chase tiers again.
+        traceability and independent corroboration (mechanical since 0.23.3: same
+        registrable domain is one origin, an independence_note override leaves a
+        minor advisory, and opinion sources cannot solely support a fact). The
+        validator's tier floors and type ceilings are removed, and the docs must
+        record that so nobody reads them back into the strategy.
         """
         workflow = self.read(self.WORKFLOW)
         self.assertIn("标注元数据，不是门槛", workflow)
         self.assertIn("硬门只有两条", workflow)
-        self.assertIn("暂时保留为兜底", workflow)
+        self.assertIn("已移除", workflow)
+        self.assertIn("independence_note", workflow)
         self.assertNotIn("不同用途的最低要求", workflow, "the tier-floor table is retired")
+        self.assertNotIn("暂时保留为兜底", workflow, "the transition is over")
         agent = self.read(self.AGENT)
         self.assertIn("Never search to climb a source tier", agent)
         self.assertNotIn("Prioritize\n   primary sources", agent)
         self.assertIn("attribution metadata only", agent)
+        self.assertIn("opinion_only_support", agent)
         self.assertIn("硬门只有两条", self.read(self.SKILL))
         self.assertIn("不要为等级 letter 检索", self.read(self.SPAWN))
         schema = json.loads(self.read(self.SCHEMA))

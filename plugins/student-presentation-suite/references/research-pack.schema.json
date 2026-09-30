@@ -83,7 +83,11 @@
           "independence_group": {
             "type": "string",
             "minLength": 1,
-            "description": "Genuine independence key. Two sources that republish the same upstream report — a wire story and a site carrying that wire story, an agency summary and the report it summarises — must share one group. Cross-validation counts distinct groups, not distinct rows; without this a single origin masquerades as two sources."
+            "description": "Genuine independence key. Two sources that republish the same upstream report — a wire story and a site carrying that wire story, an agency summary and the report it summarises — must share one group. Cross-validation counts distinct groups, not distinct rows; without this a single origin masquerades as two sources. Since 0.23.3 the validator also derives groups mechanically: sources on the same registrable domain (gov.cn / com.cn suffixes handled) collapse into one origin unless this source carries an independence_note."
+          },
+          "independence_note": {
+            "type": "string",
+            "description": "同域来源声明相互独立时的理由（如同一门户下两份不同机构发布的报告）。填写后该来源按声明的 independence_group 计组，并产生一条 minor advisory（independence_override_used）供人工复核；留空则同域默认并组。"
           },
             "sha256": { "type": "string" },
           "type": {

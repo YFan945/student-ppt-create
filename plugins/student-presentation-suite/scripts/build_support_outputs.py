@@ -224,19 +224,30 @@ def training_cards(data: dict[str, Any]) -> str:
 
 
 def references_markdown(data: dict[str, Any]) -> str:
+    """Render the final bibliography from ``source_ledger``.
+
+    The contract (evidence-and-citations.md "Match against the sources, not
+    against the evidence claims") requires the rendered references and the
+    reference-area gate to work off the same records — ``evidence_ledger.title``
+    is a claim/value/quote by construction, so rendering from it made the
+    bibliography drift from the records the gate checks. source_ledger is
+    written by research_pack_to_evidence.py from the pack's sources, so both
+    sides see the same rows.
+    """
     style = (data.get("meta") or {}).get("citation_style") or "classroom"
     lines = [f"# References ({style})", ""]
-    for item in data.get("evidence_ledger", []):
+    rendered = 0
+    for item in data.get("source_ledger", []) or []:
         if not isinstance(item, dict):
             continue
-        author = item.get("author") or "Unknown author"
-        date = item.get("date") or "n.d."
+        author = item.get("publisher") or "Unknown author"
+        date = item.get("year") or "n.d."
         title = item.get("title") or item.get("id")
-        locator = item.get("locator") or ""
-        confidence = item.get("confidence") or "unverified"
-        lines.append(f"- [{item.get('id')}] {author}. ({date}). {title}. {locator} Confidence: {confidence}.")
-    if len(lines) == 2:
-        lines.append("- No evidence entries supplied.")
+        locator = item.get("url") or ""
+        lines.append(f"- [{item.get('id')}] {author}. ({date}). {title}. {locator}.")
+        rendered += 1
+    if rendered == 0:
+        lines.append("- No references supplied.")
     return "\n".join(lines) + "\n"
 
 

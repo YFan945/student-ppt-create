@@ -91,22 +91,59 @@ class ResearchPackContractTests(unittest.TestCase):
         pack["findings"][0]["source_ids"] = ["S99"]
         self.assertIn("unknown_source_ref", self.codes(pack, "critical"))
 
-    def test_high_confidence_finding_needs_a_strong_source(self) -> None:
+    def test_tier_letters_are_metadata_and_gate_nothing(self) -> None:
         pack = base_pack()
-        pack["sources"] = [pack["sources"][0]]
-        pack["sources"][0]["tier"] = "C"
-        pack["findings"][0]["source_ids"] = ["S01"]
-        pack["data_points"][0]["source_ids"] = ["S01"]
-        codes = self.codes(pack, "major")
-        self.assertIn("weak_source_for_high_confidence", codes)
-        self.assertIn("weak_source_for_data_point", codes)
+        pack["sources"][0]["type"] = "news"
+        pack["sources"][0]["tier"] = "S"
+        pack["sources"][1]["type"] = "industry-report"
+        pack["sources"][1]["tier"] = "C"
+        codes = self.codes(pack)
+        self.assertNotIn("weak_source_for_high_confidence", codes, "tier gates are removed")
+        self.assertNotIn("weak_source_for_data_point", codes, "tier gates are removed")
+        self.assertNotIn("tier_above_type_ceiling", codes, "type ceilings are removed")
 
-    def test_tier_d_alone_cannot_support_a_claim(self) -> None:
+    def test_same_registrable_domain_is_one_independent_origin(self) -> None:
         pack = base_pack()
+        pack["sources"][1]["url"] = "https://example.org/s02"
+        codes = self.codes(pack, "major")
+        self.assertIn("sources_are_not_independent", codes)
+
+    def test_cross_domain_sources_stay_independent(self) -> None:
+        pack = base_pack()
+        pack["sources"][1]["url"] = "https://other-site.cn/s02"
+        report = self.module.validate(pack)
+        self.assertTrue(report["ok"], report["problems"])
+
+    def test_independence_note_overrides_domain_grouping_with_an_advisory(self) -> None:
+        pack = base_pack()
+        pack["sources"][1]["url"] = "https://example.org/s02"
+        pack["sources"][1]["independence_note"] = "同一门户下两份不同机构发布的报告"
+        report = self.module.validate(pack)
+        self.assertTrue(report["ok"], report["problems"])
+        codes = [p["code"] for p in report["problems"]]
+        self.assertIn("independence_override_used", codes)
+        self.assertEqual(0, report["counts"]["blockers"])
+        self.assertEqual(1, report["counts"]["minor"])
+
+    def test_opinion_sources_cannot_solely_support_a_fact(self) -> None:
+        pack = base_pack()
+        pack["sources"][0]["type"] = "community"
         pack["sources"][0]["tier"] = "D"
         pack["sources"] = [pack["sources"][0]]
         pack["findings"][0]["source_ids"] = ["S01"]
-        self.assertIn("tier_d_cannot_support_claim", self.codes(pack, "major"))
+        pack["data_points"][0]["source_ids"] = ["S01"]
+        pack["data_points"][0]["confidence"] = "medium"
+        self.assertIn("opinion_only_support", self.codes(pack, "major"))
+
+    def test_the_opinion_floor_is_kind_based_not_tier_based(self) -> None:
+        pack = base_pack()
+        pack["sources"][0]["tier"] = "D"
+        pack["sources"][0]["type"] = "paper"
+        pack["findings"][0]["confidence"] = "medium"
+        pack["data_points"][0]["confidence"] = "medium"
+        codes = self.codes(pack, "major")
+        self.assertNotIn("opinion_only_support", codes)
+        self.assertNotIn("tier_d_cannot_support_claim", codes)
 
     def test_high_confidence_number_needs_cross_validation(self) -> None:
         pack = base_pack()
@@ -176,11 +213,13 @@ class ResearchPackContractTests(unittest.TestCase):
         pack["findings"][0]["notes"] = "两项研究结论方向相反"
         self.assertIn("conflict_not_recorded", self.codes(pack, "major"))
 
-    def test_tier_cannot_exceed_what_the_source_type_supports(self) -> None:
+    def test_tier_type_mismatch_is_no_longer_a_blocker(self) -> None:
+        # The ceiling table is gone with the tier gates (0.23.3): a source's tier
+        # letter is metadata, so a news source self-graded A validates cleanly.
         pack = base_pack()
-        pack["sources"][0]["type"] = "personal-blog"
-        pack["sources"][0]["tier"] = "S"
-        self.assertIn("tier_above_type_ceiling", self.codes(pack, "major"))
+        pack["sources"][0]["type"] = "news"
+        pack["sources"][0]["tier"] = "A"
+        self.assertNotIn("tier_above_type_ceiling", self.codes(pack))
 
     def test_d_mode_requires_empty_queries_and_user_files_only(self) -> None:
         pack = base_pack()

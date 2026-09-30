@@ -15,36 +15,35 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import re
 import sys
+import urllib.parse
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "references" / "research-pack.schema.json"
 
-STRONG_TIERS = {"S", "A"}
-ACCEPTABLE_DATA_TIERS = {"S", "A", "B"}
-TIER_ORDER = {"S": 0, "A": 1, "B": 2, "C": 3, "D": 4}
-TIER_CEILING_BY_TYPE = {
-    "community": "D",
-    "personal-blog": "D",
-    "vendor-blog": "C",
-    "news": "B",
-    "industry-report": "B",
-    "other": "B",
-    "research-institute": "A",
-    "university": "A",
-    "international-organization": "A",
-    "company-filing": "A",
-    "paper": "S",
-    "law-and-regulation": "S",
-    "official-document": "S",
-    "official-database": "S",
-    "standard": "S",
-    "user-file": "S",
-}
+# 等级（S/A/B/C/D）是页脚标注元数据，不构成任何门禁（owner 裁定 2026-09-30，
+# 落地 v0.23.3）：硬门只有"可追溯"与"独立印证"。这里保留的唯一来源*种类*底线是：
+# 观点类来源不能单独支撑事实数字——它们连"媒体转述"都算不上。
+OPINION_TYPES = {"community", "personal-blog", "vendor-blog"}
+
+# 独立性按注册域名机械判定：同域（含 gov.cn/com.cn 这类两段后缀）默认并组，
+# 因为同域页面通常源自同一个上游。声明相互独立必须写 independence_note，
+# 并接受一条 minor advisory 供人工复核。
+_TWO_PART_SUFFIXES = frozenset(
+    {
+        "com.cn", "net.cn", "org.cn", "gov.cn", "edu.cn", "ac.cn",
+        "co.uk", "org.uk", "ac.uk", "gov.uk",
+        "com.hk", "org.hk", "edu.hk",
+        "com.tw", "org.tw", "edu.tw", "gov.tw",
+        "com.au", "net.au", "org.au", "edu.au",
+        "co.jp", "ne.jp", "or.jp", "ac.jp",
+    }
+)
 ID_PATTERNS = {
     "findings": re.compile(r"^F\d{2,}$"),
     "data_points": re.compile(r"^D\d{2,}$"),
@@ -201,58 +200,146 @@ def reference_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
-def tier_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
-    """R2 + R6: the right evidence strength for the claim being made."""
+def _registrable_domain(value: str) -> str | None:
+    """Return the registrable domain of a URL (or URL-shaped locator), else None.
+
+    Two-part public suffixes (gov.cn, com.cn, co.uk, ...) keep three labels, so
+    www.gov.cn and www.nea.gov.cn land on different domains while two pages of
+    one ministry collapse together.
+    """
+    text = str(value or "").strip()
+    if "://" not in text:
+        return None
+    host = urllib.parse.urlsplit(text).hostname or ""
+    host = host.lower().removesuffix(".")
+    if not host or _host_is_ip(host):
+        return None
+    labels = host.split(".")
+    if len(labels) >= 3 and ".".join(labels[-2:]) in _TWO_PART_SUFFIXES:
+        return ".".join(labels[-3:])
+    if len(labels) >= 2:
+        return ".".join(labels[-2:])
+    return None
+
+
+def _host_is_ip(host: str) -> bool:
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return True
+
+
+def source_kind_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
+    """The one source-*kind* floor: opinion sources cannot solely support facts.
+
+    Tier letters are annotation metadata and are not checked at all; what matters
+    is the kind of source a claim rests on. A finding or data_point presented at
+    medium/high confidence must have at least one non-opinion source.
+    """
     out: list[dict[str, Any]] = []
-    tiers = {str(entry.get("id")): str(entry.get("tier") or "?") for entry in items(pack, "sources")}
-
-    def tiers_of(entry: dict[str, Any]) -> set[str]:
-        return {tiers.get(str(ref), "?") for ref in entry.get("source_ids") or []}
-
-    for entry in items(pack, "findings"):
-        used = tiers_of(entry)
-        if entry.get("confidence") == "high" and not (used & STRONG_TIERS):
-            out.append(
-                issue(
-                    "major",
-                    "weak_source_for_high_confidence",
-                    f"finding {entry.get('id')} claims high confidence but has no S/A source",
-                    entry=entry.get("id"),
-                    tiers=sorted(used),
+    types = {str(entry.get("id")): str(entry.get("type") or "?") for entry in items(pack, "sources")}
+    for entity in ("findings", "data_points"):
+        for entry in items(pack, entity):
+            used = {types.get(str(ref), "?") for ref in entry.get("source_ids") or []}
+            if (
+                entry.get("confidence") in {"high", "medium"}
+                and used
+                and used <= OPINION_TYPES
+            ):
+                out.append(
+                    issue(
+                        "major",
+                        "opinion_only_support",
+                        f"{entity[:-1]} {entry.get('id')} rests only on opinion sources "
+                        f"{sorted(used)} — opinion sources cannot support a factual claim",
+                        entry=entry.get("id"),
+                    )
                 )
-            )
-        if entry.get("confidence") in {"high", "medium"} and used and used <= {"D"}:
-            out.append(
-                issue(
-                    "major",
-                    "tier_d_cannot_support_claim",
-                    f"finding {entry.get('id')} rests only on tier D sources",
-                    entry=entry.get("id"),
-                )
-            )
-
-    for entry in items(pack, "data_points"):
-        used = tiers_of(entry)
-        if not (used & ACCEPTABLE_DATA_TIERS):
-            out.append(
-                issue(
-                    "major",
-                    "weak_source_for_data_point",
-                    f"data_point {entry.get('id')} has no S/A/B source",
-                    entry=entry.get("id"),
-                    tiers=sorted(used),
-                )
-            )
     return out
+
+
+def _effective_groups(pack: dict[str, Any]) -> tuple[dict[str, str], list[dict[str, Any]]]:
+    """Mechanical independence: same registrable domain collapses into one origin.
+
+    Two relations merge sources into one origin: identical declared group, and
+    identical registrable domain (gov.cn / com.cn suffixes handled) — same-domain
+    pages usually descend from one upstream, so "two restatements" on one site
+    cannot pose as two independent sources. A source may opt out of the domain
+    relation with an ``independence_note`` explaining the exception; every use of
+    that override is reported as a minor advisory for human review. Sources
+    without a URL (user files, arXiv-style locators) merge only through their
+    declared group, which is what the D-mode importer already keys on file names.
+    """
+    sources = [(str(entry.get("id")), entry) for entry in items(pack, "sources")]
+    parent: dict[str, str] = {source_id: source_id for source_id, _ in sources}
+
+    def find(node: str) -> str:
+        while parent[node] != node:
+            parent[node] = parent[parent[node]]
+            node = parent[node]
+        return node
+
+    def union(left: str, right: str) -> None:
+        parent[find(left)] = find(right)
+
+    by_domain: dict[str, list[str]] = {}
+    declared_domains: dict[str, list[str]] = {}
+    by_declared: dict[str, list[str]] = {}
+    noted: set[str] = set()
+    for source_id, entry in sources:
+        if str(entry.get("independence_note") or "").strip():
+            noted.add(source_id)
+        domain = _registrable_domain(str(entry.get("url") or "")) or _registrable_domain(
+            str(entry.get("locator") or "")
+        )
+        if domain:
+            declared_domains.setdefault(domain, []).append(source_id)
+            if source_id not in noted:
+                by_domain.setdefault(domain, []).append(source_id)
+        by_declared.setdefault(str(entry.get("independence_group") or source_id), []).append(
+            source_id
+        )
+    for members in list(by_domain.values()) + list(by_declared.values()):
+        for other in members[1:]:
+            union(members[0], other)
+
+    groups: dict[str, str] = {}
+    members_by_root: dict[str, list[str]] = {}
+    for source_id, _entry in sources:
+        members_by_root.setdefault(find(source_id), []).append(source_id)
+    entries_by_id = dict(sources)
+    for members in members_by_root.values():
+        labels = {
+            f"declared:{str(entries_by_id[source_id].get('independence_group') or source_id)}"
+            for source_id in members
+        }
+        for source_id in members:
+            domain = _registrable_domain(
+                str(entries_by_id[source_id].get("url") or "")
+            ) or _registrable_domain(str(entries_by_id[source_id].get("locator") or ""))
+            if domain:
+                labels.add(f"domain:{domain}")
+            groups[source_id] = sorted(labels)[0] if labels else f"source:{members[0]}"
+
+    overrides: list[dict[str, Any]] = []
+    for domain, ids in sorted(declared_domains.items()):
+        if len(ids) > 1 and noted.intersection(ids):
+            overrides.append(
+                issue(
+                    "minor",
+                    "independence_override_used",
+                    f"sources {sorted(ids)} share domain {domain!r} "
+                    "but claim independence via independence_note — verify the exception is real",
+                )
+            )
+    return groups, overrides
 
 
 def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     """R3 + conflict bookkeeping + genuine independence."""
     out: list[dict[str, Any]] = []
-    groups = {
-        str(entry.get("id")): str(entry.get("independence_group") or "")
-        for entry in items(pack, "sources")
-    }
+    groups, overrides = _effective_groups(pack)
     conflict_targets: set[str] = set()
     for entry in items(pack, "conflicts"):
         for ref in entry.get("affected_ids") or []:
@@ -279,7 +366,8 @@ def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                             "major",
                             "sources_are_not_independent",
                             f"data_point {entry.get('id')} claims high confidence but its {len(refs)} sources "
-                            f"share independence_group {sorted(distinct)}",
+                            f"collapse to one independent origin {sorted(distinct)} — same registrable "
+                            "domain counts as one source; set independence_note to claim an exception",
                             entry=entry.get("id"),
                         )
                     )
@@ -321,7 +409,7 @@ def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                     entry=entry.get("id"),
                 )
             )
-    return out
+    return out + overrides
 
 
 def hygiene_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
@@ -355,21 +443,6 @@ def contract_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     sources = items(pack, "sources")
     queries = pack.get("queries") or []
-
-    for entry in sources:
-        source_type = str(entry.get("type") or "")
-        tier = str(entry.get("tier") or "")
-        ceiling = TIER_CEILING_BY_TYPE.get(source_type)
-        if ceiling and tier in TIER_ORDER and TIER_ORDER[tier] < TIER_ORDER[ceiling]:
-            out.append(
-                issue(
-                    "major",
-                    "tier_above_type_ceiling",
-                    f"source {entry.get('id')} is type {source_type!r} but claims tier {tier} "
-                    f"(ceiling {ceiling})",
-                    entry=entry.get("id"),
-                )
-            )
 
     user_files = [entry for entry in sources if str(entry.get("type")) == "user-file"]
     if not queries and sources and len(user_files) != len(sources):
@@ -477,7 +550,7 @@ def validate(pack: dict[str, Any]) -> dict[str, Any]:
         schema_issues(pack)
         + id_issues(pack)
         + reference_issues(pack)
-        + tier_issues(pack)
+        + source_kind_issues(pack)
         + cross_validation_issues(pack)
         + contract_issues(pack)
         + must_verify_issues(pack)

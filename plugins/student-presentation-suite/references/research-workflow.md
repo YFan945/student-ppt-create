@@ -106,9 +106,11 @@ AI Agent 市场正在快速增长
 一条底线（来源*种类*，不是等级）：论坛/社区/个人博客/厂商博客这类观点源不能单独支撑事实
 数字——它们连"媒体转述"都算不上。
 
-过渡期说明：`validate_research_pack.py` 的 tier 下限检查（`weak_source_for_data_point` 等）
-**暂时保留为兜底**——满足它零成本（任何主流媒体转述就是 B 级），待新门禁行为确认后移除；
-契约口径以本节为准，不要因为兜底条款的存在重新把检索目标改回"爬等级"。
+过渡期说明已失效（v0.23.3 落地）：validator 的 tier 下限（`weak_source_for_data_point` /
+`weak_source_for_high_confidence`）与类型上限（`tier_above_type_ceiling`）**已移除**；契约与
+代码现在一致——等级只剩标注一个用途。validator 执行的是：可追溯、独立印证（**独立性按注册
+域名机械判定**：同域默认并组，声明相互独立须写 `independence_note`，并留一条 minor advisory
+供人工复核）、以及观点源底线（`opinion_only_support`）。
 
 ## 五、交叉验证
 
@@ -129,9 +131,11 @@ Source C  35 亿   → 量级不一致 → confidence: low，conflict: true，
 
 口径差异（统计范围、年份、汇率、口径定义）也算冲突——**先怀疑口径，再怀疑数据**。
 
-独立性判定将按**机械规则**收敛（后续版本落地）：同注册域名（gov.cn / com.cn 等后缀正确
-处理）或 URL 规范化相同的来源默认视为同一独立组，声明不同组须附理由；当前先按声明的
-`independence_group` 判定，但"转载源当两组用"自此起就是契约禁止项，不是可利用的空隙。
+独立性判定是**机械规则**（v0.23.3 起 validator 执行）：同注册域名（gov.cn / com.cn 等后缀
+正确处理）或同声明组的来源并为同一个独立组——同域页面通常源自同一个上游，"转载源当两组用"
+从此凑不出 high confidence。确实独立（如同一门户下两份不同机构的报告）时，在该来源写
+`independence_note` 说明理由，按声明组计，并接受一条 minor advisory（`independence_override_used`）
+供人工复核。
 
 ## 六、可视化机会：PPT 研究与其他研究的分界
 
