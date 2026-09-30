@@ -2,6 +2,28 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.23.10 — 2026-09-30 · Marketplace icon moved off the interceptable host
+
+**缺陷修复（patch）**：插件卡片在校园网/中间人网络下静默显示占位图标。
+
+- **现象**：ZCode 插件市场 `个人 → claude-personal → Student Presentation Suite`
+  一行显示通用占位图标，其余插件图标正常。资产本身完好（本地文件、`main` 上的
+  blob、raw URL 响应三方字节一致，1024×1024 RGBA）。
+- **根因**：`icon` 指向 `raw.githubusercontent.com`——本机所在网络对该主机做 DNS
+  重定向（205.164.50.x）并用校园 "Scholar Verify" 根 CA 重签 TLS。Windows/Chromium
+  信任该根（PowerShell、Chrome、ZCode 内置浏览器都能取到图），但 ZCode 解析插件
+  图标不在渲染进程里直连、而是走 Node 信任链，`SELF_SIGNED_CERT_IN_CHAIN` 直接失败。
+  三份市场 manifest 里只有本插件的 icon 落在这台主机上，其余（`cdn-zcode.z.ai`、
+  `docs.cloudbase.net`）都能显示；把缓存中的 icon 临时换成可达主机后卡片立即渲染，
+  确认是主机而非链路。
+- **修复**：`icon` 改为 **GitHub Pages** 直链
+  `https://yfan945.github.io/student-ppt-create/assets/logo.png`（仓库 Pages 已启用，
+  source: `main` / 根目录）。该 URL 无重定向、Node 侧可直连（实测 HTTP 200、
+  282,382 字节、sha256 与仓库一致），并随 `main` 自动更新，发版无需再上传资产。
+- 文档：`AGENTS.md` 记下约束——图标主机必须**无重定向且 Node CA 可直连**，
+  不要改回 `raw.githubusercontent.com`、`github.com/<owner>/<repo>/raw/…` 或 jsDelivr。
+- 无代码、无契约变化；`CHANGELOG` 历史条目（v0.23.3 的原始 icon 记录）保持原貌。
+
 ## 0.23.9 — 2026-09-30 · Audit thresholds calibrated against their own false positives; minors get a forced consumer
 
 **缺陷修复（patch）**，owner 指示修复"还剩的两条"——n=1 魔法阈值与无消费者的 advisory：

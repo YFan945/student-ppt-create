@@ -24,9 +24,16 @@ implementation line and is not supported here.
 - `.github/workflows/dep-freshness.yml`: monthly pip-audit plus a pin-drift
   report on the frozen constraints, upserted into one tracking issue.
 - `.editorconfig`: cross-editor formatting baseline (indentation, line endings).
-- `assets/logo.png`: plugin logo (1024×1024 transparent PNG) referenced by the
-  marketplace entry's `icon` HTTPS URL. ZCode renders marketplace icons; Claude
-  Code currently has no icon field and ignores it.
+- `assets/logo.png`: plugin logo (1024×1024 transparent PNG) served to the
+  marketplace entry's `icon` field through **GitHub Pages**
+  (`https://yfan945.github.io/student-ppt-create/assets/logo.png`). ZCode renders
+  marketplace icons; Claude Code has no icon field and ignores it. Keep that URL
+  redirect-free **and** fetchable with Node's own CA bundle: ZCode resolves plugin
+  icons outside the renderer, so a redirecting or TLS-intercepted host
+  (`raw.githubusercontent.com`, `github.com/<owner>/<repo>/raw/…`, jsDelivr) fails
+  there on intercepting networks and silently degrades to the placeholder icon.
+  Pages serves the file straight from `main`, so the icon tracks the asset with no
+  per-release step.
 - `plugins/student-presentation-suite/`: complete installable Claude Code plugin.
 - `scripts/install_claude_plugin.ps1`: install, migrate, update, and dependency setup.
 - `scripts/check_marketplace_release.py`: repository-level release validation.
