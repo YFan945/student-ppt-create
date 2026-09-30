@@ -39,6 +39,9 @@
   升级为错误。`validate.yml` 的 claude-manifest job 与 AGENTS.md 验证块同步调整。
 - `.gitignore`/`.zcodeignore` 增加 `!assets/logo.png` 豁免：全局 `**/*.png` 排除（生成产物
   边界）的唯一例外，仅此一个品牌资产。
+- **`.gitattributes` 增加 `*.png binary`（fix `d784b1b`）**：原 `* text eol=lf` 显式 text
+  属性会跳过二进制探测，入库 CRLF 归一化直接损坏 PNG（本版 logo 首次入库即触发：blob 丢
+  9 个 CR 字节、无法解码，raw URL 一度输出坏图）。二进制资产此后不再被行尾策略触碰。
 
 ## 0.23.2 — 2026-09-30 · Source tiers demoted to attribution metadata (docs-only)
 
