@@ -319,11 +319,9 @@ Claude Code 把一条消息的 content blocks 拆成多行，逐行数就永远�
    `page_brief.py --json`（不带 `--slide`）一次拿全 deck 的契约。三个 agent 定义里都写了这条。
 2. **并行分片**：页面拆给多个隔离 builder，构建阶段墙钟 ÷N（CD-11 下一条）。
 
-**例外：检索批次要小，但不要串行（2026-09-29 实测）。** 检索后端对**并发**敏感——同一回合
-发出 8 条 `WebSearch`，5 条返回 `user concurrency limit exceeded`（同日后端健康时批次 2–3
-大多正常返回）。办法是把检索批次调小，**不是**退化成一次一条：串行会让每次检索独占一个
-完整回合（10–19 秒），比被拒更贵。后端返回空（`No links found`）也别靠换词硬顶——那是
-后端没返回结果，按 `research-workflow.md` §七"检索机制"的路线处理该 claim 并留痕。
+**检索也是普通工具调用，照常批处理。** 它没有独立的并发规则，失败也不靠"换个说法再问一次"
+来补救：失败签名决定换通道（见 `research-workflow.md` §七"检索机制"），同一 claim 的另一种
+措辞不是新证据——2026-09-29 实测一次运行 86 次检索里 49 次白费，绝大部分是这种重试。
 
 **注意**：这条端点收到的是**精简版 system prompt**（实测 5.9K 字符 / 10 段），
 其中**不含** CLI 自带的 `# Using your tools`（"Maximize use of parallel tool calls"）。

@@ -68,44 +68,42 @@ class GateTests(unittest.TestCase):
                 record = self.fetch(url, Path(tmp))
                 self.assertEqual("scheme_not_allowed", record["reason"])
 
-    def test_loopback_and_private_hosts_are_refused(self) -> None:
-        with TemporaryDirectory() as tmp:
-            for url in ("http://127.0.0.1/x", "http://10.0.0.5/x", "http://localhost:8080/x"):
-                record = self.fetch(url, Path(tmp))
-                self.assertEqual("private_host", record["reason"])
+    def test_hosts_are_fetched_on_demand_and_only_classified(self) -> None:
+        """The fetcher does not police what you read (owner, 2026-09-29).
 
-    def test_search_result_pages_are_refused_with_an_actionable_reason(self) -> None:
+        A result page is not a *source* — that is an evidence rule for the pack, not
+        a rule about which URLs may be read. Refusing the fetch would only teach the
+        agent to reach the same page by another route, so the record carries the
+        classification instead.
+        """
+        cases = {
+            "https://cn.bing.com/search?q=x": "search_engine",
+            "https://www.so.com/link?m=abc": "search_engine",
+            "https://sousuo.www.gov.cn/search-gov/data?t=all&q=x": "public",
+            "http://127.0.0.1:8080/docs": "private",
+            "http://10.0.0.5/status": "private",
+            "http://localhost/x": "private",
+            "https://www.nea.gov.cn/2025/page.html": "public",
+        }
         with TemporaryDirectory() as tmp:
-            for url in (
-                "https://cn.bing.com/search?q=x",
-                "https://www.so.com/s?q=x",
-                "https://www.so.com/link?m=abc",
-                "https://lite.duckduckgo.com/lite/?q=x",
-            ):
-                record = self.fetch(url, Path(tmp))
-                self.assertEqual("search_result_page", record["reason"], url)
-                self.assertIn("search tool", record["detail"])
+            for url, expected in cases.items():
+                with self.subTest(url=url):
+                    record = self.fetch(
+                        url,
+                        Path(tmp),
+                        getter=body_response(b"<html><body>ok</body></html>", "text/html"),
+                    )
+                    self.assertTrue(record["ok"], record)
+                    self.assertEqual(expected, record["host_class"])
+                    if expected != "public":
+                        self.assertIn("note", record)
 
-    def test_a_publisher_record_endpoint_is_not_a_search_result_page(self) -> None:
-        # gov.cn's own policy-record endpoint returns document records; the workflow
-        # documents it as a locator, so the tool must not refuse it.
-        with TemporaryDirectory() as tmp:
-            out = Path(tmp)
-            record = fetch_text.fetch_one(
-                "https://sousuo.www.gov.cn/search-gov/data?t=zhengce&q=%E6%8A%BD%E6%B0%B4%E8%93%84%E8%83%BD",
-                out,
-                scope="A",
-                getter=lambda *_: (200, {"content-type": "application/json"}, b'{"data":[]}'),
-            )
-            self.assertNotEqual("search_result_page", record.get("reason"))
-            self.assertEqual(out, Path(record["raw_path"]).parent, "artifacts stay in the out dir")
-
-    def test_every_domain_denied_in_code_is_named_in_the_workflow(self) -> None:
+    def test_every_domain_classified_in_code_is_named_in_the_workflow(self) -> None:
         doc = WORKFLOW.read_text(encoding="utf-8")
         for host in fetch_text._SEARCH_HOSTS:
             domain = ".".join(host.split(".")[-2:])
             with self.subTest(domain=domain):
-                self.assertIn(domain, doc, "the code denylist must not outrun the documented rule")
+                self.assertIn(domain, doc, "the code classification must not outrun the documented rule")
 
 
 class ExtractionTests(unittest.TestCase):
@@ -222,16 +220,18 @@ class CliTests(unittest.TestCase):
             self.assertIn("--scope", result.stderr)
 
     def test_urls_file_accepts_comments_and_blanks(self) -> None:
+        # The refused URL keeps this offline: comment/blank parsing is what is under
+        # test, not the network. A non-http scheme is refused before any request.
         with TemporaryDirectory() as tmp:
             urls = Path(tmp) / "urls.txt"
             urls.write_text(
-                "# locators for this claim\n\nhttps://cn.bing.com/search?q=x\n",
+                "# locators for this claim\n\nfile:///C:/tmp/not-http.txt\n",
                 encoding="utf-8",
             )
             result = self.run_tool("--urls-file", str(urls), "--out-dir", tmp, "--scope", "A")
             payload = json.loads(result.stdout[result.stdout.index("{") :])
             self.assertEqual(1, payload["refused"])
-            self.assertEqual("search_result_page", payload["records"][0]["reason"])
+            self.assertEqual("scheme_not_allowed", payload["records"][0]["reason"])
 
 
 if __name__ == "__main__":

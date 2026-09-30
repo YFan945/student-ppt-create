@@ -454,7 +454,8 @@ def must_verify_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                     "must_verify_uncovered",
                     f"must-verify claim {entry.get('claim')!r} has no source_ids and is not "
                     "marked unresolved — cover it with sources or record it as unresolved "
-                    "(that is the stop condition, not more searching)",
+                    "(keep whatever source_ids you did obtain and name the missing primary; "
+                    "that is the stop condition, not more searching)",
                 )
             )
             continue

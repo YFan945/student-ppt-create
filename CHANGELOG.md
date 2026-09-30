@@ -2,6 +2,39 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.23.1 — 2026-09-29 · Retrieval: incidental signals out, real completion logic in
+
+**缺陷修复（patch）**，按 owner 三条指示；依据是那次真实运行留下的 86 条 `search_executions`
+（`pv-wind-carbon-neutral`）。
+
+**1. 删掉以"并发失败"为依据的全部内容。** 并发被拒是某个模型的偶发现象，不是检索的性质——
+契约里不再有任何由它派生的规则（"批次保持小""不要串行"等一并移除），检索回到普通工具调用、
+照常批处理；`research-workflow` / `spawn-templates` / `cost-discipline` / agent / SKILL 五处
+同步，并有测试禁止这类措辞回来。
+
+**2. `fetch-text` 不再做题材审查。** 抓取和搜索按需执行：搜索引擎结果页、回环/私有地址
+**不再被拒绝**，只在 provenance 里记 `host_class`（`search_engine` / `private` / `public`）
+和一句 note；"结果页不是来源"仍是 pack 的证据规则（写进 `sources` 就是证据错误），但工具不再
+替模型决定"这个 URL 不该读"——围栏只会教它绕道。权限门 `--scope A|B`（C/D 拒绝）保留。
+
+**3. 修"判断搜索是否完成"的逻辑**（这次运行 49/86 次检索白费：空返回 23、**返回无关结果 15**、
+captcha 拦截 7、域名过滤 5；同一批 claim 的直连抓取却拿到了原文）：
+
+- **失败签名决定换通道，不决定换措辞**：空返回 / 无关结果 / captcha / 域名过滤各有对应动作
+  （砍到一个可回答单元、转发布方记录端点、直连文档、去掉过滤器），同一 claim 的另一种说法
+  不算新证据。
+- **查询构造**：一个查询 = 一个可回答单元（主体+指标+时间）。数据很干净——成功那批 20–30
+  字符，失败那批把整句 claim 塞进检索框（70–95 字符、最多 15 词条）；不要回显已拿到的数字。
+- **claim 逐条收口就是停止条件**：`status: verified` 的含义收窄为"在所需分级上坐实"（不是
+  "有来源引用了"）；只能拿转述时**保留已拿到的 `source_ids`** 并标 `unresolved` + 写明缺失
+  主源与机制——两种都算关门。schema、validator 提示、四份契约同步写明。
+- **`must_verify` 写成内容，不写成检索任务**："找到 12 亿千瓦目标的官方出处"在主源打不开时
+  永远关不上，于是只能反复重试——这正是"搜很多次都找不到"的机器侧原因；那一次 5 条 claim
+  全写 `verified`，而 `unresolved` 同时写着它们只有媒体转述，两边口径不一致。
+
+测试相应重写（并发规则禁止回归、通道阶梯与收口语义钉进文档、host 分类与文档清单对齐）。
+全套 1152 通过；lint 与 `claude plugin validate --strict` 全绿。
+
 ## 0.23.0 — 2026-09-29 · Deterministic retrieval: `fetch-text`, and the over-fitted rules retired
 
 **新能力（minor）+ 对上一条的纠偏。** 0.22.2 把"后端当天坏了"写成了永久规则（"检索一次一条"、

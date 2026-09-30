@@ -179,17 +179,40 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
     def read(self, path: Path) -> str:
         return path.read_text(encoding="utf-8")
 
-    def test_searches_are_not_serialized_by_instruction(self) -> None:
-        agent = self.read(self.AGENT)
-        self.assertIn("Batch independent calls into one turn", agent)
-        self.assertNotIn("Issue searches", agent, "serializing searches costs a turn each")
-        self.assertIn("keep search batches", agent)
-        self.assertIn("do not serialize them", agent)
+    def test_no_concurrency_rule_is_written_into_the_contract(self) -> None:
+        """Concurrency rejections were an incidental model-side artifact, not a rule.
 
-    def test_small_batches_are_the_stated_remedy(self) -> None:
-        cost = self.read(self.COST)
-        self.assertIn("不是**退化成一次一条", cost)
-        self.assertIn("检索批次", cost)
+        The owner's correction (2026-09-29): do not build contract text on them. Stating
+        that retrieval has no separate concurrency rule is the correction itself and is
+        allowed; what must not come back is a rule derived from those rejections.
+        """
+        wrong = ("concurrency limit", "并发上限", "批次保持小", "serialize them")
+        for path in (self.AGENT, self.WORKFLOW, self.SPAWN, self.COST, self.SKILL):
+            text = self.read(path)
+            for phrase in wrong:
+                with self.subTest(path=path.name, phrase=phrase):
+                    self.assertNotIn(phrase, text)
+        self.assertIn("Batch independent calls into one turn", self.read(self.AGENT))
+
+    def test_the_channel_switch_ladder_is_documented(self) -> None:
+        workflow = self.read(self.WORKFLOW)
+        self.assertIn("换通道，不换措辞", workflow)
+        self.assertIn("返回无关结果", workflow)
+        self.assertIn("一个可回答单元", workflow)
+        agent = self.read(self.AGENT)
+        self.assertIn("switch channel", agent)
+        self.assertIn("smallest answerable unit", agent)
+
+    def test_closing_a_claim_is_the_stated_stop_condition(self) -> None:
+        workflow = self.read(self.WORKFLOW)
+        self.assertIn("status: verified", workflow)
+        self.assertIn("保留已拿到的 `source_ids`", workflow)
+        self.assertIn("claim 写成内容，不写成检索任务", workflow)
+        self.assertIn("永远关不上", workflow)
+        schema = json.loads(self.read(self.SCHEMA))
+        descriptions = json.dumps(schema["properties"]["must_verify"], ensure_ascii=False)
+        self.assertIn("降级收口", descriptions)
+        self.assertIn("没有终点的检索任务", descriptions)
 
     def test_result_pages_are_never_sources(self) -> None:
         # The agent prompt is English, the references are Chinese: assert the rule
@@ -229,7 +252,8 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
 
     def test_a_dead_backend_is_not_read_as_absent_evidence(self) -> None:
         agent = self.read(self.AGENT)
-        self.assertIn("not** evidence that the\n     claim is unsupportable", agent)
+        self.assertIn("not a new channel", agent)
+        self.assertIn("search_unavailable", agent)
         self.assertIn("Direct-source route", agent)
         self.assertIn("verbatim", agent)
         self.assertIn("主源直取", self.read(self.WORKFLOW))

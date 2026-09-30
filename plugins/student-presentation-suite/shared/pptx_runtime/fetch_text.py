@@ -17,13 +17,18 @@ The caller must pass its scope explicitly and C/D are refused, so the D-class
 rule is enforced mechanically instead of by reminder.
 
 Safety model:
-- http/https only; literal loopback / private / link-local hosts refused;
-- search-result pages refused by host + redirector shape — locating is the search
-  tool's job, and a publisher's own document-record endpoint (which returns
-  records, not a rendered SERP) is the documented exception;
-- per-request timeout; only text-ish content types are extracted, so a binary
-  body is refused instead of decoded into garbage;
-- every attempt is recorded in the report, refusals included.
+On-demand by design (owner, 2026-09-29): the fetcher does not police *what* you
+fetch. Search-result hosts and private hosts are fetched like anything else; the
+record carries `host_class` (`search_engine` / `private` / `public`) plus a note,
+because "a result page is not a source" is an evidence rule for the pack, not a
+rule about which URLs may be read — and a fence here would only teach the agent
+to reach the same page by another route.
+
+Safety model:
+- http/https only; per-request timeout;
+- only text-ish content types are extracted, so a binary body is refused instead
+  of decoded into garbage;
+- every attempt is recorded in the report, failures included.
 """
 
 from __future__ import annotations
@@ -44,10 +49,9 @@ from typing import Any
 EXTRACTOR = "fetch-text/1"
 ALLOWED_SCOPES = ("A", "B")
 DEFAULT_TIMEOUT = 60
-_MAX_REDIRECTS = 3
 
-# Kept in sync with the host list in references/research-workflow.md §七 by
-# tests/test_fetch_text.py — a result page is a locator, never a source.
+# Recorded as `host_class: search_engine`, never refused. Kept in sync with the
+# evidence rule in references/research-workflow.md §七 by tests/test_fetch_text.py.
 _SEARCH_HOSTS = frozenset(
     {
         "bing.com",
@@ -102,33 +106,30 @@ def slug(text: str) -> str:
     return value[:60] or "source"
 
 
-def search_result_refusal(url: str) -> str | None:
-    """Return a refusal reason when ``url`` is a search-result page, else None."""
+def host_class(url: str) -> str:
+    """Classify the host for the provenance trail: search_engine / private / public."""
     parsed = urllib.parse.urlsplit(url)
     host = (parsed.hostname or "").lower()
-    if host in _SEARCH_HOSTS:
-        return "search_result_page"
-    lowered = url.lower()
-    if any(marker in lowered for marker in _REDIRECT_MARKERS):
-        return "search_result_page"
-    return None
-
-
-def private_host_refusal(url: str) -> str | None:
-    """Return a refusal reason for loopback/private/link-local literal hosts."""
-    parsed = urllib.parse.urlsplit(url)
-    host = (parsed.hostname or "").lower()
-    if not host:
-        return "missing_host"
+    if host in _SEARCH_HOSTS or any(marker in url.lower() for marker in _REDIRECT_MARKERS):
+        return "search_engine"
     if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost"):
-        return "private_host"
+        return "private"
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
-        return None
+        return "public"
     if address.is_loopback or address.is_private or address.is_link_local or address.is_reserved:
-        return "private_host"
-    return None
+        return "private"
+    return "public"
+
+
+_HOST_CLASS_NOTES = {
+    "search_engine": (
+        "a search-result page is a locator, not a source — use the search tool to find the "
+        "document URL (or a publisher's own record endpoint), then read that"
+    ),
+    "private": "loopback/private host: fine for local checks, never citable evidence",
+}
 
 
 def scheme_refusal(url: str) -> str | None:
@@ -240,12 +241,15 @@ def fetch_one(
             f"(A/B only; C = no search, D = user-restricted sources)"
         )
         return record
-    for guard in (scheme_refusal, private_host_refusal, search_result_refusal):
-        refusal = guard(url)
-        if refusal:
-            record["reason"] = refusal
-            record["detail"] = _REFUSAL_DETAIL[refusal]
-            return record
+    refusal = scheme_refusal(url)
+    if refusal:
+        record["reason"] = refusal
+        record["detail"] = _REFUSAL_DETAIL[refusal]
+        return record
+    klass = host_class(url)
+    record["host_class"] = klass
+    if klass in _HOST_CLASS_NOTES:
+        record["note"] = _HOST_CLASS_NOTES[klass]
 
     get = getter or _default_getter
     try:
@@ -302,12 +306,6 @@ def fetch_one(
 _REFUSAL_DETAIL = {
     "scope_not_authorized": "pass --scope A or B; C/D never authorize retrieval",
     "scheme_not_allowed": "only http/https URLs can be fetched",
-    "private_host": "loopback/private hosts are not fetchable",
-    "missing_host": "the URL has no host",
-    "search_result_page": (
-        "a search-result page is a locator, not a source: use the search tool to find "
-        "the document URL, or a publisher's own record endpoint, then fetch that"
-    ),
 }
 
 

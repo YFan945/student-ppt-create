@@ -32,11 +32,8 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
 
 0. **Batch independent calls into one turn.** Parallel tool calls work on this endpoint
    (measured 2026-09-18: up to 8 in one turn). File reads, fetches and searches for different
-   claims are independent — issue them together instead of one per turn. One measured caveat
-   (2026-09-29): the search backend rejects **large** search batches (`user concurrency limit
-   exceeded` on a batch of 8, while batches of 2–3 returned results), so keep search batches
-   small — do not serialize them. Each turn costs 10–19 seconds of wall clock, and retrieval
-   is the phase nothing else can overlap.
+   claims are independent — issue them together instead of one per turn. Each turn costs
+   10–19 seconds of wall clock, and retrieval is the phase nothing else can overlap.
 1. Read the passed Brief / draft spec and classify claims:
    - A: current/time-sensitive -> must search; no memory substitution.
    - B: graded factual claim -> search when possible; unavailable evidence is explicitly downgraded.
@@ -49,24 +46,35 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
    could not verify in `unresolved` instead of continuing exploratory reads.
    Gap-fill rounds: the authorization message names the claims to verify; search
    per claim benefit. Never delete executed queries — the pack is an audit log.
+   `must_verify` entries are the facts or numbers your slides will assert — phrase them as
+   content ("2030 wind+solar target is 1,200 GW"), never as provenance hunts ("find the
+   official origin of X"): a provenance hunt has no terminal state when the official page is
+   unreachable, and that is how a run ends up searching eighty times for one number.
 3. Search per claim, not per topic. Record every executed query and every source `url`/`locator` plus `independence_group`.
-3b. **Read the tool result as a mechanism signal** (2026-09-29, live):
-   - `No links found` (often with a fake `<tool_call>` / `<search_tool>` in the summary) means the
-     search backend returned nothing at all — a backend/coverage signal, **not** evidence that the
-     claim is unsupportable. Keep working the claim through the routes below and record what you
-     could not retrieve as `unresolved` with `reason: search_unavailable`, so downstream can tell
-     "our backend was down" apart from `not_found` / `access_blocked`.
-   - `user concurrency limit exceeded` means the search batch was too large: re-issue those queries
-     in a smaller batch on the next turn.
+3b. **Make the query the smallest answerable unit** (2026-09-29 live: of 86 searches, 49 produced
+   nothing usable — 23 `No links found`, 15 irrelevant results, 7 captcha walls). The queries that
+   worked ran ~20–30 characters naming 主体 + 指标 + 时间 or a publisher + report title; the ones
+   that failed included whole claim sentences pasted into the box (70–95 characters, up to 15
+   terms). So: one unit per query, no clause stacking, publisher's own language (English for
+   IRENA / IEA / GWEC / UN, Chinese for 国家能源局 / 中电联 / CPIA), and never echo a figure you
+   already hold — a number-echo query can only return more restatements of it.
+3c. **Read the tool result as a channel signal, and switch channel — do not reword** (same run: 37 of
+   the 49 failures were retried wordings of claims whose first query had already failed, while the
+   direct fetches in that same run returned the documents):
+   - `No links found` (often with a fake `<tool_call>` / `<search_tool>` in the summary): the index has
+     nothing for that phrasing. Another wording of the same claim is not a new channel — move to the
+     publisher route below and record the mechanism (`search_unavailable`) if it stays unreachable.
+   - **Irrelevant results**: the query was too broad. Cut it to one unit (3b); do not add clauses.
+   - **captcha / login wall** at a ministry or agency site: that site is reachable by direct URL, not
+     through the index (a search engine cannot reach its search box either). Switch to the direct route.
+   - **domain filters returning nothing**: drop the filter and let the publisher name carry the query.
    - **A search-engine result page is never a source** (`cn.bing.com`, `www.bing.com`, `so.com`,
      `sogou.com`, `duckduckgo.com`, `lite.duckduckgo.com`, `search.brave.com`, `mojeek.com`,
      `search.yahoo.com`, `baidu.com`, `google.com`, any `*/search?…` or `link?m=` redirector).
-     Diagnosis is the job of a search tool, not of a page reader: through a page reader these render
-     as unrelated boilerplate (2026-09-29: 24 of 81 such fetches came back under 400 characters,
-     and a re-test returned generic "国家" entries for a statistics query), and `fetch-text`
-     refuses them mechanically. Use the search tool to locate, then read the **document** it
-     points at (a publisher's own record endpoint, e.g. `sousuo.www.gov.cn/search-gov/data`,
-     is a locator — not a source).
+     Locating is the search tool's job; read the **document** it points at. A publisher's own record
+     endpoint (`sousuo.www.gov.cn/search-gov/data`) is a locator — also not a source. `fetch-text`
+     will still fetch whatever URL you ask for (it never refuses a URL) and marks the host class in
+     the report, so the trail stays honest either way.
    - **Read documents with the deterministic fetcher, not with a summarizing reader.** A page
      reader answers *your prompt* through a small model, so a number that passes through it is a
      paraphrase, while slide-bound numbers must be verbatim:
@@ -81,8 +89,14 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
      D-class rule, enforced by the tool instead of by reminder). The report in
      `research/fetched/fetch-text-report.json` carries `raw_path` / `text_path` / `raw_sha256` /
      `text_sha256` / `charset` / `title` per URL; quote verbatim from `text_path`, record the
-     **document URL** (never a redirect link), and a failed or refused fetch is logged with its
-     `reason` so the pack's `unresolved` can name the mechanism.
+     **document URL** (never a redirect link), and a failed fetch is logged with its `reason` so the
+     pack's `unresolved` can name the mechanism.
+   - **Closing a claim is per claim, and it is the stop condition**: a claim is closed when ≥2
+     independent groups agree at the grade the deck needs — **or** closed at a lower grade when only
+     restatements are obtainable: keep those `source_ids` on the `must_verify` entry, set its
+     `status: unresolved`, and name the missing primary in `unresolved` with mechanism + impact.
+     That closes it; do not keep querying it. `status: verified` means settled at the needed grade,
+     not "some source exists".
    - **Direct-source route**: when search is unavailable or returns nothing, go to the claim's own
      publisher — policy text (gov.cn policy library), ministry statistics releases, organisation
      report pages or PDFs, the paper itself. Verified 2026-09-29: a gov.cn policy page came back

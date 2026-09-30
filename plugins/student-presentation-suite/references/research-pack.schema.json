@@ -157,13 +157,21 @@
     },
     "must_verify": {
       "type": "array",
+      "description": "检索前声明的待证论断（3–5 条），也是逐条停止条件。claim 写成会上屏的事实/数字，不写成“找到 X 的官方出处”这类没有终点的检索任务：主源打不开时后者永远关不上，只能反复重试（2026-09-29：一次运行 86 次检索里 49 次白费）。闭合只有两种：status=verified（≥2 个独立组在所需分级上印证），或 status=unresolved 且保留已拿到的 source_ids、在 unresolved 里写明缺失的主源与机制。",
       "items": {
         "type": "object",
         "required": ["claim"],
         "properties": {
           "claim": { "type": "string", "minLength": 1 },
-          "status": { "enum": ["verified", "unresolved"] },
-          "source_ids": { "type": "array", "items": { "type": "string" } }
+          "status": {
+            "enum": ["verified", "unresolved"],
+            "description": "verified = 在所需分级上坐实（不是“有来源引用了”）；unresolved = 降级收口，同样算关门，但要保留已拿到的 source_ids 并在 unresolved 中写明缺失的主源与机制。"
+          },
+          "source_ids": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "该 claim 已拿到的来源；status=unresolved 时同样要填——它记录“降级收口时手上有什么”，留空会丢掉这段证据。"
+          }
         }
       }
     },

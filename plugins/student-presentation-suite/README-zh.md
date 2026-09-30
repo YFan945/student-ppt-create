@@ -37,8 +37,10 @@ sp-research → sp-outline → sp-deck → sp-review
 
 会上屏的数字要求**逐字**，所以取原文这一层是确定性的：`pptx_tool.py fetch-text` 直接取
 HTTP 原文与抽取文本并落盘，两份 sha256 一起写进 provenance——中间不经过会改写数字的小模型。
-`--scope` 是权限门（只有 A/B 授权联网取原文，C/D 一律拒绝），搜索引擎结果页由工具机械拒绝
-（定位是检索工具的职责，不是来源）。规则见 `references/research-workflow.md` §七。
+`--scope` 是权限门（只有 A/B 授权联网取原文，C/D 一律拒绝）；工具不审查你**取什么**，
+只给每个 host 打类别（`host_class`），而结果页是定位手段、永远不是来源。claim 逐条收口
+（≥2 个独立组印证，或降级收口并保留已拿到的来源），这才是"同一个问题不问八十遍"的机制。
+规则见 `references/research-workflow.md` §七。
 
 它同时是**上下文防火墙**——而且是**机制**，不是提示词约定：主流程通过 Agent 工具
 **显式 spawn `agents/presentation-researcher.md`**（`subagent_type:

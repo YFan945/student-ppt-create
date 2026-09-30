@@ -45,9 +45,12 @@ A number that reaches a slide must be **verbatim**, so retrieval itself is
 deterministic: `pptx_tool.py fetch-text` stores the HTTP body and the extracted
 text side by side and binds both with their sha256 — no summarizing model sits
 between the publisher's sentence and the pack. `--scope` is the permission gate
-(only A/B authorize web retrieval; C/D are refused), and search-engine result
-pages are refused mechanically: locating is the search tool's job, and a result
-page is never a source. Rules live in `references/research-workflow.md` §七.
+(only A/B authorize web retrieval; C/D are refused); the fetcher does not police
+*what* you read — it classifies each host (`host_class`) instead of refusing, and
+a search-engine result page is a locator, never a source. Claims close one by one
+(≥2 independent groups, or a recorded downgrade that keeps the sources it did
+find), which is what stops a run from asking the same question eighty times.
+Rules live in `references/research-workflow.md` §七.
 
 It doubles as a context firewall — and that is a **mechanism**, not a prompt
 convention: the main flow **spawns `agents/presentation-researcher.md` explicitly**
