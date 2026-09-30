@@ -37,7 +37,7 @@ Rules:
 1. Research Pack is the sole entry point for external facts. Numbers, factual claims and direct quotations must trace to a `finding`, `data_point`, or `quote`, then to source(s).
 2. `confidence: low` or `conflict: true` must survive into the ledger limitation and into qualified/range wording on the slide.
 3. Source tier letters (S/A/B/C/D) are **attribution metadata only** — they shape how the footer cites a source, never whether a claim passes, never the confidence of findings/data_points, and never a reason to keep searching. (A quote's displayed confidence in the ledger reflects its source tier — a display mapping, not a gate.) The gates are traceability (every source has `url`/`locator`; user files carry the import receipt) and independent corroboration (`high` requires ≥2 independent origins, judged mechanically by registrable domain since 0.23.3).
-4. Opinion sources (community / personal-blog / vendor-blog) are opinion-only; they cannot become the sole factual support for a number.
+4. Opinion sources (community / personal-blog / vendor-blog) do not block a claim (owner ruling 2026-09-30): a number resting solely on them passes with a minor advisory (`opinion_only_support`), and the slide must attribute it as a community/vendor view rather than an established fact.
 5. Blocked/paywalled/missing retrieval remains in `unresolved`; affected slide wording must be downgraded rather than silently treated as verified.
 6. `E<n>` ids are **compiler-owned**, never model-authored:
 

@@ -125,7 +125,9 @@ class ResearchPackContractTests(unittest.TestCase):
         self.assertEqual(0, report["counts"]["blockers"])
         self.assertEqual(1, report["counts"]["minor"])
 
-    def test_opinion_sources_cannot_solely_support_a_fact(self) -> None:
+    def test_opinion_only_support_is_an_advisory_not_a_rejection(self) -> None:
+        # Owner ruling 2026-09-30: too strict to reject. The pack passes; the flag
+        # tells the slide to attribute the number as a community/vendor view.
         pack = base_pack()
         pack["sources"][0]["type"] = "community"
         pack["sources"][0]["tier"] = "D"
@@ -133,15 +135,19 @@ class ResearchPackContractTests(unittest.TestCase):
         pack["findings"][0]["source_ids"] = ["S01"]
         pack["data_points"][0]["source_ids"] = ["S01"]
         pack["data_points"][0]["confidence"] = "medium"
-        self.assertIn("opinion_only_support", self.codes(pack, "major"))
+        report = self.module.validate(pack)
+        self.assertTrue(report["ok"], report["problems"])
+        self.assertEqual(0, report["counts"]["blockers"])
+        # flagged per entity (finding + data_point), never blocking
+        self.assertIn("opinion_only_support", self.codes(pack, "minor"))
 
-    def test_the_opinion_floor_is_kind_based_not_tier_based(self) -> None:
+    def test_the_opinion_advisory_is_kind_based_not_tier_based(self) -> None:
         pack = base_pack()
         pack["sources"][0]["tier"] = "D"
         pack["sources"][0]["type"] = "paper"
         pack["findings"][0]["confidence"] = "medium"
         pack["data_points"][0]["confidence"] = "medium"
-        codes = self.codes(pack, "major")
+        codes = self.codes(pack)
         self.assertNotIn("opinion_only_support", codes)
         self.assertNotIn("tier_d_cannot_support_claim", codes)
 

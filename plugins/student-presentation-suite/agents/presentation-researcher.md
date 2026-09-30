@@ -109,9 +109,10 @@ Never choose layouts, design pages, write Slide Spec/deck/speaker prose, edit pr
      of body text plus the two hashes that bind the quote).
 4. Type and grade every source honestly (S/A/B/C/D). The grade is **attribution metadata only** —
    it never blocks a claim, never sets confidence, and never justifies more searching; the
-   validator does not police grades at all. Type it honestly anyway: opinion sources (community /
-   personal-blog / vendor-blog) cannot be a factual number's sole support
-   (`opinion_only_support`). Independence is judged mechanically: same registrable domain counts
+   validator does not police grades at all. Type it honestly anyway: a number resting only on
+   opinion sources (community / personal-blog / vendor-blog) passes, but raises a minor advisory
+   (`opinion_only_support`) — the slide must then attribute it as a community/vendor view, not an
+   established fact. Independence is judged mechanically: same registrable domain counts
    as one origin unless you record an `independence_note` explaining the exception (which raises
    a minor advisory for human review).
 5. Cross-check numbers across independent groups. High-confidence numbers require >=2 groups. Conflicts become `confidence: low`, `conflict: true`, explanatory `notes`, and a `conflicts` record.

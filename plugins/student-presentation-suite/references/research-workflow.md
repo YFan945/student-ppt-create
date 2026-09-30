@@ -103,14 +103,15 @@ AI Agent 市场正在快速增长
 | **可追溯** | 来源必须有 `url` 或 `locator`；用户文件必须有导入回执绑定（`import_user_materials.py` 的 sha256） |
 | **独立印证** | 标 `confidence: high` 必须 ≥2 个有效独立来源互相印证；同源转载冒充两个来源会被 `sources_are_not_independent` 拦下 |
 
-一条底线（来源*种类*，不是等级）：论坛/社区/个人博客/厂商博客这类观点源不能单独支撑事实
-数字——它们连"媒体转述"都算不上。
+一条**提示**（来源*种类*，不是等级，不拒绝——owner 裁定 2026-09-30）：条目只靠论坛/社区/
+个人博客/厂商博客这类观点源支撑时，validator 记 minor advisory `opinion_only_support`，
+pack 照常通过；页面必须把它表述为"社区/厂商观点"并标注来源类型，不得写成公认事实。
 
-过渡期说明已失效（v0.23.3 落地）：validator 的 tier 下限（`weak_source_for_data_point` /
+过渡期说明已失效（v0.23.3/v0.23.4 落地）：validator 的 tier 下限（`weak_source_for_data_point` /
 `weak_source_for_high_confidence`）与类型上限（`tier_above_type_ceiling`）**已移除**；契约与
 代码现在一致——等级只剩标注一个用途。validator 执行的是：可追溯、独立印证（**独立性按注册
 域名机械判定**：同域默认并组，声明相互独立须写 `independence_note`，并留一条 minor advisory
-供人工复核）、以及观点源底线（`opinion_only_support`）。
+供人工复核）、以及观点源提示（`opinion_only_support`，minor）。
 
 ## 五、交叉验证
 

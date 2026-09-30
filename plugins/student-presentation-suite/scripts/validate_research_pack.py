@@ -27,8 +27,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA_PATH = ROOT / "references" / "research-pack.schema.json"
 
 # 等级（S/A/B/C/D）是页脚标注元数据，不构成任何门禁（owner 裁定 2026-09-30，
-# 落地 v0.23.3）：硬门只有"可追溯"与"独立印证"。这里保留的唯一来源*种类*底线是：
-# 观点类来源不能单独支撑事实数字——它们连"媒体转述"都算不上。
+# 落地 v0.23.3）：硬门只有"可追溯"与"独立印证"。观点类来源（论坛/个人博客/厂商博客）
+# 支撑的条目不拒绝，只发 minor advisory（opinion_only_support）——owner 裁定 2026-09-30：
+# 太严格，不应直接拒绝；页面须把它表述为"社区/厂商观点"并标注来源类型。
 OPINION_TYPES = {"community", "personal-blog", "vendor-blog"}
 
 # 独立性按注册域名机械判定：同域（含 gov.cn/com.cn 这类两段后缀）默认并组，
@@ -231,11 +232,14 @@ def _host_is_ip(host: str) -> bool:
 
 
 def source_kind_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
-    """The one source-*kind* floor: opinion sources cannot solely support facts.
+    """Advisory: a number resting solely on opinion sources needs view wording.
 
-    Tier letters are annotation metadata and are not checked at all; what matters
-    is the kind of source a claim rests on. A finding or data_point presented at
-    medium/high confidence must have at least one non-opinion source.
+    Tier letters are annotation metadata and are not checked at all. When a
+    finding or data_point at medium/high confidence rests only on opinion
+    sources (forums, personal blogs, vendor blogs) the pack still passes —
+    owner ruling 2026-09-30: do not reject — but the entry is flagged minor so
+    the slide attributes it as a community/vendor view instead of an
+    established fact.
     """
     out: list[dict[str, Any]] = []
     types = {str(entry.get("id")): str(entry.get("type") or "?") for entry in items(pack, "sources")}
@@ -249,10 +253,11 @@ def source_kind_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
             ):
                 out.append(
                     issue(
-                        "major",
+                        "minor",
                         "opinion_only_support",
                         f"{entity[:-1]} {entry.get('id')} rests only on opinion sources "
-                        f"{sorted(used)} — opinion sources cannot support a factual claim",
+                        f"{sorted(used)} — keep it, but the slide must attribute it as a "
+                        "community/vendor view, not an established fact",
                         entry=entry.get("id"),
                     )
                 )

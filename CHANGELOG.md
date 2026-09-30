@@ -2,6 +2,17 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.23.5 — 2026-09-30 · Opinion-only support demoted to an advisory
+
+**缺陷修复（patch）**，owner 裁定："太严格了，不应该直接拒绝"。
+
+- `opinion_only_support` 从 major（阻断）降为 **minor advisory**：条目只靠论坛/个人博客/
+  厂商博客支撑时 pack **照常通过**，校验报告提示"页面须表述为社区/厂商观点并标注来源类型"。
+  消息措辞同步改为表述要求，不再是资格判定。
+- 文档五处同步（research-workflow §四"一条底线"改为"一条提示"、agent step 4、sp-research
+  SKILL、evidence-and-citations rule 4、schema tier description）。
+- 测试更新：观点源用例改为 ok + minor；kind-based 区分用例保留。全套 1157 通过。
+
 ## 0.23.4 — 2026-09-30 · Tier gates removed from code, independence made mechanical
 
 **缺陷修复（patch）**：兑现 0.23.2 的另一半（owner 指示"AC修复"）。契约（等级=标注元数据，
