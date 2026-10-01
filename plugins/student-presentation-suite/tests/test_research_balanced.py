@@ -55,6 +55,46 @@ class BalancedEvidenceTests(unittest.TestCase):
         self.assertTrue(report["ok"], report["problems"])
         self.assertEqual("ready", report["delivery_status"])
 
+    def enable_review(self):
+        path = self.task()
+        task = json.loads(path.read_text())
+        task["semantic_review_required"] = True
+        path.write_text(json.dumps(task), encoding="utf-8")
+        entities = {e["id"]: e for key in ("findings", "data_points") for e in self.pack[key]}
+        for evidence in self.pack["evidence"]:
+            entity = entities[evidence["entity_id"]]
+            evidence["support_check"] = {"statement": entity.get("claim", entity.get("meaning")),
+                "verdict": "supported", "subject_scope": "matches", "time_scope": "matches",
+                "causal_scope": "not_applicable", "rationale": "原文直接支持", "limitations": ""}
+
+    def test_missing_second_pass_cannot_silently_pass_new_tasks(self):
+        self.enable_review()
+        self.pack["evidence"][0].pop("support_check")
+        self.assertFalse(self.verdict()["ok"])
+
+    def test_review_rejects_scope_overreach_and_unrelated_support(self):
+        self.enable_review()
+        self.assertTrue(self.verdict()["ok"])
+        self.pack["evidence"][0]["support_check"]["subject_scope"] = "mismatch"
+        self.assertIn("evidence_support_review_rejected", [p["code"] for p in self.verdict()["problems"]])
+        self.pack["evidence"][0]["support_check"]["subject_scope"] = "matches"
+        self.pack["evidence"][0]["support_check"]["verdict"] = "unsupported"
+        self.assertFalse(self.verdict()["ok"])
+
+    def test_qualified_support_requires_visible_limits(self):
+        self.enable_review()
+        check = self.pack["evidence"][0]["support_check"]
+        check["verdict"] = "qualified"
+        self.assertFalse(self.verdict()["ok"])
+        check["limitations"] = "仅限原文统计范围"
+        self.pack["findings"][0]["notes"] = "仅限原文统计范围"
+        self.assertTrue(self.verdict()["ok"])
+
+    def test_review_does_not_bless_a_changed_statement(self):
+        self.enable_review()
+        self.pack["findings"][0]["claim"] = "将局部实验推广成全球事实"
+        self.assertIn("evidence_support_review_missing", [p["code"] for p in self.verdict()["problems"]])
+
     def test_task_text_requirement_cannot_be_weakened_by_entity(self):
         self.task("text")
         self.pack["must_verify"][0]["status"] = "verified"

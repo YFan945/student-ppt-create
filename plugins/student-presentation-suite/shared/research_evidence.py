@@ -1,6 +1,7 @@
 """Check text-bound evidence without claiming to automate semantic entailment."""
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import re
 from pathlib import Path
@@ -12,6 +13,12 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
 
     def fail(code: str, message: str, entity: str = "", severity: str = "major") -> None:
         out.append({"severity": severity, "code": code, "message": message, "entry": entity})
+
+    review_required = False
+    if work_dir and (work_dir / "research-task.json").is_file():
+        import json
+        with contextlib.suppress(OSError, ValueError, AttributeError):
+            review_required = json.loads((work_dir / "research-task.json").read_text(encoding="utf-8")).get("semantic_review_required") is True
 
     strict = pack.get("evidence_contract") == "text-bound-v1"
     balanced = pack.get("evidence_contract") == "source-backed-v1"
@@ -112,6 +119,24 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
                 fail("evidence_unit_not_in_excerpt", "The measurement unit is absent from the excerpt.", eid)
                 continue
         covered.add((eid, sid))
+    # Audit a second reading separately from provenance. This checks the declared
+    # review, not natural-language entailment; identical-source models can err.
+    if review_required:
+        for binding in bindings:
+            eid, sid = str(binding.get("entity_id", "")), str(binding.get("source_id", ""))
+            if (eid, sid) not in covered:
+                continue
+            key, entity = entities[eid]
+            if entity.get("status") in {"located", "unresolved"}:
+                continue
+            check = binding.get("support_check", {})
+            statement = entity.get({"findings": "claim", "data_points": "meaning", "quotes": "text"}[key])
+            if not check or check.get("statement") != statement:
+                fail("evidence_support_review_missing", "A second-pass review must bind the exact entity statement.", eid)
+            elif check.get("verdict") == "unsupported" or any(check.get(f) == "mismatch" for f in ("subject_scope", "time_scope", "causal_scope")):
+                fail("evidence_support_review_rejected", "The review reports unsupported evidence or a scope mismatch; leave this claim unresolved.", eid)
+            elif check.get("verdict") == "qualified" and (entity.get("status") != "usable" or entity.get("confidence") != "medium" or not check.get("limitations", "").strip() or not entity.get("notes", "").strip()):
+                fail("evidence_support_review_limits_missing", "Qualified support requires usable/medium plus review limitations and entity notes.", eid)
     if strict or balanced:
         for eid, (key, entity) in entities.items():
             refs = entity.get("source_ids", []) if key != "quotes" else [entity.get("source_id")]
@@ -119,8 +144,9 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
                 continue
             if balanced:
                 minimum = 2 if entity.get("verification") == "cross_check" or entity.get("confidence") == "high" else 1
-                if sum((eid, sid) in covered for sid in refs) < minimum:
-                    fail("evidence_support_missing", f"No readable source passage supports {eid}.", eid)
+                count = sum((eid, sid) in covered for sid in refs)
+                if count < minimum:
+                    fail("evidence_support_missing", f"{eid} has {count} readable source binding(s), requires {minimum} for its task verification/confidence. Keep only task-supported entities; put ancillary qualifications in notes instead of adding an under-verified fact.", eid)
                 continue
             for sid in refs:
                 if (eid, sid) not in covered:

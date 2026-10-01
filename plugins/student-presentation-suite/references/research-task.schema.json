@@ -99,6 +99,11 @@
     "stall_timeout_seconds": {
       "type": "integer",
       "minimum": 1
+    },
+    "semantic_review_required": {
+      "type": "boolean",
+      "default": false,
+      "description": "Require a second-pass support/scope review for every usable evidence binding; legacy tasks remain compatible."
     }
   }
 }

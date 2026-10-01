@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.24.0
+version: 0.25.0
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
@@ -15,7 +15,7 @@ arguments: [work_id, brief_path, scope, materials_path]
 ## 输入与隔离
 
 1. 将 work_id、brief_path、scope、materials_path、budget、背景及逐条 claim/id/验收要求
-   写入 `<work-dir>/research-task.json`（schema：`../../references/research-task.schema.json`）。
+   并设置 semantic_review_required=true，写入 `<work-dir>/research-task.json`（schema：`../../references/research-task.schema.json`）。
    work-dir 必须是当前项目 outputs/.pptx-work/<work-id> 的绝对路径，所有输入路径也用绝对路径。
 2. 调用 `scripts/validate_research_task.py <task>`；失败就补齐输入，不开始检索。
 3. 按 `../../references/spawn-templates.md` 显式调用 Agent，subagent_type 为
@@ -23,7 +23,8 @@ arguments: [work_id, brief_path, scope, materials_path]
    prompt 只传 task 路径和 work-dir；不得转抄 claim/标题/数字。
    隔离不依赖 context: fork（claude -p 下曾内联 skill）；输入绑定不自动传给子代理。
 4. 主流程等待 RESEARCH_DONE 或 RESEARCH_BLOCKED；无可解析信封或有效校验报告时记 blocked，
-   不再 spawn 同一任务盲目续搜。主会话不执行 WebSearch/WebFetch。
+   同一会话只允许派一次该任务，不自行 resume，不再 spawn 同一任务。
+   unknown_payload 不是环境变化；交付不足时报告缺口，等待用户提供新材料或明确补检指令。主会话不执行 WebSearch/WebFetch。
    收到信封后只运行一次：
    `python "${CLAUDE_PLUGIN_ROOT}/scripts/research_handoff.py" --work-dir <work-dir>`。
    命令核验当前 pack、validation、task 和真实执行回执，只返回路径/状态/统计/缺口。

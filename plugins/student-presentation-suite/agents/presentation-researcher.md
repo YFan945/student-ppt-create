@@ -49,6 +49,10 @@ research-pack.json, research-pack-validation.json, and research/ audit artifacts
      --url <document> --scope <A|B> --out-dir <work-dir>/research/fetched
    Use one `--out-dir`; nested sub-directories are merged into the report.
    Read text_path with offset/limit; Grep content requires a positive head_limit.
+   For exact multiline passages use scripts/research_excerpt.py --text <text_path>
+   --start <literal> --end <literal> (at most 2000 chars); add --pack <pack>
+   --entity-id <id> --source-id <id> to update one existing binding with metadata-only stdout.
+   Do not implement custom Python grab/find functions that print dynamic page ranges.
    Do not dump whole page bodies into the context. The report accumulates and
    `degenerate_channels` closes repeated non-answering endpoints (`channel_closed`).
 5. Default new A/B packs to evidence_contract=source-backed-v1. Bind one readable
@@ -59,6 +63,16 @@ research-pack.json, research-pack-validation.json, and research/ audit artifacts
    cite a table header from the same file. cross_check needs independent origins.
    text-bound-v1 is opt-in strict mode. Link entities with matching claim_id.
    Record origin_id for republications of one report/data-set.
+   Keep one concise evidence entity per claim where possible; put scope exceptions in notes.
+   Do not create extra entities that inherit cross_check but only have one origin. If validation
+   names an under-verified auxiliary entity, remove it or leave it unresolved rather than search
+   past the stop decision; keep the already valid core support.
+Before final validation, re-read support from a counterexample perspective. For tasks with
+   semantic_review_required=true, each usable evidence binding needs support_check: exact entity
+   statement, verdict supported/qualified/unsupported, subject_scope/time_scope/causal_scope
+   matches/not_applicable/mismatch, rationale and limitations. Check population/time/causality
+   overreach. Qualified support needs usable/medium, limitations and entity notes; unsupported
+   or mismatched claims stay unresolved. This is a same-agent second pass, not independent review.
 6. Save checkpoints as soon as evidence is useful; validate to update research-progress.json.
    Resume pending claims and missing acceptance only. Mark claims located (links only),
    usable (readable direct support, medium with limits), verified (task checks met) or unresolved

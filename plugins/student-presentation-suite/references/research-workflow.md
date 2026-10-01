@@ -115,7 +115,7 @@ pack 照常通过；页面必须把它表述为"社区/厂商观点"并标注来
 
 ## 五、交叉验证
 
-数字必须多源比对，不许随便挑一个：
+核验强度由 task 决定：普通数字采用 source 时允许单源 medium；关键数字用 text 核验口径，争议结论用 cross_check 多源比对。以下是多源核验示例，不是所有数字的默认门槛：
 
 ```text
 Source A  50 亿
@@ -169,7 +169,7 @@ Source C  35 亿   → 量级不一致 → confidence: low，conflict: true，
 
 默认由 `scenario` 推导，用户可覆盖。硬约束是：**不要为了某一页的一句话搜索二十个网页。**
 
-### 检索机制：失败的签名决定换通道，不决定换措辞（2026-09-29 实测）
+### 检索机制：按失败签名换通道，有新信息时修正查询
 
 一次真实运行（`pv-wind-carbon-neutral`）：**86 次检索里 49 次没产出可用的东西**——23 次
 `No links found`、**15 次返回无关结果**、7 次目标站 captcha 拦截、5 次域名过滤后为空。
@@ -222,18 +222,14 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/reset_research_channel.py" \
   要主源就去发布方自己的记录端点或索引页；
 - 查到的每个来源记 `url`/`locator` 与 `independence_group`，写进 `queries` 只追加不改写。
 
-**关闭一条 claim 就是停止条件（逐条收口）。** 两条合法出口，二者都算关门：
-
-| 出口 | 条件 | 记录方式 |
-| --- | --- | --- |
-| 已坐实 | 可追溯来源支撑且无冲突；≥2 个独立来源互相印证时可标 `high` | `must_verify.status: verified` + **`entity_ids`** 链到坐实它的 findings/data_points（来源随实体传递，**不在 source_ids 重抄**；pack 有实体时这是唯一合法声明，`must_verify_unlinked` 为 major）；仅当 pack 没有 F/D 实体（D 类导入）才允许直接 `source_ids` |
-| 降级收口 | 只有转述可拿、主源不可达 | **保留已拿到的 `source_ids`**，`status: unresolved`，并在 `unresolved` 写明缺失的主源 + 机制 + 影响 |
-
-`status: verified` 的含义是"**可追溯且无冲突**"，不是"爬到了某个等级"——等级是页脚标注
-元数据（§四）。validator 按此执行：verified 条目的 `entity_ids` 必须指向存在且未冲突的实体
-（`must_verify_unknown_entity` / `must_verify_conflicted_entity`）；条目列出的来源必须被某个
-链接实体使用（`must_verify_orphan_source`）——账本只记一份，两处记数必然漂移。清单条数 3–5
-越界是 minor 提示，不是门禁——小 deck 不该为凑数编 claim。
+**逐条收口，满足核心证据后停止。** 状态统一使用下文“新任务交接与原文绑定”的
+located / usable / verified / unresolved；交付统一使用 ready / partial / insufficient。
+usable/verified 必须通过 entity_ids 链接支持实体，不能用来源列表代替论断支持关系。
+这是有 F/D 实体时的唯一合法声明；缺少链接为 must_verify_unlinked，孤立来源为
+must_verify_orphan_source。未解决项保留已拿到的 `source_ids` 并记录影响。
+例如 must_verify 的 status: verified 表示任务核验已满足；单源普通支持可为 usable。
+claim 写成内容，不写成检索动作；条数越界仅为 minor 提示，不是门禁。
+仅定位到链接不能算可用证据；无继续收益则记录缺口，允许有效部分交接。
 
 2026-09-30 结论：**等级门就是"搜很多次"的根因。** 直连主源的理由只有两个——**逐字保真**
 （上屏数字要原文）与**转述相互冲突**（需要原始出处仲裁）；"把 B 升成 S"永远不构成继续
@@ -316,7 +312,7 @@ locator，不把同一文档的跟踪或签名参数视为故障。
 工具边界现在机械检查 research-control.json：ready/partial、总时间耗尽或无有效进展时
 停止新增检索，但允许保存/校验/回传当前包。默认 simple 为总 120 秒/停滞 60 秒，
 停滞计时从首次实际检索开始，准备阶段不算搜索停滞。standard 为 300/120 秒，deep 为 900/240 秒；任务可用 time_budget_seconds 与
-stall_timeout_seconds 覆盖。只有新增成功正文或有效包才能刷新进度，失败与重复不刷新。
+stall_timeout_seconds 覆盖。只有任务 claim 获得经校验的可用/已核验原文支持，或其核验状态提升，才能刷新进度。新增无关正文、重写包、改标题、重复证据与失败均不刷新。
 这是工具边界收口，不是强杀模型或中断正在执行的 HTTP 请求；模型请求本身仍由宿主超时处理。
 新输入或具体环境变化后，主流程可运行 research_control.py --work-dir <work-dir> --resume
 --reason <具体变化> 显式续做；保留已完成证据与历史，研究员不得自行重置计时。
@@ -344,18 +340,14 @@ simple/source 任务的一个直接片段已满足要求且校验 ready 后立�
 
 ### 启动前声明与停止条件
 
-检索开始前，Research Pack 必须先列出 **3–5 条 `must_verify` claim**（真正决定内容成立与否的
+检索开始前，Research Pack 先按 task 列出 `must_verify` claim（决定内容成立与否的
 待证论断；条数越界是 minor 提示，小 deck 不凑数）并选定深度档位。**claim 写成内容，不写成
 检索任务**——"2030 年风光总装机目标
 1200GW" 可以关门，"找到 12 亿千瓦目标的官方出处" 在主源打不开时永远关不上，于是只能反复重试。
-停止条件是**收益充分**，不是次数用尽，出口只有两个（逐条收口，见上"检索机制"）：
-
-- 每条 claim 有可追溯来源支撑且无冲突（≥2 个独立来源印证可标 `high`），**或**
-- 只有转述可拿时保留 `source_ids` 并把该条标 `status: unresolved` + 写明缺失主源与影响；
-- 继续前必须指出下一步的新增收益：独立数据出处、缺失口径、冲突解释或可读取原文；无收益就 unresolved 收口。有效部分包仍返回 RESEARCH_DONE，主流程根据 completion 与 unresolved.impact 删去或弱化表述；
-- 全部 claim 处理完毕即停止检索——多搜不是为了凑数，换措辞重试同一 claim 不算新证据；
-- `validate_research_pack.py` 校验逐条覆盖（`must_verify_uncovered` 等，major）；
-  声明数量 3–5 越界（`must_verify_count`）是 minor 提示，不是门禁。
+停止条件按前述四种论断状态和三种交付状态执行，不再另设“只有两个出口”的旧规则。
+开始前给出具体待证内容；3–5 条仅为建议，不为凑数编造论断。继续检索须指出能补齐的
+验收条件；有辅助缺口但核心满足时优先 partial 交接。 有新增信息的语言/名称/筛选修正
+可以继续，须记录 adjustment_reason；重复失败且没有新证据收益时收口。
 
 2026-09-22 实测：一个研究员为有时效数据的主题跑了 42 分钟 / 4.0M token，其中相当部分超出
 "足够来源"——声明先行、逐条关门才是刹车。2026-09-29 实测的教训是另一半：那次**声明写得像
@@ -393,8 +385,8 @@ Research Pack    ~8k tokens
 带 `signature` 记失败签名（`backend_not_executed` = 检索没执行，见§七；`index_empty` = 执行了
 但没有覆盖；`irrelevant`；`blocked` = captcha / 登录墙）。`signature` 是**分类**不是计数：
 它决定该 claim 记哪种机制、下一步换哪条通道。gap-fill 的检索
-必须**追加**写入该日志（`n` 续号），不得只改 pack。`pack.queries` 只记成功拿到结果的检索，
-失败调用不进 `queries`——但没有日志留痕，就无法审计两者之间的差额（2026-09-19 实测：
+必须**追加**写入该日志（`n` 续号），不得只改 pack。`pack.queries` 记录所有实际执行的查询（含失败），不记录计划调用；
+每次调用的成功/空结果/失败状态由 search_executions 记录——但没有日志留痕，就无法审计两者之间的差额（2026-09-19 实测：
 search-log 停在初始 7 条，gap-fill 第 8 条检索只存在于 pack，日志与事实脱节）。
 
 这份留痕**不是纸面承诺**：校验步骤必须带 `--search-log` 与 `--fetch-report`，validator 机械审计
@@ -469,3 +461,24 @@ unresolved:
 
 研究正文的 Grep 未传 head_limit 时，PreToolUse 自动补 80 并保留其他参数，不再先拒绝再重试；
 显式无效值仍需纠正。实现遵循 [Claude Code hooks 的 updatedInput 契约](https://code.claude.com/docs/en/hooks#pretooluse-decision-control)。
+
+### 原文支持复读
+
+新任务入口设置 semantic_review_required=true。每个可用绑定写 support_check：statement
+逐字复制实体 claim/meaning/text；verdict 为 supported/qualified/unsupported；subject_scope、
+time_scope、causal_scope 为 matches/not_applicable/mismatch；rationale 解释原文如何支持，
+limitations 记录限定条件。先提取证据，再从反证角度复读一次：是否把局部推广到总体、旧数据
+写成现状、相关写成因果，或省略人群/地区/实验条件。不为复读再搜索。
+机器检查复读覆盖与声明的一致性；unsupported/mismatch 不得进入可用账本。qualified 仅可
+usable/medium 且必须在实体 notes 和 limitations 保留限制；若原 claim 本身越界则 unresolved，
+不能靠一句限制把不成立的 claim 洗成成立。旧任务默认关闭新字段以保留兼容。
+复读仍由同一研究员完成，不能称为独立评审；校验不会自动证明自然语言语义正确。
+
+同一会话每个 research-task 只派一次研究员，由 spawn binding 的 session_id 机械约束。
+不足时返回现有成果与缺口，主流程不得因为 unknown_payload 自行 reset/resume/重派。
+续做需用户明确补检指令或提供新材料，在新的研究运行中进行，不能把旧的失败响应冒充环境变化。
+真实验收见 scripts/live_prompts/README.md；宿主 timeout 会保留逐事件流并终止该验收子进程树。
+
+精确多行摘录用 scripts/research_excerpt.py --text <text_path> --start <字面起点> --end <字面终点>，
+默认/最大 2000 字符，超限拒绝而不截断。可加 --pack/--entity-id/--source-id 原子更新已有绑定，
+stdout 仅回元数据；避免自写动态 grab/find 函数输出不受界限约束的正文而触发防火墙。

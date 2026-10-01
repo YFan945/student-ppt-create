@@ -38,7 +38,7 @@ def task_verdict(pack: dict, work_dir: Path, explicit: Path | None = None) -> tu
                 for eid in actual.get("entity_ids", []):
                     refs = entities.get(eid, {}).get("source_ids", [])
                     if len({groups.get(sid, sid) for sid in refs}) < 2:
-                        errors.append(f"Task claim {claim['id']} lacks independent cross-check")
+                        errors.append(f"Task claim {claim['id']} entity {eid} lacks independent cross-check; remove an under-verified auxiliary entity from the claim and pack instead of weakening the task")
         if task["scope"] in {"A", "B"} and pack.get("evidence_contract") not in {"text-bound-v1", "source-backed-v1"}:
             errors.append("New A/B tasks require a source-backed or text-bound evidence contract")
         if task["scope"] in {"C", "D"} and pack.get("queries"):

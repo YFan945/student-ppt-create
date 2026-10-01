@@ -38,11 +38,31 @@ def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> 
         pack = work / "research-pack.json"
         current = pack.is_file() and report.get("research_pack_sha256") == hashlib.sha256(pack.read_bytes()).hexdigest()
         current = current and report.get("task", {}).get("sha256") == task_sha and report.get("ok") is True
-        records = read(work / "research/fetched/fetch-text-report.json").get("records", [])
-        useful = {str(r.get("text_sha256")) for r in records if r.get("ok") and r.get("text_sha256")
-                  and r.get("host_class") not in {"search_engine", "listing", "private"}}
+        useful = set()
         if current:
-            useful.add("pack:" + report["research_pack_sha256"])
+            content = read(pack)
+            entities = {e.get("id"): e for k in ("findings", "data_points", "quotes") for e in content.get(k, [])}
+            task_ids = {c.get("id") for c in task.get("claims", [])}
+            for claim in content.get("must_verify", []):
+                if claim.get("id") not in task_ids or claim.get("status") not in {"usable", "verified"}:
+                    continue
+                for eid in claim.get("entity_ids", []):
+                    if entities.get(eid, {}).get("claim_id") != claim["id"]:
+                        continue
+                    for binding in content.get("evidence", []):
+                        if binding.get("entity_id") != eid:
+                            continue
+                        evidence_path = Path(binding.get("text_path", ""))
+                        evidence_path = evidence_path if evidence_path.is_absolute() else work / evidence_path
+                        try:
+                            if hashlib.sha256(evidence_path.read_bytes()).hexdigest() != binding.get("text_sha256"):
+                                continue
+                        except OSError:
+                            continue
+                        # Paraphrases, report rewrites and unrelated readable pages
+                        # are not progress. A task claim must gain validated support.
+                        token = [claim["id"], claim["status"], binding.get("text_sha256")]
+                        useful.add(json.dumps(token, ensure_ascii=False))
         if useful - set(state["seen"]):
             state["last_progress_at"] = now
             state["seen"] = sorted(set(state["seen"]) | useful)

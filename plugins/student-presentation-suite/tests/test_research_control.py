@@ -32,18 +32,13 @@ class ControlTests(unittest.TestCase):
         self.assertEqual(10, decision["last_progress_at"])
         self.assertTrue(self.task.is_file())
 
-    def test_repeated_success_does_not_refresh_but_new_text_does(self):
+    def test_unrelated_successful_text_does_not_refresh_progress(self):
         status(self.work, now=10, retrieval=True)
         fetched = self.work / "research/fetched/fetch-text-report.json"
         fetched.parent.mkdir(parents=True)
-        record = {"ok": True, "text_sha256": "first", "host_class": "public"}
-        fetched.write_text(json.dumps({"records": [record]}), encoding="utf-8")
-        self.assertEqual(40, status(self.work, now=40)["last_progress_at"])
-        self.assertEqual(40, status(self.work, now=90)["last_progress_at"])
-        record["text_sha256"] = "second"
-        fetched.write_text(json.dumps({"records": [record]}), encoding="utf-8")
-        self.assertEqual(95, status(self.work, now=95)["last_progress_at"])
-        self.assertEqual("time_budget_exhausted", status(self.work, now=131)["reason"])
+        fetched.write_text(json.dumps({"records": [{"ok": True, "text_sha256": "new", "host_class": "public"}]}), encoding="utf-8")
+        self.assertEqual(10, status(self.work, now=40)["last_progress_at"])
+        self.assertEqual("no_useful_progress", status(self.work, now=71)["reason"])
 
     def test_task_can_override_time_without_search_count_quotas(self):
         self.task.write_text(json.dumps({"budget": "simple", "time_budget_seconds": 5, "stall_timeout_seconds": 60}), encoding="utf-8")
@@ -79,6 +74,27 @@ class HandoffTests(unittest.TestCase):
         self.assertNotIn("evidence", report)
         self.assertEqual("sufficient_evidence", status(self.work, now=10)["reason"])
 
+    def test_only_validated_task_support_refreshes_not_pack_rewrites(self):
+        task_path = self.work / "research-task.json"
+        task = json.loads(task_path.read_text())
+        task["claims"].append({"id": "C02", "claim": "仍待查", "acceptance": "原文", "importance": "core"})
+        task_path.write_text(json.dumps(task), encoding="utf-8")
+        pack = json.loads(self.pack.read_text())
+        pack["must_verify"].append({"id": "C02", "claim": "仍待查", "status": "unresolved"})
+        pack["unresolved"] = [{"query": "仍待查", "reason": "not_found", "impact": "缺口"}]
+        self.pack.write_text(json.dumps(pack), encoding="utf-8")
+        status(self.work, now=10, retrieval=True)
+        self.assertEqual(0, fixtures.validator.main([str(self.pack)]))
+        self.assertEqual(40, status(self.work, now=40)["last_progress_at"])
+        pack["topic"] += " revised"
+
+        self.pack.write_text(json.dumps(pack, indent=2), encoding="utf-8")
+        self.assertEqual(0, fixtures.validator.main([str(self.pack)]))
+        decision = status(self.work, now=70)
+        self.assertEqual(40, decision["last_progress_at"])
+        self.assertEqual("no_useful_progress", status(self.work, now=161)["reason"])
+        self.assertTrue(fixtures.validator.validate(pack, fetch_report=self.fixture.report, work_dir=self.work)["ok"], "progress checks must preserve source bytes")
+
     def test_resume_requires_reason_and_preserves_seen_evidence(self):
         status(self.work, now=10)
         before = json.loads((self.work / "research-control.json").read_text(encoding="utf-8"))
@@ -97,6 +113,7 @@ class HandoffTests(unittest.TestCase):
             event = {"cwd": str(project), "session_id": "control", "hook_event_name": "PreToolUse",
                      "tool_name": "Agent", "tool_input": {"subagent_type": fixtures.runtime.RESEARCHER, "prompt": str(self.work)}}
             self.assertEqual(0, fixtures.runtime.handle(event))
+            self.assertEqual(2, fixtures.runtime.handle(event), "same session must not blindly spawn the task twice")
             event.update(agent_type=fixtures.runtime.RESEARCHER, agent_id="child")
             event.update(tool_name="WebSearch", tool_input={"query": "one more"})
             self.assertEqual(2, fixtures.runtime.handle(event))

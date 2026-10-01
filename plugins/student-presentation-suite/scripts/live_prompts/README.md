@@ -86,3 +86,20 @@ smoke 脚手架透传 `--model`，直接加在命令后。
 两份 `run-*.md` 末尾各有一张表（`subagent_stats.spawned`、`total_cost_usd`、`terminal_reason`、
 pack 各项计数、`validate_research_pack` 的 `ok`、D 模式还要记 `queries` 长度与 source type）。
 跑完把实际数字填进去，作为"真实运行验证"的凭据。
+
+## 复杂联网研究验收
+
+从仓库根目录执行：
+
+```powershell
+python plugins/student-presentation-suite/scripts/research_acceptance_matrix.py --output-dir "$env:TEMP/research-acceptance"
+```
+
+三项实际 Claude 运行：中文技术文档多论断、GIL 独立交叉核验、指定缺失链接后的 partial 交接。
+前两项强制核验实际 WebSearch 事件。缺失链接是人为故障注入，不是真实文献。
+每个场景输出原始 result/stream、独立工作目录和 matrix.json，记录耗时、工具数、搜索调用、
+日志失败数、核心缺口及交付状态。报告逐场景给出通过条件，失败不算机制成功。
+每次只运行一个样本，不报告总体成功率；查询失败数是日志口径，不是自动语义相关性评分。
+可用 --case multi-cn|cross-check|gap 单独复测。每场景费用上限 $3，Claude 子进程等待上限 420 秒（超时终止进程树并保留事件流），外层等待上限 600 秒。
+
+2026-10-01 的真实运行结果、前轮失败及修复边界见 [研究验收记录](research-acceptance-2026-10-01.md)。

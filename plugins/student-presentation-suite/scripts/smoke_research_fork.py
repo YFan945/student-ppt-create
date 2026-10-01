@@ -330,6 +330,7 @@ def main(argv: list[str] | None = None) -> int:
         help="use --output-format stream-json and watch for explicit subagent/fork events "
         "(definitively distinguishes a real skill-fork from an inline run)",
     )
+    parser.add_argument("--timeout-seconds", type=int, default=540)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
@@ -389,15 +390,29 @@ def main(argv: list[str] | None = None) -> int:
         permission_mode=args.permission_mode,
     )
 
-    result = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        cwd=str(project_dir),
-    )
+    # File sinks preserve partial stream data and avoid inherited-pipe hangs
+    # when an outer timeout kills this harness but leaves Claude descendants.
+    from types import SimpleNamespace
+    sink = args.output.with_suffix(".live.jsonl") if args.output else project_dir / "research-live.jsonl"
+    sink.parent.mkdir(parents=True, exist_ok=True)
+    err_sink = sink.with_suffix(".stderr.log")
+    with sink.open("w", encoding="utf-8") as out, err_sink.open("w", encoding="utf-8") as err:
+        process = subprocess.Popen(command, stdout=out, stderr=err, cwd=str(project_dir), start_new_session=sys.platform != "win32")
+        timed_out = False
+        try:
+            process.wait(timeout=args.timeout_seconds)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            if sys.platform == "win32":
+                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"], capture_output=True, check=False)
+            else:
+                import os
+                import signal
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+    result = SimpleNamespace(stdout=sink.read_text(encoding="utf-8"), stderr=err_sink.read_text(encoding="utf-8"))
+    if timed_out:
+        print(f"smoke_research_fork: host timeout after {args.timeout_seconds}s; partial stream saved at {sink}", file=sys.stderr)
 
     raw = result.stdout.strip()
     if args.output and args.stream:
@@ -490,6 +505,8 @@ def main(argv: list[str] | None = None) -> int:
             end="",
         )
 
+    if validate_note.startswith("validator found issues"):
+        return 3
     if not mechanism_ok:
         return 2
     return 0 if artifact_ok else 3

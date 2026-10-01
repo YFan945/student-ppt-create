@@ -91,6 +91,10 @@ Research defaults to one readable source per ordinary claim (medium confidence);
 
 Research handoff checks run in one metadata-only local command. Tool-boundary time/stall checks stop further retrieval while allowing partial results to be saved; see the research workflow for defaults and overrides.
 
+Research progress now counts validated task evidence, rather than arbitrary fetched pages or pack rewrites. New task handoffs request a recorded second reading of source support and scope; this does not automate semantic entailment.
+
+A bounded verbatim-excerpt helper preserves multiline source passages and can update one existing evidence binding without printing a page body. Each task is spawned once per session; failed handoffs require user-directed follow-up.
+
 ### `sp-outline`
 
 Use for slide outlines, presentation spines, speaking notes, group allocation,

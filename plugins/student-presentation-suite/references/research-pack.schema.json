@@ -28,7 +28,61 @@
           "unit": {"type": "string", "minLength": 1},
           "region": {"type": "string", "minLength": 1},
           "metric": {"type": "string", "minLength": 1},
-          "context_excerpt": {"type": "string"}
+          "context_excerpt": {"type": "string"},
+          "support_check": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "statement",
+              "verdict",
+              "subject_scope",
+              "time_scope",
+              "causal_scope",
+              "rationale",
+              "limitations"
+            ],
+            "properties": {
+              "statement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "verdict": {
+                "enum": [
+                  "supported",
+                  "qualified",
+                  "unsupported"
+                ]
+              },
+              "subject_scope": {
+                "enum": [
+                  "matches",
+                  "not_applicable",
+                  "mismatch"
+                ]
+              },
+              "time_scope": {
+                "enum": [
+                  "matches",
+                  "not_applicable",
+                  "mismatch"
+                ]
+              },
+              "causal_scope": {
+                "enum": [
+                  "matches",
+                  "not_applicable",
+                  "mismatch"
+                ]
+              },
+              "rationale": {
+                "type": "string",
+                "minLength": 1
+              },
+              "limitations": {
+                "type": "string"
+              }
+            }
+          }
         }
       }
     },

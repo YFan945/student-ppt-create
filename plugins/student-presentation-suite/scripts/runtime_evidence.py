@@ -406,6 +406,51 @@ def _record_search_payload(project: Path, event: dict) -> None:
     sys.stdout.write("\n")
 
 
+def _bounded_excerpt_command(command: str) -> bool:
+    """Recognize only the owned bounded helper and harmless shell bookkeeping."""
+    if "research_excerpt.py" not in command or "$(" in command or "`" in command:
+        return False
+    # A bounded helper may merge stderr and cap its already bounded output.
+    command = re.sub(r"\s+2>&1\s*\|\s*head\s+-([1-9]|[1-7][0-9]|80)\s*$", "", command)
+    try:
+        lexer = shlex.shlex(command.replace("\\\r\n", "").replace("\\\n", ""), posix=True, punctuation_chars=";&|")
+        lexer.whitespace_split = True
+        tokens = list(lexer)
+    except ValueError:
+        return False
+    segments, current = [], []
+    for token in tokens:
+        if token in {"&&", ";"}:
+            segments.append(current)
+            current = []
+        elif token in {"|", "||", "&"}:
+            return False
+        else:
+            current.append(token)
+    segments.append(current)
+    helper = Path(__file__).resolve().parent / "research_excerpt.py"
+    found = False
+    command_cwd = Path.cwd()
+    for args in segments:
+        if not args:
+            continue
+        if len(args) == 2 and args[0] == "cd":
+            candidate = Path(args[1])
+            command_cwd = candidate.resolve() if candidate.is_absolute() else (command_cwd / candidate).resolve()
+            continue
+        if len(args) == 1 and re.fullmatch(r"[A-Za-z_]\w*=.*", args[0]):
+            continue
+        if args == ["echo", "EXIT=$?"]:
+            continue
+        if len(args) >= 2 and Path(args[0]).name.lower() in {"python", "python.exe", "python3", "python3.exe"} and (Path(args[1]).resolve() if Path(args[1]).is_absolute() else (command_cwd / args[1]).resolve()) == helper:
+            if not all(flag in args for flag in ("--text", "--start", "--end")) or any(t in {">", "<", ">>", "-c"} for t in args):
+                return False
+            found = True
+            continue
+        return False
+    return found
+
+
 def dumps_fetched_body(command: str) -> bool:
     """True when a shell command would print a fetched page body back into the turn."""
     normalized = str(command or "").replace("\\", "/")
@@ -413,7 +458,7 @@ def dumps_fetched_body(command: str) -> bool:
         return False
     if not re.search(r"\.(txt|raw)\b", normalized, re.IGNORECASE):
         return False
-    if _prints_digest_only(command):
+    if _bounded_excerpt_command(command) or _prints_digest_only(command):
         return False
     return _BODY_DUMP_RE.search(command or "") is not None
 
@@ -641,8 +686,13 @@ def handle(event: dict) -> int:
                     if errors:
                         print("Invalid researcher task: " + "; ".join(errors), file=sys.stderr)
                         return 2
+                    prior = read_json(researcher_work / "research-task-binding.json")
+                    if prior.get("session_id") == event.get("session_id") and prior.get("session_id"):
+                        print("This session already spawned this research task. Return its saved pack and gaps; do not autonomously restart or respawn it.", file=sys.stderr)
+                        return 2
                     atomic_json(researcher_work / "research-task-binding.json", {
                         "path": str(task_path.resolve()),
+                        "session_id": event.get("session_id"),
                         "sha256": hashlib.sha256(task_path.read_bytes()).hexdigest(),
                     })
                     from shared.research_control import status
