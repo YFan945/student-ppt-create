@@ -110,7 +110,10 @@ class CalibrationPreviewTests(unittest.TestCase):
         try:
             from unittest.mock import patch
 
-            for expected_rounds in (1, 2):
+            for attempt, expected_rounds in enumerate((1, 1, 2)):
+                if attempt == 2:
+                    with (self.work / "pages" / "p01-test.js").open("a", encoding="utf-8") as stream:
+                        stream.write("\n// changed source dependency\n")
                 argv = ["calibration_preview.py", "--work-dir", str(self.work), "--slides", "1", "--json"]
                 with patch.object(__import__("sys"), "argv", argv):
                     self.assertEqual(0, calibration.main())

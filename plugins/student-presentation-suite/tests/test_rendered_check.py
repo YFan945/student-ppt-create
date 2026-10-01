@@ -16,14 +16,14 @@ for _p in (str(ROOT), str(ROOT / "skills" / "sp-deck" / "scripts")):
 
 import pptx_rendered_check as rendered_check  # noqa: E402
 
-PRESENTATION = '<p:sldSz cx="9144000" cy="5143500"/>'
+PRESENTATION = '<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"><p:sldSz cx="9144000" cy="5143500"/></p:presentation>'
 # Body 22pt everywhere, title 33pt -> ratio 1.5 >= 32/22; footer anchors the bottom.
 SLIDE_OK = (
-    '<p:sp><p:spPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="6000000" cy="600000"/></p:spPr>'
+    '<p:sp><p:spPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="6000000" cy="600000"/></a:xfrm></p:spPr>'
     '<p:txBody><a:p><a:r><a:rPr lang="zh-CN" sz="2200"/><a:t>正文</a:t></a:r></a:p></p:txBody></p:sp>'
-    '<p:sp><p:spPr><a:xfrm><a:off x="914400" y="3200000"/><a:ext cx="6000000" cy="600000"/></p:spPr>'
+    '<p:sp><p:spPr><a:xfrm><a:off x="914400" y="3300000"/><a:ext cx="6000000" cy="600000"/></a:xfrm></p:spPr>'
     '<p:txBody><a:p><a:r><a:rPr lang="zh-CN" sz="3300"/><a:t>标题</a:t></a:r></a:p></p:txBody></p:sp>'
-    '<p:sp><p:spPr><a:xfrm><a:off x="914400" y="6458000"/><a:ext cx="6000000" cy="300000"/></p:spPr>'
+    '<p:sp><p:spPr><a:xfrm><a:off x="914400" y="4900000"/><a:ext cx="6000000" cy="300000"/></a:xfrm></p:spPr>'
     '<p:txBody><a:p><a:r><a:rPr lang="zh-CN" sz="1300"/><a:t>页脚</a:t></a:r></a:p></p:txBody></p:sp>'
 )
 CHART_OK = (
@@ -34,14 +34,14 @@ CHART_OK = (
 CHART_AUTO = CHART_OK.replace('<c:max val="80.0"/><c:min val="0.0"/>', "")
 # 9pt run + nothing below mid-slide.
 SLIDE_BAD = (
-    '<p:sp><p:spPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="6000000" cy="600000"/></p:spPr>'
+    '<p:sp><p:spPr><a:xfrm><a:off x="914400" y="914400"/><a:ext cx="6000000" cy="600000"/></a:xfrm></p:spPr>'
     '<p:txBody><a:p><a:r><a:rPr lang="zh-CN" sz="900"/><a:t>过小</a:t></a:r></a:p></p:txBody></p:sp>'
 )
 
 
 def _make_pptx(directory: Path, slide_xml: str, chart_xml: str | None = None) -> Path:
     path = directory / "deck.pptx"
-    entries = {"ppt/presentation.xml": PRESENTATION, "ppt/slides/slide1.xml": slide_xml}
+    entries = {"ppt/presentation.xml": PRESENTATION, "ppt/slides/slide1.xml": '<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><p:cSld><p:spTree>' + slide_xml + '</p:spTree></p:cSld></p:sld>' }
     if chart_xml:
         entries["ppt/charts/chart1.xml"] = chart_xml
     with zipfile.ZipFile(path, "w") as zf:

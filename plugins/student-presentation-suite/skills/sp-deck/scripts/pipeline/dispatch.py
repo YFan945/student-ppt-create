@@ -97,6 +97,10 @@ def _current_critic_review(work_dir: Path, manifest: dict[str, Any]) -> bool:
         review = load_json(review_path)
         if not isinstance(review, dict):
             return False
+        from pptx_quality_gate_v071 import visual_review_schema_issues
+
+        if any(item.get("severity") in {"critical", "major"} for item in visual_review_schema_issues(review)):
+            return False
         render = manifest.get("render") or {}
         pages = render.get("pages") or []
         contact = render.get("contact_sheet") or {}
@@ -451,7 +455,16 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                                 ) + payload["notes"]
         elif state == "producing":
             pending_repair = bool((manifest.get("build") or {}).get("pending_repair"))
-            if (pending_repair or pre_qa_failed_current(manifest)) and generator_changed_since_build(manifest):
+            exhausted = pre_qa_failed_current(manifest) and int(
+                (manifest.get("pre_qa") or {}).get("rounds") or 0
+            ) >= MAX_PRE_QA_REBUILDS
+            if exhausted and not pending_repair:
+                payload["next_command"] = (
+                    f'{python} "{pipeline}" repair --work-dir "{work_dir}" '
+                    '--reason "Pre-QA retry budget exhausted; repair all deterministic blockers"'
+                )
+                payload["notes"] = "Pre-QA is still blocked; register a budgeted repair before rebuilding."
+            elif (pending_repair or pre_qa_failed_current(manifest)) and generator_changed_since_build(manifest):
                 # The repair / pre-QA-fix builder came back and edited pages — the
                 # fingerprint moved. The next step is the rebuild that lands those edits,
                 # which is deterministic: advance runs it and continues into render → critic
@@ -487,9 +500,9 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     "(this path consumes NO repair round while the state stays producing). "
                     "Do not render and do not spawn the critic on this build."
                 )
-                fixable = slides_named_in_reports(
-                    work_dir, ("pre-qa-quality.json", "pre-qa-actual-content.json", "pre-qa-rendered.json")
-                )
+                pre_qa_reports = _packet.pre_qa_report_paths(work_dir)
+                payload["pre_qa"]["reports"] = [str(path) for path in pre_qa_reports]
+                fixable = slides_named_in_reports(work_dir, tuple(str(path) for path in pre_qa_reports))
                 shards = builder_shards(fixable, work_dir) if not basic else None
                 if shards:
                     payload["builder_shards"] = shards
@@ -499,12 +512,12 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     # 全量投影（pre_qa_report_paths 单一属主）：只挑几个名字会把
                     # pre-qa-static-risk / pre-qa-structural-contract-* 挡在 packet
                     # 之外，而 hook 又禁读它们——两头堵死（2026-09-28 live）。
-                    pre_qa_reports = _packet.pre_qa_report_paths(work_dir)
+                    repair_targets = fixable or sorted(page_files_by_slide(work_dir))
                     packets = _packet.prepare_packets(
-                        work_dir, "repair", fixable or None, pre_qa_reports,
-                        single_builder=basic,
-                        max_parallel=effective_shard_cap(manifest.get("quality_level"), len(fixable)),
-                    ) if fixable else []
+                        work_dir, "repair", repair_targets, pre_qa_reports,
+                        single_builder=basic or not fixable,
+                        max_parallel=effective_shard_cap(manifest.get("quality_level"), len(repair_targets)),
+                    )
                     if packets:
                         payload["builder_packets"] = packets
                         payload["notes"] += (
@@ -587,8 +600,8 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         "A scope=production critic-preview-map.json with compressed previews is "
                         "materialized under the work-dir (the runtime hook refreshes it at spawn when "
                         "hooks are enabled); the critic reads the map, not raw render paths. "
-                        "Overview: read the cheap contact-sheet-thumb.jpg, not the full-size contact sheet; "
-                        "the isolated critic Reads EVERY full-size page (its context never reaches this session). "
+                        "Read the mapped overview and EVERY mapped page preview; raw render PNGs "
+                        "are needed only when a preview is missing or illegible. "
                         + (
                             "Degraded receipt policy for this work-id: wait for the critic to return "
                             "and confirm visual-review.json is valid — do NOT wait for "
@@ -635,6 +648,24 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 payload["prepare_deliverables"] = requested_prepared_deliverables(manifest)
             elif qa.get("ok"):
                 payload["next_command"] = f'{python} "{pipeline}" complete --work-dir "{work_dir}"'
+            elif render_is_current(manifest) and (work_dir / "pipeline-qa.json").is_file() and any(
+                item.get("code") == "visual_review_schema_invalid"
+                for item in (load_json(work_dir / "pipeline-qa.json").get("problems") or [])
+                if isinstance(item, dict)
+            ):
+                # A malformed critic report cannot be fixed by editing pages.
+                # Correct/revalidate it before registering a deck repair round.
+                payload["next_command"] = (
+                    f'{python} "{pipeline}" qa --work-dir "{work_dir}" '
+                    f'--visual-review "{work_dir / "visual-review.json"}"'
+                )
+                payload["notes"] = "Correct the critic report contract, then rerun QA; do not rebuild or spend a Builder repair round."
+                if not _current_critic_review(work_dir, manifest):
+                    detail = _materialize_critic_previews(work_dir)
+                    payload["agent"] = "student-presentation-suite:visual-critic"
+                    payload["notes"] += " Spawn visual-critic without a name, using critic-preview-map.json and its schema_path; correct the report against the same current render."
+                    if detail:
+                        payload["notes"] += f" Preview failure: {detail}."
             else:
                 payload["next_command"] = (
                     f'{python} "{pipeline}" repair --work-dir "{work_dir}" --reason "<summary>"'
@@ -656,26 +687,6 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         "Deck-level blockers without a slide number mean the whole deck is in scope — "
                         "use ONE builder reading the reports."
                     )
-                # Builder Packet (v0.15 Batch 2): full-QA repair packets projected from
-                # pipeline-qa.json, generated once the repair is recorded.
-                try:
-                    if (work_dir / "pipeline-qa.json").is_file():
-                        repair_targets = blocker_slides or sorted(page_files_by_slide(work_dir))
-                        packets = _packet.prepare_packets(
-                            work_dir, "repair", repair_targets, ["pipeline-qa.json"],
-                            single_builder=basic or not blocker_slides,
-                            max_parallel=effective_shard_cap(manifest.get("quality_level"), len(repair_targets)),
-                            convergence=repair_convergence(work_dir),
-                        )
-                        if packets:
-                            payload["builder_packets"] = packets
-                            payload["notes"] += (
-                                " Repair packets with the projected blockers are generated under "
-                                "builder-packets/ (builder_packets field) — spawn each builder with "
-                                "its packet path as the task input."
-                            )
-                except Exception as exc:
-                    observe_packet_failure(work_dir, payload, "repair", exc)
         elif state == "complete":
             payload["next_command"] = "(done)"
             payload["notes"] = "do not re-inject /sp-deck"
@@ -687,7 +698,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
         # planned create/rebuild keeps the build stage contract (the calibration
         # flow) even when the next step is an agent spawn with no bash command.
         action = "build"
-    elif manifest and str(manifest.get("state") or "") == "producing" and pre_qa_failed_current(manifest):
+    elif manifest and str(manifest.get("state") or "") == "producing" and pre_qa_failed_current(manifest) and " repair " not in payload["next_command"]:
         # the pre-QA fix path is a build-stage rule set: builder edits, rebuild, no repair
         action = "build"
     else:

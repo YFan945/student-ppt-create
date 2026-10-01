@@ -449,6 +449,8 @@ def qa_input_fingerprint(
     values: list[tuple[str, str | None]] = [("pptx", sha256_file(pptx))]
     for label, path in (("visual_review", visual_review), ("notes", notes)):
         values.append((label, sha256_file(path) if path and path.is_file() else None))
+    registry = Path(str(pptx) + ".registry-report.json")
+    values.append(("registry_report", sha256_file(registry) if registry.is_file() else None))
     values.extend((f"preview:{path.resolve()}", sha256_file(path)) for path in previews if path.is_file())
     return stable_hash(values)
 
@@ -596,10 +598,12 @@ def build_qa_stages(
 
     candidates: dict[str, Stage] = {
         "package": _gate_stage("package", work_dir, "qa", gate_inputs),
+        "static_risk": _gate_stage("static_risk", work_dir, "qa", gate_inputs),
         "rendered": _gate_stage("rendered", work_dir, "qa", gate_inputs),
     }
     if spec:
         candidates["actual_content"] = _gate_stage("actual_content", work_dir, "qa", gate_inputs)
+        candidates["structural_contract"] = _gate_stage("structural_contract", work_dir, "qa", gate_inputs)
     if spec and lock and visual_review:
         candidates["quality"] = _gate_stage(
             "quality", work_dir, "qa", gate_inputs, visual_review=visual_review,
@@ -684,7 +688,7 @@ def run_pre_qa_gates(manifest: dict[str, Any], work_dir: Path) -> dict[str, Any]
 
 
 def pre_qa_failed_current(manifest: dict[str, Any]) -> bool:
-    """Whether the CURRENT build failed the pre-QA gates (and still may rebuild).
+    """Whether the CURRENT build failed, independently of the retry budget.
 
     The pptx binding in `build` is replaced by every build, so a stale pre_qa
     entry (from an earlier deck) can never unlock a rebuild by itself.
@@ -693,9 +697,7 @@ def pre_qa_failed_current(manifest: dict[str, Any]) -> bool:
     build_sha = str(((manifest.get("build") or {}).get("pptx") or {}).get("sha256") or "")
     if not build_sha or pre_qa.get("pptx_sha256") != build_sha:
         return False
-    if pre_qa.get("ok") is not False:
-        return False
-    return int(pre_qa.get("rounds") or 0) < MAX_PRE_QA_REBUILDS
+    return pre_qa.get("ok") is False
 
 
 def generator_changed_since_build(manifest: dict[str, Any]) -> bool:
@@ -731,6 +733,7 @@ from calibration_review import (  # noqa: E402
 )
 
 ISSUE_DETAIL_KEYS = (
+    "element", "fix", "repair_level", "resolved", "resolved_evidence",
     "detail", "expected", "missing", "part", "colors", "elements",
     "field", "score", "estimated_sec",
 )

@@ -137,7 +137,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/quality_gate.py" --core v07
 
 该 gate 同时执行四类检查：
 
-1. **Structured Visual Critic**：`hierarchy` / `focal_point` 低于下限（rigorous 6、其余 5）在 rigorous/standard 是 Major 阻断（standard 按 6.0 判定结构性低分），fast 记 advisory；`composition` / `visual_interest` / `whitespace` 低于下限与整套平均低于目标值是 **advisory**——记录并计数（`advisory_count`），不机械阻断交付；未解决 Major/Critical finding 照常阻断（管线 `visual_score_policy`）；
+1. **Structured Visual Critic**：以 `shared/quality_tiers.py` 为唯一档位策略。`standard/rigorous` 的 `hierarchy`、`focal_point`、`composition`、`visual_interest` 低于 6.0 为 Major；`fast` 的分数低于 5.0 为 advisory。`whitespace` 与整套平均低分只作 advisory。未解决 critical 在所有档位阻断，风格 major 仅在 rigorous 阻断。每条 Major/Critical 必须提供 `element`、`fix`、`repair_level` 并完整传给修复 Packet；`resolved_evidence` 的 before/after 为整个 PPTX 的 SHA256，after 必须等于当前 `pptx_sha256`；页面渲染哈希由 `page_sha256` 单独绑定；
 2. **Deck Rhythm**：连续两页相同弱卡片/列表结构或任意结构连续三页阻断；
 3. **Evidence Closure**：Slide `evidence_refs` ↔ Evidence Ledger 使用页一致，课堂/学术引用必须能在最终 reference area 找到每个已使用来源；
 4. **Speaker Timing**：按约 240 中文字/分钟、130 英文词/分钟估算真实讲稿时长；整套预计超过确认时长 15% 视为 Major。判定对象是**交付的 PPTX 备注区**（`ppt/notesSlides/*.xml`），不是冻结 spec 的 `speaker_notes` 字段——后者从 `plan` 起一直为空、也没有任何步骤被要求填写它，2026-09-17 live 因此在一个备注区完好的 deck 上报出 10 项幽灵 `speaker_notes_missing`，直接导致交付 `incomplete`。门读产物，不读计划。
@@ -192,7 +192,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/copy_fit_preflight.py" \
 claim 必然在 readback 阶段炸成几十个 blocker，进而迫使生成器整文件重写、整条修复链
 重来。这一步把那次返工提前到"改 Spec 还很便宜"的时候。
 
-workflow state 仍只记录一次正式 `qa → producing` 返工边；该正式返工内部允许最多 3 个受控 render-repair iterations。
+每次正式返工都由管线记录并计入 `repair_budget`：QA 后走 `qa → producing`，预检免返工额度耗尽后走 `producing → producing`。基数与提额硬上限以 `pipeline-contract.json` 为准，达到上限保持 incomplete，不因额度耗尽放行。
 
 ## Gate 4 — Delivery
 
@@ -245,3 +245,11 @@ v0.7.1 delivery report 继续使用 `gate_profile: simplified-v1` 保持 workflo
 - 高风险模板/OOXML 编辑需要保存细粒度诊断；
 - 外部素材的许可、alt text 或来源必须单独归档；
 - 排查 content drift、preview hash 或 package relationship 问题。
+
+## 确定性门禁与运行验证边界
+
+正式 QA 顺序为 package → static_risk → rendered → actual_content → structural_contract → quality → delivery。所有七个门必须运行并通过；旧的五门 QA 缓存需要重跑。预检达到免返工重建上限后保持阻断，由 `repair` 从 producing 注册正式返工并消耗既有返工预算，不能转去 render 绕过问题。
+
+`rendered` 读取 OOXML：按页核对有效字号，解析常见 layout/master 字号继承和未旋转组合坐标；留白排除背景和页脚，只作 advisory。未知/旋转组合坐标不用于推断留白。该检查不替代真实渲染与 critic。生成伴随的 Registry 报告在构建重命名后绑定当前 PPTX hash，旧报告不计作当前证据。
+
+CI 的场景渲染和 gallery 是运行与静态检查 smoke，合成的交付覆盖 fixture 不包含视觉评分，也不能通过 canonical critic schema。真实视觉验收仍需独立 critic 读取当前 hash 绑定的预览；小字或裁切看不清时读取原尺寸页图。

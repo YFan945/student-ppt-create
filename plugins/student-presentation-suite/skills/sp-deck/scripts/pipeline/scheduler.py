@@ -62,9 +62,8 @@ def _slide_number_of(value: object) -> int | None:
 def slides_named_in_reports(work_dir: Path, names: tuple[str, ...]) -> list[int]:
     """Slide numbers carried by the current blocker reports.
 
-    Reports without slide numbers (a deck-level finding) contribute nothing: a shard plan
-    built from "unknown pages" would send builders at the wrong targets, so the caller
-    falls back to a single builder that reads the reports itself.
+    Advisory/derived findings are not repair targets. Any deck-level blocker
+    disables targeted sharding, including when page-level blockers coexist.
     """
     found: set[int] = set()
     for name in names:
@@ -76,7 +75,7 @@ def slides_named_in_reports(work_dir: Path, names: tuple[str, ...]) -> list[int]
         except Exception:
             continue
         for item in (report.get("problems") or []) + (report.get("issues") or []):
-            if not isinstance(item, dict):
+            if not isinstance(item, dict) or item.get("derived") or item.get("severity", "major") not in {"critical", "major"}:
                 continue
             # Blockers name pages either singly (`slide`) or as a run
             # (`slides: [4, 5, 6]` — e.g. repetitive_structure_pair/run).
@@ -84,10 +83,14 @@ def slides_named_in_reports(work_dir: Path, names: tuple[str, ...]) -> list[int]
             if slide is not None:
                 found.add(slide)
             group = item.get("slides")
+            valid_group = [
+                number for number in (_slide_number_of(value) for value in group)
+                if number is not None
+            ] if isinstance(group, list) else []
+            if slide is None and not valid_group:
+                return []
             if isinstance(group, list):
-                for value in group:
-                    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
-                        found.add(value)
+                found.update(valid_group)
     return sorted(found)
 
 

@@ -296,6 +296,7 @@ def score_history(work_dir: Path) -> dict[str, dict[str, Any]]:
 
 
 ISSUE_DETAIL_KEYS = (
+    "element", "fix", "repair_level", "resolved", "resolved_evidence",
     "detail", "expected", "missing", "part", "colors", "elements",
     "field", "score", "estimated_sec",
 )
@@ -830,7 +831,9 @@ def write_packet(
     out_dir = work_dir / PACKET_DIR_NAME
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / packet_name(mode, shard)
-    path.write_text(json.dumps(packet, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    serialized = json.dumps(packet, ensure_ascii=False, indent=2) + "\n"
+    if not path.is_file() or path.read_text(encoding="utf-8") != serialized:
+        path.write_text(serialized, encoding="utf-8")
     return path, packet
 
 

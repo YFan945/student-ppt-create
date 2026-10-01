@@ -12,11 +12,14 @@ from pipeline.convergence import (  # noqa: E402
     repair_budget,
 )
 from pipeline.core import (  # noqa: E402
+    QA_ORDER,
     RefusedError,
     binding_is_current,
     load_manifest,
     manifest_path,
     mirror_workflow_state,
+    pptx_path,
+    pre_qa_failed_current,
     record,
     render_is_current,
     require_state,
@@ -39,6 +42,10 @@ def cmd_complete(args: argparse.Namespace) -> int:
     assert manifest is not None
     validate_manifest_authorization(manifest)
     qa = manifest.get("qa") or {}
+    if pre_qa_failed_current(manifest) or set(qa.get("stages") or {}) != set(QA_ORDER) or any(
+        not stage.get("ok") for stage in (qa.get("stages") or {}).values()
+    ):
+        raise RefusedError("all deterministic and final QA stages must pass; run QA again")
     delivery = (qa.get("stages") or {}).get("delivery") or {}
     if not qa.get("ok"):
         raise RefusedError(f"QA still has {qa.get('blockers', '?')} blocker(s)")
@@ -57,6 +64,9 @@ def cmd_complete(args: argparse.Namespace) -> int:
         *(qa.get("previews") or []),
         *(qa.get("stages") or {}).values(),
     ]
+    registry = Path(str(pptx_path(manifest)) + ".registry-report.json")
+    if registry.is_file() or qa.get("registry_report") is not None:
+        evidence.append(qa.get("registry_report"))
     if qa.get("visual_generation_report") is not None:
         evidence.append(qa.get("visual_generation_report"))
     if qa.get("notes") is not None:

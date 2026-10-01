@@ -197,6 +197,7 @@ def _qa_gate(
     problems: list[dict[str, Any]],
     report_path: Path,
 ) -> None:
+    report_path.unlink(missing_ok=True)
     result = subprocess.run(
         [sys.executable, str(HERE / script), *argv],
         check=False,
@@ -218,7 +219,14 @@ def _qa_gate(
         )
         return
 
-    report = json.loads(report_path.read_text(encoding="utf-8"))
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        if not isinstance(report, dict):
+            raise ValueError("report must be an object")
+    except (OSError, ValueError) as exc:
+        gates[name] = {"ok": False, "checked": True, "exit_code": result.returncode}
+        problems.append(problem(name, "critical", f"{script}_invalid_report", str(exc)))
+        return
     issues = report.get("issues") if isinstance(report.get("issues"), list) else []
     for issue in issues:
         if not isinstance(issue, dict):
@@ -234,19 +242,19 @@ def _qa_gate(
             )
         )
     gates[name] = {
-        "ok": bool(report.get("ok", result.returncode == 0)),
+        "ok": report.get("ok") is True and result.returncode == 0,
         "checked": True,
         "exit_code": result.returncode,
         "issue_count": len(issues),
         "report": str(report_path),
     }
-    if issues:
-        return
-    if not report.get("ok", True):
+    if not gates[name]["ok"] and not any(
+        item.get("gate") == name and item.get("severity") in BLOCKING for item in problems
+    ):
         problems.append(
             problem(
                 name,
-                "major" if result.returncode else "minor",
+                "major",
                 f"{script}_failed",
                 f"{script} reported not ok without itemised issues (exit {result.returncode}).",
             )
@@ -395,7 +403,7 @@ def run(args: argparse.Namespace, workdir: Path | None = None) -> dict[str, Any]
     counts = {severity: sum(1 for item in problems if item["severity"] == severity) for severity in SEVERITIES}
     blockers = counts["critical"] + counts["major"]
     return {
-        "ok": blockers == 0,
+        "ok": blockers == 0 and all(gate.get("ok") is True for gate in gates.values()),
         "gates_version": "0.8",
         "quality": args.quality,
         "inputs": {

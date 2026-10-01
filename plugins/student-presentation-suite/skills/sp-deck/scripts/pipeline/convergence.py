@@ -41,9 +41,6 @@ def repair_budget(manifest: dict[str, Any] | None) -> dict[str, Any]:
 def gate_regressions(
     work_dir: Path,
     reports: dict[str, Any],
-    *,
-    blockers: int = 0,
-    failed: list[str] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """A gate that passed on the previous build and fails now means the change broke it.
 
@@ -90,7 +87,7 @@ def gate_regressions(
             continue
         history.setdefault(name, entry)
     rounds = [item for item in (previous.get("_rounds") or []) if isinstance(item, dict)]
-    rounds.append({"round": len(rounds) + 1, "blockers": int(blockers), "failed": list(failed or [])})
+    # QA owns the single round entry, after regressions and all blockers are known.
     history["_rounds"] = rounds[-8:]
     return problems, history
 
@@ -157,32 +154,26 @@ def repair_convergence(work_dir: Path) -> dict[str, Any] | None:
             "change it or deliver incomplete."
         )
 
-    # A blocker group that is byte-identical in two consecutive rounds while everything else
-    # moved is evidence about the GATE, not about the pages. 2026-09-18 live: 16
-    # `missing_final_reference` blockers were identical in all four QA rounds (the gate matched
-    # each evidence entry's claim text against a bibliography that lists sources), so `complete`
-    # was unreachable by construction. The trend stayed "improving" — 48/34/23/17 — and the run
-    # spent the whole repair budget plus 5.4M tokens of forensics on a fixed offset, then asked
-    # the user a question it could have answered itself. Naming the group converts that into a
-    # reading the main session can act on: exclude it, repair the rest, and say so in the
-    # delivery note.
-    previous_codes = {str(k): int(v) for k, v in (rounds[-2].get("codes") or {}).items()}
+    # Compare semantic findings, not equal code tallies. A stable group is a
+    # diagnostic hint only; it never authorizes bypassing a failed quality gate.
     current_codes = {str(k): int(v) for k, v in (rounds[-1].get("codes") or {}).items()}
-    frozen = {code: count for code, count in current_codes.items() if previous_codes.get(code) == count}
+    previous_findings = rounds[-2].get("findings") or {}
+    current_findings = rounds[-1].get("findings") or {}
+    frozen = {
+        code: count for code, count in current_codes.items()
+        if current_findings.get(code) and previous_findings.get(code) == current_findings[code]
+    }
     frozen_total = sum(frozen.values())
-    if previous_codes and frozen_total >= max(3, int(0.2 * current)):
+    if frozen_total >= max(3, int(0.2 * current)):
         result["suspect_gate_defect"] = {
             "codes": dict(sorted(frozen.items())),
             "blockers": frozen_total,
             "share_of_current": round(frozen_total / current, 3) if current else None,
             "advice": (
-                "these blockers are identical in two consecutive rounds while the rest of the "
-                "list moved: repair rounds cannot change them, so they are a gate-side candidate "
-                "rather than page work. Check them against the artifact once — if the deck already "
-                "satisfies the stated contract, the check is wrong. Either way stop spending repair "
-                "rounds on this group: exclude it, repair the remaining blockers, and record it as a "
-                "known gate limitation in the delivery note. Do not ask the user to choose a "
-                "delivery strategy for it — the data already answers what to do."
+                "the same findings persist across two rounds. Inspect their pages and gate "
+                "inputs before repeating the repair. Persistence alone does not prove a gate "
+                "defect and does not authorize excluding blockers or completing a failed deck. "
+                "Change the repair approach; fix the check only if the artifact proves it wrong."
             ),
         }
     return result

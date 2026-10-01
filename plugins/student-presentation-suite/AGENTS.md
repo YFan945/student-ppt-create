@@ -63,7 +63,9 @@ intake_pending → intake_confirmed → planned → producing → qa → complet
 
 Terminal states (`blocked`/`incomplete`) may be entered from `intake_confirmed`
 onward, not from `intake_pending`.
-qa → producing is the rework edge (`ppt_pipeline.py repair`);
+qa → producing is the post-QA rework edge (`ppt_pipeline.py repair`);
+pre-QA retry exhaustion registers a budgeted producing → producing repair,
+while the failed build remains blocked from render and QA until rebuilt green.
 `incomplete → qa` is the recovery edge.
 ```
 

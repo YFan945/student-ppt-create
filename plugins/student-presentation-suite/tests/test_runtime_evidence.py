@@ -432,6 +432,28 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual("rigorous", payload["quality_level"])
         self.assertEqual("production", payload["scope"])
 
+    def test_unchanged_preview_is_reused_and_corruption_is_reencoded(self):
+        self.prepare_render()
+        module = runtime.critic_preview
+        first = module.materialize(self.work)
+        map_path = self.work / module.MAP_NAME
+        stamp = map_path.stat().st_mtime_ns
+        with patch.object(module, "_jpeg_preview", wraps=module._jpeg_preview) as encode:
+            self.assertEqual(first, module.materialize(self.work))
+            encode.assert_not_called()
+            self.assertEqual(stamp, map_path.stat().st_mtime_ns)
+            Path(first["entries"][0]["preview_path"]).write_bytes(b"corrupt")
+            module.materialize(self.work)
+            self.assertEqual(1, encode.call_count)
+
+    def test_preview_settings_invalidate_cached_images(self):
+        self.prepare_render()
+        module = runtime.critic_preview
+        first = module.materialize(self.work)
+        with patch.object(module, "_jpeg_preview", wraps=module._jpeg_preview) as encode:
+            module.materialize(self.work, long_edge=512)
+            self.assertEqual(len(first["entries"]), encode.call_count)
+
     def test_preview_map_carries_every_reference_path_the_critic_needs(self):
         """critic 只有 Read/Write、不能列目录：schema/参考文档/art-direction 的绝对
         路径必须由 hook 写进 map，解析自**已安装插件根**（2026-09-28 live：critic 为找

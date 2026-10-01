@@ -20,7 +20,7 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 `rigorous` 的 blocker = `critical` + `major`。`fast` 的主观视觉分数、重复版式和
 `major` 风格意见只作 advisory；只有无法使用的页面（例如文字无法辨认）报 `critical` 并
 阻塞。Critic 应把 `fast` 档的风格建议写成 `minor`，`blocker_count` 与回给主会话的计数按
-当前质量档计算。QA 保留这些建议，但不会因此要求 Builder 反复改版。
+当前质量档计算。QA 保留这些建议，但不会因此要求 Builder 反复改版。`standard/rigorous` 的 hierarchy、focal_point、composition、visual_interest 低于 6.0 均阻断；whitespace 和整套平均低分为 advisory。
 
 2026-09-17 live：critic 按自己的习惯回报"blocker 数：0（critical 0 / major 8 / minor 12）"，
 主会话据此判断"独立复核已判定可交付"，而质量门同一份报告算出 23 个 blocker。现在必须
@@ -199,3 +199,5 @@ repair:
 - `implementation`：spacing、wrap、overlap、contrast 等执行问题。
 
 修复后必须 rebuild → package/readback → render → 重写 visual-review.json。旧 visual report 的 PPTX hash 不能复用。
+
+`resolved_evidence.before_sha256` / `after_sha256` 是整个 PPTX 修改前后的 SHA256，after 必须等于当前 `pptx_sha256`，不是页图哈希。页面图证据使用 `page_sha256`。每条 Major/Critical 的 `element`、`fix`、`repair_level` 均由 schema 强制要求并贯穿修复链。

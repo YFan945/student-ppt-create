@@ -22,6 +22,7 @@ from pipeline.core import (  # noqa: E402
     HERE,
     RefusedError,
     load_manifest,
+    pre_qa_failed_current,
     record,
     save_manifest,
 )
@@ -52,7 +53,12 @@ def _run_quietly(func, ns: argparse.Namespace) -> int:
     repair / complete) each print progress lines, and a log line ahead of the
     JSON would break every machine consumer."""
     with _redirect_stdout(sys.stderr):
-        return func(ns)
+        code = func(ns)
+    # QA's blocked status is a legitimate transition to repair. Other nonzero
+    # results must surface immediately instead of being silently retried.
+    if code != 0 and not (func is cmd_qa and code == 2):
+        raise RefusedError(f"{getattr(func, '__name__', type(func).__name__)} failed (exit {code}); inspect its stage report")
+    return code
 
 
 BRIEF_KEYS = (
@@ -124,6 +130,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
     result: dict[str, Any] = {}
     step_cap_hit = False
     start_state = str((load_manifest(work_dir) or {}).get("state") or "(absent)")
+    attempted: set[tuple[str, str, str]] = set()
     try:
         for _ in range(MAX_ADVANCE_STEPS):
             payload = build_next_payload(work_dir)
@@ -159,6 +166,13 @@ def cmd_advance(args: argparse.Namespace) -> int:
             if state == "complete":
                 result = {"status": "complete", "actions": actions, "dispatch": payload}
                 break
+            # Ignore ledger churn and packet timestamps. A repeated command on
+            # the same state/deck in this invocation is no deterministic progress.
+            deck_sha = str((((manifest or {}).get("build") or {}).get("pptx") or {}).get("sha256") or "")
+            step_key = (state, command, deck_sha)
+            if step_key in attempted:
+                raise RefusedError(f"no progress after {actions[-1] if actions else 'dispatch'}: {command[:180]}")
+            attempted.add(step_key)
             if " build " in bordered:
                 if state == "planned" and str((manifest or {}).get("mode") or "") == "edit_ooxml":
                     # An edit-mode first build before the main session applied the edit
@@ -219,7 +233,7 @@ def cmd_advance(args: argparse.Namespace) -> int:
                 continue
             if " repair " in bordered:
                 _run_quietly(cmd_repair, argparse.Namespace(
-                    work_dir=work_dir, reason="advance: recorded QA blockers",
+                    work_dir=work_dir, reason="advance: recorded deterministic pre-QA blockers" if pre_qa_failed_current(manifest or {}) else "advance: recorded QA blockers",
                     extend=0, extend_reason=None, force=False,
                 ))
                 actions.append("repair")

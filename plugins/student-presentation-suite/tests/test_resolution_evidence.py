@@ -53,7 +53,7 @@ class ResolutionEvidenceTests(unittest.TestCase):
                         "visual_interest": 8,
                         "whitespace": 8,
                     },
-                    "issues": [finding],
+                    "issues": [{"element": "rail", "fix": "simplify rail", "repair_level": "composition", **finding}],
                 }
             ],
         }

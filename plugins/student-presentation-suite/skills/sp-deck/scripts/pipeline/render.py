@@ -16,6 +16,7 @@ from pipeline.core import (  # noqa: E402
     PPTX_TOOL,
     RefusedError,
     bind,
+    binding_is_current,
     load_manifest,
     now,
     pptx_path,
@@ -112,13 +113,15 @@ def cmd_render(args: argparse.Namespace) -> int:
     if render_is_current(manifest):
         render = manifest.get("render") or {}
         old_contact = Path(str((render.get("contact_sheet") or {}).get("path") or ""))
-        old_thumb = Path(str((render.get("contact_sheet_thumb") or {}).get("path") or ""))
-        if old_thumb and not old_thumb.is_file():
+        thumb_binding = render.get("contact_sheet_thumb") or {}
+        old_thumb = Path(str(thumb_binding.get("path") or work_dir / "contact-sheet-thumb.jpg"))
+        if not binding_is_current(thumb_binding):
             # 旧 manifest 没有缩略图字段或文件丢失：从已绑定的页图补生成。
             page_paths = [Path(str(item.get("path"))) for item in render.get("pages") or []]
             existing = [path for path in page_paths if path.is_file()]
             if existing:
-                make_contact_thumb(existing, old_thumb or work_dir / "contact-sheet-thumb.jpg")
+                make_contact_thumb(existing, old_thumb)
+                render["contact_sheet_thumb"] = bind(old_thumb)
         record(
             manifest, "render", str(manifest.get("state")), str(manifest.get("state")),
             page_count=int(render.get("page_count") or 0), reused=True,

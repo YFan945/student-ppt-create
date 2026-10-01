@@ -34,6 +34,7 @@ from pipeline.core import (  # noqa: E402
     load_manifest,
     mirror_workflow_state,
     pptx_path,
+    pre_qa_failed_current,
     qa_input_fingerprint,
     record,
     render_is_current,
@@ -58,6 +59,8 @@ def cmd_qa(args: argparse.Namespace) -> int:
     require_state(manifest, QA_FROM, "qa")
     assert manifest is not None
     validate_manifest_authorization(manifest)
+    if pre_qa_failed_current(manifest):
+        raise RefusedError("QA requires a deterministically green build; repair and rebuild first")
     pptx = pptx_path(manifest)
     if not pptx.is_file():
         raise RefusedError("no built PPTX in manifest")
@@ -117,6 +120,8 @@ def cmd_qa(args: argparse.Namespace) -> int:
     )
     fingerprint = stable_hash([
         fingerprint,
+        ("qa_order", QA_ORDER),
+        ("history_format", 2),
         manifest.get("inputs"),
         ("visual_generation_report", vgr_binding),
         ("prepared_deliverables", manifest.get("deliverables")),
@@ -186,9 +191,22 @@ def cmd_qa(args: argparse.Namespace) -> int:
         for item in problems
         if not item.get("derived") and item["severity"] in QA_BLOCKING_SEVERITIES
     )
+    findings: dict[str, list[str]] = {}
+    for item in problems:
+        if item.get("derived") or item["severity"] not in QA_BLOCKING_SEVERITIES:
+            continue
+        code = str(item.get("code") or "issue")
+        # Counts can stay equal while entirely different pages/findings fail.
+        signature = json.dumps(
+            {key: item.get(key) for key in ("gate", "code", "severity", "slide", "slides", "element", "message", "fix", "repair_level")},
+            ensure_ascii=False, sort_keys=True,
+        )
+        findings.setdefault(code, []).append(signature)
     rounds.append({
-        "round": len(rounds) + 1, "blockers": blockers, "failed": failed_stages,
+        "round": max((int(item.get("round") or 0) for item in rounds), default=0) + 1,
+        "blockers": blockers, "failed": failed_stages,
         "codes": dict(sorted(codes.items())),
+        "findings": {code: sorted(items) for code, items in findings.items()},
         # D3 (informational): which pages this round's blockers name, so the
         # convergence reader can see "same pages keep failing" vs "moving around".
         "pages": sorted({
@@ -217,6 +235,7 @@ def cmd_qa(args: argparse.Namespace) -> int:
     manifest["qa"] = {
         "ok": qa_report["ok"], "blockers": blockers, "input_fingerprint": fingerprint,
         "report": bind(qa_report_path), "stages": reports,
+        "registry_report": bind(Path(str(pptx) + ".registry-report.json")) if Path(str(pptx) + ".registry-report.json").is_file() else None,
         "visual_review": bind(visual_review) if visual_review and visual_review.is_file() else None,
         "visual_generation_report": bind(vgr) if vgr.is_file() else None,
         "deliverables": manifest.get("deliverables") or None,

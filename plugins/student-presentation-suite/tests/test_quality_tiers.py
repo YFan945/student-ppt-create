@@ -144,7 +144,7 @@ class TierGateMatrixTests(unittest.TestCase):
 
             report = self.write_review(
                 root, pptx, self.base_scores(),
-                [{"code": "style", "severity": "major", "message": "repetitive"}],
+                [{"code": "style", "severity": "major", "message": "repetitive", "element": "cards", "fix": "vary composition", "repair_level": "composition"}],
             )
             advised = self.quality.validate_visual_report(
                 report, pptx, 1, policy=tier_policy("standard")
@@ -172,7 +172,7 @@ class TierGateMatrixTests(unittest.TestCase):
             pptx.write_bytes(b"pptx")
             report = self.write_review(
                 root, pptx, self.base_scores(),
-                [{"code": "style", "severity": "major", "message": "repetitive"}],
+                [{"code": "style", "severity": "major", "message": "repetitive", "element": "cards", "fix": "vary composition", "repair_level": "composition"}],
             )
             result = self.quality.validate_visual_report(
                 report, pptx, 1, policy=tier_policy("rigorous")

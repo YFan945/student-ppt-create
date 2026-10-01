@@ -182,6 +182,8 @@ def first_style_size(root: ET.Element | None, style_name: str) -> float | None:
     if root is None:
         return None
     paths = [
+        f".//p:txStyles/p:{style_name}/a:lvl1pPr/a:defRPr",
+        f".//p:txStyles/p:{style_name}/a:defRPr",
         f".//p:txStyles/a:{style_name}/a:lvl1pPr/a:defRPr",
         f".//p:txStyles/a:{style_name}/a:defRPr",
         ".//p:defaultTextStyle/a:lvl1pPr/a:defRPr",

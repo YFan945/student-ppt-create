@@ -305,7 +305,8 @@ def validate_visual_report(
                     )
                 )
             effective = style_severity if sev == "major" else sev
-            issues.append(issue(effective, str(finding.get("code") or "visual_finding"), str(finding.get("message") or "Unresolved visual finding."), slide=slide_no))
+            issues.append(issue(effective, str(finding.get("code") or "visual_finding"), str(finding.get("message") or "Unresolved visual finding."), slide=slide_no,
+                                **{key: finding[key] for key in ("element", "fix", "repair_level") if key in finding}))
 
     expected = set(range(1, slide_count + 1))
     missing = sorted(expected - set(by_slide))
@@ -390,7 +391,8 @@ def validate_visual_report(
                     )
                 )
             effective = style_severity if sev == "major" else sev
-            issues.append(issue(effective, str(finding.get("code") or "deck_visual_finding"), str(finding.get("message") or "Unresolved deck-level visual finding.")))
+            issues.append(issue(effective, str(finding.get("code") or "deck_visual_finding"), str(finding.get("message") or "Unresolved deck-level visual finding."),
+                                **{key: finding[key] for key in ("element", "fix", "repair_level") if key in finding}))
 
     average_score = sum(score_values) / len(score_values) if score_values else 0.0
     target_average = 7.0 if policy["block_style_major"] else 6.0

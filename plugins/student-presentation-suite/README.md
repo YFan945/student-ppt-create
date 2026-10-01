@@ -204,6 +204,8 @@ the next action and artifact paths without repeating the full stage contract;
 critic report and receipt exist, the next `advance` runs QA and either completes
 delivery or records the repair and returns one Builder boundary; it does not
 spawn another critic for the same render.
+Deterministic steps that fail or repeat without progress stop immediately. Repair packets activate only after repair registration; unchanged packets and hash-verified critic previews are reused. Unchanged, fully bound calibration previews are reused without consuming another calibration round. A malformed critic report returns to the critic before any deck repair. QA records one history row per real run and compares concrete findings rather than equal error counts; persistent findings never waive completion gates.
+
 The independent critic reads the rendered pages; the main session opens images
 only when resolving a specific blocker or disputed page.
 
@@ -506,8 +508,8 @@ success is not Office certification.
 
 Workflow states: `intake_pending` → `intake_confirmed` → `planned` → `producing` → `qa` → `complete` (terminal: `incomplete` / `blocked`).
 
-QA gates run in contract order: `package` → `rendered` → `actual_content` → `quality` → `delivery`. Deterministic pre-QA (`rendered` +
-`actual_content` + the quality gate's deterministic half) runs right after build; a
+QA gates run in contract order: `package` → `static_risk` → `rendered` → `actual_content` → `structural_contract` → `quality` → `delivery`. Deterministic pre-QA (`static_risk` + `rendered` +
+`actual_content` + `structural_contract` + the quality gate's deterministic half) runs right after build; a
 deck that is not deterministically green never reaches render or the critic.
 
 | Round budget | Value |
@@ -522,7 +524,7 @@ Delivery tiers (`quality_level`; legacy `basic` / `high-score` accepted as alias
 | Tier | Calibration rounds | Shard cap | Blocks |
 | --- | --- | --- | --- |
 | `fast` | 0 | 1 | critical + deterministic failures |
-| `standard` | 1 | 2 | + structural lows (hierarchy/focal_point) |
+| `standard` | 1 | 2 | + structural/aesthetic lows (hierarchy/focal_point/composition/visual_interest < 6) |
 | `rigorous` | 2 | 3 | + style majors + visual regression, per-slide floor 6.0 |
 
 Delivery guarantee: every confirmed artifact is content-verified against the frozen

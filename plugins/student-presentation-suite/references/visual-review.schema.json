@@ -36,7 +36,7 @@
     "blocker_count": {
       "type": "integer",
       "minimum": 0,
-      "description": "high-score 为 critical + major；basic 的主观 major 转为 advisory，仅 critical 阻塞。须与 pptx_quality_gate_v071.py 的实际口径一致"
+      "description": "由 shared/quality_tiers.py 按 fast/standard/rigorous 计算；standard/rigorous 的 hierarchy/focal_point/composition/visual_interest 低于 6 为 blocker，rigorous 另阻断风格 major。"
     },
     "severity_counts": {
       "type": "object",
@@ -96,7 +96,7 @@
           "reference_intent_preserved": {"type": "boolean"},
           "ai_template_feel": {
             "enum": ["none", "minor", "major"],
-            "description": "major 直接判 Major blocker；不要用 mild/strong 等门不认识的取值"
+            "description": "major 在 rigorous 阻断，在 fast/standard 为 advisory；不要用 mild/strong 等未定义取值。"
           },
           "issues": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
         }
@@ -125,6 +125,10 @@
     "finding": {
       "type": "object",
       "required": ["code", "severity", "message"],
+      "allOf": [{
+        "if": {"properties": {"severity": {"enum": ["major", "critical"]}}, "required": ["severity"]},
+        "then": {"required": ["element", "fix", "repair_level"]}
+      }],
       "properties": {
         "code": {
           "type": "string",
@@ -159,7 +163,7 @@
             "before_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
             "after_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
           },
-          "description": "resolved: true 的必备证据：修改前后页面渲染哈希（QA 的 has_resolution_evidence 消费）"
+          "description": "resolved: true 的证据为修改前后整个 PPTX 文件的 SHA256；after_sha256 必须等于报告的 pptx_sha256。页面渲染哈希另由 page_sha256 绑定。"
         }
       }
     }

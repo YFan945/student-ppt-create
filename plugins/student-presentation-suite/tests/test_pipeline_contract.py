@@ -42,7 +42,7 @@ class PipelineContractTests(unittest.TestCase):
 
     def test_contract_has_one_canonical_qa_order(self) -> None:
         self.assertEqual(
-            ["package", "rendered", "actual_content", "quality", "delivery"],
+            ["package", "static_risk", "rendered", "actual_content", "structural_contract", "quality", "delivery"],
             self.contract["qa_order"],
         )
         self.assertEqual(len(self.contract["qa_order"]), len(set(self.contract["qa_order"])))
@@ -52,11 +52,9 @@ class PipelineContractTests(unittest.TestCase):
         QA DAG — its order, scripts, report keys and dependency edges must match
         the runtime, and every gate script must exist."""
         registry = self.contract["qa_gates"]
-        # The registry is the gate machine-truth: qa_order plus pre-QA-only gates
-        # (static_risk and structural_contract run deterministically inside build
-        # and never in the QA DAG).
+        # Every deterministic gate runs again in the final QA DAG.
         self.assertEqual(
-            [name for name in registry if name not in {"static_risk", "structural_contract"}],
+            list(registry),
             self.contract["qa_order"],
         )
         script_roots = (ROOT / "skills" / "sp-deck" / "scripts", ROOT / "scripts")
@@ -113,7 +111,7 @@ class PipelineContractTests(unittest.TestCase):
             visual_review=None,
         )
         # without a critic review, full QA degrades to the same deterministic gates
-        self.assertEqual(["package", "rendered", "actual-content"], [s.name for s in full])
+        self.assertEqual(["package", "static-risk", "rendered", "actual-content", "structural-contract"], [s.name for s in full])
 
     def tmp_dir(self) -> Path:
         import tempfile

@@ -326,6 +326,8 @@ def build_gallery(work: Path, render: bool, gallery: str) -> dict[str, object]:
         results.append(generate_one(work, "svg-atlas-12", svg_atlas_source(tokens), render, 12))
     return {
         "ok": True,
+        "verification_scope": "package-static-and-render-smoke",
+        "independent_visual_review": False,
         "rendered": render,
         "gallery": gallery,
         "gallery_contract": {

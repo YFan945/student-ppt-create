@@ -164,7 +164,43 @@ def build_preview(work_dir: Path, slides: list[int]) -> dict[str, Any]:
     if not slides:
         raise ValueError("no calibration slides selected")
     pages = require_implemented_pages(work_dir, slides)
+    tokens_json = calibration_tokens_json(work_dir)
+    # Repeated resume/manual calls must not rebuild unchanged calibration or
+    # consume another tier round. Include local assets and helper sources so
+    # unchanged page modules alone are insufficient for a cache hit.
+    from calibration_review import calibration_evidence_is_current
+    from page_brief import find_spec
+
+    dependencies = [Path(__file__), PPTX_TOOL, *sorted(BUILDER.parent.glob("*.js"))]
+    spec_path = find_spec(work_dir)
+    if spec_path is not None:
+        dependencies.append(spec_path)
+    art_path = work_dir / "art-direction.yaml"
+    if art_path.is_file():
+        dependencies.append(art_path)
+    dependencies.extend(sorted((work_dir / "pages").glob("*.js")))
+    for directory in (work_dir / "assets", work_dir / "images"):
+        if directory.is_dir():
+            dependencies.extend(path for path in sorted(directory.rglob("*")) if path.is_file())
+    cache_inputs = {
+        "slides": slides, "tokens_json": tokens_json,
+        "dependencies": [binding(path) for path in dependencies],
+    }
+    cache_fingerprint = hashlib.sha256(
+        json.dumps(cache_inputs, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    ).hexdigest()
     target = work_dir / "calibration"
+    manifest_path = target / "calibration-manifest.json"
+    if manifest_path.is_file():
+        try:
+            existing = load_structured(manifest_path)
+            if (
+                existing.get("cache_fingerprint") == cache_fingerprint
+                and calibration_evidence_is_current(existing)[0]
+            ):
+                return {**existing, "manifest": str(manifest_path), "ok": existing["palette"]["ok"], "reused": True}
+        except (OSError, ValueError, KeyError):
+            pass
     render_dir = target / "render"
     target.mkdir(parents=True, exist_ok=True)
     if render_dir.exists():
@@ -185,7 +221,7 @@ def build_preview(work_dir: Path, slides: list[int]) -> dict[str, Any]:
     write_calibration_deck(
         deck_js,
         list(zip(slides, pages, strict=True)),
-        calibration_tokens_json(work_dir),
+        tokens_json,
     )
     run_checked(
         ["node", str(BUILDER), "--output", str(pptx), str(deck_js)],
@@ -215,6 +251,7 @@ def build_preview(work_dir: Path, slides: list[int]) -> dict[str, Any]:
             calibration_inputs[key] = binding(candidate)
     manifest = {
         "version": "1.1",
+        "cache_fingerprint": cache_fingerprint,
         "slides": slides,
         "inputs": calibration_inputs,
         "pages": [
@@ -269,7 +306,7 @@ def main() -> int:
     # （2026-09-28 live：主会话绕过 advance 直跑 4 次）此前不记账，轮次预算
     # （standard 1 / rigorous 2）因此失效，校准烧到第 4 轮复核。
     manifest_path = args.work_dir / "build-manifest.json"
-    if manifest_path.is_file():
+    if manifest_path.is_file() and not result.get("reused"):
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             calibration = dict(manifest.get("calibration") or {})

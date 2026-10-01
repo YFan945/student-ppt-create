@@ -125,6 +125,8 @@ Calibration establishes the visual thesis for `standard` and `rigorous` decks. I
 
 Before returning, verify every target page has no scaffold marker and that all edited files remain inside the work directory. Do not build the production deck yourself.
 
+For a repair assignment, if no allowed page/script change can address the blockers, return `BUILDER_BLOCKED` with the concrete reason. Do not return `BUILDER_DONE` after making no relevant change, and do not polish advisory-only pages to simulate progress.
+
 ## Text fit contract (deterministic; the build refuses violations)
 
 `H.addFittedText` runs `fitText` before rendering and THROWS when no size fits — size boxes with headroom, never exactly:

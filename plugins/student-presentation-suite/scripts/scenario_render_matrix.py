@@ -427,25 +427,12 @@ def write_visual_review(pptx: Path, path: Path, page_count: int) -> None:
     that contract by authoring the report after the pages are rendered.
     """
     digest = hashlib.sha256(pptx.read_bytes()).hexdigest()
-    slides = [
-        {
-            "slide": number,
-            "visual_structure": "reviewed",
-            "scores": {
-                "hierarchy": 8,
-                "focal_point": 8,
-                "composition": 8,
-                "visual_interest": 8,
-                "whitespace": 8,
-            },
-            "ai_template_feel": "none",
-            "issues": [],
-        }
-        for number in range(1, page_count + 1)
-    ]
+    # Synthetic coverage fixture for the simplified DELIVERY gate only.
+    # Deliberately lacks critic scores/structure: canonical visual QA must reject it.
+    slides = [{"slide": number} for number in range(1, page_count + 1)]
     path.write_text(
         json.dumps(
-            {"pptx_sha256": digest, "slides": slides, "deck": {"issues": []}},
+            {"_comment": "Synthetic delivery coverage; not an independent visual review", "pptx_sha256": digest, "slides": slides},
             ensure_ascii=False,
             indent=2,
         )
@@ -554,6 +541,8 @@ def main() -> None:
             {
                 "ok": True,
                 "rendered_scenarios": completed,
+                "verification_scope": "runtime-static-and-delivery-coverage",
+                "independent_visual_review": False,
                 "workflow_scenarios": workflow_scenarios,
             },
             ensure_ascii=False,

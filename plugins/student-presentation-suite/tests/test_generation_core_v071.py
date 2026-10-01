@@ -373,7 +373,7 @@ class GenerationCoreV071Tests(unittest.TestCase):
                 "visual_structure": "card-grid",
                 "scores": {field: 8 for field in self.quality.SCORE_FIELDS},
                 "ai_template_feel": "major",
-                "issues": [{"code": "style", "severity": "major", "message": "repetitive"}],
+                "issues": [{"code": "style", "severity": "major", "message": "repetitive", "element": "cards", "fix": "vary composition", "repair_level": "composition"}],
             }
             report.write_text(json.dumps({
                 "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
@@ -384,7 +384,7 @@ class GenerationCoreV071Tests(unittest.TestCase):
             self.assertTrue(all(item["severity"] == "advisory" for item in result["issues"]))
             payload = json.loads(report.read_text(encoding="utf-8"))
             payload["slides"][0]["issues"].append(
-                {"code": "unreadable", "severity": "critical", "message": "text cannot be read"}
+                {"code": "unreadable", "severity": "critical", "message": "text cannot be read", "element": "body", "fix": "increase font", "repair_level": "implementation"}
             )
             report.write_text(json.dumps(payload), encoding="utf-8")
             blocked = self.quality.validate_visual_report(report, pptx, 3, high_score=False)

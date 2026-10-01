@@ -57,7 +57,7 @@ def render_block(contract: dict, lang: str) -> str:
             blocks = (
                 "critical + 确定性失败"
                 if tier == "fast"
-                else "+ 结构性低分（hierarchy/focal_point）"
+                else "+ 结构与美学低分（hierarchy/focal_point/composition/visual_interest < 6）"
                 if tier == "standard"
                 else "+ 风格 Major + 视觉回归，单页底线 6.0"
             )
@@ -65,7 +65,7 @@ def render_block(contract: dict, lang: str) -> str:
             blocks = (
                 "critical + deterministic failures"
                 if tier == "fast"
-                else "+ structural lows (hierarchy/focal_point)"
+                else "+ structural/aesthetic lows (hierarchy/focal_point/composition/visual_interest < 6)"
                 if tier == "standard"
                 else "+ style majors + visual regression, per-slide floor 6.0"
             )
@@ -80,8 +80,8 @@ def render_block(contract: dict, lang: str) -> str:
 
 状态机：{states}（终止态 `incomplete` / `blocked`）。
 
-QA 门按契约顺序执行：{qa_order}。`build` 打包后立即跑确定性 pre-QA（`rendered` +
-`actual_content` + `quality` 门的确定性半部）；非确定性绿的 deck 不会进入 render 与 critic。
+QA 门按契约顺序执行：{qa_order}。`build` 打包后立即跑确定性 pre-QA（`static_risk` + `rendered` +
+`actual_content` + `structural_contract` + `quality` 门的确定性半部）；非确定性绿的 deck 不会进入 render 与 critic。
 
 | 轮次预算 | 数值 |
 | --- | --- |
@@ -104,8 +104,8 @@ QA 门按契约顺序执行：{qa_order}。`build` 打包后立即跑确定性 p
 
 Workflow states: {states} (terminal: `incomplete` / `blocked`).
 
-QA gates run in contract order: {qa_order}. Deterministic pre-QA (`rendered` +
-`actual_content` + the quality gate's deterministic half) runs right after build; a
+QA gates run in contract order: {qa_order}. Deterministic pre-QA (`static_risk` + `rendered` +
+`actual_content` + `structural_contract` + the quality gate's deterministic half) runs right after build; a
 deck that is not deterministically green never reaches render or the critic.
 
 | Round budget | Value |

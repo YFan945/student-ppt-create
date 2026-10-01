@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import sys
@@ -74,6 +75,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     state = str(manifest.get("state"))
     build_info = manifest.setdefault("build", {})
     pre_qa_fix = pre_qa_failed_current(manifest)
+    if pre_qa_fix and int((manifest.get("pre_qa") or {}).get("rounds") or 0) >= core.MAX_PRE_QA_REBUILDS and not build_info.get("pending_repair"):
+        raise RefusedError("pre-QA retry budget exhausted; register repair before rebuilding")
     declared_round = bool(build_info.get("pending_repair")) or pre_qa_fix
     if state == "producing" and not declared_round:
         # A rebuild whose generator actually changed is a CARRY-OVER build (the builder edited
@@ -162,6 +165,9 @@ def cmd_build(args: argparse.Namespace) -> int:
     # and on disk instead of a half-state.
     staging = pptx.with_name(f"{pptx.stem}.building{pptx.suffix}")
     staging.unlink(missing_ok=True)
+    sidecar_suffixes = (".registry-report.json", ".layout-report.json")
+    for suffix in sidecar_suffixes:
+        Path(str(staging) + suffix).unlink(missing_ok=True)
     built = core._runner(
         [sys.executable, str(PPTX_TOOL), "pack", str(entry), "--output", str(staging)] if editing
         else [node, str(BUILDER), "--output", str(staging), str(entry), *args.generator_args]
@@ -169,6 +175,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     if built.returncode != 0 or not staging.is_file():
         detail = (built.stderr or built.stdout or "").strip()
         staging.unlink(missing_ok=True)
+        for suffix in sidecar_suffixes:
+            Path(str(staging) + suffix).unlink(missing_ok=True)
         # The generator's traceback names the failing page module AFTER the
         # RangeError text, which detail[:600] alone usually cuts off — put the
         # page frame first so a fit/Reference refusal is fixable without a
@@ -188,6 +196,18 @@ def cmd_build(args: argparse.Namespace) -> int:
             if attempt == 5:
                 raise
             time.sleep(0.3)
+
+    for suffix in sidecar_suffixes:
+        source_report = Path(str(staging) + suffix)
+        final_report = Path(str(pptx) + suffix)
+        if source_report.is_file():
+            if suffix == ".registry-report.json":
+                report = json.loads(source_report.read_text(encoding="utf-8"))
+                report.update(pptx=str(pptx), pptx_sha256=core.sha256_file(pptx))
+                source_report.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            os.replace(source_report, final_report)
+        else:
+            final_report.unlink(missing_ok=True)
 
     # Parallel builders each own a slice of the deck, so none of them can write the single
     # readable notes file without dropping the others' text. Assemble it here instead.

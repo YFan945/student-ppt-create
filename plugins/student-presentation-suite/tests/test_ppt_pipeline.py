@@ -352,7 +352,11 @@ class PipelineTestCase(unittest.TestCase):
             "page_count": 1,
         }
         pp.save_manifest(self.work, manifest)
-        review = {"pptx_sha256": pp.sha256_file(files["pptx"]), "contact_sheet_sha256": pp.sha256_file(contact), "page_sha256": {"1": pp.sha256_file(page)}}
+        # Synthetic contract fixture, never an independent production judgment.
+        review = {"pptx_sha256": pp.sha256_file(files["pptx"]), "contact_sheet_sha256": pp.sha256_file(contact), "page_sha256": {"1": pp.sha256_file(page)}, "slides": [{
+            "slide": 1, "visual_structure": "cover", "issues": [],
+            "scores": dict.fromkeys(("hierarchy", "focal_point", "composition", "visual_interest", "whitespace"), 8),
+        }]}
         files["visual_review"].write_text(json.dumps(review), encoding="utf-8")
         if write_receipt:
             receipt = {"agent": "student-presentation-suite:visual-critic", "agent_id": "test-child", "spawn_verified": True, "work_id": self.work.name, "artifact": pp.bind(files["visual_review"]), "reads": {str(p): pp.sha256_file(p) for p in [page, contact]}}
@@ -671,7 +675,7 @@ class PreQaGateTests(PipelineTestCase):
         self.assertIn("NO repair round", payload["notes"])
         self.assertEqual("build", payload["contract"]["stage"])
 
-    def test_pre_qa_round_cap_reopens_the_formal_path(self) -> None:
+    def test_pre_qa_round_cap_requires_budgeted_repair(self) -> None:
         runner = self.failing_runner()
         for _ in range(pp.MAX_PRE_QA_REBUILDS):
             self.assertEqual(self.build(runner), 0)
@@ -679,7 +683,47 @@ class PreQaGateTests(PipelineTestCase):
         self.assertEqual(pp.MAX_PRE_QA_REBUILDS, self.manifest()["pre_qa"]["rounds"])
         payload = self.next_dispatch_payload()
         self.assertNotIn("agent", payload, "capped rounds must stop the free-fix routing")
-        self.assertIn("render", payload["next_command"])
+        self.assertIn(" repair ", payload["next_command"])
+        with self.assertRaises(pp.RefusedError):
+            pp.cmd_render(ns("render", self.work, cols=3, prefix="slide"))
+        self.assertEqual(2, self.build(runner))
+        self.assertEqual(0, pp.cmd_repair(ns("repair", self.work, reason="Repair all pre-QA blockers", extend=0, extend_reason=None)))
+        self.assertEqual(1, self.manifest()["build"]["repair_count"])
+        self.assertFalse(self.manifest()["pre_qa"]["ok"])
+        self.assertEqual(0, self.build(FakeRunner(self.work)))
+        self.assertTrue(self.manifest()["pre_qa"]["ok"])
+
+    def test_new_pre_qa_gates_generate_targeted_repair_packets(self) -> None:
+        for report_name in ("pre-qa-static-risk.json", "pre-qa-structural-contract.json"):
+            with self.subTest(report=report_name):
+                runner = FakeRunner(self.work)
+                runner.report_failures = {report_name: [{"slide": 1, "severity": "major", "code": "test-blocker", "message": "fix this page"}]}
+                self.edit_page()
+                manifest = self.manifest()
+                manifest["pre_qa"] = {}
+                manifest["build"]["pending_repair"] = True
+                pp.save_manifest(self.work, manifest)
+                self.assertEqual(0, self.build(runner))
+                payload = self.next_dispatch_payload()
+                self.assertTrue(payload.get("builder_packets"), payload)
+                packet = json.loads(Path(payload["builder_packets"][0]["packet"]).read_text(encoding="utf-8"))
+                self.assertIn("test-blocker", str(packet))
+
+    def test_build_moves_and_hash_binds_registry_report(self) -> None:
+        base = FakeRunner(self.work)
+        def runner(argv):
+            result = base(argv)
+            if "run_with_pptxgenjs.js" in " ".join(argv):
+                output = Path(argv[argv.index("--output") + 1])
+                Path(str(output) + ".registry-report.json").write_text(json.dumps({"warnings": [{"code": "content_dead_zone", "message": "gap"}]}), encoding="utf-8")
+            return result
+        self.assertEqual(0, self.build(runner))
+        report = self.work / "deck.pptx.registry-report.json"
+        self.assertEqual(pp.sha256_file(self.work / "deck.pptx"), json.loads(report.read_text(encoding="utf-8"))["pptx_sha256"])
+        self.assertFalse((self.work / "deck.building.pptx.registry-report.json").exists())
+        self.edit_page()
+        self.assertEqual(0, self.build(base))
+        self.assertFalse(report.exists(), "a build without a registry must not inherit the previous report")
 
     def test_pre_qa_pass_resets_rounds(self) -> None:
         self.assertEqual(self.build(self.failing_runner()), 0)
@@ -1264,8 +1308,26 @@ class QaDagTests(PipelineTestCase):
         argv = ["qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])]
         self.assertEqual(pp.main(argv), 0)
         first_calls = len(runner.calls)
+        history_path = self.work / "gate-history.json"
+        history = json.loads(history_path.read_text(encoding="utf-8"))
+        self.assertEqual(1, len(history["_rounds"]))
+        self.assertEqual(0, history["_rounds"][0]["blockers"])
         self.assertEqual(pp.main(argv), 0)
         self.assertEqual(len(runner.calls), first_calls)
+        self.assertEqual(history, json.loads(history_path.read_text(encoding="utf-8")))
+
+    def test_qa_round_number_continues_after_history_window_is_full(self) -> None:
+        self.producing_manifest()
+        history_path = self.work / "gate-history.json"
+        history_path.write_text(json.dumps({"_rounds": [
+            {"round": number, "blockers": 1, "codes": {"overflow": 1}}
+            for number in range(24, 32)
+        ]}), encoding="utf-8")
+        pp._core._runner = FakeRunner(self.work)
+        self.assertEqual(pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])]), 0)
+        rounds = json.loads(history_path.read_text(encoding="utf-8"))["_rounds"]
+        self.assertEqual(8, len(rounds))
+        self.assertEqual(32, rounds[-1]["round"])
 
     def test_visual_generation_report_refreshes_as_round_evidence(self) -> None:
         self.producing_manifest()
@@ -1534,6 +1596,20 @@ class GateRegressionTests(PipelineTestCase):
         self.assertEqual([], problems)
         self.assertEqual(1, history["quality"]["round"])
 
+    def test_repair_targets_skip_advisories_and_disable_sharding_for_deck_blockers(self) -> None:
+        path = self.work / "targets.json"
+        report = {"problems": [
+            {"slide": 1, "severity": "minor"},
+            {"slide": 2, "severity": "major", "derived": True},
+            {"slide": 3, "severity": "major"},
+            {"slides": [4, 5], "severity": "critical"},
+        ]}
+        path.write_text(json.dumps(report), encoding="utf-8")
+        self.assertEqual([3, 4, 5], pp.slides_named_in_reports(self.work, (path.name,)))
+        report["problems"].append({"severity": "major", "code": "deck_contract"})
+        path.write_text(json.dumps(report), encoding="utf-8")
+        self.assertEqual([], pp.slides_named_in_reports(self.work, (path.name,)))
+
 
 class RepairConvergenceTests(PipelineTestCase):
     """`next` publishes the round-over-round blocker trend so "keep going or stop" is a
@@ -1586,10 +1662,11 @@ class RepairConvergenceTests(PipelineTestCase):
         5.4M tokens of forensics on a group no page edit could change.
         """
         frozen = {"missing_final_reference": 16}
+        signatures = {"missing_final_reference": [f"page {page}: missing source" for page in range(16)]}
         self.write_history([
             {"round": 1, "blockers": 48, "failed": ["quality"],
-             "codes": {**frozen, "bordered_panel_overuse": 32}},
-            {"round": 2, "blockers": 17, "failed": ["quality"], "codes": dict(frozen)},
+             "codes": {**frozen, "bordered_panel_overuse": 32}, "findings": signatures},
+            {"round": 2, "blockers": 17, "failed": ["quality"], "codes": dict(frozen), "findings": signatures},
         ])
         result = pp.repair_convergence(self.work)
         self.assertEqual("improving", result["trend"])
@@ -1597,6 +1674,18 @@ class RepairConvergenceTests(PipelineTestCase):
         self.assertEqual(frozen, suspect["codes"])
         self.assertEqual(16, suspect["blockers"])
         self.assertIn("gate", suspect["advice"])
+
+    def test_equal_code_counts_on_changed_pages_do_not_prove_frozen_findings(self) -> None:
+        self.write_history([
+            {"round": 1, "blockers": 3, "codes": {"overflow": 3}, "findings": {"overflow": ["page 1"]}},
+            {"round": 2, "blockers": 3, "codes": {"overflow": 3}, "findings": {"overflow": ["page 2"]}},
+        ])
+        self.assertNotIn("suspect_gate_defect", pp.repair_convergence(self.work))
+        self.write_history([
+            {"round": 1, "blockers": 3, "codes": {"overflow": 3}},
+            {"round": 2, "blockers": 3, "codes": {"overflow": 3}},
+        ])
+        self.assertNotIn("suspect_gate_defect", pp.repair_convergence(self.work))
 
     def test_a_group_that_moved_is_not_called_a_gate_defect(self) -> None:
         self.write_history([
@@ -2481,6 +2570,30 @@ class AdvanceTests(PipelineTestCase):
         self.assertEqual(1, result["actions"].count("qa"))
         self.assertNotIn("agent", result["dispatch"])
 
+    def test_advance_refuses_a_deterministic_step_that_makes_no_progress(self) -> None:
+        from pipeline import advance
+
+        payload = {"state": "producing", "next_command": "python pipeline render --work-dir demo"}
+        with patch.object(advance, "build_next_payload", return_value=payload), patch.object(advance, "cmd_render", return_value=0) as render:
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                rc = pp.main(["advance", "--work-dir", str(self.work), "--json"])
+        self.assertEqual(2, rc)
+        self.assertEqual(1, render.call_count)
+        self.assertIn("no progress", json.loads(buffer.getvalue())["error"])
+
+    def test_advance_surfaces_nonzero_step_instead_of_retrying(self) -> None:
+        from pipeline import advance
+
+        payload = {"state": "producing", "next_command": "python pipeline render --work-dir demo"}
+        with patch.object(advance, "build_next_payload", return_value=payload), patch.object(advance, "cmd_render", return_value=2) as render:
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                rc = pp.main(["advance", "--work-dir", str(self.work), "--json"])
+        self.assertEqual(2, rc)
+        self.assertEqual(1, render.call_count)
+        self.assertIn("exit 2", json.loads(buffer.getvalue())["error"])
+
     def test_advance_waits_for_critic_receipt(self) -> None:
         self.plan(self.files)
         pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
@@ -2488,6 +2601,41 @@ class AdvanceTests(PipelineTestCase):
         result = self.advance()
         self.assertEqual("needs_agent", result["status"])
         self.assertEqual(pp.CRITIC_AGENT, result["agent"])
+
+    def test_invalid_critic_report_returns_to_critic_without_builder_repair(self) -> None:
+        from pipeline.dispatch import build_next_payload
+
+        self.plan(self.files)
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(self.entry())])
+        self.render_evidence(self.files)
+        path = self.files["visual_review"]
+        report = json.loads(path.read_text(encoding="utf-8"))
+        report.pop("slides")
+        path.write_text(json.dumps(report), encoding="utf-8")
+        dispatch = build_next_payload(self.work)
+        self.assertEqual(pp.CRITIC_AGENT, dispatch["agent"])
+        manifest = self.manifest()
+        manifest["state"] = "qa"
+        manifest["qa"] = {"ok": False, "blockers": 1}
+        pp.save_manifest(self.work, manifest)
+        (self.work / "pipeline-qa.json").write_text(json.dumps({
+            "problems": [{"severity": "critical", "code": "visual_review_schema_invalid"}],
+        }), encoding="utf-8")
+        dispatch = build_next_payload(self.work)
+        self.assertEqual(pp.CRITIC_AGENT, dispatch["agent"])
+        self.assertNotIn("builder_packets", dispatch)
+        self.assertEqual(0, self.manifest()["build"].get("repair_count", 0))
+
+    def test_failed_qa_does_not_activate_packets_before_repair_registration(self) -> None:
+        import builder_packet
+        from pipeline.dispatch import build_next_payload
+
+        self.state_qa(ok=False)
+        with patch.object(builder_packet, "prepare_packets") as prepare:
+            dispatch = build_next_payload(self.work)
+        prepare.assert_not_called()
+        self.assertIn(" repair ", dispatch["next_command"])
+        self.assertNotIn("builder_packets", dispatch)
 
     def test_advance_waits_when_critic_review_binds_old_render(self) -> None:
         self.plan(self.files)

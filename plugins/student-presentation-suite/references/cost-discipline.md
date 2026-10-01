@@ -328,7 +328,7 @@ Claude Code 把一条消息的 content blocks 拆成多行，逐行数就永远�
 所以并行调用必须由**插件自己的指令面**要求——agent 定义确实会进 prompt
 （实测 22 份快照含其正文），这里写的每一句都是到达模型的。
 
-**并行分片不用于 `fast`**：`fast` 全程使用一个 Builder Packet（standard 至多 2 个分片，rigorous 至多 3 个），省掉多实例读取、协调和讲稿合并。`next --json` 在 `standard`/`rigorous` 的 `initial` / `repair` 给出 `builder_shards` 时，在**同一条消息里
+**并行分片按档位和页数决定**：`fast` 的 1–8 页使用一个 Builder Packet，9–14 页至多 2 个，15 页起至多 3 个；standard 至多 2 个，rigorous 至多 3 个，以 `quality_tiers.effective_shard_cap` 和 dispatch 为准。`next --json` 在 `initial` / `repair` 给出 `builder_shards` 时，在**同一条消息里
 spawn 全部 shard**（各自不传 `name`、只做自己的 slide ids、只写自己的
 `speaker-notes-shard-<N>.md`）。分片由管线按页号轮转计算，**天然互斥且页数均衡**；
 `build` 以已有 `speaker-notes.md` 为逐页基线再合并碎片，repair 覆盖同名 shard 时仍保留
@@ -366,3 +366,5 @@ spawn 全部 shard**（各自不传 `name`、只做自己的 slide ids、只写�
 | 检索内容的证据要求 | `evidence-and-citations.md` |
 | 图片的能力与许可 | `image-sourcing.md` / `image-strategy.md` |
 | 门禁的判定逻辑 | 各 gate 脚本自身 |
+
+确定性推进与复用：`advance` 在子命令失败或同一 state/PPTX/命令无进展时立即停止；QA 的 blocked 返回码用于转入修复。登记 repair 后才创建并激活修复 Packet。不变 Packet 不重写；critic 预览按原图哈希、参数和预览哈希复用。校准源文件、tokens、素材及运行 helper 未变且全部证据哈希有效时复用预览，不消耗新的校准轮次。critic 报告结构错误交回 critic，不派 Builder 改页面。每次真实 QA 只记一轮历史，按具体 findings 比较持续失败；不能据此排除 blocker 或绕过 complete 门禁。

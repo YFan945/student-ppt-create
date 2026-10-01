@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import shutil
 import sys
 from pathlib import Path
 from typing import Any
@@ -145,22 +144,39 @@ def materialize(
     long_edge: int = DEFAULT_LONG_EDGE,
     quality: int = DEFAULT_QUALITY,
 ) -> dict[str, Any]:
-    """Build fresh critic previews for the current production or calibration render."""
+    """Reuse verified previews; encode only changed sources or preview settings."""
     work_dir = work_dir.resolve()
     evidence = current_evidence(work_dir)
     pages = evidence["pages"]
     contact = evidence["overview"]
 
     preview_dir = work_dir / PREVIEW_DIR_NAME
-    if preview_dir.exists():
-        shutil.rmtree(preview_dir)
     preview_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        previous = _load_json(work_dir / MAP_NAME)
+    except (OSError, ValueError):
+        previous = {}
+    cached = {
+        str(item.get("preview_path")): item
+        for item in previous.get("entries", []) if isinstance(item, dict)
+    } if isinstance(previous.get("entries", []), list) else {}
+
+    def encode(source: Path, target: Path, source_sha: str) -> None:
+        entry = cached.get(str(target.resolve())) or {}
+        if (
+            previous.get("long_edge") == long_edge and previous.get("quality") == quality
+            and entry.get("source_path") == str(source.resolve())
+            and entry.get("source_sha256") == source_sha
+            and target.is_file() and entry.get("preview_sha256") == digest(target)
+        ):
+            return
+        _jpeg_preview(source, target, long_edge=long_edge, quality=quality)
 
     entries: list[dict[str, str]] = []
     if contact is not None:
         overview_source = Path(str(contact["path"]))
         overview_target = preview_dir / "overview.jpg"
-        _jpeg_preview(overview_source, overview_target, long_edge=long_edge, quality=quality)
+        encode(overview_source, overview_target, str(contact["sha256"]))
         entries.append(
             {
                 "kind": "overview",
@@ -174,7 +190,7 @@ def materialize(
     for index, binding in enumerate(pages, 1):
         source = Path(str(binding["path"]))
         target = preview_dir / f"p{index:02d}.jpg"
-        _jpeg_preview(source, target, long_edge=long_edge, quality=quality)
+        encode(source, target, str(binding["sha256"]))
         entries.append(
             {
                 "kind": "page",
@@ -218,9 +234,15 @@ def materialize(
         "quality": quality,
         "entries": entries,
     }
-    (work_dir / MAP_NAME).write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    if payload != previous:
+        (work_dir / MAP_NAME).write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    # Retire previews for removed pages/scope without invalidating retained images.
+    retained = {entry["preview_path"] for entry in entries}
+    for target in preview_dir.glob("*.jpg"):
+        if str(target.resolve()) not in retained:
+            target.unlink()
     return payload
 
 

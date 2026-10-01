@@ -132,6 +132,21 @@ class PipelineRenderTests(unittest.TestCase):
         self.assertEqual(pp.cmd_render(self.args()), 0)
         self.assertEqual(runner.calls, 1)
 
+    def test_legacy_render_missing_thumb_binding_is_repaired_once(self) -> None:
+        runner = RenderRunner(self.work)
+        pp._core._runner = runner
+        self.assertEqual(pp.cmd_render(self.args()), 0)
+        manifest = pp.load_manifest(self.work)
+        Path(manifest["render"]["contact_sheet_thumb"]["path"]).unlink()
+        manifest["render"].pop("contact_sheet_thumb")
+        pp.save_manifest(self.work, manifest)
+        self.assertEqual(pp.cmd_render(self.args()), 0)
+        binding = pp.load_manifest(self.work)["render"]["contact_sheet_thumb"]
+        self.assertTrue(Path(binding["path"]).is_file())
+        self.assertEqual(pp.sha256_file(Path(binding["path"])), binding["sha256"])
+        self.assertEqual(pp.cmd_render(self.args()), 0)
+        self.assertEqual(runner.calls, 1)
+
     def test_missing_pdf_invalidates_render_cache(self) -> None:
         runner = RenderRunner(self.work)
         pp._core._runner = runner

@@ -172,6 +172,8 @@ QA 通过后，`complete` 只把已确认的交付物发布到 `${CLAUDE_PROJECT
 同一渲染不会再次派 critic。
 渲染图由独立 Critic 读取；主会话只在处理具体 blocker 或争议页时按需看图。
 
+确定性步骤失败或执行后无进展时立即停止。修复登记后才激活 Builder Packet；内容未变的 Packet 和哈希校验通过的 critic 预览直接复用；校准输入与证据未变时复用校准预览，不额外消耗轮次。critic 报告结构错误先交回 critic 修正，再决定是否修复页面。每次真实 QA 只记一轮历史，按具体问题而非错误数量比较收敛；持续失败不能豁免完成门禁。
+
 每类交付物独立验收：`full-script` / `teleprompter` 不会隐含要求一份 speaker-notes；
 请求 PDF 时必须存在带 PDF 文件签名的真实 `.pdf`，PNG 预览不能替代。因而只请求 PPTX
 时，即使没有独立讲稿文件也可以完成。完整稿、提词器正文和独立讲稿按页号从最终
@@ -374,8 +376,8 @@ SHA256，项目 JSON 不能自行授权。PowerPoint 验收见
 
 状态机：`intake_pending` → `intake_confirmed` → `planned` → `producing` → `qa` → `complete`（终止态 `incomplete` / `blocked`）。
 
-QA 门按契约顺序执行：`package` → `rendered` → `actual_content` → `quality` → `delivery`。`build` 打包后立即跑确定性 pre-QA（`rendered` +
-`actual_content` + `quality` 门的确定性半部）；非确定性绿的 deck 不会进入 render 与 critic。
+QA 门按契约顺序执行：`package` → `static_risk` → `rendered` → `actual_content` → `structural_contract` → `quality` → `delivery`。`build` 打包后立即跑确定性 pre-QA（`static_risk` + `rendered` +
+`actual_content` + `structural_contract` + `quality` 门的确定性半部）；非确定性绿的 deck 不会进入 render 与 critic。
 
 | 轮次预算 | 数值 |
 | --- | --- |
@@ -389,7 +391,7 @@ QA 门按契约顺序执行：`package` → `rendered` → `actual_content` → 
 | 档位 | 校准轮 | 分片上限 | 阻断项 |
 | --- | --- | --- | --- |
 | `fast` | 0 | 1 | critical + 确定性失败 |
-| `standard` | 1 | 2 | + 结构性低分（hierarchy/focal_point） |
+| `standard` | 1 | 2 | + 结构与美学低分（hierarchy/focal_point/composition/visual_interest < 6） |
 | `rigorous` | 2 | 3 | + 风格 Major + 视觉回归，单页底线 6.0 |
 
 交付保证：每个已确认产物在 `complete` 前按冻结 Slide Spec 核对内容与页数（PPTX/PDF 页数、

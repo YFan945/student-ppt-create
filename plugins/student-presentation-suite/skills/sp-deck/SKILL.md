@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.25.0
+version: 0.25.1
 ---
 
 # Student Presentation PPT
@@ -126,7 +126,7 @@ Windows 下用这个 python 形式。`edit_ooxml` 走原 OOXML 路径；create/r
 11. **Render**：`advance` 在 build 的确定性预检全绿后渲染全部页面；失败则返回免 repair 轮的 Builder 修法（上限 `max_pre_qa_rebuilds`）。相同 PPTX hash 复用渲染，repair 后重新渲染。Critic 只评审预检全绿的 deck。
 12. **Prepare Deliverables**：`advance` 在 render 后、Critic 前按冻结 Slide Spec 生成已确认类型。讲稿正文以最终 PPTX 备注区为准，缺页即拒绝；PDF 绑定当前 render。QA 后仅交付文件变化时复用有效视觉评审，只重跑确定性 QA/Delivery。
 13. **Visual Critique**：Agent `student-presentation-suite:visual-critic`，不传 `name`，独立读取当前预览，写绑定当前 SHA256 的 `visual-review.json`。`fast` 对主观分数与版式建议只记录 advisory，只有无法使用的页面报 critical；`standard` 额外阻断结构性低分；`rigorous` 的 Major/Critical 仍阻塞。具体口径由 `pptx-visual-critic.md` 和质量门共同定义。
-14. **QA DAG**：Critic 返回后调用 `advance --brief-json`，它验证当前评审与 receipt，再运行 `package → rendered → actual-content → quality → delivery`。产物可用性门失败即停，其余内容门同轮汇总；完整 blocker 在 `pipeline-qa.json`，派生问题不单独修。
+14. **QA DAG**：Critic 返回后调用 `advance --brief-json`，它验证当前评审与 receipt，再运行 `package → static_risk → rendered → actual_content → structural_contract → quality → delivery`。产物可用性门失败即停，其余内容门同轮汇总；完整 blocker 在 `pipeline-qa.json`，派生问题不单独修。报告结构错误先交回 critic，不登记 Builder 修复。
 15. **Repair**：有 QA blocker 时，`advance` 自动登记 repair 并返回 `presentation-builder mode=repair` 的 Packet。Builder 只读 Packet 投影的完整 blocker；仅在 Packet 生成失败时回退到 `pipeline-qa.json`。一次处理所有 blocker，不按门分批。
 
    **每轮必须 spawn 一个新的 builder 实例，不要用 SendMessage 继续上一个。** 一个实例扛多轮时上下文只增不减：2026-09-18 live 的一个 builder 实例从 8.7K 涨到 **699K**，261 个请求里 212 个在 ≥200K 上下文下发出（占其成本的 96.1%），最后一轮仅 3 个请求就花了 2.1M token。**实测反事实**：只做重置是 **98.7M → 80.9M（省 17.8M）**——轮 1 在实例内部自己就会涨到 606K，重置修不了它，其余要靠不让全 deck 返工发生。`next --json` 的 `builder_instance_reuse` 会在检出复用时报出实例与轮次——看到它就把下一轮换成新 spawn。
@@ -151,9 +151,9 @@ Production Summary confirmation
 → standard/rigorous(>8 页): isolated builder(calibration) + preview + independent critic
 → fast / standard(≤8 页): skip calibration
 → isolated builder(initial: remaining pages, preserving calibration)
-→ exploration gates → production build（确定性预检：rendered + actual-content + quality 确定性部分）
+→ exploration gates → production build（确定性预检：static-risk + rendered + actual-content + structural-contract + quality 确定性部分）
 → render（预检全绿才放行）→ prepare-deliverables（仅已确认类型）→ isolated visual-critic + QA DAG（内容门全跑后汇总）
-→ bounded repair（每轮新 spawn 一个 builder 实例）→ isolated builder(repair targets only)
+→ bounded repair（预检超限也计入正式预算；每轮新 spawn 一个 builder 实例）→ isolated builder(repair targets only)
 → build → render → prepare-deliverables → critique → QA → complete
 ```
 
@@ -168,3 +168,5 @@ Production Summary confirmation
 **管线证据**始终写入 work dir，但**不是交付物**：`build-manifest.json`、Slide Spec lock、Art Direction、calibration preview evidence、research provenance、正式 render/contact sheet、visual review、package/readback/quality/delivery reports。visual critic 与 QA 门禁依赖它们，所以 `deliverables` 只有 `pptx` 时它们依然会存在——呈报时标注为"质检留痕"，不要列进交付清单，也不要因为"用户没选 preview 却产出了预览图"而判定自己违约。`pptx_delivery_check` 已从 Slide Spec 的 `meta.deliverables` 推导 notes/preview 是否必需，无需手工传 `--allow-missing-*`。
 
 **`calibration/` 仅为内部早期反馈，不作为最终交付物。** 编辑任务另含 change summary。禁止覆盖 source deck。
+
+无进展收口：`advance` 返回 refused 时先处理明确原因，不原样重跑。Builder 返回 `BUILDER_BLOCKED`，或声称完成但相关源文件未变化时，先核对 Packet、目标页与 blocker 的责任归属；不得对相同输入原样重派同一任务。必须有新的输入、明确不同的修法或已修复的运行环境，再恢复派发。该规则由主会话执行，不能把重复边界当成自动重试授权。

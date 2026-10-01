@@ -2,6 +2,17 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.25.1 — 2026-10-01 · Reliable visual gates and bounded production
+
+- 修复目标排除 minor 与派生问题；全局 blocker 与逐页 blocker 并存时采用整副单 Builder，避免漏修全局问题；统一 fast 分片及 critic 压缩预览规则。
+- 修复 Builder/critic 主流程空转：确定性失败与无进展及时停止；登记修复后才激活 Packet；不变 Packet 与哈希有效预览复用，重复校准预览不额外消耗轮次；旧渲染缩略图缺失时补齐绑定，结构错误报告交回 critic。
+- QA 每次真实运行只记录一轮，历史编号持续递增，按具体问题比较收敛；相同错误数量不再误判门禁缺陷，持续失败不能绕过完成门禁。
+- 修复预检重建超限后绕过失败的问题；新增静态风险与结构承诺检查进入最终 QA，超限走正式预算返工。
+- 门禁执行清除旧报告，退出码、报告有效性与通过状态共同决定结果，防止崩溃沿用旧通过报告。
+- 全量预检问题进入修复页选择与 Packet；保留 critic 的元素定位、可执行修法与修复层级，并同步 schema。
+- 构建重命名时同步 Registry/Layout 报告，Registry 绑定当前 PPTX；逐页检查字号层级，解析常见继承字号与组合坐标，留白仅作提醒。
+- 同步档位阈值、PPTX 修复证据哈希与中英文流程文档；CI 交付覆盖 fixture 不再伪造视觉评分，明确 smoke 与独立视觉验收边界。
+
 ## 0.25.0 — 2026-10-01 · Research support checks and reliable closeout
 
 - 统一单源/多源、论断状态及 queries 规则；进度仅由校验通过的任务证据刷新，不因无关抓取或包重写延时。

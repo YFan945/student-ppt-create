@@ -46,7 +46,7 @@ The preview map's `quality_level` names the tier. For `rigorous`, a blocker is
 `minor`; reserve `critical` for an unusable page (for example illegible content).
 `fast` QA treats subjective `major` findings and visual scores as advisory, so
 do not request a Builder round for them; `standard` additionally blocks on
-structural scores (hierarchy / focal_point) below 6. Set `blocker_count` to the count that
+structural and aesthetic scores (hierarchy / focal_point / composition / visual_interest) below 6. Set `blocker_count` to the count that
 blocks that quality level and return the same count to the caller.
 
 Frozen numbers are not redundancy. Every planned number (the `numbers` list
@@ -74,3 +74,5 @@ this endpoint (measured: up to 8 in a single turn), and every page is an
 independent read — issue every entry listed by the preview map in ONE turn
 rather than one turn each. A turn costs 10–19 seconds of wall clock, so reading 13
 pages one at a time spends minutes on nothing but round-trips.
+
+If carrying a resolved finding, resolved_evidence.before_sha256 and after_sha256 refer to the whole PPTX, not a page image; after_sha256 must equal the map's current pptx_sha256. Page image hashes remain in page_sha256.

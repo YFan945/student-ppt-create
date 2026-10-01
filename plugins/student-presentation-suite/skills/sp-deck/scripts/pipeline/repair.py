@@ -20,6 +20,7 @@ from pipeline.core import (  # noqa: E402
     RefusedError,
     load_manifest,
     mirror_workflow_state,
+    pre_qa_failed_current,
     record,
     require_state,
     save_manifest,
@@ -78,10 +79,11 @@ def _cancel_pending_repair(
 def cmd_repair(args: argparse.Namespace) -> int:
     work_dir = args.work_dir.resolve()
     manifest = load_manifest(work_dir)
-    require_state(manifest, {"qa", "producing"} if getattr(args, "cancel", False) else {"qa"}, "repair")
+    pre_qa_repair = bool(manifest and manifest.get("state") == "producing" and pre_qa_failed_current(manifest))
+    require_state(manifest, {"qa", "producing"} if getattr(args, "cancel", False) or pre_qa_repair else {"qa"}, "repair")
     assert manifest is not None
     validate_manifest_authorization(manifest)
-    blockers = int((manifest.get("qa") or {}).get("blockers") or 0)
+    blockers = int((manifest.get("pre_qa" if pre_qa_repair else "qa") or {}).get("blockers") or 0)
     build_info = manifest.setdefault("build", {})
     if getattr(args, "cancel", False):
         return _cancel_pending_repair(manifest, work_dir, build_info, blockers, args)
@@ -113,10 +115,8 @@ def cmd_repair(args: argparse.Namespace) -> int:
             raise RefusedError(
                 f"repair budget extension refused: {suspect.get('blockers')} of {blockers} blockers "
                 f"({share:.0%}) are identical in two consecutive rounds ({codes or 'see gate-history.json'}). "
-                "More rounds cannot move a group that no previous round moved — this is a gate-side "
-                "candidate, not page work. Check it once against the artifact, then either it is a real "
-                "defect with a page-level fix (name it in --extend-reason) or it is a false positive to "
-                "record as a known gate limitation and deliver around. "
+                "Inspect the persistent findings and change the approach before extending. "
+                "Persistence does not prove a gate defect or authorize bypassing failed gates. "
                 f"{suspect.get('advice') or ''}"
             )
         # D3 (informational): does the reason name the pages it claims to fix?
@@ -156,6 +156,9 @@ def cmd_repair(args: argparse.Namespace) -> int:
         )
     build_info["repair_count"] = repairs + 1
     build_info["pending_repair"] = True
+    if pre_qa_repair:
+        # Keep the failed result; only a successful rebuild can clear it.
+        manifest["pre_qa"]["rounds"] = 0
     build_info["carryover_builds"] = 0
     build_info.setdefault("repair_reasons", []).append(args.reason)
     before = str(manifest.get("state"))
