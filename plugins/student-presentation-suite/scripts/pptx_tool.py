@@ -38,6 +38,7 @@ from shared.pptx_runtime import (  # noqa: E402
     validate_pptx,
     write_fetch_text_report,
 )
+from shared.pptx_runtime.fetch_text import call_summary  # noqa: E402
 from shared.pptx_runtime.normalize import normalize_generated_package  # noqa: E402
 from shared.pptx_runtime.package import count_registered_slides  # noqa: E402
 from shared.pptx_runtime.render import align_rendered_pages, render_pptx  # noqa: E402
@@ -382,9 +383,9 @@ def command_fetch_text(args: argparse.Namespace) -> int:
     if not urls:
         print(json.dumps({"ok": False, "error": "no --url or --urls-file entries"}, ensure_ascii=False))
         return 1
-    report = fetch_text_many(urls, args.out_dir, scope=args.scope, timeout=args.timeout)
+    report = fetch_text_many(urls, args.out_dir, scope=args.scope, timeout=args.timeout, workers=args.workers)
     report_path = write_fetch_text_report(report, args.out_dir)
-    print(json.dumps({**report, "report": str(report_path)}, ensure_ascii=False, indent=2))
+    print(json.dumps(call_summary(report, report_path), ensure_ascii=False, indent=2))
     return 0 if report["ok"] else 1
 
 
@@ -1028,6 +1029,7 @@ def build_parser() -> argparse.ArgumentParser:
     fetch_text.add_argument("--out-dir", type=Path, required=True, help="directory for raw bodies, extracted text and the report")
     fetch_text.add_argument("--scope", required=True, choices=["A", "B", "C", "D"], help="research scope; only A/B authorize web retrieval")
     fetch_text.add_argument("--timeout", type=int, default=60, help="per-request timeout in seconds")
+    fetch_text.add_argument("--workers", type=int, choices=range(1, 9), default=4, help="bounded parallel retrieval (1-8)")
     fetch_text.set_defaults(handler=command_fetch_text)
     baseline = sub.add_parser(
         "visual-baseline",

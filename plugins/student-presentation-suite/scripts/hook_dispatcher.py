@@ -34,12 +34,12 @@ import runtime_evidence  # noqa: E402
 # exists even when a later guard refuses the same call (parallel-hook parity:
 # every registered hook used to run regardless of the others' verdicts).
 ROUTES = {
-    "Bash": (hook_health, production_entry_guard, builder_guard, cost_guard),
-    "Read": (builder_guard, cost_guard),
-    "Grep": (cost_guard,),
+    "Bash": (hook_health, production_entry_guard, builder_guard, cost_guard, runtime_evidence),
+    "Read": (builder_guard, cost_guard, runtime_evidence),
+    "Grep": (cost_guard, runtime_evidence),
     "Write": (builder_guard, runtime_evidence),
     "Edit": (builder_guard, runtime_evidence),
-    "PowerShell": (builder_guard,),
+    "PowerShell": (builder_guard, runtime_evidence),
     "Skill": (runtime_evidence,),
     "WebSearch": (runtime_evidence,),
     "WebFetch": (runtime_evidence,),

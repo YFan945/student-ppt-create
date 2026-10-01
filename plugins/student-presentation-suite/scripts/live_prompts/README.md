@@ -56,6 +56,10 @@ python plugins/student-presentation-suite/scripts/smoke_research_fork.py \
   --output outputs/_analysis/live-d-result.json
 ```
 
+`--scenario smoke` 使用一条明确的 Python 官方文档论断，普通单源 medium 即可。
+加 `--stream --output <临时项目路径>/result.json` 会同时保存 `result.stream.jsonl`，
+用于区分主流程准备、子代理检索与交接耗时；预算耗尽或权限拒绝不算端到端通过。
+
 退出码：0 = 机制 ok 且产物落地；2 = 机制失败（fork 没发生）；3 = 机制 ok 但没写出 Research Pack。
 
 ### B. 裸跑（看 envelope）

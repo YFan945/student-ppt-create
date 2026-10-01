@@ -461,7 +461,14 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     pack = pack_validator.load(args.pack)
-    verdict = pack_validator.validate(pack)
+    fetched = args.pack.parent / "research" / "fetched" / "fetch-text-report.json"
+    fetch_report = json.loads(fetched.read_text(encoding="utf-8")) if fetched.is_file() else None
+    verdict = pack_validator.validate(pack, fetch_report=fetch_report, work_dir=args.pack.resolve().parent)
+    from research_task_binding import apply_task
+    apply_task(verdict, pack, args.pack.resolve().parent)
+    if args.slide_spec and verdict.get("delivery_status") == "insufficient":
+        print(f"research_pack_to_evidence: missing core claims {verdict['core_gaps']}", file=sys.stderr)
+        return 2
     if not verdict["ok"]:
         print(
             "research_pack_to_evidence: refusing to compile an invalid Research Pack "
@@ -478,6 +485,10 @@ def main(argv: list[str] | None = None) -> int:
         if not valid:
             print(f"research_pack_to_evidence: {error}", file=sys.stderr)
             return 2
+        saved = load_json(args.validation_report)
+        if verdict.get("task") and saved.get("task") != verdict["task"]:
+            print("research_pack_to_evidence: task binding is stale or missing", file=sys.stderr)
+            return 2
         validation_hash = sha256_file(args.validation_report)
         # Carry the retrieval-audit advisories into this command's output: the
         # pipeline consumes the compiler's ok line, so a minor advisory is read
@@ -491,12 +502,20 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         spec = pack_validator.load(args.slide_spec)
 
-    report, compiled_spec = compile_pack(pack, spec)
+    usable_pack = dict(pack)
+    for key in ("findings", "data_points", "quotes"):
+        usable_pack[key] = [e for e in pack.get(key, []) if e.get("status") not in {"located", "unresolved"}]
+    report, compiled_spec = compile_pack(usable_pack, spec)
     provenance: dict[str, Any] = {
         "research_pack": str(args.pack.resolve()),
         "research_pack_sha256": pack_hash,
         "validation_ok": True,
+        "delivery_status": verdict["delivery_status"],
+        "core_gaps": verdict["core_gaps"],
     }
+    if verdict.get("task"):
+        provenance["research_task"] = verdict["task"]["path"]
+        provenance["research_task_sha256"] = verdict["task"]["sha256"]
     if args.validation_report:
         provenance["research_validation"] = str(args.validation_report.resolve())
         provenance["research_validation_sha256"] = validation_hash

@@ -27,7 +27,10 @@ LEGACY_MATCHERS = {
     "cost_guard": {"Bash", "Read", "Grep"},
     "hook_health": {"Bash"},
     "builder_guard": {"Read", "Write", "Edit", "Bash", "PowerShell"},
-    "runtime_evidence": {"Skill", "WebSearch", "WebFetch", "Agent", "SendMessage", "Write", "Edit"},
+    "runtime_evidence": {
+        "Skill", "WebSearch", "WebFetch", "Agent", "SendMessage", "Write", "Edit",
+        "Bash", "PowerShell", "Read", "Grep",
+    },
 }
 
 

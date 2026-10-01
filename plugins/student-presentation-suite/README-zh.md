@@ -39,15 +39,18 @@ sp-research → sp-outline → sp-deck → sp-review
 HTTP 原文与抽取文本并落盘，两份 sha256 一起写进 provenance——中间不经过会改写数字的小模型。
 `--scope` 是权限门（只有 A/B 授权联网取原文，C/D 一律拒绝）；工具不审查你**取什么**，
 只给每个 host 打类别（`host_class`），而结果页是定位手段、永远不是来源。claim 逐条收口
-（≥2 个独立组印证，或降级收口并保留已拿到的来源），这才是"同一个问题不问八十遍"的机制。
-规则见 `references/research-workflow.md` §七。
+（普通论断一个可读来源即可，关键论断按任务做独立交叉核验），这才是"同一个问题不问八十遍"的机制。
+规则见 `references/research-workflow.md` §七。 新 A/B 任务将 claim、数字与引文绑定到原文片段及文件哈希。
+未知搜索响应只提示，确认未执行才暂停 WebSearch；原文读取仍开放；有效包允许明确的未解决 claim。
+旧包仍可读取，但提示尚未检查原文绑定。输入通过已校验的 research-task.json 交接，
+spawn 只传任务文件和 work-dir 路径。
 
 它同时是**上下文防火墙**——而且是**机制**，不是提示词约定：主流程通过 Agent 工具
 **显式 spawn `agents/presentation-researcher.md`**（`subagent_type:
 student-presentation-suite:presentation-researcher`，不传 `name`），检索因此**不在主对话
 上下文里运行**。子代理看不到主对话历史，主流程也拿不到它的搜索过程与原始网页
-（约 10 万 token → 约 8 千）。spawn 的 prompt 里必须写全 work-id、brief 路径、scope 与
-materials 路径——子代理既读不到 frontmatter 的参数绑定，也看不到本次对话。顺序是有意的：
+（约 10 万 token → 约 8 千）。背景、work-id、brief 路径、scope 与材料路径在
+已校验的 research-task.json 中；spawn 仅传 task 与 work-dir 的绝对路径。顺序是有意的：
 研究必须先完成，`sp-outline` 才能开始排页——收到 `RESEARCH_DONE` 信封前不推进下一阶段。
 
 早先的版本依赖本 skill frontmatter 里的 `context: fork`。该机制在 **`claude -p`（print）
@@ -63,8 +66,11 @@ Research Pack 到 Slide Spec 的转换同样是确定性的：`scripts/research_
 它们之后被改动，`check` 会立即失败。
 
 规则见 `references/research-workflow.md`，产出形状见 `references/research-pack.schema.json`，
-校验用 `scripts/validate_research_pack.py`（会拦截"高置信度只靠单一来源""只拿 D 级来源
-支撑事实""标了冲突却没降置信度""检索受阻却静默降级"等问题）。
+校验用 `scripts/validate_research_pack.py`（会拦截"高置信度只靠单一来源""原文绑定错误""标了冲突却没降置信度""检索受阻却静默降级"等问题）。
+
+普通论断默认一个可读来源即可按 medium 使用，关键核验由任务指定。并行抓取与进度保存支持续做；校验区分契约有效与 ready/partial/insufficient 交付状态。详见[研究流程](references/research-workflow.md)。
+
+研究交接通过一个本地命令完成，仅返回统计。工具边界按时间与停滞状态停止新增检索，并允许保存部分结果；默认值与覆盖方式见研究流程。
 
 ### `sp-outline`
 

@@ -48,9 +48,11 @@ between the publisher's sentence and the pack. `--scope` is the permission gate
 (only A/B authorize web retrieval; C/D are refused); the fetcher does not police
 *what* you read — it classifies each host (`host_class`) instead of refusing, and
 a search-engine result page is a locator, never a source. Claims close one by one
-(≥2 independent groups, or a recorded downgrade that keeps the sources it did
-find), which is what stops a run from asking the same question eighty times.
-Rules live in `references/research-workflow.md` §七.
+(one readable source for ordinary claims; independent cross-checks when the task requires them), which is what stops a run from asking the same question eighty times.
+Rules live in `references/research-workflow.md` §七. New A/B tasks bind claims, numbers and quotes to
+verbatim source excerpts and file hashes. Unknown search response formats are advisory; only confirmed non-execution pauses
+WebSearch. Document retrieval stays available. Valid packs can carry explicit
+unresolved claims. Legacy packs remain readable with an unbound-evidence advisory.
 
 It doubles as a context firewall — and that is a **mechanism**, not a prompt
 convention: the main flow **spawns `agents/presentation-researcher.md` explicitly**
@@ -58,9 +60,8 @@ through the Agent tool (`subagent_type:
 student-presentation-suite:presentation-researcher`, no `name`), so retrieval never
 runs in the main conversation context. The subagent cannot see the conversation
 history and the main flow never receives its search trail or raw pages (~100k
-tokens in, ~8k out). Passing the work-id, brief path, scope and materials path in
-the spawn prompt is required — the subagent reads neither the frontmatter
-arguments nor the conversation. Sequencing is deliberate: research must finish
+tokens in, ~8k out). Inputs are carried in a validated `research-task.json`;
+only its absolute path and work-dir enter the spawn prompt. Sequencing is deliberate: research must finish
 before `sp-outline` starts planning, so do not advance until the `RESEARCH_DONE`
 envelope arrives.
 
@@ -83,8 +84,12 @@ frozen lock; editing any of them afterwards makes `check` fail immediately.
 Rules live in `references/research-workflow.md`, the output shape in
 `references/research-pack.schema.json`, and `scripts/validate_research_pack.py`
 enforces them — rejecting high-confidence claims resting on a single source,
-fact claims supported only by tier D, conflicts that never lowered confidence,
+invalid source-text bindings, conflicts that never lowered confidence,
 and retrieval that failed silently instead of being recorded.
+
+Research defaults to one readable source per ordinary claim (medium confidence); critical checks are task-specific. Retrieval checkpoints and bounded parallel fetching preserve progress. The validator reports ready/partial/insufficient separately from contract validity. See [research workflow](references/research-workflow.md).
+
+Research handoff checks run in one metadata-only local command. Tool-boundary time/stall checks stop further retrieval while allowing partial results to be saved; see the research workflow for defaults and overrides.
 
 ### `sp-outline`
 

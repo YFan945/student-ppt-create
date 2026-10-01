@@ -17,42 +17,18 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 ## researcher（presentation-researcher）
 
 ```text
-你是本 deck 的隔离研究员。按 student-presentation-suite 契约执行，产出 Research Pack 与 validation。
-
-- work-dir（唯一写盘位置）：<absolute work-dir>
-- Research Pack 写到 <work-dir>/research-pack.json；validation 用
-  <CLAUDE_PLUGIN_ROOT>/scripts/validate_research_pack.py <pack> --output
-  <work-dir>/research-pack-validation.json --search-log <work-dir>/research/search-log.json
-  --fetch-report <work-dir>/research/fetched/fetch-text-report.json
-  （留痕审计项全部 minor 不阻断，但必须读并纠正行为，或在 pack notes 说明误报）。
-- Deck 背景：<主题 / 场景 / 语言 / 时长与页数 / 核心论断，各一行>
-- 证据要求：<必须覆盖的 claims；每个数据点绑定年份与来源机构；宁缺毋滥，无法核实的标 unverified>
-- 检索深度档位：<band>（深度建议，不设次数上限——检索与 WebFetch 均无配额）。
-  同一 URL 复用已抓取结果，失败最多重试一次；无法核实的论断记入 unresolved，
-  禁止把未经核实的数字写成已验证。
-  gap-fill 授权写明本次要核验的 claim 清单，研究员按 claim 收益决定检索量。
-  pack 是审计记录：queries 只追加不改写；未产出结果的失败调用必须在
-  research/search-log.json 的 search_executions 标 status: failed（空返回 / 返回无关
-  结果 / 超时同样标 failed）。
-- 检索机制（2026-09-29 实测）：查询一次只放**一个可回答单元**（主体+指标+时间），不要把
-  claim 句子粘进检索框，也不要回显已拿到的数字；失败签名决定**换通道**（发布方记录端点 →
-  直连文档 → 按机制记 `unresolved`），不决定换措辞；结果页（bing / so.com / sogou /
-  duckduckgo / brave / mojeek / yahoo / baidu / google / `*/search?…` 与 `link?m=` 跳转）
-  永远不是来源，定位交给检索工具，取正文用确定性的
-  `pptx_tool.py fetch-text --url <doc> --scope <A|B> --out-dir <work-dir>/research/fetched`
-  （原文 + 抽取文本 + 两份 sha256 一起落盘，不经小模型转述；`--scope` 是权限门，C/D 拒绝）。
-  claim 逐条收口即停止条件（语义 canonical：research-workflow.md §七）：
-  verified = 可追溯来源支撑且无冲突（≥2 个独立来源印证可标 high），支撑用 **entity_ids**
-  链到坐实它的 F/D；只拿得到转述则**保留 source_ids** 并把该条标 `unresolved` + 写明缺失
-  主源与影响，机制记 `search_unavailable` / `not_found` / `access_blocked`——关门后不要
-  继续问同一个问题。不要为等级 letter 检索：S/A/B/C/D 只是页脚标注元数据，直连主源的
-  理由只有逐字保真与转述冲突。
-- gap-fill 轮结束时，把补检的每次检索**追加**进 research/search-log.json
-  （n 续号），再更新 pack——日志与 pack 必须能对上。
-- 禁止嵌套 spawn 任何其它 subagent。
-- 完成后只回契约信封：RESEARCH_DONE / RESEARCH_BLOCKED（字段以你的 agent 契约为准，
-  不追加散文摘要）。
+你是本 deck 的隔离研究员。按 student-presentation-suite:presentation-researcher 契约执行。
+- research-task（绝对路径）：<work-dir>/research-task.json
+- work-dir（唯一写盘位置，绝对路径）：<absolute work-dir>
+先读取 task 并执行 validate_research_task.py。按 task 与 research-workflow.md 收口逐条 claim。
+只回 RESEARCH_DONE / RESEARCH_BLOCKED 信封，原始结果留在 research/。
 ```
+
+任务 schema 为 research-task.schema.json；背景、claim、数字、scope 和材料都从 task 读取。
+`unknown_payload` 不证明后端没有执行且不暂停；`backend_not_executed` 需要运行时元数据。
+通道关闭之后只暂停 WebSearch，主流程仅在环境变化后恢复；degenerate_channels 仍须避开。
+原文抓取使用同一个 `--out-dir`，证据绑定与停止条件由 research-workflow.md 所有。
+
 
 ## builder（presentation-builder；calibration / initial / repair 共用骨架）
 

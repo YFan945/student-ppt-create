@@ -81,11 +81,17 @@ CORE_ALLOWED_TOOLS = (
 WEB_TOOLS = ("WebSearch", "WebFetch")
 BRIEF = """# Presentation Brief
 
-topic: smoke test - a single claim that must be sourced
+topic: 高校 Python 并发编程课程汇报的证据收集
 scenario: coursework
 language: Chinese
 duration_min: 5
 slide_count: 7
+
+待证论断 C01：ThreadPoolExecutor 使用线程池异步执行调用。
+importance: core
+verification: source
+验收：Python 官方 concurrent.futures 文档中一处可读说明即可，medium 足够。
+只收集该条证据，不规划页面，不制作 PPTX，不扩展到其他并发概念。
 """
 
 # Scenario presets. `brief_file` is resolved relative to the plugin root so the
@@ -236,13 +242,16 @@ def artifact_verdict(pack: Path) -> tuple[bool, str]:
     return True, f"{pack} ({len(findings)} findings, {len(sources)} sources)"
 
 
-def main_flow_leaked_retrieval(payload: dict[str, Any]) -> list[str]:
-    """CD-5: the parent result must not carry raw retrieval tools."""
-    blob = json.dumps(payload.get("result") or payload.get("result_text") or "", ensure_ascii=False)
+def main_flow_leaked_retrieval(payload: dict[str, Any], events: list[dict] | None = None) -> list[str]:
+    """CD-5: inspect actual parent tool calls, not tool names in status prose."""
+    trace = events or payload.get("events") or []
     problems: list[str] = []
-    for marker in ("WebSearch", "WebFetch"):
-        if marker in blob:
-            problems.append(f"main transcript contains {marker}")
+    for event in trace:
+        if event.get("type") != "assistant" or event.get("parent_tool_use_id"):
+            continue
+        for content in event.get("message", {}).get("content", []):
+            if content.get("type") == "tool_use" and content.get("name") in {"WebSearch", "WebFetch"}:
+                problems.append(f"main transcript executes {content['name']}")
     return problems
 
 
@@ -391,7 +400,11 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     raw = result.stdout.strip()
+    if args.output and args.stream:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.with_suffix(".stream.jsonl").write_text(result.stdout, encoding="utf-8")
     payload: dict[str, Any] = {}
+    stream_events: list[dict] = []
     fork_event_types: set[str] = set()
     for line in raw.splitlines():
         line = line.strip()
@@ -403,6 +416,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if not isinstance(event, dict):
             continue
+        stream_events.append(event)
         etype = str(event.get("type", ""))
         if etype:
             low = etype.lower()
@@ -436,7 +450,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     mechanism_ok, mechanism_problems, mechanism_notes = mechanism_verdict(payload, fork_event_types)
-    mechanism_problems.extend(main_flow_leaked_retrieval(payload))
+    mechanism_problems.extend(main_flow_leaked_retrieval(payload, stream_events))
     if mechanism_problems:
         mechanism_ok = False
     pack = pack_path(project_dir, work_id)

@@ -19,7 +19,7 @@ rule is enforced mechanically instead of by reminder.
 Safety model:
 On-demand by design (owner, 2026-09-29): the fetcher does not police *what* you
 fetch. Search-result hosts and private hosts are fetched like anything else; the
-record carries `host_class` (`search_engine` / `private` / `public`) plus a note,
+record carries `host_class` (`search_engine` / `listing` / `private` / `public`) plus a note,
 because "a result page is not a source" is an evidence rule for the pack, not a
 rule about which URLs may be read — and a fence here would only teach the agent
 to reach the same page by another route.
@@ -29,6 +29,12 @@ Safety model:
 - only text-ish content types are extracted, so a binary body is refused instead
   of decoded into garbage;
 - every attempt is recorded in the report, failures included.
+
+Degenerate channels (2026-09-30 live): a publisher's record endpoint answered ten
+differently-parameterised requests with one byte-identical 97-byte body while each
+variation cost a full model turn, and nothing in the trail said so. The verdict is
+computed here, from hashes this module already writes, and owned by
+`shared/retrieval_trail.py` — a capability, not a strategy rule.
 """
 
 from __future__ import annotations
@@ -43,40 +49,29 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
+
+from shared.research_io import atomic_json, file_lock
+from shared.retrieval_trail import (
+    DEGENERATE_ECHO,
+    DEGENERATE_ECHO_NOTE,
+    SEARCH_LOCATOR_HOSTS,
+    degenerate_channels,
+    endpoint_key,
+    is_listing_locator,
+    is_search_locator,
+)
 
 EXTRACTOR = "fetch-text/1"
 ALLOWED_SCOPES = ("A", "B")
 DEFAULT_TIMEOUT = 60
 
-# Recorded as `host_class: search_engine`, never refused. Kept in sync with the
-# evidence rule in references/research-workflow.md §七 by tests/test_fetch_text.py.
-_SEARCH_HOSTS = frozenset(
-    {
-        "bing.com",
-        "www.bing.com",
-        "cn.bing.com",
-        "so.com",
-        "www.so.com",
-        "sogou.com",
-        "www.sogou.com",
-        "duckduckgo.com",
-        "lite.duckduckgo.com",
-        "html.duckduckgo.com",
-        "search.brave.com",
-        "brave.com",
-        "mojeek.com",
-        "www.mojeek.com",
-        "search.yahoo.com",
-        "yahoo.com",
-        "baidu.com",
-        "www.baidu.com",
-        "google.com",
-        "www.google.com",
-    }
-)
-_REDIRECT_MARKERS = ("link?m=", "/link?")
+# Recorded as `host_class: search_engine`, never refused. The set lives in
+# retrieval_trail (one owner, also used by the WebFetch refusal) and is re-exported
+# under the name tests already pin.
+_SEARCH_HOSTS = SEARCH_LOCATOR_HOSTS
 
 _TEXT_TYPES = ("text/", "application/json", "application/xml", "application/xhtml")
 _PDF_TYPES = ("application/pdf",)
@@ -107,11 +102,13 @@ def slug(text: str) -> str:
 
 
 def host_class(url: str) -> str:
-    """Classify the host for the provenance trail: search_engine / private / public."""
+    """Classify the host for the provenance trail: search_engine / listing / private / public."""
     parsed = urllib.parse.urlsplit(url)
     host = (parsed.hostname or "").lower()
-    if host in _SEARCH_HOSTS or any(marker in url.lower() for marker in _REDIRECT_MARKERS):
+    if is_search_locator(url):
         return "search_engine"
+    if is_listing_locator(url):
+        return "listing"
     if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost"):
         return "private"
     try:
@@ -128,8 +125,37 @@ _HOST_CLASS_NOTES = {
         "a search-result page is a locator, not a source — use the search tool to find the "
         "document URL (or a publisher's own record endpoint), then read that"
     ),
+    "listing": (
+        "an index, news listing, or publisher record endpoint is a locator, not a source — "
+        "read the document URL it points at"
+    ),
     "private": "loopback/private host: fine for local checks, never citable evidence",
 }
+
+
+def annotate_channels(report: dict[str, Any]) -> dict[str, Any]:
+    """Add the per-channel verdict to the report and flag the records that earned it.
+
+    Both halves matter: the records are where the executor looks while reading the report
+    it just produced, and the channel summary makes "judge this channel once" actionable
+    without re-deriving the grouping downstream (the validator recomputes it from
+    `raw_sha256` anyway, so an older report audits the same way).
+    """
+    records = report.get("records") or []
+    found = degenerate_channels(records)
+    report["degenerate_channels"] = found
+    flagged = {(entry["channel"], entry["raw_sha256"]) for entry in found}
+    if not flagged:
+        return report
+    for record in records:
+        if not isinstance(record, dict) or not record.get("ok"):
+            continue
+        key = (endpoint_key(str(record.get("url") or "")), str(record.get("raw_sha256") or ""))
+        if key in flagged:
+            record["channel_verdict"] = DEGENERATE_ECHO
+            record["channel"] = key[0]
+            record["channel_note"] = DEGENERATE_ECHO_NOTE
+    return report
 
 
 def scheme_refusal(url: str) -> str | None:
@@ -218,6 +244,20 @@ def _pdf_text(raw: bytes) -> tuple[str | None, str]:
     return (text or None), "" if text else "markitdown returned no text"
 
 
+def _artifact_name(url: str, raw: bytes, _out_dir: Path) -> str:
+    """A file name that can never silently replace a *different* response.
+
+    One accumulating out-dir is what makes a run auditable, and slugs collide: every
+    ``sousuo.www.gov.cn/search-gov/data?…`` request slugs to ``data``, so the second
+    one overwrote the first while both records kept pointing at the surviving path —
+    a record whose ``raw_path`` holds someone else's bytes (2026-09-30 live, and the
+    reason the executor started hand-rolling a sub-directory per fetch, which then
+    scattered the report the audit reads).
+    """
+    base = slug(urllib.parse.urlsplit(url).path.rsplit("/", 1)[-1] or url)
+    return f"{base}-{hashlib.sha256(url.encode()).hexdigest()[:12]}-{hashlib.sha256(raw).hexdigest()[:12]}"
+
+
 def fetch_one(
     url: str,
     out_dir: Path,
@@ -269,7 +309,7 @@ def fetch_one(
     record["bytes"] = len(raw)
     record["raw_sha256"] = hashlib.sha256(raw).hexdigest()
     out_dir.mkdir(parents=True, exist_ok=True)
-    name = slug(urllib.parse.urlsplit(url).path.rsplit("/", 1)[-1] or url)
+    name = _artifact_name(url, raw, out_dir)
     raw_path = out_dir / f"{name}.raw"
     raw_path.write_bytes(raw)
     record["raw_path"] = str(raw_path)
@@ -295,9 +335,12 @@ def fetch_one(
         return record
 
     text_path = out_dir / f"{name}.txt"
-    text_path.write_text(text + "\n", encoding="utf-8")
+    # Hash exactly the bytes on disk, including the trailing newline (and without
+    # platform newline translation). Evidence bindings compare this file hash.
+    text_bytes = (text + "\n").encode("utf-8")
+    text_path.write_bytes(text_bytes)
     record["text_path"] = str(text_path)
-    record["text_sha256"] = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    record["text_sha256"] = hashlib.sha256(text_bytes).hexdigest()
     record["text_chars"] = len(text)
     record["ok"] = True
     return record
@@ -309,21 +352,58 @@ _REFUSAL_DETAIL = {
 }
 
 
-def fetch_many(
-    urls: list[str],
-    out_dir: Path,
-    *,
-    scope: str,
-    timeout: int = DEFAULT_TIMEOUT,
-    getter: Callable[[str, int], tuple[int, dict[str, str], bytes]] | None = None,
-) -> dict[str, Any]:
-    """Fetch every URL and return a report; one failure never hides the others."""
-    records = [
-        fetch_one(url, Path(out_dir), scope=scope, timeout=timeout, getter=getter) for url in urls
-    ]
-    fetched = [record for record in records if record["ok"]]
-    refused = [record for record in records if record.get("reason") in _REFUSAL_DETAIL]
+def report_directory(out_dir: Path) -> Path:
+    """Where the accumulating report lives.
+
+    The caller is told to use one directory, `<work-dir>/research/fetched`. A nested
+    `uN` directory (the 2026-09-30 run numbered these to `u120`) would otherwise keep
+    its own report and the cross-call verdict would never see the earlier hashes.
+    One level under `research/fetched` is folded back; any other directory is itself.
+    """
+    path = Path(out_dir)
+    parent = path.parent
+    if parent.name == "fetched" and parent.parent.name == "research":
+        return parent
+    return path
+
+
+def load_records(out_dir: Path) -> list[dict[str, Any]]:
+    """Records already written for this run, or an empty list if nothing is there yet."""
+    path = report_directory(out_dir) / "fetch-text-report.json"
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    records = data.get("records") if isinstance(data, dict) else None
+    if not isinstance(records, list):
+        return []
+    return [record for record in records if isinstance(record, dict)]
+
+
+def _closed_record(url: str, scope: str, channel: str) -> dict[str, Any]:
     return {
+        "url": url,
+        "scope": scope,
+        "extractor": EXTRACTOR,
+        "fetched_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "ok": False,
+        "reason": "channel_closed",
+        "channel": channel,
+        "channel_verdict": DEGENERATE_ECHO,
+        "channel_note": DEGENERATE_ECHO_NOTE,
+        "detail": (
+            "this endpoint already returned one body for distinct requests; "
+            "the request was not sent"
+        ),
+    }
+
+
+def _report_from_records(records: list[dict[str, Any]], scope: str) -> dict[str, Any]:
+    fetched = [record for record in records if record.get("ok")]
+    refused = [record for record in records if record.get("reason") in _REFUSAL_DETAIL]
+    report = {
         "ok": bool(fetched),
         "scope": scope,
         "extractor": EXTRACTOR,
@@ -332,11 +412,129 @@ def fetch_many(
         "failed": len(records) - len(fetched) - len(refused),
         "records": records,
     }
+    return annotate_channels(report)
+
+
+def fetch_many(
+    urls: list[str],
+    out_dir: Path,
+    *,
+    scope: str,
+    timeout: int = DEFAULT_TIMEOUT,
+    getter: Callable[[str, int], tuple[int, dict[str, str], bytes]] | None = None,
+    workers: int = 4,
+) -> dict[str, Any]:
+    """Fetch every URL and return a report accumulated with whatever this directory already holds.
+
+    A channel already classified as a degenerate echo is not requested again: the new
+    URL is recorded as `channel_closed` and no HTTP call is made. An exact URL that
+    already succeeded is reused. Both are classifications of the trail, not a cap on
+    how many documents a run may fetch. `this_call` lists the rows this invocation
+    touched; `write_report` strips it so the file stays the audit shape.
+    """
+    stable = report_directory(out_dir)
+    task_path = stable.parent.parent / "research-task.json"
+    frozen_path = stable.parent.parent / "research-task-binding.json"
+    if task_path.is_file():
+        task = json.loads(task_path.read_text(encoding="utf-8"))
+        scope = task["scope"]
+        if frozen_path.is_file() and json.loads(frozen_path.read_text(encoding="utf-8")).get("sha256") != hashlib.sha256(task_path.read_bytes()).hexdigest():
+            scope = "task_changed"
+    elif frozen_path.is_file():
+        scope = "task_missing"
+    records = load_records(stable)
+    closed = {entry["channel"] for entry in degenerate_channels(records)}
+    by_url = {str(record.get("url") or ""): record for record in records}
+    this_call: list[dict[str, Any]] = []
+    pending = []
+    def cache_valid(record):
+        try:
+            return all(hashlib.sha256(Path(record[key]).read_bytes()).hexdigest() == record[digest]
+                       for key, digest in (("raw_path", "raw_sha256"), ("text_path", "text_sha256")))
+        except (OSError, KeyError, TypeError):
+            return False
+
+    for url in dict.fromkeys(urls):
+        if scope not in ALLOWED_SCOPES:
+            refused = fetch_one(url, stable, scope=scope, timeout=timeout, getter=getter)
+            this_call.append(refused)
+            write_report(_report_from_records([refused], scope), stable)
+            continue
+        channel = endpoint_key(url)
+        if channel and channel in closed:
+            existing = by_url.get(url)
+            if existing is None:
+                existing = _closed_record(url, scope, channel)
+                records.append(existing)
+                by_url[url] = existing
+            this_call.append(existing)
+            continue
+        existing = by_url.get(url)
+        if existing and existing.get("ok") and cache_valid(existing):
+            this_call.append({**existing, "reused": True})
+            continue
+        pending.append(url)
+    with ThreadPoolExecutor(max_workers=max(1, min(workers, 8))) as executor:
+        futures = {executor.submit(fetch_one, url, stable, scope=scope, timeout=timeout, getter=getter): url for url in pending}
+        for future in as_completed(futures):
+            fetched = future.result()
+            this_call.append(fetched)
+            write_report(_report_from_records([fetched], scope), stable)
+    # Closed rows must also survive interrupted invocations.
+    write_report(_report_from_records(this_call, scope), stable)
+    report = _report_from_records(load_records(stable), scope)
+    report["ok"] = any(r.get("ok") for r in this_call)
+    report["this_call"] = this_call
+    return report
+
+
+def call_summary(report: dict[str, Any], report_path: Path) -> dict[str, Any]:
+    """The stdout view: this call's rows and the channel verdicts, not every historical body.
+
+    Page text stays in `text_path`. Printing the accumulated report on every call is how
+    a long run's tool output grew without bound.
+    """
+    kept = (
+        "url",
+        "ok",
+        "reason",
+        "reused",
+        "text_chars",
+        "text_path",
+        "raw_sha256",
+        "text_sha256",
+        "channel_verdict",
+        "channel",
+        "host_class",
+        "title",
+        "detail",
+    )
+    rows = []
+    for record in report.get("this_call") or []:
+        rows.append({key: record[key] for key in kept if key in record})
+    return {
+        "ok": report.get("ok"),
+        "scope": report.get("scope"),
+        "fetched": report.get("fetched"),
+        "refused": report.get("refused"),
+        "failed": report.get("failed"),
+        "degenerate_channels": report.get("degenerate_channels") or [],
+        "records": rows,
+        "records_total": len(report.get("records") or []),
+        "report": str(report_path),
+    }
 
 
 def write_report(report: dict[str, Any], out_dir: Path) -> Path:
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / "fetch-text-report.json"
-    path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    stable = report_directory(out_dir)
+    stable.mkdir(parents=True, exist_ok=True)
+    path = stable / "fetch-text-report.json"
+    with file_lock(stable / ".report.lock"):
+        records = load_records(stable)
+        for incoming in report.get("records", []):
+            if incoming.get("reused"):
+                continue
+            if incoming not in records:
+                records.append(incoming)
+        atomic_json(path, _report_from_records(records, str(report.get("scope", ""))))
     return path

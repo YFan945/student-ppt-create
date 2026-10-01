@@ -196,7 +196,7 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
 
     def test_the_channel_switch_ladder_is_documented(self) -> None:
         workflow = self.read(self.WORKFLOW)
-        self.assertIn("换通道，不换措辞", workflow)
+        self.assertIn("换文档定位路线", workflow)
         self.assertIn("返回无关结果", workflow)
         self.assertIn("一个可回答单元", workflow)
         agent = self.read(self.AGENT)
@@ -218,28 +218,20 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
         self.assertIn("entity_ids", descriptions)
 
     def test_result_pages_are_never_sources(self) -> None:
-        # The agent prompt is English, the references are Chinese: assert the rule
-        # in each surface's own language, and that both name the hosts actually fetched.
-        bans = {
-            self.AGENT: "never a source",
-            self.WORKFLOW: "结果页永远不是来源",
-            self.SPAWN: "永远不是来源",
-        }
-        for path, phrase in bans.items():
-            text = self.read(path)
-            with self.subTest(path=path.name):
-                self.assertIn(phrase, text)
-                self.assertTrue(
-                    "so.com" in text and "duckduckgo" in text,
-                    "the rule must name the hosts that were actually fetched",
-                )
+        # Detailed host policy has one owner; entrypoints link rather than copy it.
+        workflow = self.read(self.WORKFLOW)
+        self.assertIn("结果页永远不是来源", workflow)
+        self.assertIn("so.com", workflow)
+        self.assertIn("duckduckgo", workflow)
+        for path in (self.AGENT, self.SPAWN, self.SKILL):
+            self.assertIn("research-workflow", self.read(path))
 
     def test_backend_failure_has_its_own_reason(self) -> None:
         schema = json.loads(self.read(self.SCHEMA))
         reasons = schema["properties"]["unresolved"]["items"]["properties"]["reason"]["enum"]
         self.assertIn("search_unavailable", reasons)
         self.assertNotIn("out_of_budget", reasons, "budget vocabulary is retired")
-        for path in (self.AGENT, self.WORKFLOW, self.SPAWN, self.SKILL):
+        for path in (self.AGENT, self.WORKFLOW):
             with self.subTest(path=path.name):
                 self.assertIn("search_unavailable", self.read(path))
 
@@ -266,8 +258,8 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
         self.assertNotIn("Prioritize\n   primary sources", agent)
         self.assertIn("attribution metadata only", agent)
         self.assertIn("opinion_only_support", agent)
-        self.assertIn("硬门只有两条", self.read(self.SKILL))
-        self.assertIn("不要为等级 letter 检索", self.read(self.SPAWN))
+        self.assertIn("来源等级仅标注", self.read(self.SKILL))
+        self.assertIn("research-workflow.md", self.read(self.SPAWN))
         schema = json.loads(self.read(self.SCHEMA))
         tier_description = schema["properties"]["sources"]["items"]["properties"]["tier"]["description"]
         self.assertIn("页脚标注元数据（不是门禁）", tier_description)
@@ -289,29 +281,29 @@ class RetrievalMechanicsContractTests(unittest.TestCase):
         self.assertIn("--search-log", workflow)
         self.assertIn("--fetch-report", workflow)
         agent = self.read(self.AGENT)
-        self.assertIn("must_verify_unlinked", agent)
+        self.assertIn("matching claim_id", agent)
         self.assertIn("--search-log", agent)
-        self.assertIn("must_verify_unlinked", self.read(self.SKILL))
-        self.assertIn("--search-log", self.read(self.SPAWN))
+        self.assertIn("entity_ids/claim_id", self.read(self.SKILL))
+        self.assertIn("research-task.json", self.read(self.SPAWN))
         schema = json.loads(self.read(self.SCHEMA))
         must_verify = json.dumps(schema["properties"]["must_verify"], ensure_ascii=False)
         self.assertIn("must_verify_unlinked", must_verify)
 
     def test_the_deterministic_route_is_documented_where_the_executor_reads(self) -> None:
-        for path in (self.AGENT, self.WORKFLOW, self.SPAWN, self.SKILL):
+        for path in (self.AGENT, self.WORKFLOW):
             text = self.read(path)
             with self.subTest(path=path.name):
                 self.assertIn("fetch-text", text)
                 self.assertIn("--scope", text)
         agent = self.read(self.AGENT)
         self.assertIn("text_sha256", agent, "the quote must be bound to the fetched artifact")
-        self.assertIn("not with a summarizing reader", agent)
+        self.assertIn("file hashes alone do not establish semantic support", agent)
 
     def test_a_dead_backend_is_not_read_as_absent_evidence(self) -> None:
         agent = self.read(self.AGENT)
-        self.assertIn("not a new channel", agent)
+        self.assertIn("unknown_payload", agent)
         self.assertIn("search_unavailable", agent)
-        self.assertIn("Direct-source route", agent)
+        self.assertIn("Fetch documents", agent)
         self.assertIn("verbatim", agent)
         self.assertIn("主源直取", self.read(self.WORKFLOW))
         self.assertNotIn("停止换词重搜", self.read(self.WORKFLOW))

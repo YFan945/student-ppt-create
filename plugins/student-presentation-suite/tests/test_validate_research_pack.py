@@ -123,7 +123,7 @@ class ResearchPackContractTests(unittest.TestCase):
         codes = [p["code"] for p in report["problems"]]
         self.assertIn("independence_override_used", codes)
         self.assertEqual(0, report["counts"]["blockers"])
-        self.assertEqual(1, report["counts"]["minor"])
+        self.assertEqual(2, report["counts"]["minor"])
 
     def test_opinion_only_support_is_an_advisory_not_a_rejection(self) -> None:
         # Owner ruling 2026-09-30: too strict to reject. The pack passes; the flag
@@ -453,8 +453,13 @@ class RetrievalAuditTests(unittest.TestCase):
     def setUp(self) -> None:
         self.module = load_module(SCRIPT)
 
-    def codes(self, pack, search_log=None, fetch_report=None):
-        report = self.module.validate(pack, search_log=search_log, fetch_report=fetch_report)
+    def codes(self, pack, search_log=None, fetch_report=None, search_payloads=None):
+        report = self.module.validate(
+            pack,
+            search_log=search_log,
+            fetch_report=fetch_report,
+            search_payloads=search_payloads,
+        )
         return [p["code"] for p in report["problems"]]
 
     def _pack_with_queries(self):
@@ -547,6 +552,111 @@ class RetrievalAuditTests(unittest.TestCase):
         report = {"records": [{"url": "https://www.so.com/s?q=x", "host_class": "search_engine", "ok": True}]}
         self.assertIn("result_page_fetched", self.codes(base_pack(), fetch_report=report))
 
+    def test_a_degenerate_endpoint_is_flagged_from_the_hashes_alone(self) -> None:
+        # 2026-09-30: ten differently-parameterised requests, one identical 97-byte body,
+        # and the executor varied `t=` five more times because nothing said the endpoint
+        # was not answering. Recomputed from raw_sha256, not read from a field the writer
+        # could omit, so an older report audits the same way.
+        records = [
+            {
+                "url": f"https://sousuo.www.gov.cn/search-gov/data?t={t}&q=q{i}",
+                "host_class": "public",
+                "ok": True,
+                "raw_sha256": "6ce85fba4b9588a39ecc1c33fd03a8208206d078fa9fb5bd90157538c0eeb0b0",
+            }
+            for i, t in enumerate(("govall", "zhengcelibrary_gw", "zhengcelibrary_cp"))
+        ]
+        self.assertIn("degenerate_channel", self.codes(base_pack(), fetch_report={"records": records}))
+
+    def test_a_real_result_beside_the_shell_is_not_a_degenerate_channel(self) -> None:
+        records = [
+            {
+                "url": "https://sousuo.www.gov.cn/search-gov/data?t=govall&q=a",
+                "host_class": "public",
+                "ok": True,
+                "raw_sha256": "shell",
+            },
+            {
+                "url": "https://sousuo.www.gov.cn/search-gov/data?t=zhengcelibrary_bm&q=b",
+                "host_class": "public",
+                "ok": True,
+                "raw_sha256": "real",
+            },
+        ]
+        self.assertNotIn("degenerate_channel", self.codes(base_pack(), fetch_report={"records": records}))
+
+    def test_repeating_one_url_is_never_a_degenerate_channel(self) -> None:
+        records = [
+            {"url": "https://www.nea.gov.cn/p.htm", "host_class": "public", "ok": True, "raw_sha256": "same"},
+            {"url": "https://www.nea.gov.cn/p.htm", "host_class": "public", "ok": True, "raw_sha256": "same"},
+        ]
+        self.assertNotIn("degenerate_channel", self.codes(base_pack(), fetch_report={"records": records}))
+
+    def test_a_search_layer_that_never_ran_is_flagged(self) -> None:
+        # The distinction the bare `search_unavailable` cannot carry: all 19 searches in
+        # the live run returned the wrapper model's own prose, so the failures are an
+        # environment fact, not evidence of absence.
+        log = {
+            "search_executions": [
+                {"n": n, "query": f"查询 {n}", "status": "failed", "signature": "backend_not_executed"}
+                for n in (1, 2, 3)
+            ]
+        }
+        self.assertIn("search_backend_not_executed", self.codes(base_pack(), search_log=log))
+
+    def test_one_executed_failure_spares_the_verdict(self) -> None:
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "查询一", "status": "failed", "signature": "backend_not_executed"},
+                {"n": 2, "query": "查询二", "status": "failed", "signature": "index_empty"},
+            ]
+        }
+        self.assertNotIn("search_backend_not_executed", self.codes(base_pack(), search_log=log))
+
+    def test_an_unclassified_log_never_invents_an_outage(self) -> None:
+        # Fail-open on a missing field: older writers and unclassified failures must not
+        # be read as a dead backend.
+        log = {"search_executions": [{"n": 1, "query": "查询一", "status": "failed"}]}
+        self.assertNotIn("search_backend_not_executed", self.codes(base_pack(), search_log=log))
+
+    def test_hook_payloads_are_recomputed_when_the_log_omits_the_signature(self) -> None:
+        """The 16 role-played answers would not have been signed by the model. The hook
+        stores the payload; the audit classifies it again and does not trust a missing field.
+        """
+        prose = "我会为您搜索。根据已知知识，海上风电累计装机约4000兆瓦。"
+        payloads = {
+            "executions": [
+                {"query": "海上风电", "payload": prose},
+                {"query": "储能", "payload": prose},
+            ]
+        }
+        log = {"search_executions": []}
+        self.assertIn(
+            "search_response_unknown",
+            self.codes(base_pack(), search_log=log, search_payloads=payloads),
+        )
+
+    def test_a_real_record_among_payloads_is_not_a_session_outage(self) -> None:
+        payloads = {
+            "executions": [
+                {"query": "a", "payload": "根据已知知识，没有检索工具。"},
+                {
+                    "query": "b",
+                    "payload": '[{"title": "报告", "link": "https://www.irena.org/x", "content": "1"}]',
+                },
+            ]
+        }
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "a", "status": "failed", "signature": "backend_not_executed"},
+                {"n": 2, "query": "b", "status": "failed", "signature": "backend_not_executed"},
+            ]
+        }
+        self.assertNotIn(
+            "search_backend_not_executed",
+            self.codes(base_pack(), search_log=log, search_payloads=payloads),
+        )
+
     def test_clean_trail_produces_no_audit_flags(self) -> None:
         pack = self._pack_with_queries()
         log = {
@@ -556,7 +666,15 @@ class RetrievalAuditTests(unittest.TestCase):
         }
         fetch = {"records": [{"url": "https://www.gov.cn/x.htm", "host_class": "public", "ok": True}]}
         codes = self.codes(pack, search_log=log, fetch_report=fetch)
-        for audit in ("query_unlogged", "duplicate_query", "reworded_retry", "over_broad_query", "result_page_fetched"):
+        for audit in (
+            "query_unlogged",
+            "duplicate_query",
+            "reworded_retry",
+            "over_broad_query",
+            "result_page_fetched",
+            "degenerate_channel",
+            "search_backend_not_executed",
+        ):
             self.assertNotIn(audit, codes)
 
     def test_trail_arguments_may_be_paths_and_never_crash_the_validator(self) -> None:

@@ -11,21 +11,35 @@ so script writes (e.g. ``python json.dump``) count the same as Write-tool writes
 """
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import os
 import re
+import shlex
 import sys
 import time
 from contextlib import contextmanager, suppress
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = SCRIPT_DIR.parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import critic_preview  # noqa: E402
 import pipeline_context  # noqa: E402
+
+from shared.retrieval_trail import (  # noqa: E402
+    INDEX_EMPTY,
+    SEARCH_BACKEND_NOT_EXECUTED,
+    UNKNOWN_PAYLOAD,
+    is_search_locator,
+    search_channel_closed,
+    search_payload_signature,
+)
 
 RESEARCHER = pipeline_context.RESEARCHER
 CRITIC = pipeline_context.CRITIC
@@ -52,6 +66,43 @@ NESTED_SPAWN_REFUSAL = (
     "main session must respawn the plugin agent correctly."
 )
 WEB_REFUSAL = "External research must run in the isolated presentation-researcher."
+SEARCH_CLOSED = (
+    "This search channel is paused after confirmed non-execution. "
+    "Do not cite that response. Continue document retrieval and bounded evidence inspection. "
+    "Only the main session may reset the channel after a documented environment change, "
+    "using reset_research_channel.py; otherwise close affected claims as unresolved."
+)
+INDEX_EMPTY_NOTE = (
+    "search_signature: index_empty. The search backend ran and returned no links for this phrasing. "
+    "That is coverage, not a dead channel. Correct language/name/filter if useful, "
+    "or locate the publisher's document URL; avoid pointless duplicates."
+)
+BACKEND_NOTE = (
+    "search_signature: backend_not_executed. Structured runtime metadata reports non-execution. "
+    + SEARCH_CLOSED
+)
+UNKNOWN_NOTE = (
+    "search_signature: unknown_payload. This response format is not recognised; "
+    "it does not prove that the backend failed or executed. Search remains available; "
+    "record this advisory and use any candidate links only to locate readable sources."
+)
+LOCATOR_REFUSAL = (
+    "A search-result page is a locator, not a source. Fetch the document URL with "
+    "pptx_tool.py fetch-text. WebFetch of a search-engine result page is refused."
+)
+BODY_DUMP_REFUSAL = (
+    "Fetched page bodies stay on disk. Read text_path with the Read tool using offset and limit. "
+    "Do not cat, grep, head, or print .txt/.raw bodies from research/fetched back into the turn."
+)
+READ_LIMIT_REFUSAL = (
+    "Read of a fetched page body requires limit, with offset when you need a later slice. "
+    "Do not read the whole file into the turn."
+)
+SEARCH_PAYLOADS_NAME = "search-payloads.json"
+_BODY_DUMP_RE = re.compile(
+    r"\b(grep|cat|head|tail|less|more|Get-Content)\b|\bprint\s*\(|\bopen\s*\(|\bread_text\s*\(",
+    re.IGNORECASE,
+)
 CRITIC_WORKDIR_REFUSAL = (
     "visual-critic spawn must include the absolute outputs/.pptx-work/<work-id> path "
     "in its prompt so the hook can materialize hash-bound compressed previews."
@@ -78,10 +129,10 @@ def _wait_for_lock(path: Path, deadline: float) -> None:
 
 
 @contextmanager
-def event_lock(event: dict):
+def event_lock(event: dict, *, project_override: Path | None = None, key_override: str | None = None):
     """Serialize parallel child hook events and recover abandoned lock files."""
-    project = Path(os.environ.get("CLAUDE_PROJECT_DIR") or event.get("cwd") or Path.cwd()).resolve()
-    key = re.sub(r"[^A-Za-z0-9_-]", "_", str(event.get("session_id")) + "-" + str(event.get("agent_id")))
+    project = project_override or Path(os.environ.get("CLAUDE_PROJECT_DIR") or event.get("cwd") or Path.cwd()).resolve()
+    key = key_override or re.sub(r"[^A-Za-z0-9_-]", "_", str(event.get("session_id")) + "-" + str(event.get("agent_id")))
     path = project / "outputs/.pptx-work/.guard" / f"lock-{key}"
     path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + 5
@@ -229,6 +280,233 @@ def _critic_review_target(path: Path, root: Path) -> tuple[Path, Path] | None:
     return None
 
 
+def _is_researcher(event: dict) -> bool:
+    """The plugin researcher, including ZCode's `zcode-` prefix on the child runtime."""
+    return str(event.get("agent_type") or "").endswith("presentation-researcher")
+
+
+def _response_text(value: object) -> str:
+    """Keep the complete result so JSON parsing and later replay see the same bytes."""
+    if isinstance(value, str):
+        text = value
+    elif isinstance(value, dict):
+        for key in ("text", "content", "output", "result", "stdout"):
+            inner = value.get(key)
+            if isinstance(inner, str) and inner.strip():
+                text = inner
+                break
+        else:
+            text = json.dumps(value, ensure_ascii=False)
+    elif isinstance(value, list):
+        parts: list[str] = []
+        for item in value:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                parts.append(item["text"])
+        text = "\n".join(parts)
+    else:
+        text = ""
+    return text
+
+
+def _channel_path(project: Path, event: dict) -> Path:
+    key = re.sub(
+        r"[^A-Za-z0-9_-]",
+        "_",
+        str(event.get("session_id") or "unknown") + "-" + str(event.get("agent_id") or "main"),
+    )
+    return project / "outputs" / ".pptx-work" / ".guard" / f"search-channel-{key}.json"
+
+
+def _read_executions(path: Path) -> list[dict]:
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    rows = data.get("executions") if isinstance(data, dict) else None
+    return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
+
+def _write_executions(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"executions": rows}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _armed_work_dirs(project: Path) -> list[Path]:
+    """Work dirs this project currently has armed, ignoring which session armed them.
+
+    The child runtime's session id is not the parent's, so the research-active marker
+    written at spawn is found by scanning, and only a single armed work-id is trusted.
+    """
+    guard = project / "outputs" / ".pptx-work" / ".guard"
+    if not guard.is_dir():
+        return []
+    found: list[Path] = []
+    now = time.time()
+    for path in guard.glob("research-active-*.json"):
+        try:
+            if now - path.stat().st_mtime > pipeline_context.RESEARCH_ACTIVE_TTL_SECONDS:
+                continue
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        for work_id in data.get("work_ids") or []:
+            found.append(project / "outputs" / ".pptx-work" / str(work_id))
+    unique = list(dict.fromkeys(found))
+    return unique if len(unique) == 1 else []
+
+
+def _record_search_payload(project: Path, event: dict) -> None:
+    """Classify the tool result, persist the payload, and tell the model the signature.
+
+    The payload is what the validator recomputes from. The additionalContext is what
+    the model sees beside the prose: ZCode appends hook context, it does not replace
+    the tool result, so the note has to say the prose is not evidence.
+    """
+    response = event.get("tool_response")
+    # Preserve structured results instead of flattening a list into empty text.
+    payload = json.dumps(response, ensure_ascii=False) if isinstance(response, (dict, list)) else _response_text(response)
+    execution_status = str(response.get("execution_status") or "") if isinstance(response, dict) else ""
+    signature = search_payload_signature(payload, execution_status=execution_status)
+    if not signature:
+        return
+    row = {
+        "query": str((event.get("tool_input") or {}).get("query") or ""),
+        "payload": payload,
+        "signature": signature,
+        "execution_status": execution_status,
+    }
+    channel = _channel_path(project, event)
+    rows = _read_executions(channel)
+    rows.append(row)
+    _write_executions(channel, rows)
+    for work_dir in _armed_work_dirs(project):
+        trail = work_dir / "research" / SEARCH_PAYLOADS_NAME
+        _write_executions(trail, _read_executions(trail) + [row])
+    note = {
+        SEARCH_BACKEND_NOT_EXECUTED: BACKEND_NOTE,
+        UNKNOWN_PAYLOAD: UNKNOWN_NOTE,
+        INDEX_EMPTY: INDEX_EMPTY_NOTE,
+    }.get(signature)
+    if not note:
+        return
+    json.dump(
+        {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": note}},
+        sys.stdout,
+        ensure_ascii=False,
+    )
+    sys.stdout.write("\n")
+
+
+def dumps_fetched_body(command: str) -> bool:
+    """True when a shell command would print a fetched page body back into the turn."""
+    normalized = str(command or "").replace("\\", "/")
+    if "fetch-text" in normalized or "research/fetched" not in normalized:
+        return False
+    if not re.search(r"\.(txt|raw)\b", normalized, re.IGNORECASE):
+        return False
+    if _prints_digest_only(command):
+        return False
+    return _BODY_DUMP_RE.search(command or "") is not None
+
+
+def _prints_digest_only(command: str) -> bool:
+    """Allow metadata hashes and statically bounded excerpts; never full bodies."""
+    try:
+        parts = shlex.split(command)
+        code = parts[parts.index("-c") + 1]
+        tree = ast.parse(code)
+    except (ValueError, IndexError, SyntaxError):
+        return False
+
+    def digest(node):
+        return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "hexdigest" and isinstance(node.func.value, ast.Call)
+                and ast.unparse(node.func.value.func) == "hashlib.sha256")
+
+    literals = {}
+
+    def bound(node):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "len" and len(node.args) == 1:
+            value = node.args[0]
+            if isinstance(value, ast.Name) and isinstance(literals.get(value.id), str):
+                return "", len(literals[value.id])
+        if isinstance(node, ast.Constant) and isinstance(node.value, int):
+            return "", node.value
+        if isinstance(node, ast.Name):
+            return node.id, 0
+        if isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Sub)):
+            left, right = bound(node.left), bound(node.right)
+            if left is not None and right is not None and not right[0]:
+                return left[0], left[1] + right[1] * (-1 if isinstance(node.op, ast.Sub) else 1)
+        return None
+
+    def excerpt(node):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "repr" and len(node.args) == 1:
+            node = node.args[0]
+        if not isinstance(node, ast.Subscript) or not isinstance(node.slice, ast.Slice):
+            return False
+        low, high = bound(node.slice.lower), bound(node.slice.upper)
+        return low is not None and high is not None and low[0] == high[0] and high[1] > low[1]
+
+    hashes = set()
+    printed = False
+    for statement in tree.body:
+        if not isinstance(statement, (ast.Import, ast.ImportFrom, ast.Assign, ast.Expr)):
+            return False
+        if isinstance(statement, ast.Assign):
+            for target in statement.targets:
+                if isinstance(target, ast.Name):
+                    literals.pop(target.id, None)
+                    if isinstance(statement.value, ast.Constant):
+                        literals[target.id] = statement.value.value
+                    hashes.discard(target.id)
+                    if digest(statement.value):
+                        hashes.add(target.id)
+        if isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Call):
+            call = statement.value
+            if not isinstance(call.func, ast.Name) or call.func.id != "print":
+                return False
+            if isinstance(call.func, ast.Name) and call.func.id == "print":
+                if not call.args or not all(isinstance(arg, (ast.Constant, ast.Compare)) or digest(arg) or excerpt(arg)
+                                           or isinstance(arg, ast.Name) and arg.id in hashes for arg in call.args):
+                    return False
+                printed = True
+    # Nested print/control flow is outside this small metadata-only allowance.
+    prints = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == "print"]
+    top_prints = [s for s in tree.body if isinstance(s, ast.Expr) and isinstance(s.value, ast.Call)
+                  and isinstance(s.value.func, ast.Name) and s.value.func.id == "print"]
+    return printed and len(prints) == len(top_prints)
+
+
+def _fetched_body_path(path: str) -> bool:
+    normalized = str(path or "").replace("\\", "/")
+    return "research/fetched" in normalized and re.search(r"\.(txt|raw)$", normalized, re.IGNORECASE) is not None
+
+
+def greps_fetched_body(inputs: dict) -> bool:
+    """True when Grep would search fetched page bodies rather than the fetch report."""
+    path = str(inputs.get("path") or inputs.get("file_path") or "").replace("\\", "/")
+    return "research/fetched" in path and not path.endswith(".json")
+
+
+def read_fetched_without_limit(inputs: dict) -> bool:
+    """True when a fetched body would be read whole. Presence of limit is the slice; no cap."""
+    path = str(inputs.get("file_path") or inputs.get("path") or "")
+    if not _fetched_body_path(path):
+        return False
+    limit = inputs.get("limit")
+    return not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0
+
+
 def handle(event: dict) -> int:
     project = Path(os.environ.get("CLAUDE_PROJECT_DIR") or event.get("cwd") or Path.cwd()).resolve()
     root = project / "outputs" / ".pptx-work"
@@ -243,6 +521,69 @@ def handle(event: dict) -> int:
         return 0
 
     if kind == "PreToolUse":
+        if _is_researcher(event):
+            works = _armed_work_dirs(project)
+            task_path = works[0] / "research-task.json" if works else None
+            retrieval = tool in {"WebSearch", "WebFetch"} or (
+                tool in {"Bash", "PowerShell"} and re.search(r"\bfetch-text(?=[\s\"']|$)", str(inputs.get("command", ""))))
+            if retrieval and task_path and task_path.is_file():
+                from shared.research_control import status
+                decision = status(task_path.parent, retrieval=True)
+                if decision["state"] == "stop_requested":
+                    print(f"Research stop requested: {decision['reason']}. Save the current pack, mark remaining gaps and return; no more retrieval.", file=sys.stderr)
+                    return 2
+            if retrieval and task_path and not task_path.is_file() and (task_path.parent / "research-task-binding.json").is_file():
+                print("Bound research task was removed; retrieval is refused.", file=sys.stderr)
+                return 2
+            if retrieval and task_path and task_path.is_file():
+                from validate_research_task import validate_task
+                try:
+                    task = json.loads(task_path.read_text(encoding="utf-8"))
+                    errors = validate_task(task, task_path)
+                    frozen = json.loads((task_path.parent / "research-task-binding.json").read_text(encoding="utf-8"))
+                    if frozen.get("sha256") != hashlib.sha256(task_path.read_bytes()).hexdigest():
+                        errors.append("Task changed after spawn")
+                    if errors or task.get("scope") not in {"A", "B"}:
+                        print("Research task does not authorize this retrieval: " + "; ".join(errors), file=sys.stderr)
+                        return 2
+                except (OSError, ValueError, TypeError):
+                    print("Research task binding is missing or unreadable.", file=sys.stderr)
+                    return 2
+            elif retrieval and not works and any(root.glob("*/research-task-binding.json")):
+                print("Research work directory is ambiguous; bind one task before retrieval.", file=sys.stderr)
+                return 2
+            closed = search_channel_closed(_read_executions(_channel_path(project, event)))
+            if tool == "WebSearch" and closed:
+                print(SEARCH_CLOSED, file=sys.stderr)
+                return 2
+            if tool == "WebFetch" and is_search_locator(str(inputs.get("url") or "")):
+                print(LOCATOR_REFUSAL, file=sys.stderr)
+                return 2
+            if tool in {"Bash", "PowerShell"}:
+                command = str(inputs.get("command") or "")
+                if "reset_research_channel" in command:
+                    print("Only the main session may reset the research search channel.", file=sys.stderr)
+                    return 2
+                if "research_control.py" in command and "--resume" in command:
+                    print("Only the main session may resume research after new input/environment changes.", file=sys.stderr)
+                    return 2
+                if dumps_fetched_body(command):
+                    print(BODY_DUMP_REFUSAL, file=sys.stderr)
+                    return 2
+            if tool == "Grep" and greps_fetched_body(inputs) and inputs.get("output_mode") == "content" and (
+                    not isinstance(inputs.get("head_limit"), int) or isinstance(inputs.get("head_limit"), bool)
+                    or inputs["head_limit"] <= 0
+            ):
+                if inputs.get("head_limit") is None:
+                    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse",
+                        "updatedInput": {**inputs, "head_limit": 80},
+                        "additionalContext": "Using head_limit=80 for focused evidence inspection; narrow the pattern if truncated."}}))
+                    return 0
+                print("Set a positive head_limit for content searches of fetched bodies.", file=sys.stderr)
+                return 2
+            if closed and tool == "Read" and read_fetched_without_limit(inputs):
+                print(READ_LIMIT_REFUSAL, file=sys.stderr)
+                return 2
         if tool in {"Write", "Edit"}:
             path = Path(inputs.get("file_path") or "").resolve()
             if path.is_relative_to(root) and (
@@ -250,6 +591,9 @@ def handle(event: dict) -> int:
                     "research-execution.json",
                     "critic-execution.json",
                     "calibration-critic-execution.json",
+                    SEARCH_PAYLOADS_NAME,
+                    "research-task-binding.json",
+                    "research-control.json",
                 }
                 or path.is_relative_to(root / ".guard")
                 or _hook_owned_preview_path(path, root)
@@ -285,6 +629,24 @@ def handle(event: dict) -> int:
                 return 2
             if inputs.get("subagent_type") == RESEARCHER:
                 researcher_work = _critic_work_dir(inputs, root)
+                if researcher_work and (researcher_work / "research-task.json").is_file():
+                    from validate_research_task import validate_task
+
+                    from shared.research_io import atomic_json
+                    task_path = researcher_work / "research-task.json"
+                    try:
+                        errors = validate_task(json.loads(task_path.read_text(encoding="utf-8")), task_path)
+                    except (OSError, ValueError, TypeError) as exc:
+                        errors = [str(exc)]
+                    if errors:
+                        print("Invalid researcher task: " + "; ".join(errors), file=sys.stderr)
+                        return 2
+                    atomic_json(researcher_work / "research-task-binding.json", {
+                        "path": str(task_path.resolve()),
+                        "sha256": hashlib.sha256(task_path.read_bytes()).hexdigest(),
+                    })
+                    from shared.research_control import status
+                    status(researcher_work)
                 pipeline_context.mark_research_active(
                     project, event,
                     work_ids=[researcher_work.name] if researcher_work else None,
@@ -339,6 +701,8 @@ def handle(event: dict) -> int:
                 )
                 return 2
         return 0
+    if kind == "PostToolUse" and tool == "WebSearch" and _is_researcher(event) and child:
+        _record_search_payload(project, event)
     if (
         kind == "PostToolUse"
         and tool in {"Bash", "PowerShell"}
@@ -381,6 +745,14 @@ def handle(event: dict) -> int:
         record_artifact_changes(data, root)
     elif kind == "PostToolUse" and tool in {"Bash", "PowerShell"}:
         record_artifact_changes(data, root)
+        if agent == RESEARCHER:
+            from shared.research_control import status
+            works = _armed_work_dirs(project)
+            if works and (works[0] / "research-task.json").is_file():
+                decision = status(works[0])
+                if decision["state"] == "stop_requested":
+                    print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext":
+                        f"Research stop requested: {decision['reason']}. Save/validate remaining gaps and return the handoff; do not search further."}}))
     elif kind == "PostToolUse" and agent == RESEARCHER and tool in {"WebSearch", "WebFetch"}:
         retrieval = data.setdefault("retrieval", {"WebSearch": 0, "WebFetch": 0})
         retrieval[tool] = int(retrieval.get(tool) or 0) + 1

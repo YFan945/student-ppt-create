@@ -46,6 +46,178 @@ class RuntimeEvidenceTests(unittest.TestCase):
         counts = json.loads(ledger.read_text(encoding="utf-8"))["retrieval"]
         self.assertEqual({"WebSearch": 1, "WebFetch": 2}, counts)
 
+    def test_prose_search_is_advisory_and_a_record_is_usable(self) -> None:
+        self.event["agent_type"] = runtime.RESEARCHER
+        prose = "我会为您搜索。根据已知知识，风电利用小时为2221。"
+        self.event_call(
+            "PostToolUse",
+            tool_name="WebSearch",
+            tool_input={"query": "风电利用小时"},
+            tool_response=prose,
+        )
+        denied = self.event_call("PreToolUse", tool_name="WebSearch", tool_input={"query": "另一条"})
+        self.assertEqual(0, denied)
+        records = '[{"title": "统计", "link": "https://www.nea.gov.cn/2025/a.htm", "content": "1"}]'
+        self.event_call(
+            "PostToolUse",
+            tool_name="WebSearch",
+            tool_input={"query": "装机"},
+            tool_response=records,
+        )
+        allowed = self.event_call("PreToolUse", tool_name="WebSearch", tool_input={"query": "再一条"})
+        self.assertEqual(0, allowed)
+
+    def test_a_bare_empty_result_does_not_close_search(self) -> None:
+        self.event["agent_type"] = runtime.RESEARCHER
+        self.event_call(
+            "PostToolUse",
+            tool_name="WebSearch",
+            tool_input={"query": "冷门措辞"},
+            tool_response="Links:\n- No links found.",
+        )
+        self.assertEqual(
+            0, self.event_call("PreToolUse", tool_name="WebSearch", tool_input={"query": "另一条"})
+        )
+
+    def test_structured_tool_response_is_preserved_and_runtime_failure_is_explicit(self) -> None:
+        self.event["agent_type"] = runtime.RESEARCHER
+        self.event_call("PostToolUse", tool_name="WebSearch", tool_input={"query": "报告"},
+                        tool_response={"content": [{"type": "text", "text": '[{"title":"Report","snippet":"Text","url":"https://example.org/report"}]'}]})
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="WebSearch", tool_input={"query": "另一条"}))
+        self.event_call("PostToolUse", tool_name="WebSearch", tool_input={"query": "报告"},
+                        tool_response={"execution_status": "not_executed", "text": "failed"})
+        self.assertEqual(2, self.event_call("PreToolUse", tool_name="WebSearch", tool_input={"query": "另一条"}))
+
+    def test_large_json_response_is_not_truncated_into_an_unknown_payload(self) -> None:
+        self.event["agent_type"] = runtime.RESEARCHER
+        response = json.dumps({"results": [{"title": "报告", "snippet": "x" * 22000, "link": "https://example.org/report"}]})
+        self.event_call("PostToolUse", tool_name="WebSearch", tool_input={"query": "报告"}, tool_response=response)
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="WebSearch", tool_input={"query": "另一条"}))
+
+    def test_body_reads_and_content_searches_require_positive_limits(self) -> None:
+        self._close_search()
+        for limit in (0, -1, True, "40"):
+            with self.subTest(limit=limit):
+                self.assertEqual(2, self.event_call("PreToolUse", tool_name="Read", tool_input={"file_path": "E:/work/research/fetched/content.txt", "limit": limit}))
+                self.assertEqual(2, self.event_call("PreToolUse", tool_name="Grep", tool_input={"path": "E:/work/research/fetched", "pattern": "year", "output_mode": "content", "head_limit": limit}))
+
+    def test_zcode_prefixed_researcher_is_the_same_channel(self) -> None:
+        self.event["agent_type"] = "zcode-student-presentation-suite:presentation-researcher"
+        self.event_call(
+            "PostToolUse",
+            tool_name="WebSearch",
+            tool_input={"query": "储能"},
+            tool_response="I will perform a web search and summarize from my training data: 100GW.",
+        )
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="WebSearch", tool_input={"query": "x"}))
+
+    def test_webfetch_of_a_search_page_is_refused_and_a_document_is_not(self) -> None:
+        self.event["agent_type"] = runtime.RESEARCHER
+        self.assertEqual(
+            2,
+            self.event_call(
+                "PreToolUse",
+                tool_name="WebFetch",
+                tool_input={"url": "https://cn.bing.com/search?q=gwec"},
+            ),
+        )
+        self.assertEqual(
+            0,
+            self.event_call(
+                "PreToolUse",
+                tool_name="WebFetch",
+                tool_input={"url": "https://www.gov.cn/zhengce/2021-10/26/content_5644989.htm"},
+            ),
+        )
+
+    def test_printing_a_fetched_body_is_refused_and_fetch_text_is_not(self) -> None:
+        self.event["agent_type"] = runtime.RESEARCHER
+        dumped = (
+            'grep -oE ".{20}12亿千瓦.{20}" '
+            '"E:/Daima_Codes/12/outputs/.pptx-work/deck/research/fetched/u1/content.txt"'
+        )
+        self.assertEqual(2, self.event_call("PreToolUse", tool_name="Bash", tool_input={"command": dumped}))
+        fetch = (
+            'python pptx_tool.py fetch-text --scope A --out-dir '
+            '"E:/work/research/fetched" --url https://www.gov.cn/a.htm'
+        )
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="Bash", tool_input={"command": fetch}))
+
+    def _close_search(self) -> None:
+        self.event["agent_type"] = runtime.RESEARCHER
+        self.event_call(
+            "PostToolUse",
+            tool_name="WebSearch",
+            tool_input={"query": "风电利用小时"},
+            tool_response={"execution_status": "not_executed", "text": "failed"},
+        )
+
+    def test_a_closed_channel_keeps_document_fetch_bounded_read_and_pack_writes(self) -> None:
+        self._close_search()
+        document = (
+            "python pptx_tool.py fetch-text --scope A --out-dir "
+            '"E:/work/research/fetched" --url https://www.gov.cn/zhengce/2021-10/26/content_5644989.htm'
+        )
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="Bash", tool_input={"command": document}))
+        pdf = (
+            "python pptx_tool.py fetch-text --scope A --out-dir "
+            '"E:/work/research/fetched" --url https://www.irena.org/media/Files/IRENA/Agency/Publication/2026/x.pdf'
+        )
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="PowerShell", tool_input={"command": pdf}))
+        body = "E:/work/research/fetched/u1/content.txt"
+        self.assertEqual(
+            0,
+            self.event_call("PreToolUse", tool_name="Read", tool_input={"file_path": body, "offset": 1, "limit": 40}),
+        )
+        report = "E:/work/research/fetched/fetch-text-report.json"
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="Read", tool_input={"file_path": report}))
+        pack = "python -c \"open(r'E:/work/research/research-pack.json','w').write('{}')\""
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="Bash", tool_input={"command": pack}))
+        validation = "python validate_research_pack.py --pack E:/work/research/research-pack.json"
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="Bash", tool_input={"command": validation}))
+
+    def test_a_paused_search_does_not_disable_evidence_tools(self) -> None:
+        self._close_search()
+        calls = [
+            ("WebFetch", {"url": "https://example.org/news/2026/report"}),
+            ("Bash", {"command": "python pptx_tool.py fetch-text --scope A --url https://example.org/news"}),
+            ("Grep", {"path": "E:/work/research/fetched", "pattern": "千瓦", "output_mode": "content", "head_limit": 20}),
+            ("Grep", {"path": "E:/work/research/fetched", "pattern": "千瓦", "output_mode": "files_with_matches"}),
+            ("Bash", {"command": "ls E:/work"}),
+        ]
+        for tool, inputs in calls:
+            with self.subTest(tool=tool):
+                self.assertEqual(0, self.event_call("PreToolUse", tool_name=tool, tool_input=inputs))
+        self.assertEqual(2, self.event_call("PreToolUse", tool_name="Read", tool_input={"file_path": "E:/work/research/fetched/content.txt"}))
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="Grep", tool_input={"path": "E:/work/research/fetched", "pattern": "千瓦", "output_mode": "content"}))
+        self.assertEqual(2, self.event_call("PreToolUse", tool_name="Bash", tool_input={"command": "python reset_research_channel.py"}))
+
+    def test_an_open_channel_still_allows_a_document_webfetch_and_a_listing_fetch(self) -> None:
+        self.event["agent_type"] = runtime.RESEARCHER
+        self.assertEqual(
+            0,
+            self.event_call(
+                "PreToolUse",
+                tool_name="WebFetch",
+                tool_input={"url": "https://www.gov.cn/zhengce/2021-10/26/content_5644989.htm"},
+            ),
+        )
+        listing = (
+            "python pptx_tool.py fetch-text --scope A --out-dir "
+            '"E:/work/research/fetched" --url https://www.nea.gov.cn/xwdt/gnxw.htm'
+        )
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="Bash", tool_input={"command": listing}))
+        body = "E:/work/research/fetched/u1/content.txt"
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="Read", tool_input={"file_path": body}))
+
+    def test_search_payloads_are_hook_owned(self) -> None:
+        self.event["agent_type"] = runtime.RESEARCHER
+        path = self.work / "research" / "search-payloads.json"
+        self.assertEqual(
+            2,
+            self.event_call("PreToolUse", tool_name="Write", tool_input={"file_path": str(path)}),
+        )
+
     def prepare_render(self, page_count: int = 2) -> tuple[Path, list[Path]]:
         render_dir = self.work / "render"
         render_dir.mkdir(parents=True, exist_ok=True)

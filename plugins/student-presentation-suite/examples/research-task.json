@@ -1,0 +1,18 @@
+{
+  "work_id": "research-demo",
+  "work_dir": "/absolute/project/outputs/.pptx-work/research-demo",
+  "brief_path": "/absolute/project/brief.json",
+  "scope": "A",
+  "materials_path": null,
+  "budget": "standard",
+  "background": "课程汇报中的年度能源数据；绝对路径需替换为实际项目路径。",
+  "claims": [
+    {
+      "id": "C01",
+      "claim": "所选年份和地域的新增装机规模",
+      "acceptance": "原文数字、年份、单位、地域及新增/累计口径一致；无法核实则 unresolved。",
+      "importance": "core",
+      "verification": "text"
+    }
+  ]
+}

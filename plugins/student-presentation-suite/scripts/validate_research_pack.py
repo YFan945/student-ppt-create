@@ -14,6 +14,7 @@ Exit codes: 0 = ok (minor findings allowed), 2 = blocker present.
 from __future__ import annotations
 
 import argparse
+import datetime
 import hashlib
 import ipaddress
 import json
@@ -24,6 +25,19 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+# Dependency-free on purpose: a research environment validates a trail without the
+# PPTX runtime installed (see shared/retrieval_trail.py).
+from shared.research_evidence import evidence_issues  # noqa: E402
+from shared.retrieval_trail import (  # noqa: E402
+    UNKNOWN_PAYLOAD,
+    degenerate_channels,
+    executions_from_payloads,
+    search_backend_never_executed,
+)
+
 SCHEMA_PATH = ROOT / "references" / "research-pack.schema.json"
 
 # 等级（S/A/B/C/D）是页脚标注元数据，不构成任何门禁（owner 裁定 2026-09-30，
@@ -291,8 +305,12 @@ def _effective_groups(pack: dict[str, Any]) -> tuple[dict[str, str], list[dict[s
     by_domain: dict[str, list[str]] = {}
     declared_domains: dict[str, list[str]] = {}
     by_declared: dict[str, list[str]] = {}
+    by_origin: dict[str, list[str]] = {}
     noted: set[str] = set()
     for source_id, entry in sources:
+        origin = str(entry.get("origin_id") or "").strip()
+        if origin:
+            by_origin.setdefault(origin, []).append(source_id)
         if str(entry.get("independence_note") or "").strip():
             noted.add(source_id)
         domain = _registrable_domain(str(entry.get("url") or "")) or _registrable_domain(
@@ -305,7 +323,7 @@ def _effective_groups(pack: dict[str, Any]) -> tuple[dict[str, str], list[dict[s
         by_declared.setdefault(str(entry.get("independence_group") or source_id), []).append(
             source_id
         )
-    for members in list(by_domain.values()) + list(by_declared.values()):
+    for members in list(by_domain.values()) + list(by_declared.values()) + list(by_origin.values()):
         for other in members[1:]:
             union(members[0], other)
 
@@ -450,7 +468,9 @@ def contract_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     queries = pack.get("queries") or []
 
     user_files = [entry for entry in sources if str(entry.get("type")) == "user-file"]
-    if not queries and sources and len(user_files) != len(sources):
+    # New direct-to-document research proves retrieval through text/fetch bindings;
+    # it need not invent a WebSearch query just to satisfy a legacy heuristic.
+    if not queries and sources and len(user_files) != len(sources) and pack.get("evidence_contract") not in {"text-bound-v1", "source-backed-v1"}:
         others = sorted(str(entry.get("id")) for entry in sources if str(entry.get("type")) != "user-file")
         out.append(
             issue(
@@ -548,7 +568,7 @@ def must_verify_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                 )
             )
             entity_refs = [ref for ref in entity_refs if ref in entity_ids]
-        if str(entry.get("status") or "") == "unresolved":
+        if str(entry.get("status") or "") in {"unresolved", "located"}:
             continue
         refs = [str(value) for value in (entry.get("source_ids") or [])]
         covered = bool(refs) or bool(entity_refs)
@@ -603,6 +623,8 @@ def must_verify_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                 )
             )
         for ref in entity_refs:
+            if entity_ids[ref].get("status") in {"located", "unresolved"}:
+                out.append(issue("major", "must_verify_entity_not_usable", f"Claim links unusable entity {ref}"))
             if entity_ids[ref].get("conflict"):
                 out.append(
                     issue(
@@ -692,10 +714,38 @@ def _coerce_trail(source: Any, label: str) -> tuple[dict[str, Any] | None, list[
     ]
 
 
+def _payload_rows(search_payloads: Any) -> list[dict[str, Any]] | None:
+    """Recomputed rows from hook-stored payloads, or None when the hook wrote nothing.
+
+    None keeps the model's own `signature` field in force (older runs, fail-open when
+    the field is absent). An unreadable file is also None: the audit skips rather than
+    inventing an outage.
+    """
+    if search_payloads is None:
+        return None
+    payloads, problems = _coerce_trail(search_payloads, "search-payloads")
+    if problems or not isinstance(payloads, dict):
+        return None
+    return executions_from_payloads(payloads.get("executions") or [])
+
+
+def _backend_not_executed_issue(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    failed_n = sum(1 for row in rows if str(row.get("status") or "") == "failed")
+    return issue(
+        "minor",
+        "search_backend_not_executed",
+        f"all {failed_n} failed searches carry the `backend_not_executed` "
+        "signature — the search backend did not execute in this run, so these are "
+        "not evidence of absence; close the affected claims as `search_unavailable` "
+        "and take the direct-source route (research-workflow §七)",
+    )
+
+
 def retrieval_audit_issues(
     pack: dict[str, Any],
     search_log: Any,
     fetch_report: Any,
+    search_payloads: Any = None,
 ) -> list[dict[str, Any]]:
     """Advisory audit of the retrieval trail against the research-workflow §七 rules.
 
@@ -710,6 +760,10 @@ def retrieval_audit_issues(
     out: list[dict[str, Any]] = []
     search_log, search_load = _coerce_trail(search_log, "search-log")
     fetch_report, fetch_load = _coerce_trail(fetch_report, "fetch-report")
+    payload_rows = _payload_rows(search_payloads) or []
+    if any(row.get("signature") == UNKNOWN_PAYLOAD for row in payload_rows):
+        out.append(issue("minor", "search_response_unknown",
+                         "Some search response formats were not recognised; execution is uncertain, not a confirmed outage."))
     out.extend(search_load)
     out.extend(fetch_load)
     if search_log is not None:
@@ -726,6 +780,9 @@ def retrieval_audit_issues(
                         "the retrieval audit has nothing to check (research-workflow §九)",
                     )
                 )
+            payload_rows = _payload_rows(search_payloads)
+            if payload_rows and search_backend_never_executed(payload_rows):
+                out.append(_backend_not_executed_issue(payload_rows))
         else:
             logged = {norm for norm in normalized if norm}
             unlogged = [
@@ -768,6 +825,8 @@ def retrieval_audit_issues(
                 if len(norm) < 9:
                     continue
                 for other_norm, other_raw, _other in failed[index + 1 :]:
+                    if _other.get("adjustment_reason") or _entry.get("adjustment_reason"):
+                        continue
                     if len(other_norm) < 9 or _unit_overlap(norm, other_norm) < 0.8:
                         continue
                     if _number_tokens(raw) != _number_tokens(other_raw):
@@ -804,6 +863,10 @@ def retrieval_audit_issues(
                         "(research-workflow §七 查询构造)",
                     )
                 )
+            payload_rows = _payload_rows(search_payloads)
+            verdict_rows = payload_rows if payload_rows is not None else executions
+            if search_backend_never_executed(verdict_rows):
+                out.append(_backend_not_executed_issue(verdict_rows))
     if fetch_report is not None:
         records = fetch_report.get("records") or []
         serp = [str(record.get("url") or "") for record in records if record.get("host_class") == "search_engine"]
@@ -816,6 +879,22 @@ def retrieval_audit_issues(
                     "only; never citable sources (research-workflow §七)",
                 )
             )
+        # Recomputed from `raw_sha256` rather than read from the tool's own
+        # `degenerate_channels` field, so a report written before the verdict existed
+        # audits the same way and no writer can suppress it by omitting a key.
+        degenerate = degenerate_channels(records)
+        if degenerate:
+            first = degenerate[0]
+            out.append(
+                issue(
+                    "minor",
+                    "degenerate_channel",
+                    f"{len(degenerate)} endpoint(s) answered distinct requests with one identical "
+                    f"body (e.g. {str(first['channel'])[:60]!r}, {first['distinct_requests']} "
+                    "requests) — judge that channel once and leave it; its `t=` / `page=` / `q=` "
+                    "variations are the same channel (research-workflow §七)",
+                )
+            )
     return out
 
 
@@ -824,7 +903,22 @@ def validate(
     *,
     search_log: Any = None,
     fetch_report: Any = None,
+    search_payloads: Any = None,
+    work_dir: Path | None = None,
 ) -> dict[str, Any]:
+    # Verification strength belongs to the task, not to a model-written entity.
+    if work_dir and (work_dir / "research-task.json").is_file():
+        import copy
+        try:
+            task = json.loads((work_dir / "research-task.json").read_text(encoding="utf-8"))
+            levels = {c["id"]: c.get("verification", "source") for c in task["claims"]}
+            pack = copy.deepcopy(pack)
+            for key in ("findings", "data_points", "quotes"):
+                for entity in pack.get(key, []):
+                    if entity.get("claim_id") in levels:
+                        entity["verification"] = levels[entity["claim_id"]]
+        except (OSError, ValueError, TypeError, KeyError):
+            pass  # apply_task reports malformed task contracts to every CLI consumer.
     problems = (
         schema_issues(pack)
         + id_issues(pack)
@@ -833,8 +927,9 @@ def validate(
         + cross_validation_issues(pack)
         + contract_issues(pack)
         + must_verify_issues(pack)
-        + retrieval_audit_issues(pack, search_log, fetch_report)
+        + retrieval_audit_issues(pack, search_log, fetch_report, search_payloads)
         + hygiene_issues(pack)
+        + evidence_issues(pack, fetch_report, work_dir)
     )
     blockers = [p for p in problems if p["severity"] in {"critical", "major"}]
     return {
@@ -859,6 +954,13 @@ def validate(
             "unresolved": len(items(pack, "unresolved")),
         },
         "problems": problems,
+        "evidence_checked": pack.get("evidence_contract") == "text-bound-v1" and not any(
+            p["code"].startswith("evidence_") for p in problems
+        ),
+        "completion": {
+            "verified": sum(c.get("status") == "verified" for c in items(pack, "must_verify")),
+            "unresolved": sum(c.get("status") == "unresolved" for c in items(pack, "must_verify")),
+        },
     }
 
 
@@ -874,6 +976,9 @@ RETRIEVAL_ADVISORY_CODES = frozenset(
         "over_broad_query",
         "result_page_fetched",
         "retrieval_log_unreadable",
+        "degenerate_channel",
+        "search_backend_not_executed",
+        "search_response_unknown",
     }
 )
 
@@ -906,7 +1011,7 @@ def render(report: dict[str, Any], path: Path, *, verbose: bool, max_items: int)
         f"(critical {counts['critical']}, major {counts['major']}), minor {counts['minor']} | "
         f"{inv['findings']}F/{inv['data_points']}D/{inv['quotes']}Q/{inv['sources']}S/"
         f"{inv['conflicts']}C/{inv['visual_candidates']}V/{inv['unresolved']}U | "
-        f"budget {report['budget']} | report: {path}"
+        f"budget {report['budget']} | delivery {report.get('delivery_status', 'legacy')} | report: {path}"
     ]
     audit_line = retrieval_advisory_line(report)
     if audit_line:
@@ -932,6 +1037,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--verbose", action="store_true", help="also list minor findings")
     parser.add_argument("--max-items", type=int, default=12)
+    parser.add_argument("--task", type=Path, help="research-task.json; enforces claim coverage and new evidence bindings")
     parser.add_argument(
         "--search-log",
         type=Path,
@@ -948,18 +1054,52 @@ def main(argv: list[str] | None = None) -> int:
         print(f"validate_research_pack: Research Pack does not exist: {args.pack}", file=sys.stderr)
         return 2
 
+    # Direct fetch is valid without an invented search query. Consumers and the
+    # smoke harness can omit audit flags; use this pack's existing receipts.
+    if args.search_log is None:
+        candidate = args.pack.parent / "research/search-log.json"
+        if candidate.is_file():
+            args.search_log = candidate
+    if args.fetch_report is None:
+        candidate = args.pack.parent / "research/fetched/fetch-text-report.json"
+        if candidate.is_file():
+            args.fetch_report = candidate
+
     search_log = None
+    search_payloads = None
     if args.search_log:
         search_log = (
             json.loads(args.search_log.read_text(encoding="utf-8"))
             if args.search_log.is_file()
             else {"search_executions": []}
         )
+        payloads_path = args.search_log.parent / "search-payloads.json"
+        if payloads_path.is_file():
+            search_payloads = json.loads(payloads_path.read_text(encoding="utf-8"))
     fetch_report = None
     if args.fetch_report and args.fetch_report.is_file():
         fetch_report = json.loads(args.fetch_report.read_text(encoding="utf-8"))
 
-    report = validate(load(args.pack), search_log=search_log, fetch_report=fetch_report)
+    pack = load(args.pack)
+    report = validate(
+        pack,
+        search_log=search_log,
+        fetch_report=fetch_report,
+        search_payloads=search_payloads,
+        work_dir=args.pack.resolve().parent,
+    )
+    from research_task_binding import apply_task
+    apply_task(report, pack, args.pack.resolve().parent, args.task)
+    from shared.research_io import atomic_json
+    atomic_json(args.pack.parent / "research-progress.json", {
+        "updated_at": datetime.datetime.now(datetime.UTC).isoformat(),
+        "pack_sha256": sha256_file(args.pack),
+        "validation_ok": report["ok"],
+        "delivery_status": report["delivery_status"],
+        "core_gaps": report["core_gaps"],
+        "pending_claims": report["pending_claims"],
+        "claims": pack.get("must_verify", []),
+    })
     report["research_pack"] = str(args.pack.resolve())
     report["research_pack_sha256"] = sha256_file(args.pack)
     if args.search_log or args.fetch_report:

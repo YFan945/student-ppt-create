@@ -7,6 +7,31 @@
   "required": ["version", "topic", "budget", "queries", "findings", "sources"],
   "additionalProperties": false,
   "properties": {
+    "evidence_contract": {
+      "enum": ["text-bound-v1", "source-backed-v1"]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entity_id", "source_id", "excerpt", "text_path", "text_sha256", "locator", "support_note"],
+        "properties": {
+          "entity_id": {"type": "string", "pattern": "^(F|D|Q)[0-9]{2,}$"},
+          "source_id": {"type": "string"},
+          "excerpt": {"type": "string", "minLength": 1},
+          "text_path": {"type": "string", "minLength": 1},
+          "text_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "locator": {"type": "string", "minLength": 1},
+          "support_note": {"type": "string", "minLength": 1},
+          "year": {"type": "integer"},
+          "unit": {"type": "string", "minLength": 1},
+          "region": {"type": "string", "minLength": 1},
+          "metric": {"type": "string", "minLength": 1},
+          "context_excerpt": {"type": "string"}
+        }
+      }
+    },
     "version": {"const": "0.10"},
     "topic": {"type": "string", "minLength": 1},
     "generated_at": {"type": "string", "description": "ISO 8601"},
@@ -29,10 +54,23 @@
         "properties": {
           "id": {"type": "string", "pattern": "^F[0-9]{2,}$"},
           "claim": {"type": "string", "minLength": 4},
-          "confidence": {"enum": ["high", "medium", "low"]},
-          "source_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+          "claim_id": {"type": "string", "minLength": 1},
+          "confidence": {
+            "enum": ["high", "medium", "low"]
+          },
+          "source_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1
+          },
           "conflict": {"type": "boolean", "description": "来源之间存在实质分歧"},
-          "notes": {"type": "string"}
+          "notes": {"type": "string"},
+          "status": {
+            "enum": ["located", "usable", "verified", "unresolved"]
+          },
+          "verification": {
+            "enum": ["source", "text", "cross_check"]
+          }
         }
       }
     },
@@ -47,11 +85,24 @@
           "id": {"type": "string", "pattern": "^D[0-9]{2,}$"},
           "value": {"type": "string", "minLength": 1},
           "meaning": {"type": "string", "minLength": 2},
+          "claim_id": {"type": "string", "minLength": 1},
           "year": {"type": "integer"},
-          "source_ids": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-          "confidence": {"enum": ["high", "medium", "low"]},
+          "source_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "minItems": 1
+          },
+          "confidence": {
+            "enum": ["high", "medium", "low"]
+          },
           "conflict": {"type": "boolean"},
-          "notes": {"type": "string", "description": "低置信度、口径差异或其他限制的说明"}
+          "notes": {"type": "string", "description": "低置信度、口径差异或其他限制的说明"},
+          "status": {
+            "enum": ["located", "usable", "verified", "unresolved"]
+          },
+          "verification": {
+            "enum": ["source", "text", "cross_check"]
+          }
         }
       }
     },
@@ -66,7 +117,13 @@
           "id": {"type": "string", "pattern": "^Q[0-9]{2,}$"},
           "text": {"type": "string", "minLength": 2},
           "attribution": {"type": "string"},
-          "source_id": {"type": "string"}
+          "source_id": {"type": "string"},
+          "status": {
+            "enum": ["located", "usable", "verified", "unresolved"]
+          },
+          "verification": {
+            "enum": ["source", "text", "cross_check"]
+          }
         }
       }
     },
@@ -89,7 +146,7 @@
             "type": "string",
             "description": "同域来源声明相互独立时的理由（如同一门户下两份不同机构发布的报告）。填写后该来源按声明的 independence_group 计组，并产生一条 minor advisory（independence_override_used）供人工复核；留空则同域默认并组。"
           },
-            "sha256": { "type": "string" },
+          "sha256": {"type": "string"},
           "type": {
             "enum": [
               "user-file",
@@ -114,11 +171,14 @@
             "enum": ["S", "A", "B", "C", "D"],
             "description": "页脚标注元数据（不是门禁）：S 官方文件/法规/官方数据库/论文原文/政府数据；A 顶会论文/权威机构/高校/国际组织/上市公司财报；B 主流媒体；C 技术或行业博客；D 论坛与个人内容。如实填写即可；不为它检索，它不决定置信度。条目只靠观点类来源（论坛/个人博客/厂商博客）支撑时不拒绝，但记 minor advisory（opinion_only_support），页面须表述为“社区/厂商观点”。"
           },
+          "origin_id": {"type": "string", "minLength": 1, "description": "原始报告/数据集标识；转载和引用同一数据必须使用相同标识，independence_note 不可绕过。"},
           "publisher": {"type": "string"},
           "year": {"type": "integer"},
           "url": {"type": "string"},
           "locator": {"type": "string", "description": "无法给 URL 时的定位信息（DOI、卷期页、报告编号）"},
-          "credibility": {"enum": ["high", "medium", "low"]},
+          "credibility": {
+            "enum": ["high", "medium", "low"]
+          },
           "accessed_at": {"type": "string"},
           "notes": {"type": "string"}
         }
@@ -166,19 +226,20 @@
         "type": "object",
         "required": ["claim"],
         "properties": {
-          "claim": { "type": "string", "minLength": 1 },
+          "id": {"type": "string", "minLength": 1},
+          "claim": {"type": "string", "minLength": 1},
           "status": {
-            "enum": ["verified", "unresolved"],
+            "enum": ["located", "usable", "verified", "unresolved"],
             "description": "verified = 可追溯来源支撑且无冲突（≥2 个独立来源印证可标 high）；unresolved = 降级收口，同样算关门，要写明缺失的主源与机制。等级不是 verified 的条件。"
           },
           "entity_ids": {
             "type": "array",
-            "items": { "type": "string", "pattern": "^(F|D)[0-9]{2,}$" },
+            "items": {"type": "string", "pattern": "^(F|D)[0-9]{2,}$"},
             "description": "坐实该 claim 的 findings/data_points——有实体时 verified 条目的强制声明方式（validator 检查其存在且未冲突），来源随实体传递，不在 source_ids 重抄。"
           },
           "source_ids": {
             "type": "array",
-            "items": { "type": "string" },
+            "items": {"type": "string"},
             "description": "该 claim 已拿到的来源；status=unresolved 时同样要填——它记录“降级收口时手上有什么”，留空会丢掉这段证据。"
           }
         }
@@ -194,8 +255,14 @@
         "properties": {
           "claim": {"type": "string", "minLength": 2},
           "reason": {"type": "string", "minLength": 2},
-          "research_needed": {"type": "array", "items": {"type": "string"}},
-          "resolved_by": {"type": "array", "items": {"type": "string"}},
+          "research_needed": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "resolved_by": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
           "unresolved": {"type": "boolean"}
         }
       }
@@ -209,13 +276,24 @@
         "additionalProperties": false,
         "properties": {
           "id": {"type": "string", "pattern": "^V[0-9]{2,}$"},
-          "source_ids": {"type": "array", "items": {"type": "string"}},
-          "finding_ids": {"type": "array", "items": {"type": "string"}},
-          "data_point_ids": {"type": "array", "items": {"type": "string"}},
+          "source_ids": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "finding_ids": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "data_point_ids": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
           "type": {
             "enum": ["line_chart", "bar_chart", "comparison", "timeline", "taxonomy", "process", "table", "diagram", "kpi"]
           },
-          "priority": {"enum": ["high", "medium", "low"]},
+          "priority": {
+            "enum": ["high", "medium", "low"]
+          },
           "rationale": {"type": "string"}
         }
       }
@@ -229,8 +307,10 @@
         "additionalProperties": false,
         "properties": {
           "query": {"type": "string"},
-          "reason": {"enum": ["access_blocked", "not_found", "tier_unavailable", "paywalled", "search_unavailable"]},
-          "impact": {"type": "string", "minLength": 1, "description": "对 PPT 论断的影响" }
+          "reason": {
+            "enum": ["access_blocked", "not_found", "tier_unavailable", "paywalled", "search_unavailable"]
+          },
+          "impact": {"type": "string", "minLength": 1, "description": "对 PPT 论断的影响"}
         }
       }
     },

@@ -1,76 +1,61 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.23.10
+version: 0.24.0
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
 
 # Student Presentation Research
 
-为需要外部知识支撑的内容提供**筛选过、可追溯、可引用、可直接进入 Slide Spec** 的研究材料。
-设计宗旨：**Search for evidence, not text.**
+只负责学生学术 PPT 的证据层：检索、核验、留痕与 Research Pack。
+设计宗旨：Search for evidence, not text。排页/讲稿归 sp-outline，PPTX 归 sp-deck。
+不决定版式、不设计页面、不生成 PPTX、不撰写成段讲稿。
 
-## 隔离执行与输入
+## 输入与隔离
 
-**检索必须在独立 context 中运行，且靠显式 spawn，不靠 `context: fork`。**
-`context: fork` 在 `claude -p`（print）模式下不被 honor，skill 会被内联进主会话——真实 Live E2E
-两次测得 `subagent_stats.spawned = 0`、事件流无任何 subagent 事件，主 session 甚至替研究员执行了
-`validate_research_pack.py`。所以本 skill 的隔离契约是：
+1. 将 work_id、brief_path、scope、materials_path、budget、背景及逐条 claim/id/验收要求
+   写入 `<work-dir>/research-task.json`（schema：`../../references/research-task.schema.json`）。
+   work-dir 必须是当前项目 outputs/.pptx-work/<work-id> 的绝对路径，所有输入路径也用绝对路径。
+2. 调用 `scripts/validate_research_task.py <task>`；失败就补齐输入，不开始检索。
+3. 按 `../../references/spawn-templates.md` 显式调用 Agent，subagent_type 为
+   `student-presentation-suite:presentation-researcher`，不传 name，不嵌套 spawn。
+   prompt 只传 task 路径和 work-dir；不得转抄 claim/标题/数字。
+   隔离不依赖 context: fork（claude -p 下曾内联 skill）；输入绑定不自动传给子代理。
+4. 主流程等待 RESEARCH_DONE 或 RESEARCH_BLOCKED；无可解析信封或有效校验报告时记 blocked，
+   不再 spawn 同一任务盲目续搜。主会话不执行 WebSearch/WebFetch。
+   收到信封后只运行一次：
+   `python "${CLAUDE_PLUGIN_ROOT}/scripts/research_handoff.py" --work-dir <work-dir>`。
+   命令核验当前 pack、validation、task 和真实执行回执，只返回路径/状态/统计/缺口。
+   不再逐文件检查，不重读网页，不浏览插件目录、hooks、实现代码或环境变量。
 
-1. 主流程调用 Agent 工具，`subagent_type` 取 `student-presentation-suite:presentation-researcher`；
-2. **等待研究完成再进入排页**：研究员异步运行时，收到 `RESEARCH_DONE` 信封前不推进下一阶段；
-2b. **不要传 `name`**：带 `name` 的 Agent 调用会转成 teammate，`agent_type` 变成名字本身，
-   于是它自己再 WebSearch 会被 `runtime_evidence` 拦（"must run in the isolated
-   presentation-researcher"），历史上正是这一步诱使它**再嵌套 spawn 一层研究员**
-   （2026-09-16 实测：外层空转 2.4M token、0 次有效检索）。现在该 spawn 会被 hook
-   当场拒绝；被拒时的正确动作是**去掉 `name` 从主会话重发一次**，不要再包一层
-   （再 spawn 也会被拒，外层继续空转 0 次检索）；
-3. 子代理看不到本次对话，也读不到本文件里的 `$work_id` 等绑定——**四个参数必须写进 spawn 的
-   prompt 文本**，缺任何一个就让它按 `RESEARCH_BLOCKED` 契约返回，不要替它猜；
-4. 主流程只接收它返回的 `RESEARCH_DONE` / `RESEARCH_BLOCKED` 信封，不接收原始网页、搜索轨迹
-   或失败页。
+scope 为 A/B/C/D；C 不检索，D 禁止联网且只用用户材料。
+D 默认用 import_user_materials.py 确定性导入；仅用户点名研究员整理时派本 agent。
+缺失参数或无效 scope 不猜，返回 RESEARCH_BLOCKED。
 
-解析后的输入是：
+## 工作流与输出
 
-- work-id：`$work_id`
-- Brief / draft Slide Spec 路径：`$brief_path`
-- scope：`$scope`
-- D 模式用户材料路径：`$materials_path`（默认路径是确定性导入：`import_user_materials.py` 不派子代理即可生成 Research Pack 与导入凭据；本 skill 的 D 模式仅在用户点名要研究员整理时使用）
+详细政策只由 `../../references/research-workflow.md` 所有；按需读 evidence-and-citations.md
+及 research-pack.schema.json，不 grep 插件源码。
 
-`work_id` / `brief_path` / `scope` 缺失或 scope 不在 A/B/C/D 时，不猜参数，按 agent 的 `RESEARCH_BLOCKED` 契约返回；D 模式还必须有 `materials_path`。
+- 按 claim 检索，档位不设次数配额；独立调用批量执行，同 URL 复用。
+- `unknown_payload` 只代表响应未知；`backend_not_executed` 需要运行时执行状态。
+  通道关闭之后仅暂停 WebSearch，不限制直取文档、目录定位和定点读取；恢复由主流程操作。
+  `degenerate_channels` 表示重复不作答端点；通道按类判定一次，不按次数累加。
+- 原文用 fetch-text，整轮同一个 --out-dir；数字/引文绑定原文片段与文件 sha256。
+  新 A/B 包默认 source-backed-v1，普通论断单源 medium 即可；text-bound-v1 为严格模式。
+  verified/usable 经 entity_ids/claim_id 绑定；task 指定 core/supporting 与 source/text/cross_check；状态及停止规则见 research-workflow。
+  每轮有效进展保存 pack 并校验，读取 research-progress.json 续做缺口；主流程按
+  ready/partial/insufficient 交接，located/unresolved 不入事实账本。
+- 原始报告/数据集用 origin_id，并组转载来源；来源等级仅标注，观点类来源仍为 minor 提示。
+- 每条 claim usable、verified 或 unresolved 收口；缺口记录 reason/impact 和已获得来源。
+  继续前必须能指出新增证据收益，无收益则结束；有效部分包可以交付。
+- validate_research_pack.py 校验必须带 --task、--search-log、--fetch-report。报告 ok:true 且绑定当前 pack；
+  审计 advisory（含 degenerate_channel、search_backend_not_executed）必须阅读并处理。
 
-## 职责与硬约束
+输出仅放 `<work-dir>`：research-pack.json、research-pack-validation.json、research/ 审计文件。
+queries 记录实际执行调用，D 为空且来源全为 user-file。只返回 agent 固定的
+RESEARCH_DONE / RESEARCH_BLOCKED 信封；assert_research_envelope.py 校验，禁止追加正文。
+运行时 hooks 持有 research-execution.json；主流程核验凭据和 pack hash 后才进入 sp-outline。
 
-- 检索、分级、交叉验证、知识缺口、留痕 → 本 skill；排页/讲稿 → `sp-outline`；PPTX/视觉 → `sp-deck`；审查 → `sp-review`
-- 按需各读一次 `../../references/research-workflow.md`、`../../references/evidence-and-citations.md`、`../../references/research-pack.schema.json`；不要 grep 插件源码
-- 不决定版式、不设计页面、不生成 PPTX、不改视觉风格、不撰写成段讲稿；不编造数字、日期、机构或引文
-- 检索只在本 fork 内完成；主流程只接收文件路径和紧凑 envelope，不接收原始网页或搜索摘要。`validate_research_pack.py` 是 pack 唯一的 `ok: true`；回传正文用 `assert_research_envelope.py` 校验
-- 输出只写 `${CLAUDE_PROJECT_DIR}/outputs/.pptx-work/<work-id>/`，不得写 `${CLAUDE_PLUGIN_ROOT}`
-
-## 工作流
-
-1. **Research Need Analysis**：读 Brief / draft spec，把待证内容拆成逐条 Claim，判 A/B/C/D；C 不产生检索，D 禁止联网。
-2. **深度档位**：按 scenario 选 simple / standard / deep，用户覆盖优先；档位是深度建议，检索与页面抓取均不设次数上限。
-3. **逐 Claim 检索**：只查需要被证明的论断；一个查询只放一个可回答单元（主体+指标+时间，不把 claim 句子粘进检索框，不回显已有数字）；失败签名决定换通道（发布方记录端点 → 直连文档 → 按机制记 `search_unavailable`），不决定换措辞；结果页不是来源（定位交给检索工具，只读它给出的文档）；取正文用确定性的 `pptx_tool.py fetch-text --url <doc> --scope <A|B> --out-dir <work-dir>/research/fetched`（原文 + 抽取文本 + 两份 sha256，不经小模型转述；`--scope` 是权限门，C/D 拒绝），数字逐字取自 `text_path`；每个来源记录 `url` 或 `locator` 与 `independence_group`。
-4. **硬门只有两条：可追溯 + 独立印证**：来源必须有 `url`/`locator`（用户文件有导入回执绑定）；`confidence: high` 必须 ≥2 个独立来源印证；冲突则 `confidence: low` + `notes` + `conflicts`。S/A/B/C/D 只是页脚标注元数据——不为它检索、不由它定置信度。条目只靠观点类来源（论坛/个人博客/厂商博客）支撑时**不拒绝**，但记 minor advisory（`opinion_only_support`），页面须表述为"社区/厂商观点"并标注来源类型。
-5. **补缺口与可视化候选**：模糊陈述进入 `knowledge_gaps`；可画图内容进入 `visual_candidates`，只标类型与优先级。
-6. **逐条收口（停止条件）**：`must_verify` 逐条关门——`verified`（可追溯且无冲突；支撑用 `entity_ids` 链到坐实它的 F/D，来源随实体传递，不重复记账）或 `unresolved`（保留已拿到的 source_ids + 写明缺失主源与影响）；claim 写成内容，不写成"找到 X 的官方出处"；条数 3–5 越界是 minor 提示。完整语义 canonical：`../../references/research-workflow.md` §七。
-7. **受阻留痕**：打不开、付费、不可得、**索引没返回结果（`search_unavailable`）**全部写 `unresolved.reason + impact`，禁止静默降级。
-8. **校验**：运行 `validate_research_pack.py <pack> --output <work-dir>/research-pack-validation.json --search-log <work-dir>/research/search-log.json --fetch-report <work-dir>/research/fetched/fetch-text-report.json`；有 blocker 就修 pack 再验。留痕审计项（重复查询、换措辞重试、整句粘进检索框、抓取结果页）全部 minor 不阻断，但必须读并纠正行为或在 pack notes 说明误报——那是 §七 行为规则唯一的机器消费方；`verified` 条目在有 F/D 实体时必须 `entity_ids` 链接（`must_verify_unlinked` 为 major）。
-
-## 输出契约
-
-- `research-pack.json`：唯一研究内容载体；形状必须符合 schema
-- `research-pack-validation.json`：必须 `ok: true`，并含当前 pack 的 `research_pack_sha256`
-- `research/<topic>.json`：原始检索留盘审计，**永不回传主流程**
-- `queries` 只记录实际执行过的检索词；D 模式必须为空且 sources 全为 `user-file`
-- 最终聊天返回严格服从 agent 的固定 `RESEARCH_DONE` / `RESEARCH_BLOCKED` envelope（`assert_research_envelope.py` 可校验），不追加研究摘要。主对话不得出现 WebSearch / WebFetch
-
-## 与图片检索分工
-
-本 skill 只负责知识证据。照片、截图、Logo、示意图等走 `../../references/image-sourcing.md`；可信度/时效性与分辨率/构图/版权是两套目标，不合并。
-
-运行时凭据：研究员用 Write 写 pack；插件的 SubagentStart/PostToolUse/SubagentStop
-hooks 生成 `research-execution.json`。主会话 WebSearch/WebFetch 被阻止。
-A/B/D 的 spec 写 `research_scope`；plan 必须验证真实子代理凭据与 pack hash。
+图片获取另走 ../../references/image-sourcing.md，不与知识证据研究合并。

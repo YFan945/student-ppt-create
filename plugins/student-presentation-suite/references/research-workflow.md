@@ -178,11 +178,39 @@ Source C  35 亿   → 量级不一致 → confidence: low，conflict: true，
 
 | 工具返回 | 机制含义 | 正确反应 |
 | --- | --- | --- |
-| `No links found`（摘要里是伪 `<tool_call>` / `<search_tool>`） | 索引对该措辞没有结果（覆盖 / 配额 / 服务降级） | **换通道，不换措辞**：同一 claim 的另一种说法不是新通道。走发布方记录端点 → 直连文档 → 仍不可得则按机制记 `search_unavailable` 并收口该 claim |
+| 结构化运行时元数据明确 execution_status=not_executed | 已确认后端未执行；签名 backend_not_executed | 暂停该搜索通道，不引用响应。可继续原文抓取与定点核验 |
+| 无有效候选链接的不识别格式、散文或伪工具调用 | unknown_payload：无法确认执行状态 | 仅提示，不暂停 WebSearch；禁止将其数字/日期当证据 |
+| 完整 JSON 的 title + link/url 记录（字段顺序不限），或已适配的 web_search_prime_result_summary 包装 | 可解析的定位候选，不证明其中内容属实 | 获取文档并建立原文绑定；Markdown、纯文本有效 URL/DOI 也算候选定位成功；响应内数字不构成证据 |
+| 裸的 Links: - No links found. | index_empty：该查询未返回定位候选，不能证明整轮服务正常或故障 | 换文档定位路线，不关闭整个会话 |
 | **返回无关结果** | 查询太宽或把整句话塞进了检索框 | 砍到**一个可回答单元**（见下条"查询构造"），不要继续加限定词 |
 | **captcha / 登录墙**（常见于部委、电网、协会站点） | 该站点只能直连，索引到不了它，也到不了它的站内检索 | 转直连路线；不要把同一 claim 再喂给索引 |
 | **域名过滤后为空** | 过滤器把唯一命中的来源挡掉了 | 去掉过滤器，让发布方名字本身承担约束 |
 | 目标页返回 JS 壳 / 与查询无关的泛化条目 | 该页面或该路径不可抓 | 记 `unresolved`，不要抓同域的其它页面试运气 |
+| **同一端点对不同请求返回同一份字节**（`fetch-text-report.json` 的 `degenerate_channels`；判定＝同一端点下 ≥2 个**不同**请求 URL 共享同一 `raw_sha256`） | 该端点不按请求作答（缓存壳 / 查询被忽略）——换 `t=` / `page=` / `q=` 只是**同一个通道的变体** | **该通道判定一次即收口**：换端点（另一个发布方记录页、另一个 host）或直接取文档 URL；claim 按 `access_blocked` 记录，不要在同一端点上继续试参数 |
+
+2026-09-30 live：上面最后一条是缺的那条。`sousuo.www.gov.cn/search-gov/data` 用十种不同
+参数返回了同一份 97 字节空壳，执行者逐次换 `t=` 试了五轮——每轮一整次模型往返——因为轨迹
+里没有任何东西说"这个端点不按请求作答"；而同一端点在 `t=zhengcelibrary_bm` 下返回的是
+18–24k 字符的真结果，所以它也不是"整个站不可用"。这就是**通道级**判定的价值：重复的
+**字节**（而不是重复的措辞）才是证据。
+
+**通道按类判定一次，不按次数累加。** 上限是计数器，通道判定是分类；一条通道只判一次。
+新步骤必须带来可指出的证据收益，不是同一通道的新参数或新措辞。
+unknown_payload 是格式不确定性，只记录 advisory，不暂停；backend_not_executed 只来自结构化运行时执行状态。
+JSON 空数组视为正常无命中。纠正语言、官方名称、时间范围或移除过滤器属于合理改写，
+search-log 可用 adjustment_reason 说明新增收益；仅无收益的重复查询触发重试提示。
+暂停状态按事件顺序更新，历史成功不能掩盖之后的故障；仅对应 WebSearch 被暂停。
+主流程在提供方/适配器/环境发生具体变化后可恢复一次探测（研究员不得自行重置）：
+
+```bash
+python "${CLAUDE_PLUGIN_ROOT}/scripts/reset_research_channel.py" \
+  --project <project> --session-id <researcher-session-id> --agent-id <researcher-id> \
+  --reason <具体环境变化>
+```
+
+恢复事件与 hook 共用同一把锁，追加时间戳且不删除原记录；只有明确未执行再次暂停，未知格式仅提示。
+只有一个活跃暂停通道时可省略两个 ID；多个通道必须明确选择。
+没有环境变化就走其他可用路线或 unresolved 收口，不反复 reset，不为同一任务另派研究员。
 
 **查询构造：一个查询 = 一个可回答单元。** 同一次运行的数据非常一致——成功的那批是
 20–30 字符、只含 `主体 + 指标 + 时间`（或 `发布方 + 报告名`），失败的那批里塞着一整句 claim
@@ -223,6 +251,15 @@ Source C  35 亿   → 量级不一致 → confidence: low，conflict: true，
 它就取哪个，只在 provenance 里标出 host 类别（`host_class`），所以痕迹是诚实的，判断仍在
 你这边——但结果页写进 `sources` 就是证据错误。
 
+定位页的 `host_class` 为 `listing`：发布方记录端点、末级 /news、/press-releases、
+/xwdt、/xwfb 和 index.htm/index.html。文章位于这些目录下不自动成为定位页；
+政策正文和 PDF 是文档。定位页可以读取以发现文档，但不能作为 claim 的证据。
+
+通道关闭之后仅暂停 WebSearch；WebFetch 文档与发布方目录、fetch-text、文件操作仍可用。
+正文 Read 使用 offset/limit；Grep 的 content 模式必须设置正整数 head_limit，文件名/计数模式
+可用；禁止 shell 把整页正文输出回上下文。搜索引擎结果页 WebFetch 仍拒绝。
+无有效信封或校验报告时主流程记 RESEARCH_BLOCKED，不再 spawn 盲目续搜。
+
 **确定性地取原文（不经小模型转述）**：`fetch-text` 把 HTTP 原文与抽取文本一起落盘，两份
 sha256 一起写进 provenance。转述会改写数字，而会上屏的数字要求逐字引用：
 
@@ -237,6 +274,59 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" fetch-text \
 记录带 `raw_path` / `text_path` / `raw_sha256` / `text_sha256` / `charset` / `title`；
 失败同样留痕（`reason` + `detail`）。引用时逐字取自 `text_path`，pack 的 `url` 记
 **文档 URL**（不是跳转链接），locator 可带该原文的 sha256。
+
+### 新任务交接与原文绑定
+
+主流程写 research-task.json（schema：research-task.schema.json），运行
+validate_research_task.py 后显式 spawn；prompt 只给 task 和 work-dir 的绝对路径。
+背景、scope、档位、输入文件与 claims 的 id/原文/acceptance 都在 task，避免转抄漂移。
+例子见 examples/research-task.json。校验 pack 自动发现 task（也可传 --task），所有任务 claim 必须逐字保留并收口。
+
+新 A/B 包默认启用 evidence_contract=source-backed-v1：每个可用 F/D/Q 至少有一个可读取的
+来源片段绑定 entity_id → source_id → excerpt + text_path + text_sha256 + locator + support_note。
+一个直接来源即可支持普通论断，默认 medium；不为所有辅助来源重复建立绑定。
+数字仍须在片段中直接出现，直接引语必须逐字一致；搜索摘要只能用于定位，不能作为事实账本。
+正文路径必须在 work-dir/research 下；web 来源需成功的 fetch-report 将 URL 与同一文本绑定。
+support_note 解释语义支持关系，机器不宣称自动证明语义。
+
+claims 新增 importance=core|supporting（默认 core）、verification=source|text|cross_check（默认 source）。
+关键数字指定 text，要求 year/unit/region/metric 与原文对应；可用 context_excerpt 引用同一
+原文中的表头或年份说明。争议结论指定 cross_check，要求至少两个独立来源并满足原文校验。
+text-bound-v1 保留为显式严格模式，继续要求每个使用的来源绑定，不作为普通任务默认。
+计算值/单位转换由下游记录原值和计算，不能冒充原文数字。
+
+claim/实体状态为 located（仅找到）、usable（可引用且记录限制）、verified（完成要求的核验）、
+unresolved（缺失与影响）。located/unresolved 不编入事实账本，usable 可以 medium 继续。
+校验 ok 只表示契约有效；delivery_status 独立分为 ready、partial、insufficient。
+核心 claims 都达到 usable/verified 且无其他缺口为 ready；仅辅助缺口为 partial；核心缺口为
+insufficient，编译 Slide Spec 时明确拒绝并列出缺口，不能把“返回了包”当成研究完成。
+
+任务默认自动发现 work-dir/research-task.json，编译器也重验任务与验证报告哈希；省略 --task
+不能绕过新任务规则。spawn 冻结任务绑定，C/D 在网络工具调用前拒绝；缓存也先检查 scope。
+旧包没有任务文件仍兼容且保留未绑定提示。输出禁止落在 plugin 或 marketplace 内。
+
+抓取使用 --workers 4（可选 1–8），URL 去重，每条完成立即写盘；报告采用锁和原子替换，
+保留失败历史。URL/内容哈希隔离文件，复用前核验 raw/text 哈希。退化判定只针对查询/目录
+locator，不把同一文档的跟踪或签名参数视为故障。
+
+首次拿到有效证据就保存 research-pack.json 并运行校验，自动更新 research-progress.json。
+每轮新增有用证据后再次保存；中断后读取进度和报告，仅续做 pending_claims、未满足的
+验收条件和未抓取 URL。已完成内容不重搜。核心满足后优先 partial 交接；继续研究必须指明
+能补齐的口径、冲突或关键证据。连续工作没有有效进展时返回当前包与具体缺口，不能无限等待。
+工具边界现在机械检查 research-control.json：ready/partial、总时间耗尽或无有效进展时
+停止新增检索，但允许保存/校验/回传当前包。默认 simple 为总 120 秒/停滞 60 秒，
+停滞计时从首次实际检索开始，准备阶段不算搜索停滞。standard 为 300/120 秒，deep 为 900/240 秒；任务可用 time_budget_seconds 与
+stall_timeout_seconds 覆盖。只有新增成功正文或有效包才能刷新进度，失败与重复不刷新。
+这是工具边界收口，不是强杀模型或中断正在执行的 HTTP 请求；模型请求本身仍由宿主超时处理。
+新输入或具体环境变化后，主流程可运行 research_control.py --work-dir <work-dir> --resume
+--reason <具体变化> 显式续做；保留已完成证据与历史，研究员不得自行重置计时。
+simple/source 任务的一个直接片段已满足要求且校验 ready 后立即回传，不额外挖图表候选或
+独立出处。fetch-text 返回的 text_sha256 直接复用，不再另起命令计算。元数据与摘录核验
+批量执行。主流程只调用 research_handoff.py --work-dir 一次，完成当前任务/产物/校验/执行回执与
+正文绑定重验；输出只含统计和缺口，避免逐字段往返。不得为确认路径浏览插件目录/hooks/环境。
+
+来源增加 origin_id 表示原始报告/数据集，跨域转载同源按该标识合并，independence_note
+不能绕过它；同域托管确实独立报告仍允许用 independence_note 解释。
 
 **主源直取路线**：索引给不出东西时，直接取 claim 所属发布方的文档——政策原文（gov.cn
 政策库）、部委统计发布页、国际组织报告页/PDF、论文原文。同一天实测：`gov.cn` 政策原文页
@@ -262,6 +352,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" fetch-text \
 
 - 每条 claim 有可追溯来源支撑且无冲突（≥2 个独立来源印证可标 `high`），**或**
 - 只有转述可拿时保留 `source_ids` 并把该条标 `status: unresolved` + 写明缺失主源与影响；
+- 继续前必须指出下一步的新增收益：独立数据出处、缺失口径、冲突解释或可读取原文；无收益就 unresolved 收口。有效部分包仍返回 RESEARCH_DONE，主流程根据 completion 与 unresolved.impact 删去或弱化表述；
 - 全部 claim 处理完毕即停止检索——多搜不是为了凑数，换措辞重试同一 claim 不算新证据；
 - `validate_research_pack.py` 校验逐条覆盖（`must_verify_uncovered` 等，major）；
   声明数量 3–5 越界（`must_verify_count`）是 minor 提示，不是门禁。
@@ -298,7 +389,10 @@ Research Pack    ~8k tokens
 
 打不开网页、来源付费、来源不可得——**不许静默降级**，一律写进 `unresolved`：
 搜索层面的失败同样留痕——`research/search-log.json` 的 `search_executions` 必须包含
-每次实际执行的检索（含空返回 / 返回无关结果 / 超时重试，标 `status: failed`）；gap-fill 的检索
+每次实际执行的检索（含空返回 / 返回无关结果 / 超时重试，标 `status: failed`）；每条失败记录
+带 `signature` 记失败签名（`backend_not_executed` = 检索没执行，见§七；`index_empty` = 执行了
+但没有覆盖；`irrelevant`；`blocked` = captcha / 登录墙）。`signature` 是**分类**不是计数：
+它决定该 claim 记哪种机制、下一步换哪条通道。gap-fill 的检索
 必须**追加**写入该日志（`n` 续号），不得只改 pack。`pack.queries` 只记成功拿到结果的检索，
 失败调用不进 `queries`——但没有日志留痕，就无法审计两者之间的差额（2026-09-19 实测：
 search-log 停在初始 7 条，gap-fill 第 8 条检索只存在于 pack，日志与事实脱节）。
@@ -306,7 +400,19 @@ search-log 停在初始 7 条，gap-fill 第 8 条检索只存在于 pack，日�
 这份留痕**不是纸面承诺**：校验步骤必须带 `--search-log` 与 `--fetch-report`，validator 机械审计
 日志与 pack 的差额（`query_unlogged`）、重复查询（`duplicate_query`）、换措辞重试
 （`reworded_retry`）、把整句话粘进检索框（`over_broad_query`）、抓取结果页当证据
-（`result_page_fetched`）——全部 minor：审计提示行为，不设门禁、不数次数。
+（`result_page_fetched`）、**在同一个不按请求作答的端点上反复换参数**（`degenerate_channel`，
+从 fetch 报告的 `raw_sha256` 重算，不依赖工具版本）、**整轮检索都没执行**（
+`search_backend_not_executed`，全部失败记录的 `signature` 都是 `backend_not_executed` 时触发）
+——全部 minor：审计提示行为，不设门禁、不数次数。
+
+抓取侧的 `fetch-text-report.json` 由工具自己算出 `degenerate_channels`（§七最后一条），
+并且**跨调用累积**：同一次 `--out-dir` 的下一次 `fetch-text` 会读到上一次的记录。判定一旦成立，
+同一端点的**新**请求不再发出（记录 `reason: channel_closed`，不产生新的 HTTP）；已经取回的
+真结果仍留在报告里。能返回真正文的参数值必须出现在判定成立的那一次调用中，否则改走文档 URL，
+不要再换 `t=`。`research/fetched/<子目录>` 会折回 `research/fetched`，所以逐 URL 分子目录盖不住
+这份报告。工具 stdout 只给本次新增的行和通道判定，正文留在 `text_path`——用 Read 的 offset/limit
+取要引用的几行，不要 cat / grep / print 整页回到对话里。
+
 
 判定口径经过一轮校准（0.23.9），只抓站得住的信号：`reworded_retry` 要求两条失败查询的
 **数字集完全相同**——换了数字（2025→2026）就是另一个可回答单元，不是换措辞；
@@ -360,3 +466,6 @@ unresolved:
 - 检索受阻都出现在 `unresolved` 里（含后端空返回的 `search_unavailable`），没有静默降级；
 - 每条 claim 要么有可追溯来源支撑且无冲突，要么在 `unresolved` 里有写明影响的记录
   ——档位只定深度，不对 `queries` / `sources` 设数量上限；等级 letter 不构成任何标准。
+
+研究正文的 Grep 未传 head_limit 时，PreToolUse 自动补 80 并保留其他参数，不再先拒绝再重试；
+显式无效值仍需纠正。实现遵循 [Claude Code hooks 的 updatedInput 契约](https://code.claude.com/docs/en/hooks#pretooluse-decision-control)。

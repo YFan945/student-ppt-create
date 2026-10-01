@@ -231,6 +231,26 @@
         "compiled_slide_spec_sha256": {
           "type": "string",
           "pattern": "^[0-9a-f]{64}$"
+        },
+        "delivery_status": {
+          "enum": [
+            "ready",
+            "partial",
+            "insufficient"
+          ]
+        },
+        "core_gaps": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "research_task": {
+          "type": "string"
+        },
+        "research_task_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
         }
       }
     }
