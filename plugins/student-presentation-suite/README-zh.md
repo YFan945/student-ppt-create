@@ -278,7 +278,9 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 跑 `rendered` + `actual-content` 以及 `quality` 门的确定性部分（evidence/timing/lock），
 不绿则 `render` 拒绝、`next` 指向免 repair 轮的 builder 改页重建——critic 从不评审
 注定返工的 deck。QA 通过后 `complete` 使用 `ppt_pipeline.py complete --work-dir <wd>`。
-CI 继续渲染完整场景矩阵，但不会提交生成产物。
+本地 `scripts/scenario_render_matrix.py --require-render` 可渲染完整场景矩阵，
+不会提交生成产物。push/PR 不再运行自动 CI，发布验收在本地完成；保留手动真实验收
+与每月依赖巡检报告。
 
 `quality_level: fast`（默认）在 8 页分片线以下由一个 Builder 完成全部页面，超过分 2 片、超过 14 页分 3 片，再做一次最终独立评审。主观视觉分数和风格建议保留为 advisory；页面不可用及确定性门失败仍阻止交付。
 `quality_level: standard` / `rigorous` 先校准代表页（standard 校准一轮，rigorous 至多两轮且风格 Major 阻断）。standard 页数 ≤ 8（校准页数线，plan 时冻结）时跳过校准直接整副构建——校准所保住的全 deck 返工在这个规模是有界的。**校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与

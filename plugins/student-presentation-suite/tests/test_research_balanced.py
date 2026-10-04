@@ -153,6 +153,94 @@ class BalancedEvidenceTests(unittest.TestCase):
                 event.update(tool_name=tool, tool_input=inputs)
                 self.assertEqual(2, fixtures.runtime.handle(event))
 
+    def start_bound_child(self, agent_type=None):
+        self.task()
+        project = self.fixture.work.parents[2]
+        env = patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(project)})
+        env.start()
+        self.addCleanup(env.stop)
+        event = {"cwd": str(project), "session_id": "parent", "hook_event_name": "PreToolUse",
+                 "tool_name": "Agent", "tool_input": {"subagent_type": fixtures.runtime.RESEARCHER,
+                 "prompt": str(self.fixture.work)}}
+        self.assertEqual(0, fixtures.runtime.handle(event))
+        event.update(agent_id="child", agent_type=agent_type or fixtures.runtime.RESEARCHER,
+                     hook_event_name="SubagentStart")
+        self.assertEqual(0, fixtures.runtime.handle(event))
+        event.update(hook_event_name="PostToolUse", tool_name="Read",
+                     tool_input={"file_path": str(self.fixture.work / "research-task.json")})
+        self.assertEqual(0, fixtures.runtime.handle(event))
+        fixtures.runtime.handle({"cwd": str(project), "session_id": "parent", "hook_event_name": "Stop"})
+        return project, event
+
+    def test_parent_stop_does_not_unbind_background_retrieval_or_payloads(self):
+        project, event = self.start_bound_child()
+        other = project / "outputs/.pptx-work/other"
+        other.mkdir()
+        fixtures.runtime.pipeline_context.mark_research_active(project, {"session_id": "other"}, work_ids=["other"])
+        for tool, inputs in (("WebSearch", {"query": "test"}),
+                             ("WebFetch", {"url": "https://example.org/report"}),
+                             ("Bash", {"command": "python pptx_tool.py fetch-text --scope A"})):
+            self.assertEqual(0, fixtures.runtime.handle({**event, "hook_event_name": "PreToolUse",
+                                                        "tool_name": tool, "tool_input": inputs}))
+        fixtures.runtime.handle({**event, "tool_name": "WebSearch", "tool_input": {"query": "test"},
+                                 "tool_response": [{"title": "Report", "url": "https://example.org/report"}]})
+        self.assertTrue((self.fixture.work / "research/search-payloads.json").is_file())
+        self.assertFalse((other / "research/search-payloads.json").exists())
+
+    def test_bound_child_retains_task_and_control_guards_after_parent_stop(self):
+        _, event = self.start_bound_child()
+        event.update(hook_event_name="PreToolUse", tool_name="WebSearch", tool_input={"query": "test"})
+        task = self.fixture.work / "research-task.json"
+        original = task.read_bytes()
+        task.write_bytes(original + b" ")
+        self.assertEqual(2, fixtures.runtime.handle(event))
+        task.write_bytes(original)
+        from shared.research_io import atomic_json
+        control_path = self.fixture.work / "research-control.json"
+        control = json.loads(control_path.read_text(encoding="utf-8"))
+        control["reason"] = "user"
+        atomic_json(control_path, control)
+        self.assertEqual(2, fixtures.runtime.handle(event))
+        task.unlink()
+        self.assertEqual(2, fixtures.runtime.handle(event))
+
+    def test_budget_and_scope_still_block_after_parent_stop(self):
+        _, event = self.start_bound_child()
+        event.update(hook_event_name="PreToolUse", tool_name="WebSearch", tool_input={"query": "test"})
+        control_path = self.fixture.work / "research-control.json"
+        control = json.loads(control_path.read_text(encoding="utf-8"))
+        control["started_at"] -= 1000
+        control_path.write_text(json.dumps(control), encoding="utf-8")
+        self.assertEqual(2, fixtures.runtime.handle(event))
+        task_path = self.fixture.work / "research-task.json"
+        task = json.loads(task_path.read_text(encoding="utf-8"))
+        task["scope"] = "C"
+        task_path.write_text(json.dumps(task), encoding="utf-8")
+        import hashlib
+        binding_path = self.fixture.work / "research-task-binding.json"
+        binding = json.loads(binding_path.read_text(encoding="utf-8"))
+        binding["sha256"] = hashlib.sha256(task_path.read_bytes()).hexdigest()
+        binding_path.write_text(json.dumps(binding), encoding="utf-8")
+        control_path.unlink()
+        self.assertEqual(2, fixtures.runtime.handle(event))
+
+    def test_zcode_child_uses_same_persistent_task_binding(self):
+        project, event = self.start_bound_child("zcode-student-presentation-suite:presentation-researcher")
+        self.assertEqual([self.fixture.work], fixtures.runtime._armed_work_dirs(project, event))
+        self.assertEqual(0, fixtures.runtime.handle({**event, "hook_event_name": "PreToolUse",
+                                                    "tool_name": "WebSearch", "tool_input": {"query": "test"}}))
+
+    def test_reading_two_tasks_does_not_select_an_arbitrary_deck(self):
+        project, event = self.start_bound_child()
+        other = project / "outputs/.pptx-work/other"
+        other.mkdir()
+        task = other / "research-task.json"
+        task.write_text("{}", encoding="utf-8")
+        fixtures.runtime.handle({**event, "tool_input": {"file_path": str(task)}})
+        self.assertEqual([], fixtures.runtime._armed_work_dirs(project, event))
+        self.assertEqual(2, fixtures.runtime.handle({**event, "hook_event_name": "PreToolUse",
+                                                    "tool_name": "WebSearch", "tool_input": {"query": "test"}}))
+
 
 class RetrievalContinuationTests(unittest.TestCase):
     def test_smoke_inspects_tool_events_and_ignores_status_mentions(self):

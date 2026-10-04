@@ -338,15 +338,32 @@ def _write_executions(path: Path, rows: list[dict]) -> None:
     )
 
 
-def _armed_work_dirs(project: Path) -> list[Path]:
-    """Work dirs this project currently has armed, ignoring which session armed them.
+def _armed_work_dirs(project: Path, event: dict | None = None) -> list[Path]:
+    """Resolve the child's recorded task, then the project's single armed work-id.
 
     The child runtime's session id is not the parent's, so the research-active marker
-    written at spawn is found by scanning, and only a single armed work-id is trusted.
+    written at spawn is found by scanning before its task read is recorded.
+    Multiple recorded tasks never fall back to an arbitrary activation marker.
     """
     guard = project / "outputs" / ".pptx-work" / ".guard"
     if not guard.is_dir():
         return []
+    # Parent Stop can clear its activation marker while a background researcher
+    # is still running. The child's hook-owned task read survives that cleanup
+    # and also separates researchers belonging to concurrent decks/sessions.
+    if event and event.get("agent_id"):
+        key = re.sub(r"[^A-Za-z0-9_-]", "_", str(event.get("session_id")) + "-" + str(event["agent_id"]))
+        ledger = read_json(guard / f"agent-{key}.json")
+        if (ledger.get("agent") == RESEARCHER and ledger.get("agent_id") == event["agent_id"]
+                and ledger.get("session_id") == event.get("session_id")):
+            tasks = []
+            for name in ledger.get("reads", {}):
+                task = Path(name).resolve()
+                if task.name == "research-task.json" and task.parent.parent == guard.parent:
+                    tasks.append(task.parent)
+            unique = list(dict.fromkeys(tasks))
+            if unique:
+                return unique if len(unique) == 1 else []
     found: list[Path] = []
     now = time.time()
     for path in guard.glob("research-active-*.json"):
@@ -388,7 +405,7 @@ def _record_search_payload(project: Path, event: dict) -> None:
     rows = _read_executions(channel)
     rows.append(row)
     _write_executions(channel, rows)
-    for work_dir in _armed_work_dirs(project):
+    for work_dir in _armed_work_dirs(project, event):
         trail = work_dir / "research" / SEARCH_PAYLOADS_NAME
         _write_executions(trail, _read_executions(trail) + [row])
     note = {
@@ -556,6 +573,8 @@ def handle(event: dict) -> int:
     project = Path(os.environ.get("CLAUDE_PROJECT_DIR") or event.get("cwd") or Path.cwd()).resolve()
     root = project / "outputs" / ".pptx-work"
     agent = event.get("agent_type")
+    if _is_researcher(event):
+        agent = RESEARCHER
     child = event.get("agent_id")
     kind = event.get("hook_event_name")
     tool = event.get("tool_name")
@@ -567,7 +586,7 @@ def handle(event: dict) -> int:
 
     if kind == "PreToolUse":
         if _is_researcher(event):
-            works = _armed_work_dirs(project)
+            works = _armed_work_dirs(project, event)
             task_path = works[0] / "research-task.json" if works else None
             retrieval = tool in {"WebSearch", "WebFetch"} or (
                 tool in {"Bash", "PowerShell"} and re.search(r"\bfetch-text(?=[\s\"']|$)", str(inputs.get("command", ""))))
@@ -797,7 +816,7 @@ def handle(event: dict) -> int:
         record_artifact_changes(data, root)
         if agent == RESEARCHER:
             from shared.research_control import status
-            works = _armed_work_dirs(project)
+            works = _armed_work_dirs(project, event)
             if works and (works[0] / "research-task.json").is_file():
                 decision = status(works[0])
                 if decision["state"] == "stop_requested":
@@ -838,7 +857,7 @@ def handle(event: dict) -> int:
 
 if __name__ == "__main__":
     event = json.loads(sys.stdin.read())
-    if event.get("agent_type") in {RESEARCHER, CRITIC} and event.get("hook_event_name") != "PreToolUse":
+    if (_is_researcher(event) or event.get("agent_type") == CRITIC) and event.get("hook_event_name") != "PreToolUse":
         with event_lock(event):
             code = handle(event)
     else:

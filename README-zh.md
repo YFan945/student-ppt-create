@@ -262,7 +262,7 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 ```
 
 最终回复会说明文件绝对路径、页数、渲染检查结果，以及任务状态：
-`complete`、`incomplete` 或 `blocked`。视觉系统、QA 顺序和 CI 渲染矩阵见
+`complete`、`incomplete` 或 `blocked`。视觉系统、QA 顺序和本地渲染矩阵见
 [插件 README](plugins/student-presentation-suite/README-zh.md)。
 
 ## 更新与卸载

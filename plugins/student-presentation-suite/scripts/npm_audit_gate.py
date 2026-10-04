@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -118,7 +119,7 @@ def main() -> int:
     args = parse_args()
     package_dir = args.package_dir.resolve()
     proc = subprocess.run(
-        ["npm", "audit", "--json"],
+        [shutil.which("npm") or "npm", "audit", "--json"],
         cwd=package_dir,
         check=False,
         capture_output=True,
@@ -132,6 +133,12 @@ def main() -> int:
         print(proc.stdout, file=sys.stderr)
         print(proc.stderr, file=sys.stderr)
         print("npm audit did not return valid JSON", file=sys.stderr)
+        return 2
+
+    if (not isinstance(payload, dict) or "error" in payload
+            or not isinstance(payload.get("vulnerabilities"), dict)
+            or not isinstance(payload.get("metadata"), dict)):
+        print("npm audit returned an error or incomplete report; audit did not pass", file=sys.stderr)
         return 2
 
     advisories = collect_advisories(payload)

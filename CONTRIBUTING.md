@@ -47,8 +47,10 @@ PYTHONPATH=. python -m unittest discover -s tests
 1. 从 `main` 创建功能分支
 2. 实施修改并添加测试
 3. 运行全部测试确保通过
-4. 提交 PR 到 `main` 分支
+4. 提交 PR 到 `main` 分支，并说明本地验证结果；push/PR 不再运行自动 CI
 
 ## 版本发布
 
 版本号遵循 semver，使用 `bump_version.py` 统一更新。
+发布前运行根目录 `AGENTS.md` 的本地验证；推送后确认远端 `main` 与已验证提交
+一致，再创建 annotated tag 和 GitHub Release，不等待 CI。

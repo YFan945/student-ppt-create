@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = ROOT / "scripts" / "pptx-element-registry.js"
@@ -223,6 +224,16 @@ console.log(JSON.stringify(registry.analyzeDeck()));
         self.assertFalse(
             self.npm_audit.evaluate(known, dt.date(2026, 12, 2))["ok"]
         )
+
+    def test_npm_audit_refuses_registry_errors_and_missing_reports(self) -> None:
+        for payload in ({"error": {"summary": "404"}}, {}, []):
+            with self.subTest(payload=payload), patch.object(self.npm_audit, "parse_args") as args, patch.object(
+                self.npm_audit.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 1, json.dumps(payload), "registry failed")
+            ):
+                args.return_value.package_dir = ROOT
+                args.return_value.json = True
+                self.assertEqual(2, self.npm_audit.main())
 
 
 if __name__ == "__main__":

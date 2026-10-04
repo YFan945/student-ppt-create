@@ -75,7 +75,6 @@ def main() -> None:
         "README.md",
         "README-zh.md",
         "CHANGELOG.md",
-        ".github/workflows/validate.yml",
         "scripts/install_claude_plugin.ps1",
         "scripts/check_installed_version.py",
     ]

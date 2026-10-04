@@ -16,7 +16,8 @@ implementation line and is not supported here.
 ## Repository Layout
 
 - `.claude-plugin/marketplace.json`: marketplace manifest and published plugin version.
-- `.github/workflows/validate.yml`: Windows/Linux tests and strict Claude validation.
+- `.github/workflows/`: manual live-cost canary and monthly dependency freshness
+  reporting only; pushes and pull requests do not trigger CI.
 - `.github/dependabot.yml`: automated dependency updates for npm and GitHub
   Actions. pip is intentionally not covered: `python-constraints.txt` is a
   cross-platform frozen pin set (consumed with `pip install -c`) that
@@ -248,8 +249,11 @@ claude plugin validate .
 git diff --check
 ```
 
-All checks must pass before publishing. The CI pipeline also runs
-`pip-audit` and `npm audit` for dependency vulnerability scanning.
+All local checks must pass before publishing. There is no remote CI gate or
+required status check. Run `pip-audit -r plugins/student-presentation-suite/python-constraints.txt`
+and `python plugins/student-presentation-suite/scripts/npm_audit_gate.py --json`
+locally for dependency vulnerability scanning; the monthly freshness workflow
+also reports Python advisories without blocking releases.
 The environment check reports LibreOffice and Poppler as recommended for candidate
 generation but required for rendered QA and `complete` delivery. Required runtime
 dependencies are mode-specific; use `--mode create`, `edit_ooxml`, or
@@ -264,14 +268,15 @@ dependencies are mode-specific; use `--mode create`, `edit_ooxml`, or
 4. Update documentation and `CHANGELOG.md`.
 5. Run the full validation suite.
 6. Commit the release changes and **push directly to `main`**.
-7. Wait for the exact main commit’s `validate` workflow and `release-ready` check to succeed. Then create an **annotated** tag `v<version>`. Lightweight tags are not used: every
+7. Verify the pushed `main` SHA equals the locally validated commit, then create an
+   **annotated** tag `v<version>` without waiting for CI. Lightweight tags are not used: every
    release tag except `v0.11.0` is annotated, and `v0.11.1` had to be re-tagged.
 8. Create the GitHub Release, matching the existing title style:
    `gh release create v<version> --title "v<version> — <one-line theme>" --notes-file <file>`.
 
 Only the repository owner may push directly to `main`. All other contributors
-must open a pull request from a fork or topic branch and pass the required status
-checks before merging.
+must open a pull request from a fork or topic branch and pass the local
+validation checks before merging; no GitHub status check is required.
 
 Do not publish, install, or point documentation at the retired
 `YFan945/Personal-Student` `claude-code` branch.

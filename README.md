@@ -276,7 +276,7 @@ Depending on the request, `outputs/` may contain:
 
 The final response reports each absolute file path, slide count, rendered QA
 result, and status: `complete`, `incomplete`, or `blocked`. Visual system, QA
-DAG, and CI render matrix: [plugin README](plugins/student-presentation-suite/README.md).
+DAG, and local render matrix: [plugin README](plugins/student-presentation-suite/README.md).
 
 ## Update And Uninstall
 

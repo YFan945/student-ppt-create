@@ -418,10 +418,13 @@ normalizes the generated package and atomically publishes it; layout/overflow qu
 is caught by QA visual inspection and package validation.
 Delivery reuses the package report instead of revalidating an unchanged deck.
 Static XML findings alone are not proof of rendered clipping or readability.
-CI also creates and renders a temporary scenario matrix for coursework, English
+The local `scripts/scenario_render_matrix.py --require-render` check creates and
+renders a temporary scenario matrix for coursework, English
 classroom, defense, competition, club showcase, research, software project,
 data survey, and school-template editing; no generated deck or preview is
 committed to the repository.
+Pushes and pull requests no longer run automatic CI. Release validation runs
+locally; the manual live canary and monthly dependency report remain available.
 
 ## Runtime
 

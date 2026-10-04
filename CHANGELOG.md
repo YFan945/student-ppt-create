@@ -2,6 +2,12 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.25.2 — 2026-10-05 · Persistent research binding and local releases
+
+- 修复主会话活动标记被清理后，后台研究员误报 work-dir 歧义并阻断检索的问题；使用研究员自身任务读取凭据定位目录，保留任务哈希、scope 和预算门禁，并将检索响应与进度绑定到同一任务。ZCode 前缀研究员使用相同凭据流程。
+- 移除 push/PR 自动 CI 和依赖 validate 的发布工作流；发布改为本地验收、确认远端 main 提交后直接创建 annotated tag 与 GitHub Release，移除 main 的 release-ready 必需检查。保留手动真实验收和每月依赖巡检，同步中英文文档与发布结构检查。
+- 本地 npm audit 门禁使用解析后的可执行路径，修复 Windows 无法找到 npm 的问题；拒绝 registry 错误与不完整报告，避免把审计未执行误报为通过。
+
 ## 0.25.1 — 2026-10-01 · Reliable visual gates and bounded production
 
 - 修复目标排除 minor 与派生问题；全局 blocker 与逐页 blocker 并存时采用整副单 Builder，避免漏修全局问题；统一 fast 分片及 critic 压缩预览规则。

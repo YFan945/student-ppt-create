@@ -198,7 +198,7 @@ def check_manifest(errors: list[str]) -> None:
 
 def check_script_reference_graph(errors: list[str]) -> dict[str, list[str]]:
     retention_reasons = {
-        "check_plugin_release.py": "repository CI invokes this package release gate",
+        "check_plugin_release.py": "local release validation invokes this package release gate",
     }
     searchable = []
     for root_name in ("skills", "commands", "tests", "references", "scripts"):
