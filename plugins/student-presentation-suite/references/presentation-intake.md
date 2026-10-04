@@ -44,15 +44,17 @@ Confirm every item before production:
 | Visual style | Recommend three topic-fit styles; choose one only after confirmation | Controls visual direction |
 | Deliverables | PPTX only; speaker notes, preview, contact sheet, PDF, and full script appear only when the user selects them; add change summary for edits | Controls completion criteria |
 | Interaction/quality mode | Beginner + fast | Controls guidance, evidence, and rehearsal depth |
+| Structure mode | Scenario default | Controls the narrative spine |
+| Content controls | 40 English words / 80 Chinese characters (excluding citations, captions, and chart labels), balanced visual/text, notes on | Controls density and output layers |
+| Citation/export/versioning | Classroom citations; requested local exports; versioning on for edits | Controls traceability and rollback |
 
-`quality_level` freezes the production path at plan: `fast` (the default) uses
+`quality_level` freezes the production path at plan. Canonical tiers are
+`fast` / `standard` / `rigorous` (`Basic` and `High-score` are legacy aliases
+for `fast` and `rigorous`). `fast` (the default) uses
 one Builder, deterministic pre-QA and one final independent visual review;
 `standard` adds one calibration sample with an independent review (skipped for
 decks at or below the 8-page calibration line); `rigorous`
 adds full calibration rounds and blocking style scores. Do not silently change this choice after confirmation.
-| Structure mode | Scenario default | Controls the narrative spine |
-| Content controls | 40 English words / 80 Chinese characters, balanced visual/text, notes on | Controls density and output layers |
-| Citation/export/versioning | Classroom citations; requested local exports; versioning on for edits | Controls traceability and rollback |
 
 ### Deliverables vs. pipeline evidence
 
@@ -158,8 +160,9 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
 - `Format` → options: Individual/个人, Group/小组 (2-4人), Group/小组 (5+人)
 - `Interaction mode` → options: Beginner/新手引导, Expert/专家模式
 
-`Quality level` 不再询问：默认 `High-score/高分`（仅在用户明确要求低要求时才降为
-Basic）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内容中不强调引用风格。
+`Quality level` 不再询问：默认 `fast/快速`（canonical 档位为 fast/standard/rigorous；
+用户明确要求高质量时升为 `rigorous`，`High-score`/`Basic` 是 `rigorous`/`fast` 的旧称，
+不要把默认档写成 High-score）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内容中不强调引用风格。
 
 **Round 3 — 视觉与素材**:
 
@@ -217,7 +220,7 @@ Basic）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内
   1. Duration → 5min（推荐）
   2. Format → Individual（推荐）
   3. Interaction mode → Beginner（推荐）
-  （Quality level 不再询问，默认 High-score/高分）
+  （Quality level 不再询问，默认 fast/快速）
 
 → 用户选择后，调用 AskUserQuestion（Round 3a — 风格类别）：
   1. 风格类别 → 商务与科技类（推荐）/ 学术与专业类 / 创意与人文类 / 其他

@@ -34,7 +34,7 @@ student-presentation-suite@claude-personal
 | --- | --- | --- |
 | 检索并分级证据 | `sp-research` | 仅 Research Pack，不创建 PPTX |
 | 写 PPT 大纲、讲稿或小组分工 | `sp-outline` | Markdown 规划文档，不创建 PPTX |
-| 创建、重做或修改可编辑 PPT/PPTX | `sp-deck` | PPTX、讲稿和预览图 |
+| 创建、重做或修改可编辑 PPT/PPTX | `sp-deck` | PPTX（讲稿、预览图等仅在勾选时交付） |
 | 审查、评分或诊断已有 PPT | `sp-review` | 默认只读的审查报告 |
 
 管线、intake、视觉系统和质量门禁见
@@ -306,26 +306,8 @@ python .\scripts\check_installed_version.py --json
 
 ### 工作流状态卡住
 
-如果 QA 发现 blocker，**不要 reset**：用管线返工边重建生成器再进 QA：
-
-```powershell
-python .\plugins\student-presentation-suite\skills\sp-deck\scripts\ppt_pipeline.py repair --work-dir <wd>
-```
-
-QA 通过后交付：
-
-```powershell
-python .\plugins\student-presentation-suite\skills\sp-deck\scripts\ppt_pipeline.py complete --work-dir <wd>
-```
-
-`reset` / `unblock` 只作最后手段——会丢掉已确认摘要并迫使全流程重来。因缺失依赖进入
-`blocked` 并已修好依赖时：
-
-```powershell
-python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
-```
-
-`unblock` 会回到 `intake_pending`；恢复生产前必须重新确认 Production Summary。
+如果 QA 发现 blocker，**不要 reset**——走管线返工边修复。repair / complete /
+unblock 命令及其语义由[插件 README](plugins/student-presentation-suite/README-zh.md#工作流状态恢复)维护。
 
 ### 生成文件在哪里
 

@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
 from shared.design_tokens import resolve_design_tokens
 from shared.handoff_validation import handoff_errors
 from shared.runtime_paths import output_root
-from shared.slide_spec_validation import semantic_errors
+from shared.slide_spec_contract import validate_spec_data as validate_spec
 
 
 def load_optional_dependencies():
@@ -70,30 +70,6 @@ def load_spec(path: Path, yaml_module: Any) -> Any:
     if path.suffix.lower() == ".json":
         return json.loads(text)
     return yaml_module.safe_load(text)
-
-
-def validate_spec(data: Any, schema_path: Path, jsonschema_module: Any) -> list[dict[str, str]]:
-    """校验内存中的 spec 对象并返回规范化错误列表。
-
-    与 ``shared.slide_spec_contract.validate_slide_spec``（按路径加载并附加文件哈希）
-    共用同一套 schema + ``semantic_errors`` 逻辑；本函数针对已在内存中构造的输入
-    （例如场景矩阵预生成的 spec 对象），不重复从磁盘加载。两者应保持一致，避免
-    错误形状与语义错误附加方式漂移。
-    """
-    schema = json.loads(schema_path.read_text(encoding="utf-8"))
-    jsonschema_module.Draft202012Validator.check_schema(schema)
-    validator = jsonschema_module.Draft202012Validator(schema)
-    errors = sorted(validator.iter_errors(data), key=lambda err: list(err.path))
-    errors = [
-        {
-            "path": "." + ".".join(str(part) for part in error.path),
-            "message": error.message,
-        }
-        for error in errors
-    ]
-    if not errors:
-        errors.extend(semantic_errors(data))
-    return errors
 
 
 def text_block(value: Any, indent: str = "") -> str:
@@ -552,7 +528,7 @@ def main() -> None:
     jsonschema, yaml = load_optional_dependencies()
     try:
         data = load_spec(args.spec, yaml)
-        errors = validate_spec(data, args.schema, jsonschema)
+        errors = validate_spec(data, args.schema)
         if not errors and args.brief:
             brief_data = load_spec(args.brief, yaml)
             brief_schema = json.loads(

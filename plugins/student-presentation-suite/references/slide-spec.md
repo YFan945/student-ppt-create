@@ -57,7 +57,7 @@ Meta field rules:
 - `visual_style`: one of the 12 formal style names, `Other`, or a legacy style name
 - `visual_style_custom`: required when `visual_style: Other`; carries the confirmed
   `style_character`, six-role `palette`, four `backgrounds`, and `svg_reference`
-- `quality_level: high-score` and `visual_text_ratio: balanced|visual-led` require a
+- `quality_level: rigorous` (legacy `high-score`) and `visual_text_ratio: balanced|visual-led` require a
   meaningful structured `visual` for every content slide. `timeline` needs 3+ stages;
   `comparison` needs 2+ items plus dimensions; `process` needs 2+ steps; `chart` needs
   measure, unit, scope, source, and takeaway. Architecture/swimlane needs 2+ nodes,

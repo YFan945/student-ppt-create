@@ -2,6 +2,15 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.25.3 — 2026-10-05 · Drift cleanup: tier normalization, dedupe, and doc sync
+
+一致性清理：消除档位语义漂移、重复实现与文档互相矛盾（全量健康审查后的定点修复）。
+
+- **档位语义修复（行为变更）**：`slide_spec_validation` 与 `presentation_quality` 三处 `quality_level == "high-score"` 字面量比较改为经 `shared.quality_tiers` 归一——canonical 值 `rigorous` 此前会静默跳过 scenario 必填、每页 visual 策略与 limitation 角色三条校验。intake 默认档位文档修正为 `fast/快速`（原文误写 High-score，按别名映射会把默认档抬到最贵的 rigorous）；`run_gates.py` / `art_direction_check.py` / `composition_candidate_check.py` 的 `--quality` 默认值统一为 `quality_tiers.DEFAULT_TIER`，composition checker 接受全部五档并按 tier 归一，不再自带两档二分。intake 孤儿表行修复并入正式表。
+- **代码去重**：新增 `shared/hashing.py`，收敛 20 处逐字复制的 chunked SHA-256 实现；`pptx_palette_check.py` 对比度改用 `shared.pptx_static_core`（非法 hex 不再抛异常，与 design_tokens 阈值口径一致）；`slide_spec_to_pptx_brief.py` 复用 `slide_spec_contract.validate_spec_data`（slide_copy 错误文案不再分叉）；qa-manifest 移除三个从未被读取的死 CLI 参数，delivery check 移除 visual-review 报告上不存在的 `average_score` 死读取。
+- **文档同步与去矛盾**：检索交接契约统一为 cost-discipline CD-5 的 envelope 规则（research-workflow §八改为指向）；插件 README 中文补齐"环境变量"与"Open XML SDK 校验"两节并合并 sp-research 节的逐版本堆叠段落；root README 排错命令按所有权表移入插件 README（"工作流状态恢复"），root 留指针；交付物表述与 intake 契约对齐（notes/preview 仅勾选时交付）；density 上限补回"引用、图表标注不计"限定语；S/A/B/C/D 与 confidence 关系统一为"等级不驱动置信度"（删除过时的 display mapping 括注）；scope-D 路由三处口径统一（默认确定性导入，点名才派研究员）；presentation-brief/slide-spec 补注 legacy 档位别名；root AGENTS.md 修复合并事故造成的断裂 bullet。
+- **测试**：新增 canonical `rigorous` 触发严格语义校验的回归测试；run-gates 默认档测试改为断言 `quality_tiers` 默认值。1315 项测试全过；pip-audit 无已知漏洞。npm audit 报 pptxgenjs→image-size 两个既有 high 公告（修复需钉 pptxgenjs 4.0.0，属依赖决策，另行处理）。
+
 ## 0.25.2 — 2026-10-05 · Persistent research binding and local releases
 
 - 修复主会话活动标记被清理后，后台研究员误报 work-dir 歧义并阻断检索的问题；使用研究员自身任务读取凭据定位目录，保留任务哈希、scope 和预算门禁，并将检索响应与进度绑定到同一任务。ZCode 前缀研究员使用相同凭据流程。

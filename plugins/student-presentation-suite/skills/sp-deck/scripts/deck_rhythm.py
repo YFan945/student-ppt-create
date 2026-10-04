@@ -23,7 +23,6 @@ frozen inputs into one small plan at `plan` time:
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -35,6 +34,12 @@ if str(HERE) not in sys.path:
 
 from calibration_archetypes import archetype_of  # noqa: E402
 from page_brief import find_spec, load_optional, load_structured  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256_or_none as _sha256  # noqa: E402
 
 RHYTHM_NAME = "deck-rhythm.json"
 
@@ -50,14 +55,6 @@ _ROLE_TO_RHYTHM = {
 }
 
 
-def _sha256(path: Path) -> str | None:
-    if not path.is_file():
-        return None
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def rhythm_role(item: dict[str, Any]) -> str:

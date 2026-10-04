@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -17,13 +16,11 @@ import pptx_delivery_check as legacy  # noqa: E402
 import pptx_delivery_check_v07 as v07  # noqa: E402
 import slide_spec_guard as spec_guard  # noqa: E402
 
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+from shared.hashing import file_sha256 as sha256_file  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:

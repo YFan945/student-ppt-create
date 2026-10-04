@@ -125,12 +125,13 @@ Canonical ownership:
   (researcher / builder / critic). Fixed constraint blocks are copied verbatim and data slots carry
   paths only; byte-exact content (claims, source titles, numbers) is never transcribed into a prompt.
 - `shared/pptx_runtime/cjk_fonts.py` + `pptx_tool.py cjk-fonts`: post-process generated decks
+  to add `<a:ea>` East Asian typefaces (CJK typography pairing lives in design-tokens.json);
+  normalize also repairs pptxgenjs rich-text (stray per-run `<a:pPr>`), so multi-run
+  inline emphasis is now valid and validated.
 - `shared/pptx_runtime/fetch_images.py` + `pptx_tool.py fetch-images`: execute the
   image-sources.json contract (permission gates enforced, provenance recorded).
 - `shared/pptx_runtime/visual_baseline.py` + `pptx_tool.py visual-baseline`: perceptual-hash
   record/compare of rendered pages as a visual-regression defence.
-- normalize also repairs pptxgenjs rich-text (stray per-run `<a:pPr>`), so multi-run
-  inline emphasis is now valid and validated.  to add `<a:ea>` East Asian typefaces (CJK typography pairing lives in design-tokens.json).
 - `references/image-sourcing.md` plus `image-sources.schema.json`: explicit image search/generation capability declaration, permission gate, and provenance recording.
 - `shared/image_capability.py`: whether this session can actually obtain imagery, resolved once for both readers — `check_claude_pptx_env.py` (environment status) and `art_direction_check.py` (refuses an `asset_plan` whose image visuals cannot be delivered).
 - `references/design-tokens.json`: 12 style palettes, each with a light six-role palette and the matching dark scheme for cover/section/closing pages; `shared/design_tokens.py` owns dark-companion derivation and contrast floors.

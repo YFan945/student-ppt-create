@@ -25,6 +25,12 @@ if str(HERE) not in sys.path:
 
 import pptx_palette_check  # noqa: E402
 
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256 as sha256_file  # noqa: E402
+
 ROOT = HERE.parents[2]
 BUILDER = ROOT / "scripts" / "run_with_pptxgenjs.js"
 PPTX_TOOL = ROOT / "scripts" / "pptx_tool.py"
@@ -32,12 +38,6 @@ SCAFFOLD_MARKER = "student-presentation-suite-scaffold"
 PAGE_RE = re.compile(r"^p(\d{2})-.+\.js$")
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def binding(path: Path) -> dict[str, str]:

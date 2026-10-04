@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from shared.quality_tiers import normalize as normalize_tier
+
 SCENARIO_REQUIRED_ROLE_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
     "coursework": (("background", "problem"), ("method",), ("evidence", "result"), ("conclusion", "closing")),
     "defense": (("problem",), ("method",), ("result", "evidence"), ("solution", "value"), ("limitation",), ("qa",)),
@@ -51,7 +53,7 @@ def _validate_visual_semantics(meta: dict[str, Any], slides: list[Any]) -> list[
         visual = slide.get("visual")
         kind = slide.get("kind", "content")
         strict_visual = (
-            meta.get("quality_level") == "high-score"
+            normalize_tier(meta.get("quality_level")) == "rigorous"
             or meta.get("visual_text_ratio") in {"balanced", "visual-led"}
         )
         if strict_visual and kind not in exempt_kinds and not isinstance(visual, dict):
@@ -191,11 +193,11 @@ def semantic_errors(data: Any) -> list[dict[str, str]]:
                 if owner not in allowed:
                     errors.append({"path": f".slides.{index}.owner", "message": f"owner {owner!r} is not listed in meta.members"})
 
-    if meta.get("quality_level") == "high-score":
+    if normalize_tier(meta.get("quality_level")) == "rigorous":
         required_controls = ("scenario", "audience_type", "audience_depth", "structure_mode")
         for field in required_controls:
             if not meta.get(field):
-                errors.append({"path": f".meta.{field}", "message": f"high-score mode requires {field}"})
+                errors.append({"path": f".meta.{field}", "message": f"rigorous (high-score) mode requires {field}"})
 
     # 场景故事角色完整性不再作为硬错误阻断（避免 defense/research 逼页数膨胀）；
     # 由 `analyze_presentation_spec.py` 作为 Minor 提示。仅保留结构性语义校验。

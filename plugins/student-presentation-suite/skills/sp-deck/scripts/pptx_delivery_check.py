@@ -17,6 +17,12 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256 as sha256_file  # noqa: E402
+
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 if str(PLUGIN_ROOT) not in sys.path:
     sys.path.insert(0, str(PLUGIN_ROOT))
@@ -321,12 +327,6 @@ def file_info(path: Path | None) -> dict[str, Any] | None:
     }
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def verify_visual_review_report(report_path: Path, pptx: Path) -> dict[str, Any]:
@@ -354,7 +354,6 @@ def verify_visual_review_report(report_path: Path, pptx: Path) -> dict[str, Any]
         "valid": True,
         "report_sha256": sha256_file(path),
         "slide_entries": len(slides),
-        "average_score": data.get("average_score"),
     }
 
 

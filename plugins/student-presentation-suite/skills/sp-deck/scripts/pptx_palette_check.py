@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from shared import pptx_static_core as static_core  # noqa: E402
 from shared.design_tokens import PALETTE_ROLES, resolve_design_tokens  # noqa: E402
 
 SLIDE_PART = re.compile(r"^ppt/slides/slide(\d+)\.xml$")
@@ -153,23 +154,6 @@ def parse_color_element(match: re.Match[str], theme: dict[str, str]) -> dict[str
     }
 
 
-def relative_luminance(rgb: tuple[int, int, int]) -> float:
-    def lin(value: float) -> float:
-        value /= 255
-        return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
-
-    r, g, b = rgb
-    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b)
-
-
-def contrast_ratio(first: str, second: str) -> float:
-    a = tuple(int(first[i:i + 2], 16) for i in (0, 2, 4))
-    b = tuple(int(second[i:i + 2], 16) for i in (0, 2, 4))
-    la, lb = relative_luminance(a), relative_luminance(b)
-    lighter, darker = max(la, lb), min(la, lb)
-    return (lighter + 0.05) / (darker + 0.05)
-
-
 def text_contrast_issues(
     text: str,
     slide_no: int,
@@ -248,7 +232,9 @@ def text_contrast_issues(
             if sz >= LARGE_TEXT_MIN_SZ or ("b=\"1\"" in attrs and sz >= LARGE_BOLD_MIN_SZ)
             else BODY_TEXT_FLOOR
         )
-        ratio = contrast_ratio(color, background)
+        # Shared WCAG implementation (malformed hex falls back to 0.0 luminance
+        # instead of raising, matching the floors in design_tokens.py).
+        ratio = static_core.contrast_ratio(color, background)
         if ratio < floor:
             major = ratio < HARD_CONTRAST_FLOOR or floor == LARGE_TEXT_FLOOR
             issues.append({

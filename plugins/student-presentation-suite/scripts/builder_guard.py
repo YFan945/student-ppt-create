@@ -37,13 +37,18 @@ Three boundaries, one owner:
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import json
 import os
 import re
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256 as _sha256  # noqa: E402
 
 BUILDER = "student-presentation-suite:presentation-builder"
 SHELL_TOOLS = {"Bash", "PowerShell"}
@@ -229,12 +234,6 @@ def _norm(name: str) -> str:
     return name.lower().replace("_", "-")
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _matches_no_reread(path: Path) -> bool:

@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from shared.hashing import file_sha256 as _sha256  # noqa: E402
 from shared.pptx_runtime import (  # noqa: E402
     add_slide,
     apply_cjk_fonts,
@@ -105,12 +106,6 @@ def _slide_part_name(value: str) -> str:
     return name
 
 
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _slide_count(path: Path) -> int:
@@ -1121,9 +1116,6 @@ def build_parser() -> argparse.ArgumentParser:
         type=_existing_file,
         help="validate-produced package report to bind to the PPTX (optional)",
     )
-    manifest.add_argument("--repair-cycles", type=int, default=0)
-    manifest.add_argument("--no-repair-needed-reason")
-    manifest.add_argument("--remaining-blockers", type=int, default=0)
     manifest.add_argument("--slide-spec-report", required=True, type=_existing_file)
     manifest.add_argument("--slide-spec", required=True, type=_existing_file)
     manifest.add_argument("--content-qa", type=_existing_file)

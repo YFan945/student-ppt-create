@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.25.2
+version: 0.25.3
 ---
 
 # Student Presentation PPT
@@ -91,8 +91,8 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" status --w
 1. **Intake**：按 `presentation-intake.md` 收集需求，完整 Production Summary 经用户明确确认后调用 `workflow_guard.py confirm --summary-file <summary> --work-id <work-id>`。intake 询问必须按该文件的 Round 结构**批量**发出（每轮一次 `AskUserQuestion`、最多 4 问），禁止拆成单问多次调用（2026-09-17 实测：3 次单问违反 Round 契约，多耗两轮交互）。
 2. **Mode**：按 source deck/edit intent 唯一确定 `create` / `edit_ooxml` / `rebuild_from_source`。
 3. **Research Gate + Compile**：依赖外部事实时先跑 `sp-research` 产生 `research-pack.json` 与 validation。主会话 spawn `student-presentation-suite:presentation-researcher` **不传 `name`、禁止再套一层**；研究员的 claim 清单来自 Production Summary，**不需要先有 spec**。`ppt_pipeline.py plan` 自己编译 evidence map 与带 E ids 的 spec，不让模型猜编译 CLI。**Slide Spec 在 pack 验证零 blocker 之后一次性撰写**：数字直接用 pack 已核实值，检索没覆盖的维度就定性表述并标注口径限制——此后 research 不再触发 spec 重写。**禁止先冻结占位 spec、等 research 返回再大段回填**：spec 写两遍是本流程最贵的重复，还连带 re-validate / `plan --force` 重 scaffold / 页面 COPY 重同步（2026-09-28 live）。
-4. **Art Direction**：**先读 `references/design-tokens.json`，再呈现具体样式选项或做任何颜色/视觉承诺**——选项只能引用 token 名；6 角色位之外的配色语义（如"暖色琥珀当第二主角"）禁止承诺（2026-09-17 live：承诺"光伏配琥珀"后才发现调色板契约禁色族外颜色，被迫中途换风格并重绑确认哈希）。visual style 只作为 seed，形成 `art-direction.yaml` 与 3–5 个 high-leverage slides。
-5. **Plan**：`<wd>` 必须为项目 `outputs/.pptx-work/<work-id>`；`edit_ooxml` 自动解包到 `ooxml/`，不生成 JS；`rebuild_from_source` 须先写 `source-analysis.md`，参考 deck 质量好时先用 `reference_deck_analysis.py` 产出逐页类型/版式建议，再 `plan --reference-analysis` 引导 archetype 选择（见 `../../references/reference-deck-ingestion.md`）。`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证 Production Summary、copy-fit、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/` 并建立 `build-manifest.json`。仍处于 `planned` 时确需更新 spec / research chain，直接给同一命令加 `--force --reason <具体原因>`；管线会调用 revision、保留锁的 revision/parent 链，不要 reset intake、移动旧锁或直调 `slide_spec_guard.py`。`--validation-report` 若描述的不是将被 freeze 的那个 spec（研究型 deck 会是 plan 自己编译出的 `slide-spec-compiled.yaml`），plan 会**自动对该 spec 重新生成报告**并在 manifest 记 `spec_report_regenerated`；不要为此手工跑第二遍 plan，也不要自己猜 compiled 文件的哈希。
+4. **Art Direction**：**先读 `../../references/design-tokens.json`，再呈现具体样式选项或做任何颜色/视觉承诺**——选项只能引用 token 名；6 角色位之外的配色语义（如"暖色琥珀当第二主角"）禁止承诺（2026-09-17 live：承诺"光伏配琥珀"后才发现调色板契约禁色族外颜色，被迫中途换风格并重绑确认哈希）。visual style 只作为 seed，形成 `art-direction.yaml` 与 3–5 个 high-leverage slides。
+5. **Plan**：`<wd>` 必须为项目 `outputs/.pptx-work/<work-id>`；`edit_ooxml` 自动解包到 `ooxml/`，不生成 JS；`rebuild_from_source` 须先写 `source-analysis.md`，参考 deck 质量好时先用 `reference_deck_analysis.py` 产出逐页类型/版式建议，再 `plan --reference-analysis` 引导 archetype 选择（见 `references/reference-deck-ingestion.md`）。`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证 Production Summary、copy-fit、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/` 并建立 `build-manifest.json`。仍处于 `planned` 时确需更新 spec / research chain，直接给同一命令加 `--force --reason <具体原因>`；管线会调用 revision、保留锁的 revision/parent 链，不要 reset intake、移动旧锁或直调 `slide_spec_guard.py`。`--validation-report` 若描述的不是将被 freeze 的那个 spec（研究型 deck 会是 plan 自己编译出的 `slide-spec-compiled.yaml`），plan 会**自动对该 spec 重新生成报告**并在 manifest 记 `spec_report_regenerated`；不要为此手工跑第二遍 plan，也不要自己猜 compiled 文件的哈希。
 6. **Reference + Composition**：high-leverage 页保存 reference selection、2–3 个 silhouette candidates 与 wireframe 选择证据；普通页保留明确 composition intent。
 7. **Calibration Build**：仅 `standard` / `rigorous` 的 `create` / `rebuild_from_source`（校准轮次上限 standard 1、rigorous 2，超限后遗留 finding 记为风险继续生产）；`fast` 直接进入第 9 步；**standard 页数 ≤ 8**（`STANDARD_CALIBRATION_PAGE_LINE`，plan 时冻结在 `manifest.scaffold.slides`）同样直接进入第 9 步——短 deck 的全 deck 返工上限就是这页数，不值得为它多付一整轮校准往返。按 **archetype coverage** 使用 Builder Packet 默认的 2–3 张代表页；只有需要覆盖默认集遗漏的视觉语法时，才用 `builder_packet.py --mode calibration --slides <ids>` 改样本，脚本会拒绝降低覆盖度的选法。主会话 spawn `student-presentation-suite:presentation-builder`（不传 `name`），传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder 只实现这些页面，**剩余 scaffold 页面**保持不变；覆盖度细则见 `../../references/pipeline-contract.json`。
 8. **Calibration Preview**：收到 `BUILDER_DONE(mode=calibration)` 后，主会话调用 `advance --brief-json` 自动运行确定性 helper；排查预览故障时才直接调用：
@@ -129,13 +129,13 @@ Windows 下用这个 python 形式。`edit_ooxml` 走原 OOXML 路径；create/r
 14. **QA DAG**：Critic 返回后调用 `advance --brief-json`，它验证当前评审与 receipt，再运行 `package → static_risk → rendered → actual_content → structural_contract → quality → delivery`。产物可用性门失败即停，其余内容门同轮汇总；完整 blocker 在 `pipeline-qa.json`，派生问题不单独修。报告结构错误先交回 critic，不登记 Builder 修复。
 15. **Repair**：有 QA blocker 时，`advance` 自动登记 repair 并返回 `presentation-builder mode=repair` 的 Packet。Builder 只读 Packet 投影的完整 blocker；仅在 Packet 生成失败时回退到 `pipeline-qa.json`。一次处理所有 blocker，不按门分批。
 
-   **每轮必须 spawn 一个新的 builder 实例，不要用 SendMessage 继续上一个。** 一个实例扛多轮时上下文只增不减：2026-09-18 live 的一个 builder 实例从 8.7K 涨到 **699K**，261 个请求里 212 个在 ≥200K 上下文下发出（占其成本的 96.1%），最后一轮仅 3 个请求就花了 2.1M token。**实测反事实**：只做重置是 **98.7M → 80.9M（省 17.8M）**——轮 1 在实例内部自己就会涨到 606K，重置修不了它，其余要靠不让全 deck 返工发生。`next --json` 的 `builder_instance_reuse` 会在检出复用时报出实例与轮次——看到它就把下一轮换成新 spawn。
+   **每轮必须 spawn 一个新的 builder 实例，不要用 SendMessage 继续上一个。** 一个实例扛多轮时上下文只增不减，实测案例与成本分解见 `../../references/cost-discipline.md` 的 CD-10。`next --json` 的 `builder_instance_reuse` 会在检出复用时报出实例与轮次——看到它就把下一轮换成新 spawn。
 
    **builder 自己不 build、不 render**（渲染与 `calibration_preview.py` 属于主会话，hook 会拒绝）；页面全改完再回报，主会话跑唯一一次 build。若 builder 在 build 之后又改了页，`build` 允许**一次**补差量重建（`carryover_builds`），避免为一处微调单开一轮。
 
    `fast` 的 repair 在分片线以下只派一个 Builder，一次处理完整 blocker 清单（超线同样按 `builder_shards` 分片，最多 3 片）。`standard`/`rigorous` 仅在 `next --json` 给出 `builder_shards` 时分片；无页号的 deck 级 blocker 用一个 Builder。
 
-   **减少回合数本身就是目标**：实测每个回合平均只带 ~1.0 个工具调用（发一个、等结果、再发下一个）。合并调用（CD-1）在时间上等价于省钱——一个回合 10~19 秒，13 页的构建阶段每少 30 个回合就是少 5~10 分钟。`page_brief.py --work-dir <wd> --json`（不带 `--slide`）一次给全 deck 每页的契约，不要逐页调。
+   **减少回合数本身就是目标**：实测每个回合平均只带 ~1.0 个工具调用（发一个、等结果、再发下一个），合并调用（CD-1）在时间上等价于省钱；回合延迟与节省量级见 `../../references/cost-discipline.md` 的 CD-11。`page_brief.py --work-dir <wd> --json`（不带 `--slide`）一次给全 deck 每页的契约，不要逐页调。
 
    收到 `BUILDER_DONE` 后调用 `advance --brief-json`，由它重建、预检、渲染并停在 Critic 边界；Critic 返回后再调用一次 `advance` 完成 QA 或给出下一轮 Builder Packet。generator hash 未变化时 build 拒绝；超过预算转 `incomplete`。
 

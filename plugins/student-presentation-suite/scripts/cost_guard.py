@@ -46,6 +46,12 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import pipeline_context  # noqa: E402
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256_or_none as sha256_file  # noqa: E402
+
 PLUGIN_HINTS = (
     "student-presentation-suite",
     ".claude-plugin",
@@ -82,15 +88,6 @@ PLUGIN_PATH = re.compile(
 IMAGE_EXT = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
 
 
-def sha256_file(path: Path) -> str | None:
-    try:
-        digest = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-        return digest.hexdigest()
-    except OSError:
-        return None
 
 
 def repo_root_from_cwd(cwd: str) -> Path:

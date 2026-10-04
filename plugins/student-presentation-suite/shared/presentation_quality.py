@@ -7,6 +7,7 @@ from collections import Counter
 from difflib import SequenceMatcher
 from typing import Any
 
+from shared.quality_tiers import normalize as normalize_tier
 from shared.slide_spec_validation import _validate_scenario_roles
 
 GENERIC_PATTERNS = (
@@ -295,13 +296,13 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
                 "Add a conclusion/closing page with takeaway, limitation/next step, and Q&A cue.",
             )
         )
-    if meta.get("quality_level") == "high-score" and not roles.intersection({"limitation"}):
+    if normalize_tier(meta.get("quality_level")) == "rigorous" and not roles.intersection({"limitation"}):
         findings.append(
             finding(
                 "Minor",
                 "Deck",
                 "missing-limitation",
-                "High-score mode has no limitation page or role.",
+                "Rigorous (high-score) mode has no limitation page or role.",
                 "The conclusion can appear overstated and invite difficult questions.",
                 "Add a limitation, boundary, or next-step section.",
             )

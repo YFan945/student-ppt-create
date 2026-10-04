@@ -20,7 +20,6 @@ the hashed sources in `derived_from`.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from pathlib import Path
@@ -36,6 +35,12 @@ from calibration_review import (  # noqa: E402
     calibration_review,
 )
 from page_brief import find_spec, load_optional, load_structured  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256_or_none as _sha256  # noqa: E402
 
 STYLE_CONTRACT_NAME = "calibration-style-contract.json"
 STYLE_SUMMARY_NAME = "calibration/style-summary.json"
@@ -67,14 +72,6 @@ ANTI_REPETITION_SEED = [
     "one focal point per page; do not add competing emphasis blocks",
 ]
 
-def _sha256(path: Path) -> str | None:
-    if not path.is_file():
-        return None
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def style_summary(work_dir: Path) -> dict[str, Any] | None:

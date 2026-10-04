@@ -17,7 +17,6 @@ findings from being silently marked as complete.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import math
 import re
@@ -35,6 +34,7 @@ if str(ROOT) not in sys.path:
 import pptx_actual_content_check as actual_check  # noqa: E402
 import slide_spec_guard as spec_guard  # noqa: E402
 
+from shared.hashing import file_sha256 as sha256_file  # noqa: E402
 from shared.quality_tiers import tier_policy  # noqa: E402
 
 SCORE_FIELDS = ("hierarchy", "focal_point", "composition", "visual_interest", "whitespace")
@@ -64,12 +64,6 @@ BLOCKING_SEVERITIES = {"critical", "major"}
 ADVISORY_SEVERITY = "advisory"
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_json(path: Path) -> dict[str, Any]:

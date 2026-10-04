@@ -116,6 +116,22 @@ console.log(JSON.stringify(registry.analyzeDeck()));
         visual_errors = [item for item in errors if ".visual" in item["path"]]
         self.assertEqual([], visual_errors)
 
+    def test_canonical_rigorous_tier_triggers_strict_semantics(self) -> None:
+        # 0.25.3: the strict checks used to compare `quality_level == "high-score"`
+        # literally, so the canonical value `rigorous` silently skipped them.
+        data = {
+            "meta": {"quality_level": "rigorous", "slide_count": 1},
+            "slides": [
+                {"id": 1, "title": "核心判断", "timing_sec": 30, "visual": {"type": "none"}}
+            ],
+        }
+        errors = self.slide_validation.semantic_errors(data)
+        paths = {item["path"] for item in errors}
+        self.assertIn(".slides.0.visual.type", paths)
+        self.assertTrue(
+            any("rigorous (high-score) mode requires" in item["message"] for item in errors)
+        )
+
     def test_actual_content_check_passes_when_plan_is_present(self) -> None:
         spec = {
             "slides": [

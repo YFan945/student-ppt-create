@@ -494,8 +494,6 @@ class PptxToolTests(unittest.TestCase):
                 str(preview),
                 "--output",
                 str(output),
-                "--no-repair-needed-reason",
-                "No visual defect was found.",
                 "--slide-spec-report",
                 str(spec_report),
                 "--slide-spec",

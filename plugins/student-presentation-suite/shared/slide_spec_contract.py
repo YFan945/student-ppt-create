@@ -20,13 +20,17 @@ def load_slide_spec(path: Path) -> Any:
     return json.loads(text) if path.suffix.casefold() == ".json" else yaml.safe_load(text)
 
 
-def validate_slide_spec(
-    path: Path,
+def validate_spec_data(
+    data: Any,
     schema_path: Path = DEFAULT_SCHEMA,
-) -> tuple[Any, list[dict[str, str]], str]:
-    """Validate one on-disk spec and return data, normalized errors, and file hash."""
-    raw = path.read_bytes()
-    data = load_slide_spec(path)
+) -> list[dict[str, str]]:
+    """Normalize schema + semantic errors for one in-memory spec object.
+
+    The single validation core: ``validate_slide_spec`` uses it for on-disk
+    specs, and in-memory producers (e.g. the scenario-matrix pipeline and
+    ``slide_spec_to_pptx_brief.py``) call it directly so error shape and the
+    slide_copy guidance cannot drift between the two entry points.
+    """
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator.check_schema(schema)
     validator = jsonschema.Draft202012Validator(schema)
@@ -48,4 +52,14 @@ def validate_slide_spec(
         )
     if not errors:
         errors.extend(semantic_errors(data))
-    return data, errors, hashlib.sha256(raw).hexdigest()
+    return errors
+
+
+def validate_slide_spec(
+    path: Path,
+    schema_path: Path = DEFAULT_SCHEMA,
+) -> tuple[Any, list[dict[str, str]], str]:
+    """Validate one on-disk spec and return data, normalized errors, and file hash."""
+    raw = path.read_bytes()
+    data = load_slide_spec(path)
+    return data, validate_spec_data(data, schema_path), hashlib.sha256(raw).hexdigest()

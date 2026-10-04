@@ -15,11 +15,16 @@ all 13 built pages — 76.4M tokens (58.8% of that session) for a rework that a
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import sys
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256 as _sha256  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
@@ -65,12 +70,6 @@ def _read_object(path: Path) -> dict[str, Any]:
     return value
 
 
-def _sha256(path: Path) -> str:
-    value = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            value.update(chunk)
-    return value.hexdigest()
 
 
 def _binding(path: Path) -> dict[str, str]:

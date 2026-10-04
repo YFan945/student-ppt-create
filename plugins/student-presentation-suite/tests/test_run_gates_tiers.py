@@ -26,8 +26,11 @@ class RunGatesTierTests(unittest.TestCase):
             run_gates.parse_args(["--quality", "high-score"]).quality, "high-score"
         )
 
-    def test_default_tier_is_high_score(self) -> None:
-        self.assertEqual(run_gates.parse_args([]).quality, "high-score")
+    def test_default_tier_is_quality_tiers_default(self) -> None:
+        # 0.25.3: standalone defaults align with shared.quality_tiers
+        # (DEFAULT_TIER = fast) instead of silently paying the strict path.
+        self.assertEqual(run_gates.parse_args([]).quality, "standard")
+        self.assertEqual(run_gates.parse_args([]).quality_raw, "fast")
 
 
 if __name__ == "__main__":

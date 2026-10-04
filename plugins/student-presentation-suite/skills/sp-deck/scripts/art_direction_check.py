@@ -19,7 +19,10 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared import image_capability  # noqa: E402
+from shared import (  # noqa: E402
+    image_capability,
+    quality_tiers,
+)
 from shared.quality_tiers import tier_policy  # noqa: E402
 from shared.runtime_paths import project_root  # noqa: E402
 
@@ -327,7 +330,7 @@ def main() -> int:
     parser.add_argument(
         "--quality",
         choices=["fast", "standard", "rigorous", "basic", "high-score"],
-        default="high-score",
+        default=quality_tiers.DEFAULT_TIER,
         help="delivery tier (legacy basic/high-score accepted); rigorous is strict",
     )
     parser.add_argument(

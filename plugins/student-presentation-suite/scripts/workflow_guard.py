@@ -13,6 +13,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256 as sha256_file  # noqa: E402
+
 SEQUENCE = (
     "intake_pending",
     "intake_confirmed",
@@ -67,8 +73,6 @@ def transition_allowed(before: str, after: str) -> bool:
     return SEQUENCE.index(after) == SEQUENCE.index(before) + 1
 
 
-def sha256_file(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def count_slides(pptx: Path) -> int | None:

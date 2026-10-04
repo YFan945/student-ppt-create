@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import hashlib
 import ipaddress
 import json
 import re
@@ -30,6 +29,7 @@ if str(ROOT) not in sys.path:
 
 # Dependency-free on purpose: a research environment validates a trail without the
 # PPTX runtime installed (see shared/retrieval_trail.py).
+from shared.hashing import file_sha256 as sha256_file  # noqa: E402
 from shared.research_evidence import evidence_issues  # noqa: E402
 from shared.retrieval_trail import (  # noqa: E402
     UNKNOWN_PAYLOAD,
@@ -69,12 +69,6 @@ ID_PATTERNS = {
 }
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load(path: Path) -> dict[str, Any]:

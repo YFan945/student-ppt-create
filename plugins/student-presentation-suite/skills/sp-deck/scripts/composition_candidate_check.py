@@ -17,6 +17,14 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[3]
+if str(HERE) not in sys.path:
+    sys.path.insert(0, str(HERE))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.quality_tiers import normalize as normalize_tier  # noqa: E402
+
 DEFAULT_LIBRARY = HERE.parent / "references" / "visual-reference-library.json"
 BLOCKING = {"critical", "major"}
 WEAK_STRUCTURES = {"equal-cards", "card-grid", "three-column", "numbered-list", "plain-list"}
@@ -248,7 +256,11 @@ def main() -> int:
         help="composition-candidates-<slide>.json; optional when --emit-template is used",
     )
     parser.add_argument("--reference-library", type=Path, default=DEFAULT_LIBRARY)
-    parser.add_argument("--quality", choices=["high-score", "standard"], default="high-score")
+    parser.add_argument(
+        "--quality", choices=["fast", "standard", "rigorous", "basic", "high-score"],
+        default="fast",
+        help="delivery tier (legacy basic/high-score accepted); rigorous is the strict regime",
+    )
     parser.add_argument(
         "--emit-template", type=int, metavar="SLIDE_ID",
         help="print a schema-shaped candidates skeleton for this 1-based slide instead of validating",
@@ -279,7 +291,7 @@ def main() -> int:
     report = validate_candidates(
         load_structured(args.candidate_file),
         known_reference_ids=load_reference_ids(args.reference_library),
-        high_score=args.quality == "high-score",
+        high_score=normalize_tier(args.quality) == "rigorous",
     )
     payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:

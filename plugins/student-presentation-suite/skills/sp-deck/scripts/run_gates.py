@@ -27,13 +27,18 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[3]
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import art_direction_check as art_check  # noqa: E402
 import composition_candidate_check as candidate_check  # noqa: E402
 import pptx_visual_generation_gate_v08 as visual_gate  # noqa: E402
 import slide_spec_guard as spec_guard  # noqa: E402
+
+from shared import quality_tiers  # noqa: E402
 
 SEVERITIES = ("critical", "major", "minor")
 BLOCKING = {"critical", "major"}
@@ -485,7 +490,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     # fast/standard/rigorous are the pipeline-contract tiers (SKILL.md passes them
     # through); they normalize to the two calibration regimes the gates implement.
     parser.add_argument(
-        "--quality", choices=["fast", "standard", "rigorous", "basic", "high-score"], default="high-score"
+        "--quality", choices=["fast", "standard", "rigorous", "basic", "high-score"],
+        default=quality_tiers.DEFAULT_TIER,
     )
     parser.add_argument("--output", type=Path, help="merged report path; defaults to <evidence-dir>/gates-report.json")
     parser.add_argument("--json", action="store_true", help="print the merged report instead of the summary")

@@ -13,12 +13,17 @@ new freezes use v1.1 and receive the stronger provenance checks.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256 as sha256_file  # noqa: E402
 
 LOCK_VERSION = "1.1"
 COMPATIBLE_LOCK_VERSIONS = {"1.0", LOCK_VERSION}
@@ -63,12 +68,6 @@ def _research_report_regen_hint() -> str:
     )
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_json(path: Path) -> dict[str, Any]:

@@ -374,10 +374,11 @@ simple/source 任务的一个直接片段已满足要求且校验 ready 后立�
 Research Pack    ~8k tokens
 ```
 
-契约：
+契约（与 `cost-discipline.md` CD-5 的 envelope 规则是同一条，以它为准）：
 
 - 原始结果落盘 `outputs/.pptx-work/<work-id>/research/<topic>.json`；
-- 回传主流程的**只有** Research Pack 本身；
+- 回传主流程的只有固定的 `RESEARCH_DONE` / `RESEARCH_BLOCKED` envelope 加
+  Research Pack 落盘路径——pack 正文不回传、不粘贴；
 - 主流程**不得**要求子代理"把搜到的东西贴过来看看"。
 
 ## 九、检索受阻必须留痕

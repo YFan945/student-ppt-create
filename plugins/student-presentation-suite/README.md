@@ -87,13 +87,18 @@ enforces them — rejecting high-confidence claims resting on a single source,
 invalid source-text bindings, conflicts that never lowered confidence,
 and retrieval that failed silently instead of being recorded.
 
-Research defaults to one readable source per ordinary claim (medium confidence); critical checks are task-specific. Retrieval checkpoints and bounded parallel fetching preserve progress. The validator reports ready/partial/insufficient separately from contract validity. See [research workflow](references/research-workflow.md).
-
-Research handoff checks run in one metadata-only local command. Tool-boundary time/stall checks stop further retrieval while allowing partial results to be saved; see the research workflow for defaults and overrides.
-
-Research progress now counts validated task evidence, rather than arbitrary fetched pages or pack rewrites. New task handoffs request a recorded second reading of source support and scope; this does not automate semantic entailment.
-
-A bounded verbatim-excerpt helper preserves multiline source passages and can update one existing evidence binding without printing a page body. Each task is spawned once per session; failed handoffs require user-directed follow-up.
+Critical checks are task-specific. Retrieval checkpoints and bounded parallel
+fetching preserve progress, and the validator reports `ready` / `partial` /
+`insufficient` separately from contract validity. Handoff checks run in one
+metadata-only local command; tool-boundary time/stall checks stop further
+retrieval while allowing partial results to be saved (defaults and overrides in
+the [research workflow](references/research-workflow.md)). Progress counts
+validated task evidence rather than arbitrary fetched pages or pack rewrites,
+and new task handoffs request a recorded second reading of source support and
+scope — this does not automate semantic entailment. A bounded verbatim-excerpt
+helper preserves multiline source passages and can update one existing evidence
+binding without printing a page body. Each task is spawned once per session;
+failed handoffs require user-directed follow-up.
 
 ### `sp-outline`
 
@@ -287,7 +292,8 @@ style from pixels instead of adjectives (opt-in).
 `deck.js` follows the official generation gotchas in
 `skills/sp-deck/references/pptxgenjs-safety.md` and uses `pptx-helpers.js` for hard safety checks.
 `pptx-composer.js`, `pptx-layouts.js`, `pptx-shapes.js`, `pptx-svg-library.js`, and
-`pptx-visuals.js` are optional inspiration/toolbox/fallback modules. An unlocked Slide Spec
+`pptx-visuals.js` are optional inspiration/toolbox/fallback modules, and
+`pptx-icons.js` provides ~30 token-tinted vector icons. An unlocked Slide Spec
 `layout` is advisory; `layout_lock: true` restores exact deterministic composition. The fallback
 composer runs deck-wide preflight before rendering editable visual families
 (hero, visual-dominant, process-path, timeline, comparison, dashboard,
@@ -339,7 +345,8 @@ while still allowing the first legitimate image Read.
 Repair round budgets are stated in the generated "Pipeline flow" table; a remaining QA blocker
 is fixed via
 `skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>` instead
-of resetting the whole pipeline. Deterministic misses are caught even earlier:
+of resetting the whole pipeline; when the budget is exhausted with blockers
+remaining, the deck is delivered `incomplete`. Deterministic misses are caught even earlier:
 right after packing, `build` runs the `rendered` + `actual-content` gates plus the
 quality gate's deterministic half (evidence closure, note timing, spec lock)
 locally — they read the PPTX and the spec and need no critic; while they fail,
@@ -436,6 +443,32 @@ python -m pip install -r requirements.txt
 python -m pip install -r requirements-claude-pptx.txt
 npm ci
 ```
+
+### Workflow State Recovery
+
+If QA found a blocker, do **not** reset: repair through the pipeline rework edge
+to rebuild the generator and re-enter QA:
+
+```powershell
+python skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>
+```
+
+After QA passes, complete with:
+
+```powershell
+python skills/sp-deck/scripts/ppt_pipeline.py complete --work-dir <wd>
+```
+
+`reset` / `unblock` are last resorts only — they drop the confirmed summary and
+force a full restart. To recover from `blocked` state after fixing a missing
+dependency:
+
+```powershell
+python scripts/workflow_guard.py unblock
+```
+
+`unblock` returns the project to `intake_pending`; confirm the Production Summary
+again before resuming production.
 
 Useful checks:
 

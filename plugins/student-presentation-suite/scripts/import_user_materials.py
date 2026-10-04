@@ -22,6 +22,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256 as sha256_file  # noqa: E402
+
 SCRIPTS = Path(__file__).resolve().parent
 if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
@@ -31,14 +34,6 @@ import validate_research_pack as validator  # noqa: E402
 RECEIPT_TOOL = "import_user_materials.py"
 
 
-def sha256_file(path: Path) -> str:
-    import hashlib  # noqa: PLC0415
-
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_topic(spec: Path | None) -> str:

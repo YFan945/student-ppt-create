@@ -135,7 +135,6 @@ class SlideSpecBridgeTests(unittest.TestCase):
         errors = bridge.validate_spec(
             data,
             ROOT / "references" / "slide-spec.schema.json",
-            __import__("jsonschema"),
         )
         brief = bridge.build_brief(data, Path("input.yaml"))
 
@@ -266,7 +265,6 @@ slides:
         errors = bridge.validate_spec(
             data,
             ROOT / "references" / "slide-spec.schema.json",
-            __import__("jsonschema"),
         )
         messages = "\n".join(error["message"] for error in errors)
 
@@ -295,7 +293,6 @@ slides:
         errors = bridge.validate_spec(
             data,
             ROOT / "references" / "slide-spec.schema.json",
-            __import__("jsonschema"),
         )
 
         self.assertTrue(any("Additional properties" in error["message"] for error in errors))
@@ -318,7 +315,7 @@ slides:
                         for index, role in enumerate(roles)
                     ],
                 }
-                errors = bridge.validate_spec(data, ROOT / "references" / "slide-spec.schema.json", __import__("jsonschema"))
+                errors = bridge.validate_spec(data, ROOT / "references" / "slide-spec.schema.json")
                 # 场景故事角色完整性为建议性（analyze 输出 Minor），不再硬阻断。
                 self.assertEqual([], errors, f"missing {missing} role should not block: {errors}")
 
@@ -332,7 +329,7 @@ slides:
                 {"id": 2, "title": "Visual missing", "layout": "content", "content": "x", "timing_sec": 30, "owner": "A"},
             ],
         }
-        errors = bridge.validate_spec(data, ROOT / "references" / "slide-spec.schema.json", __import__("jsonschema"))
+        errors = bridge.validate_spec(data, ROOT / "references" / "slide-spec.schema.json")
         messages = "\n".join(error["message"] for error in errors)
         self.assertIn("timeline requires at least 3 stages", messages)
         self.assertIn("visual-led mode requires a visual", messages)
@@ -345,7 +342,7 @@ slides:
                 "visual": {"type": "chart", "purpose": "show evidence", "details": {"measure": "score"}},
             }],
         }
-        errors = bridge.validate_spec(data, ROOT / "references" / "slide-spec.schema.json", __import__("jsonschema"))
+        errors = bridge.validate_spec(data, ROOT / "references" / "slide-spec.schema.json")
         self.assertIn("chart requires: unit, scope, source, takeaway", "\n".join(error["message"] for error in errors))
 
 

@@ -22,6 +22,9 @@ if str(HERE) not in sys.path:
 ROOT = HERE.parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256 as sha256_file  # noqa: E402
+
 PPTX_TOOL = ROOT / "scripts" / "pptx_tool.py"
 BUILDER = ROOT / "scripts" / "run_with_pptxgenjs.js"
 EVIDENCE_COMPILER = ROOT / "scripts" / "research_pack_to_evidence.py"
@@ -94,12 +97,6 @@ QA_FROM = {"producing", "qa"}
 MAX_CARRYOVER_BUILDS = 1
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def now() -> str:

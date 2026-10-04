@@ -10,7 +10,6 @@ back to the old `Slide Spec -> deck.js` path.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
@@ -28,18 +27,13 @@ if str(ROOT) not in sys.path:
 import art_direction_check as art_check  # noqa: E402
 import composition_candidate_check as candidate_check  # noqa: E402
 
+from shared.hashing import file_sha256 as sha256_file  # noqa: E402
 from shared.quality_tiers import tier_policy  # noqa: E402
 
 REFERENCE_LIBRARY = HERE.parent / "references" / "visual-reference-library.json"
 BLOCKING = {"critical", "major"}
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_structured(path: Path) -> dict[str, Any]:

@@ -64,8 +64,12 @@ Summary and be confirmed before planning.
 
 ## Quality Levels
 
-- `basic`: complete, readable, correctly timed, and easy to present.
-- `high-score`: additionally optimize rubric alignment, evidence chain,
+Canonical tiers (`fast` / `standard` / `rigorous`) live in `quality_tiers.py`;
+`basic` and `high-score` are accepted legacy aliases.
+
+- `fast` (legacy `basic`): complete, readable, correctly timed, and easy to present.
+- `standard`: one calibration sample on longer decks; structural lows block.
+- `rigorous` (legacy `high-score`): additionally optimize rubric alignment, evidence chain,
   distinctive opening, limitations, teacher/judge questions, and rehearsal.
 
 Validate a saved brief with:

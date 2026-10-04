@@ -68,13 +68,13 @@ Research Pack 到 Slide Spec 的转换同样是确定性的：`scripts/research_
 规则见 `references/research-workflow.md`，产出形状见 `references/research-pack.schema.json`，
 校验用 `scripts/validate_research_pack.py`（会拦截"高置信度只靠单一来源""原文绑定错误""标了冲突却没降置信度""检索受阻却静默降级"等问题）。
 
-普通论断默认一个可读来源即可按 medium 使用，关键核验由任务指定。并行抓取与进度保存支持续做；校验区分契约有效与 ready/partial/insufficient 交付状态。详见[研究流程](references/research-workflow.md)。
-
-研究交接通过一个本地命令完成，仅返回统计。工具边界按时间与停滞状态停止新增检索，并允许保存部分结果；默认值与覆盖方式见研究流程。
-
-研究进度仅计入通过校验的任务证据，不再由无关网页或包重写刷新。新任务要求记录原文支持与范围的二次复读；这不能自动证明语义正确。
-
-有界原文摘录工具保留多行原文，可更新已有证据绑定并只返回元数据。同一会话每个任务仅派一次；交接失败后的补检须由用户明确发起。
+关键核验由任务指定。并行抓取与进度保存支持续做，校验区分契约有效与
+`ready` / `partial` / `insufficient` 交付状态。研究交接通过一个本地命令完成，仅返回
+统计；工具边界按时间与停滞状态停止新增检索，并允许保存部分结果（默认值与覆盖方式见
+[研究流程](references/research-workflow.md)）。研究进度仅计入通过校验的任务证据，不再由
+无关网页或包重写刷新；新任务要求记录原文支持与范围的二次复读，这不能自动证明语义正确。
+有界原文摘录工具保留多行原文，可更新已有证据绑定并只返回元数据。同一会话每个任务仅派
+一次；交接失败后的补检须由用户明确发起。
 
 ### `sp-outline`
 
@@ -338,6 +338,29 @@ python -m pip install -r requirements-claude-pptx.txt
 npm ci
 ```
 
+### 工作流状态恢复
+
+QA 发现 blocker 时**不要 reset**：走管线返工边重建 generator 并重新进入 QA：
+
+```powershell
+python skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>
+```
+
+QA 通过后用以下命令交付：
+
+```powershell
+python skills/sp-deck/scripts/ppt_pipeline.py complete --work-dir <wd>
+```
+
+`reset` / `unblock` 只是最后手段——它们会丢弃已确认的 Production Summary 并强制
+完全重启。修复缺失依赖后从 `blocked` 状态恢复：
+
+```powershell
+python scripts/workflow_guard.py unblock
+```
+
+`unblock` 会把项目退回 `intake_pending`；恢复生产前需重新确认 Production Summary。
+
 常用检查：
 
 ```powershell
@@ -358,10 +381,38 @@ node scripts/run_with_pptxgenjs.js --probe
 python scripts/smoke_pptx.py
 ```
 
+## 环境变量
+
+插件依赖 Claude Code 自动注入的两个环境变量：
+
+| 变量 | 注入方 | 用途 |
+|------|--------|------|
+| `${CLAUDE_PLUGIN_ROOT}` | 插件系统 | 插件安装目录，用于脚本引用 |
+| `${CLAUDE_PROJECT_DIR}` | 运行时 | 当前项目目录，作为交付物输出根目录 |
+
+用户交付物始终写入 `${CLAUDE_PROJECT_DIR}/outputs`；该变量不可用时，插件回退到
+当前工作目录。
+
+插件不携带 dotenv 加载器或 `.env.example`。这些变量由 Claude Code 注入；诊断请走
+`sp-check-env`，不要复制本地 env 文件。
+
 ## 包边界
 
 这是 Claude Code 专用包，不包含 `.codex-plugin`、`agents/openai.yaml`、
 `artifact-tool` 或 Codex runtime 声明。
+
+### Open XML SDK 校验
+
+套件在 `shared/pptx_runtime/openxml_validator/` 自带一个小型 .NET 适配器，封装
+`DocumentFormat.OpenXml` 3.5.1 做 PPTX 标记/schema 校验。构建方式：
+
+```powershell
+dotnet restore shared/pptx_runtime/openxml_validator/OpenXmlValidator.csproj
+dotnet build shared/pptx_runtime/openxml_validator/OpenXmlValidator.csproj
+```
+
+这是套件自有实现；不复制、不分发 `document-skills` 上游的任何 ECMA/ISO XSD 文件。
+完整审计记录见 `references/pptx-runtime-provenance.md`。
 
 安装与更新见仓库根目录 [README-zh.md](../../README-zh.md)；验证与发布见
 [AGENTS.md](../../AGENTS.md)；版本历史见 [CHANGELOG.md](../../CHANGELOG.md)。

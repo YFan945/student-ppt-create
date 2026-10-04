@@ -39,7 +39,7 @@ documented in
 | --- | --- | --- |
 | Gather and grade evidence | `sp-research` | Research Pack only; no PPTX |
 | Outline, notes, or group allocation | `sp-outline` | Markdown planning documents; no PPTX |
-| Create, rebuild, or edit an editable PPT/PPTX | `sp-deck` | PPTX, speaker notes, and preview |
+| Create, rebuild, or edit an editable PPT/PPTX | `sp-deck` | PPTX (speaker notes, preview, etc. delivered only when selected) |
 | Review, score, or diagnose an existing deck | `sp-review` | Read-only review by default |
 
 Pipeline, intake, visual system, and quality gates:
@@ -321,29 +321,9 @@ delivery; candidate PPTX generation can run without them.
 
 ### Workflow State Is Stuck
 
-If QA found a blocker, do **not** reset: repair through the pipeline rework edge
-to rebuild the generator and re-enter QA:
-
-```powershell
-python .\plugins\student-presentation-suite\skills\sp-deck\scripts\ppt_pipeline.py repair --work-dir <wd>
-```
-
-After QA passes, complete with:
-
-```powershell
-python .\plugins\student-presentation-suite\skills\sp-deck\scripts\ppt_pipeline.py complete --work-dir <wd>
-```
-
-`reset` / `unblock` are last resorts only — they drop the confirmed summary and
-force a full restart. To recover from `blocked` state after fixing a missing
-dependency:
-
-```powershell
-python .\plugins\student-presentation-suite\scripts\workflow_guard.py unblock
-```
-
-`unblock` returns the project to `intake_pending`; confirm the Production Summary
-again before resuming production.
+If QA found a blocker, do **not** reset — repair through the pipeline rework
+edge. The repair / complete / unblock commands and their semantics are owned by
+the [plugin README](plugins/student-presentation-suite/README.md#workflow-state-recovery).
 
 ### Where Are Generated Files?
 

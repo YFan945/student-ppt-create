@@ -1,7 +1,7 @@
 ---
 name: sp-outline
 description: Use only for a clearly student-owned academic context when the user explicitly requests a PPT or slide outline, not an editable deck. Do not use for generic presentations, standalone scripts, Q&A-only work, or non-student tasks.
-version: 0.25.2
+version: 0.25.3
 ---
 
 # Student Presentation
@@ -11,7 +11,7 @@ version: 0.25.2
 ## 快速约束
 
 - 中文正文 ≥ 22pt / 英文正文 ≥ 20pt / 标题 ≥ 24pt
-- 每页一条核心信息，≤ 4 条要点，≤ 80 中文字 / 40 英文词
+- 每页一条核心信息，≤ 4 条要点，≤ 80 中文字 / 40 英文词（引用、图表标注不计）
 - 避免 AI 套话（"在当今快速发展..."、"具有重要意义..."）
 - 使用具体课程/项目背景，直接主张，承认局限
 - 按目录→逐页主张→PPT文案→演讲版→Slide Spec 分层生成

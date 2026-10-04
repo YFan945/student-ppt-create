@@ -9,7 +9,6 @@ The report is bound to both the current PPTX and the current Slide Spec hashes.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import posixpath
 import re
@@ -19,16 +18,16 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from shared.hashing import file_sha256 as sha256_file  # noqa: E402
+
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def load_structured(path: Path) -> dict[str, Any]:
