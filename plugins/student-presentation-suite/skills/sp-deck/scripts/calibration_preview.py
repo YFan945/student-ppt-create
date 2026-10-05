@@ -126,6 +126,7 @@ const HELPERS_DIR = process.env.PPTX_HELPERS_DIR || path.join(process.env.CLAUDE
 const H = require(path.join(HELPERS_DIR, 'pptx-helpers.js'));
 const {{ SlideElementRegistry }} = require(path.join(HELPERS_DIR, 'pptx-element-registry.js'));
 const pptxgen = require('pptxgenjs');
+const L = require(path.join(HELPERS_DIR, 'pptx-layouts.js'));
 // 与生产 deck.js 同一 ctx 契约（generator_scaffold.DECK_TEMPLATE）：页面从
 // ctx.tokens 取调色板，缺了会在 paletteMode 崩。
 const TOKENS = {tokens_json};
@@ -142,7 +143,14 @@ async function main() {{
   for (const item of PAGES) {{
     const slide = pptx.addSlide();
     slide.background = {{ color: H.color({{ palette: {{ canvas: 'FFFFFF' }} }}, 'canvas') }};
-    item.mod({{ pptx, slide, n: item.n, H, registry, tokens: TOKENS, slideNumber: item.n, layoutReport }});
+    const ctx = {{ pptx, slide, n: item.n, H, registry, tokens: TOKENS, slideNumber: item.n, layoutReport }};
+    if (typeof item.mod === 'function') {{
+      // 函数式页面（D9 自定义坐标转义口）：glue 由页面自己执行。
+      item.mod(ctx);
+    }} else {{
+      // 声明式页面（v0.22.0 契约形态）：与生产 deck.js 同一 renderDeclaredPage 分支。
+      L.renderDeclaredPage(ctx, item.mod);
+    }}
   }}
   registry.assertSafe();
   await pptx.writeFile({{ fileName: out }});

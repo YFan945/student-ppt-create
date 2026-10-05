@@ -30,8 +30,8 @@ from typing import Any
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
-
 import pipeline_context  # noqa: E402
+from hook_events import read_event, terminal_help_probe  # noqa: E402
 
 PUBLIC_DECK_ENTRYPOINTS = frozenset(
     {
@@ -217,6 +217,8 @@ def check_bash(command: str, builder: bool = False) -> str | None:
         return None
     blocked = [name for name in scripts if name not in PUBLIC_DECK_ENTRYPOINTS]
     if blocked:
+        if terminal_help_probe(normalized):
+            return None
         names = ", ".join(blocked)
         if builder:
             return (
@@ -233,7 +235,7 @@ def check_bash(command: str, builder: bool = False) -> str | None:
         )
     if "ppt_pipeline.py" in scripts:
         match = _PIPELINE_ACTION_RE.search(normalized)
-        if not match or match.group("action") not in PUBLIC_PIPELINE_ACTIONS:
+        if (not match or match.group("action") not in PUBLIC_PIPELINE_ACTIONS) and not terminal_help_probe(normalized):
             return (
                 "ppt_pipeline.py direct Bash is limited to the stable actions: "
                 + ", ".join(sorted(PUBLIC_PIPELINE_ACTIONS))
@@ -262,7 +264,7 @@ def handle(event: dict[str, Any]) -> int:
 
 def main() -> int:
     try:
-        event = json.loads(sys.stdin.read() or "{}")
+        event = read_event()
     except json.JSONDecodeError:
         return 0
     if not isinstance(event, dict):

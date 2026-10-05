@@ -124,6 +124,89 @@ def _current_critic_review(work_dir: Path, manifest: dict[str, Any]) -> bool:
         return False
 
 
+def _implemented_calibration_slides(work_dir: Path) -> list[int]:
+    """Packet slides whose page modules exist and are no longer scaffold stubs.
+
+    Read-only: resolves the active (or default) calibration set without writing
+    packet bookkeeping, so a bare `next` call never creates builder state.
+    """
+    try:
+        active = _packet.active_packet_descriptors(work_dir, "calibration")
+        if active:
+            slides = [int(slide) for slide in active[0]["slides"]]
+        else:
+            slides = [int(slide) for slide in _packet.default_calibration_slides(work_dir)]
+    except Exception:
+        return []
+    if not slides:
+        return []
+    from calibration_preview import SCAFFOLD_MARKER, page_map  # noqa: PLC0415  (sibling module)
+
+    available = page_map(work_dir)
+    for slide in slides:
+        path = available.get(slide)
+        if path is None or SCAFFOLD_MARKER in path.read_text(encoding="utf-8"):
+            return []
+    return slides
+
+
+def _dispatch_calibration_builder(work_dir: Path, payload: dict[str, Any]) -> None:
+    """Request a calibration builder with the projected packet (v0.15 Batch 2)."""
+    payload["agent"] = "student-presentation-suite:presentation-builder"
+    payload["builder_mode"] = "calibration"
+    payload["notes"] = (
+        "spawn student-presentation-suite:presentation-builder mode=calibration with the absolute "
+        "work-dir and the packet's slide ids (no `name`). It implements only those pages; the rest stay "
+        "scaffolded so an early full build stays impossible. The MAIN session never edits "
+        "pages/pNN-*.js itself. After BUILDER_DONE run calibration_preview.py."
+    )
+    try:
+        active_packets = _packet.active_packet_descriptors(work_dir, "calibration")
+        if active_packets:
+            descriptor = active_packets[0]
+            cal_slides = list(descriptor["slides"])
+            cal_path = Path(descriptor["packet"])
+            packet_source = "active calibration override"
+        else:
+            cal_slides = _packet.default_calibration_slides(work_dir)
+            cal_path = None
+            packet_source = "default calibration set"
+        if cal_slides:
+            if cal_path is None:
+                cal_path, _ = _packet.write_packet(work_dir, "calibration", cal_slides)
+                _packet.record_active_round(
+                    work_dir,
+                    "calibration",
+                    [{"packet": str(cal_path), "slides": list(cal_slides)}],
+                )
+            payload["builder_packet"] = {
+                "mode": "calibration",
+                "slides": cal_slides,
+                "packet": str(cal_path),
+            }
+            payload["notes"] += (
+                f" A packet projecting the {packet_source} ({', '.join(map(str, cal_slides))}) "
+                f"is at {cal_path} — pass it as the builder's task input."
+            )
+            if not active_packets:
+                payload["notes"] += (
+                    " Keep that default unless you can name a visual archetype it misses: it is "
+                    "chosen for distinct grammars, not for page importance, so 'these pages matter "
+                    "more' is not a reason to swap. To override, run builder_packet.py --mode "
+                    "calibration --slides <ids> and read its coverage block — swap only when it "
+                    "covers at least as many distinct archetypes; trading one grammar for another "
+                    "is fine, dropping one is not."
+                )
+            try:
+                coverage = _packet.calibration_coverage(work_dir, cal_slides)
+                if coverage:
+                    payload["calibration_coverage"] = coverage
+            except Exception:
+                pass
+    except Exception as exc:
+        observe_packet_failure(work_dir, payload, "calibration", exc)
+
+
 def build_next_payload(work_dir: Path) -> dict[str, Any]:
     """Compute the dispatch answer `next --json` prints (Batch 3 refactor).
 
@@ -253,62 +336,27 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 calibration_manifest = work_dir / "calibration" / "calibration-manifest.json"
                 calibration_rendered = bool(list((work_dir / "calibration" / "render").glob("calibration-*.png")))
                 if not calibration_manifest.is_file():
-                    payload["agent"] = "student-presentation-suite:presentation-builder"
-                    payload["builder_mode"] = "calibration"
-                    payload["notes"] = (
-                        "spawn student-presentation-suite:presentation-builder mode=calibration with the absolute "
-                        "work-dir and the packet's slide ids (no `name`). It implements only those pages; the rest stay "
-                        "scaffolded so an early full build stays impossible. The MAIN session never edits "
-                        "pages/pNN-*.js itself. After BUILDER_DONE run calibration_preview.py."
-                    )
-                    # Builder Packet (v0.15 Batch 2): project the calibration default
-                    # set so the builder gets one task input instead of re-reading
-                    # spec + art direction + research pack itself.
-                    try:
-                        active_packets = _packet.active_packet_descriptors(work_dir, "calibration")
-                        if active_packets:
-                            descriptor = active_packets[0]
-                            cal_slides = list(descriptor["slides"])
-                            cal_path = Path(descriptor["packet"])
-                            packet_source = "active calibration override"
-                        else:
-                            cal_slides = _packet.default_calibration_slides(work_dir)
-                            cal_path = None
-                            packet_source = "default calibration set"
-                        if cal_slides:
-                            if cal_path is None:
-                                cal_path, _ = _packet.write_packet(work_dir, "calibration", cal_slides)
-                                _packet.record_active_round(
-                                    work_dir,
-                                    "calibration",
-                                    [{"packet": str(cal_path), "slides": list(cal_slides)}],
-                                )
-                            payload["builder_packet"] = {
-                                "mode": "calibration",
-                                "slides": cal_slides,
-                                "packet": str(cal_path),
-                            }
-                            payload["notes"] += (
-                                f" A packet projecting the {packet_source} ({', '.join(map(str, cal_slides))}) "
-                                f"is at {cal_path} — pass it as the builder's task input."
-                            )
-                            if not active_packets:
-                                payload["notes"] += (
-                                    " Keep that default unless you can name a visual archetype it misses: it is "
-                                    "chosen for distinct grammars, not for page importance, so 'these pages matter "
-                                    "more' is not a reason to swap. To override, run builder_packet.py --mode "
-                                    "calibration --slides <ids> and read its coverage block — swap only when it "
-                                    "covers at least as many distinct archetypes; trading one grammar for another "
-                                    "is fine, dropping one is not."
-                                )
-                            try:
-                                coverage = _packet.calibration_coverage(work_dir, cal_slides)
-                                if coverage:
-                                    payload["calibration_coverage"] = coverage
-                            except Exception:
-                                pass
-                    except Exception as exc:
-                        observe_packet_failure(work_dir, payload, "calibration", exc)
+                    # 0.25.4: calibration-manifest.json is only written by a SUCCESSFUL
+                    # preview, so keying the dispatch solely on it made advance
+                    # re-request a calibration builder after every BUILDER_DONE — the
+                    # first preview could never be auto-scheduled and SKILL step 8's
+                    # "advance runs the helper" was unreachable (run-14 live). When the
+                    # packet's pages are already implemented (exist, no scaffold
+                    # marker), the correct next step is the preview, not a new builder.
+                    pending_preview = _implemented_calibration_slides(work_dir)
+                    if pending_preview:
+                        slide_args = " ".join(str(slide) for slide in pending_preview)
+                        payload["next_command"] = (
+                            f'{python} "{HERE / "calibration_preview.py"}" --work-dir "{work_dir}" '
+                            f"--slides {slide_args} --json"
+                        )
+                        payload["notes"] = (
+                            "calibration pages are implemented but no preview manifest exists yet: run "
+                            "calibration_preview.py (advance executes it when this is the next command), then hand "
+                            "the preview to the independent visual-critic (step 8)."
+                        )
+                    else:
+                        _dispatch_calibration_builder(work_dir, payload)
                 elif not calibration_rendered:
                     slides = load_json(calibration_manifest).get("slides") or []
                     slide_args = " ".join(str(slide) for slide in slides)

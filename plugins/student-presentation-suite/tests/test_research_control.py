@@ -27,7 +27,7 @@ class ControlTests(unittest.TestCase):
         fetched = self.work / "research/fetched/fetch-text-report.json"
         fetched.parent.mkdir(parents=True)
         fetched.write_text(json.dumps({"records": [{"ok": False, "reason": "unreachable"}]}), encoding="utf-8")
-        decision = status(self.work, now=71)
+        decision = status(self.work, now=101)
         self.assertEqual("no_useful_progress", decision["reason"])
         self.assertEqual(10, decision["last_progress_at"])
         self.assertTrue(self.task.is_file())
@@ -38,7 +38,7 @@ class ControlTests(unittest.TestCase):
         fetched.parent.mkdir(parents=True)
         fetched.write_text(json.dumps({"records": [{"ok": True, "text_sha256": "new", "host_class": "public"}]}), encoding="utf-8")
         self.assertEqual(10, status(self.work, now=40)["last_progress_at"])
-        self.assertEqual("no_useful_progress", status(self.work, now=71)["reason"])
+        self.assertEqual("no_useful_progress", status(self.work, now=101)["reason"])
 
     def test_task_can_override_time_without_search_count_quotas(self):
         self.task.write_text(json.dumps({"budget": "simple", "time_budget_seconds": 5, "stall_timeout_seconds": 60}), encoding="utf-8")
@@ -92,7 +92,7 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(0, fixtures.validator.main([str(self.pack)]))
         decision = status(self.work, now=70)
         self.assertEqual(40, decision["last_progress_at"])
-        self.assertEqual("no_useful_progress", status(self.work, now=161)["reason"])
+        self.assertEqual("no_useful_progress", status(self.work, now=191)["reason"])
         self.assertTrue(fixtures.validator.validate(pack, fetch_report=self.fixture.report, work_dir=self.work)["ok"], "progress checks must preserve source bytes")
 
     def test_resume_requires_reason_and_preserves_seen_evidence(self):

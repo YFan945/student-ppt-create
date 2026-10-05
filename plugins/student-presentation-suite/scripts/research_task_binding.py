@@ -47,7 +47,12 @@ def task_verdict(pack: dict, work_dir: Path, explicit: Path | None = None) -> tu
             errors.append("D tasks may only cite user-file sources")
         frozen = work_dir / "research-task-binding.json"
         if frozen.is_file() and json.loads(frozen.read_text(encoding="utf-8")).get("sha256") != binding["sha256"]:
-            errors.append("Research task changed after researcher spawn")
+            errors.append(
+                "Research task changed after researcher spawn; if this is the sanctioned "
+                "scope convergence (the spec no longer asserts the unresolved claims), re-bind via "
+                "`research_control.py --work-dir <wd> --rebind --reason \"<the scope change>\"` "
+                "instead of editing guard files by hand"
+            )
         return errors, binding, task
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return [str(exc)], binding, None

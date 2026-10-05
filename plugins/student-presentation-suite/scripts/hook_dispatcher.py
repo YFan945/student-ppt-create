@@ -29,6 +29,7 @@ import cost_guard  # noqa: E402
 import hook_health  # noqa: E402
 import production_entry_guard  # noqa: E402
 import runtime_evidence  # noqa: E402
+from hook_events import read_event  # noqa: E402
 
 # tool_name -> guards, in execution order. hook_health arms first so a receipt
 # exists even when a later guard refuses the same call (parallel-hook parity:
@@ -64,7 +65,7 @@ def dispatch(event: dict) -> int:
 
 def main() -> int:
     try:
-        event = json.loads(sys.stdin.read() or "{}")
+        event = read_event()
     except json.JSONDecodeError:
         return 0
     if not isinstance(event, dict):

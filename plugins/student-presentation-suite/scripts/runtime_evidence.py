@@ -28,9 +28,9 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
 import critic_preview  # noqa: E402
 import pipeline_context  # noqa: E402
+from hook_events import read_event  # noqa: E402
 
 from shared.retrieval_trail import (  # noqa: E402
     INDEX_EMPTY,
@@ -594,7 +594,13 @@ def handle(event: dict) -> int:
                 from shared.research_control import status
                 decision = status(task_path.parent, retrieval=True)
                 if decision["state"] == "stop_requested":
-                    print(f"Research stop requested: {decision['reason']}. Save the current pack, mark remaining gaps and return; no more retrieval.", file=sys.stderr)
+                    stop_note = "Save the current pack, mark remaining gaps and return; no more retrieval."
+                    if decision["reason"] == "task_changed":
+                        stop_note += (
+                            " If the main flow sanctioned a scope convergence, it can re-bind the task via "
+                            "`research_control.py --work-dir <wd> --rebind --reason \"<the scope change>\"`."
+                        )
+                    print(f"Research stop requested: {decision['reason']}. {stop_note}", file=sys.stderr)
                     return 2
             if retrieval and task_path and not task_path.is_file() and (task_path.parent / "research-task-binding.json").is_file():
                 print("Bound research task was removed; retrieval is refused.", file=sys.stderr)
@@ -856,7 +862,7 @@ def handle(event: dict) -> int:
 
 
 if __name__ == "__main__":
-    event = json.loads(sys.stdin.read())
+    event = read_event()
     if (_is_researcher(event) or event.get("agent_type") == CRITIC) and event.get("hook_event_name") != "PreToolUse":
         with event_lock(event):
             code = handle(event)

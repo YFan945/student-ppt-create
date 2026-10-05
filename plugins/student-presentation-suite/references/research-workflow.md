@@ -304,6 +304,13 @@ insufficient，编译 Slide Spec 时明确拒绝并列出缺口，不能把“�
 预算检查仍生效；检索响应及进度提示使用同一目录，不混入其他会话的活动 deck。
 旧包没有任务文件仍兼容且保留未绑定提示。输出禁止落在 plugin 或 marketplace 内。
 
+**任务收敛的受支持出口（rebind）**：任务在派发时冻结，但收口路径允许事后收敛——spec
+不再断言某个未解决的维度时，把该 claim 从 core 降为 supporting 后，用
+`research_control.py --work-dir <wd> --rebind --reason "<具体收敛了什么>"` 把绑定迁到当前
+任务字节（理由 ≥24 字符，旧绑定按旧哈希留档 `research-task-binding.superseded-<sha8>.json`，
+决定写入 research-control 历史）。不要手工改名/改写 hook 拥有的绑定文件；重派研究员在
+包已存在时仍会被拒绝——rebind 是让既有 pack 通过校验的通道，不是重跑检索的通道。
+
 抓取使用 --workers 4（可选 1–8），URL 去重，每条完成立即写盘；报告采用锁和原子替换，
 保留失败历史。URL/内容哈希隔离文件，复用前核验 raw/text 哈希。退化判定只针对查询/目录
 locator，不把同一文档的跟踪或签名参数视为故障。

@@ -41,6 +41,10 @@ def validate_task(task: dict, task_path: Path) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("task", type=Path)
+    # Output is already JSON; the flag exists so the conventional validator
+    # surface (`validate_research_pack.py --json`) doesn't argparse-fail the
+    # same call (run-14: one wasted round on `unrecognized arguments: --json`).
+    parser.add_argument("--json", action="store_true", help="accepted for validator-surface parity; output is always JSON")
     args = parser.parse_args()
     try:
         task = json.loads(args.task.read_text(encoding="utf-8"))

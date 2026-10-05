@@ -168,10 +168,12 @@ class CostGuardTests(unittest.TestCase):
             with self.subTest(command=command[-40:]):
                 self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
 
-    def test_validate_research_pack_help_is_builder_scoped(self) -> None:
+    def test_validate_research_pack_terminal_help_is_allowed_for_both_scopes(self) -> None:
+        # 0.25.4: a terminal `--help` is a read-only usage print — allowed even for
+        # the isolated builder; only real invocations stay builder-scoped.
         command = "python plugins/student-presentation-suite/scripts/validate_research_pack.py --help"
         self.assertEqual(0, self.run_guard(self.event("Bash", command=command)))
-        self.assertEqual(2, self.run_guard(self.builder_event("Bash", command=command)))
+        self.assertEqual(0, self.run_guard(self.builder_event("Bash", command=command)))
 
     def test_refusals_point_to_a_resolvable_pipeline_path(self) -> None:
         """裸脚本名会诱导 agent 用错路径；提示必须带可执行的绝对路径。"""

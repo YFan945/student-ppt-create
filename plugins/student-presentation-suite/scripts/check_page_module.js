@@ -41,6 +41,12 @@ if (!WORK_DIR || !PAGES_ARG) {
 // 页面模块裸 require('pptx-layouts')：把本目录挂进 NODE_PATH 后重初始化解析路径。
 process.env.NODE_PATH = [process.env.NODE_PATH, SCRIPTS_DIR].filter(Boolean).join(path.delimiter);
 require('node:module').Module._initPaths();
+// 页面按 deck.js / calibration-deck.js 同款契约经 env 解析 helpers；builder 的
+// Bash 进程没有 CLAUDE_PLUGIN_ROOT，harness 自己补齐，否则 self_check 报
+// Cannot find module 'scripts\pptx-layouts.js'，builder 被迫把 fallback 修进
+// 页面产物（run-14 live）。
+process.env.PPTX_HELPERS_DIR = process.env.PPTX_HELPERS_DIR || SCRIPTS_DIR;
+process.env.CLAUDE_PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT || path.resolve(SCRIPTS_DIR, '..');
 
 function extractTokens(deckJs) {
   const marker = 'const TOKENS = ';

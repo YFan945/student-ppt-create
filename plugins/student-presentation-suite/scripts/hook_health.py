@@ -17,6 +17,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from hook_events import read_event  # noqa: E402
+
 RECEIPT_VERSION = 1
 HEALTH_TTL_SECONDS = 30.0
 _WORK_DIR_RE = re.compile(
@@ -176,7 +178,7 @@ def handle(event: dict) -> int:
 
 def main() -> int:
     try:
-        event = json.loads(sys.stdin.read() or "{}")
+        event = read_event()
     except json.JSONDecodeError:
         return 0
     if not isinstance(event, dict):

@@ -2,6 +2,20 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.25.4 — 2026-10-05 · Run-14 fixes: UTF-8 hooks, preview glue, and sanctioned research rebind
+
+来源：2026-10-04 真实运行（12 页 rigorous deck，止于校准评审边界、无交付）的逐条取证与修复。
+
+- **Hook 事件 UTF-8（根因级）**：`hook_dispatcher` 等 6 个 hook 入口此前按 locale 编码（cp936）解码 stdin，非 ASCII 项目路径在 guard 台账里全部变成 mojibake（`学习资料`→`瀛︿範璧勬枡`），0.25.2 的"按研究员读取凭据定位目录"兜底因此永远匹配不上——父会话 Stop 清理活动标记后，续做研究员的检索被 `work_dir_ambiguous` 永久拒绝，5 条核心缺口零新证据。新增 `scripts/hook_events.py`（字节读入 + 强制 UTF-8 解码 + 坏载荷安全降级空事件），6 个入口统一走它。
+- **校准预览 glue 支持声明式页面（v0.22.0 回归修复）**：`calibration_preview.py` 生成的临时 deck 只按函数式调用页面（裸 `item.mod(...)`），声明式页（契约形态）直接 `TypeError`——run-14 中一整轮 builder（约 46 万 token）被消耗在把正确页面改回函数式。模板现在与生产 `deck.js` 同款双分支（函数式直调 / 声明式走 `renderDeclaredPage`）。
+- **advance 不再在 BUILDER_DONE 后重复索要 builder**：`dispatch` 此前只认 `calibration-manifest.json`（仅预览成功后写出），导致第一次预览永远无法被自动调度；现在 packet 页已实现（存在且非 scaffold 存根）时直接返回预览命令。
+- **研究任务收敛的受支持出口**：新增 `research_control.py --rebind --reason "<≥24 字符的收敛说明>"`——旧绑定按哈希留档 `research-task-binding.superseded-<sha8>.json`、绑定迁到当前任务字节、决定写入 research-control 历史；校验器的 `research_task_mismatch` 与 hook 的 `task_changed` 停止提示同步指向该命令，替代 run-14 中"手工改名 hook 拥有的绑定文件"的契约外操作。
+- **fetch-text 报告按 (url, scope) 最新覆盖去重**：两个并发调用此前会为同一 URL 各记一条（记录含时间戳、去重永不命中），报告自相矛盾。
+- **stall 判定容忍在途检索批次**：并行 WebSearch 批次结果尚未返回时不再按裸耗时判 `no_useful_progress`（固定 30 秒回转折让，连续无效检索仍会触线）。
+- **--help 探询放行**：`production_entry_guard` 与 `cost_guard` 对以 `--help`/`-h` 结尾的纯用法探询不再拒绝（拒绝只省了守卫一行、却让模型多花回合试错）；真实调用与链式命令仍按原规则拒绝。`validate_research_task.py` 接受 `--json`（输出本就是 JSON）。
+- **builder 自检环境与文档规则**：`check_page_module.js` 自身补齐 `PPTX_HELPERS_DIR`/`CLAUDE_PLUGIN_ROOT`，builder 不再被迫把 helper 解析 fallback 修进页面产物；sp-deck SKILL 新增失败归属判定（堆栈在生成的 assembly 文件＝插件缺陷，禁止派 builder 修页面、禁止"把声明式页改成函数式适配预览"）、非默认任务必须投影进 packet、critic 边界不要关闭会话。
+- 测试 1330 全绿（新增 run-14 回归 15 项：UTF-8 往返、help 探询、模板双分支 + node 语法检查、rebind 全路径、报告去重、stall 边界）；既有 stall 边界测试按 30 秒折让平移。
+
 ## 0.25.3 — 2026-10-05 · Drift cleanup: tier normalization, dedupe, and doc sync
 
 一致性清理：消除档位语义漂移、重复实现与文档互相矛盾（全量健康审查后的定点修复）。

@@ -45,8 +45,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+SCRIPT_DIR = Path(__file__).resolve().parent
+for _path in (str(ROOT), str(SCRIPT_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
+from hook_events import read_event  # noqa: E402
 
 from shared.hashing import file_sha256 as _sha256  # noqa: E402
 
@@ -565,7 +569,7 @@ def handle(event: dict) -> int:
 
 if __name__ == "__main__":
     try:
-        event = json.loads(sys.stdin.read() or "{}")
+        event = read_event()
     except json.JSONDecodeError:
         raise SystemExit(0)
     raise SystemExit(handle(event if isinstance(event, dict) else {}))

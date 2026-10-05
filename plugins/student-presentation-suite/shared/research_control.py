@@ -9,6 +9,15 @@ from pathlib import Path
 from shared.research_io import atomic_json, file_lock
 
 DEFAULTS = {"simple": (120, 60), "standard": (300, 120), "deep": (900, 240)}
+# A granted retrieval batch cannot have produced pack progress until its results
+# return and the model rewrites the pack (observed search latency up to ~32s in
+# the 2026-10-04 run). Judging stall on raw elapsed-since-progress at PreToolUse
+# time punished exactly those in-flight batches: run-14 round 1 had two of three
+# parallel WebSearches refused `no_useful_progress` 60s after the last pack
+# write while their results were still returning. The allowance is a fixed
+# discount per evaluation, not a per-call reset — continuous futile searching
+# still reaches the stall line, just one batch later.
+STALL_TURNAROUND_SECONDS = 30
 
 
 def read(path: Path) -> dict:
@@ -77,7 +86,7 @@ def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> 
                 reason = "sufficient_evidence"
             elif now - state["started_at"] >= budget:
                 reason = "time_budget_exhausted"
-            elif "retrieval_started_at" in state and now - state["last_progress_at"] >= stall:
+            elif "retrieval_started_at" in state and (now - STALL_TURNAROUND_SECONDS) - state["last_progress_at"] >= stall:
                 reason = "no_useful_progress"
         state.update(state="stop_requested" if reason else "active", reason=reason,
                      elapsed_seconds=round(now - state["started_at"], 3),

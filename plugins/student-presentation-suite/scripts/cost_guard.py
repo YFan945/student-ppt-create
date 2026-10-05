@@ -49,6 +49,7 @@ import pipeline_context  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from hook_events import read_event, terminal_help_probe  # noqa: E402
 
 from shared.hashing import file_sha256_or_none as sha256_file  # noqa: E402
 
@@ -325,6 +326,12 @@ def check_bash(command: str, builder: bool = False) -> str | None:
             f"Run `{pipeline_hint()}` or `{helpers_hint()}`." + RECEIPT_FACT
         )
     if "--help" in command and any(hint in command for hint in PLUGIN_HINTS):
+        # A bare terminal `--help`/`-h` is a read-only usage print — the discovery
+        # surface itself (run-14: `copy_fit_preflight.py --help` refused, the same
+        # question then re-asked by trial and error). Anything not ending in the
+        # help token still falls through to the refusal below.
+        if terminal_help_probe(command):
+            return None
         # `ppt_pipeline.py` is the agent's operating surface, and its --help is a few dozen
         # lines. Refusing it does not save a round trip — the model goes looking for the
         # invocation by trial and error, which costs the same round trip and produces a
@@ -492,7 +499,7 @@ def handle(event: dict) -> int:
 def main(argv: list[str] | None = None) -> int:
     del argv  # stdin event; CLI flags unused
     try:
-        event = json.loads(sys.stdin.read() or "{}")
+        event = read_event()
     except json.JSONDecodeError:
         return 0
     if not isinstance(event, dict):

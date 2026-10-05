@@ -534,7 +534,12 @@ def write_report(report: dict[str, Any], out_dir: Path) -> Path:
         for incoming in report.get("records", []):
             if incoming.get("reused"):
                 continue
-            if incoming not in records:
-                records.append(incoming)
+            # Newest attempt wins per (url, scope): two concurrent callers fetching
+            # the same URL used to append both records (record equality includes
+            # fetched_at, so plain `not in` never matched) and the report carried
+            # contradictory entries for one fetch (run-14 live).
+            key = (incoming.get("url"), incoming.get("scope"))
+            records = [record for record in records if (record.get("url"), record.get("scope")) != key]
+            records.append(incoming)
         atomic_json(path, _report_from_records(records, str(report.get("scope", ""))))
     return path

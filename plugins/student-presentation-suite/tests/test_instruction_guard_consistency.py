@@ -157,7 +157,7 @@ class RefusalHintConsistencyTests(unittest.TestCase):
 
     def test_production_entry_guard_builder_hint_is_self_consistent(self) -> None:
         refusal = entry_guard.check_bash(
-            f'python "{ROOT}/skills/sp-deck/scripts/composition_candidate_check.py" --help',
+            f'python "{ROOT}/skills/sp-deck/scripts/composition_candidate_check.py"',
             builder=True,
         )
         self.assertIsNotNone(refusal)

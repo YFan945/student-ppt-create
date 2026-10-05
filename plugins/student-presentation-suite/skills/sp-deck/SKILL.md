@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.25.3
+version: 0.25.4
 ---
 
 # Student Presentation PPT
@@ -108,7 +108,9 @@ helper 只把这些已实现页面组装成临时 `calibration/calibration.pptx`
 
 `advance` 给出 critic 的 spawn 参数与 `calibration/calibration-visual-review.json` 写入路径：spawn `student-presentation-suite:visual-critic`（不传 `name`）。压缩预览与 critic-preview-map.json 由 advance 在 critic 边界物化（hook 启用时 spawn 时再刷新），hook 另写 receipt；生产 build 校验报告与 receipt 对当前 PPTX/PNG 的绑定。评审带 Major/Critical 就 spawn builder `mode=calibration` 修这些页，再调用 `advance` 重跑预览；**评审全绿之前正式 `build` 会被机械拒绝**。receipt 降级与预览契约见 `../../references/pipeline-contract.json`。
 
-显式改校准样本时，`builder_packet.py --mode calibration --slides <ids>` 会把 packet 与 `builder-active-round.json` **原子地一起更新**；随后 `next` / `advance` 复用这组 slide ids，不会重新落回默认校准集。不要手改 packet 或只改其中一个文件；builder 对每次页面访问都会重验已登记 packet 的 SHA-256，登记后篡改会立即撤销授权。
+**失败归属判定（决定要不要派 builder）**：预览/构建失败的堆栈若落在生成的 assembly 文件（`calibration/calibration-deck.js`、`deck.js`）而非 `pages/pNN-*.js`，属插件 glue 缺陷——**不得为它 spawn builder 修页面**（页面没有可修的东西），如实上报并停止。页面导出形态以生产 `deck.js` 的双分支为准（声明式对象 = 正确形态）；"把页面改成函数式以适配预览" 是反向修复，禁止。spawn critic 后不要结束会话——critic 在后台运行，会话关闭即丢失该轮评审。
+
+显式改校准样本时，`builder_packet.py --mode calibration --slides <ids>` 会把 packet 与 `builder-active-round.json` **原子地一起更新**；随后 `next` / `advance` 复用这组 slide ids，不会重新落回默认校准集。不要手改 packet 或只改其中一个文件；builder 对每次页面访问都会重验已登记 packet 的 SHA-256，登记后篡改会立即撤销授权。**任何非默认轮任务说明（修复目标、豁免、降级约定）必须同步投影进 packet，不得只存在于 spawn 提示词**——packet 是 builder 的唯一任务输入，旁路它 builder 就无从对照契约（run-14 live：修导出形态的任务只在提示词里，builder 无从发现该任务与声明式契约矛盾）。
 9. **Full Isolated Page Build**：`standard`/`rigorous` 在 Calibration 经独立评审可接受后，`fast` 在 plan 后，spawn `presentation-builder`，传绝对 work-dir 与 `mode=initial`。Builder 保留已校准页面，按它们已建立的 typography/spacing/surface/image language 实现**所有剩余 scaffold 页面**。scaffold 页由版式引擎供几何：页面调用 `L.renderArchetype`（v0.18），builder 填 slots/调 params/换 `layout.id`，自由坐标须注释声明 custom 理由；反 AI 味规则见 Packet 的 `visual_rules` 与 `pptx-design-grammar.md` D1–D10。主会话不得打开逐页源码复核，只接受紧凑信封。
 
    `fast` 在分片线（8 页）以下只派一个 Builder，使用一个覆盖全部页面的 Packet，避免分片协调和讲稿合并；超过 8 页按 `next --json` 给出的 `builder_shards` 分 2 片，超过 14 页分 3 片（一个 builder 扛整副长 deck 会把实例上下文推到不可回收，并行分片换墙钟）。`standard`/`rigorous` 仅在 `next --json` 明确给出 `builder_shards` 时按分片派工（standard 至多 2 个分片）；每个 Builder 只写自己的页与讲稿片段。

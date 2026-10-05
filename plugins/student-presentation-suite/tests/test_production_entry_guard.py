@@ -76,11 +76,18 @@ class ProductionEntryGuardTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertIn("stable actions", message)
 
-    def test_pipeline_help_probe_is_not_a_public_action(self) -> None:
+    def test_pipeline_terminal_help_is_allowed_but_bare_probing_refused(self) -> None:
+        # 0.25.4: `ppt_pipeline.py --help` prints the stable-action list itself —
+        # refusing it cost a round and returned no information (run-14 live).
         code, _message = self.run_guard(
             'python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" --help'
         )
+        self.assertEqual(0, code)
+        code, message = self.run_guard(
+            'python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py"'
+        )
         self.assertEqual(2, code)
+        self.assertIn("stable actions", message)
 
     def test_root_evidence_compiler_is_denied(self) -> None:
         commands = [
