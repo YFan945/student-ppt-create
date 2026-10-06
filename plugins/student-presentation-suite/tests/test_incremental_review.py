@@ -12,8 +12,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import test_ppt_pipeline as pipeline_tests
-from test_ppt_pipeline import PipelineTestCase, minimal_pdf_bytes, pp
 from test_helpers import load_module
+from test_ppt_pipeline import PipelineTestCase, minimal_pdf_bytes, pp
 
 ROOT = Path(__file__).resolve().parents[1]
 
