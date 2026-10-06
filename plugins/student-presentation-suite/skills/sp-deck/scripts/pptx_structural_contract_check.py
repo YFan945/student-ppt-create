@@ -70,8 +70,10 @@ def slide_observables(archive: zipfile.ZipFile, slide_no: int) -> dict[str, Any]
     rels = archive.read(rels_name).decode("utf-8", "replace") if rels_name in archive.namelist() else ""
     runs = TEXT_RUN_RE.findall(text)
     return {
-        "pictures": len(re.findall(r"<p:pic[\s/>]", text)),
-        "tables": len(re.findall(r"<a:tbl>", text)),
+        # 0.27.1：命名空间无关匹配——normalize 重序列化在旧前缀表下会产出
+        # ns0:pic 之类的别名（run-15 假 blocker 根因），前缀不承载语义。
+        "pictures": len(re.findall(r"<(?:[\w-]+:)?pic[\s/>]", text)),
+        "tables": len(re.findall(r"<(?:[\w-]+:)?tbl>", text)),
         "charts": len(CHART_REL_RE.findall(rels)),
         "digit_runs": sum(1 for run in runs if DIGIT_RE.search(run)),
         "text_runs": len(runs),

@@ -805,6 +805,19 @@ def handle(event: dict) -> int:
             "writes": {},
             "snap": artifact_snapshot(root),
         }
+        if agent == RESEARCHER:
+            # 0.27.1：把任务绑定种子化进 ledger——PostToolUse Read 记录在某些
+            # runtime 下缺失（run-15：reads 全空），父会话活动标记又在主回合
+            # 结束时被清，两相叠加使 SendMessage 续做的检索被 work_dir_ambiguous
+            # 永久拒绝。种子内容 = child-ledger 兜底分支读取的同一绑定。
+            try:
+                works = _armed_work_dirs(project, event)
+                if len(works) == 1:
+                    task_path = works[0] / "research-task.json"
+                    if task_path.is_file():
+                        data["reads"][str(task_path.resolve())] = digest(task_path)
+            except (OSError, ValueError, KeyError):
+                pass
     elif not data or data.get("agent") != agent:
         return 0
     elif kind == "PostToolUse" and tool in {"Read", "Write", "Edit"}:

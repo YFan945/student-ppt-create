@@ -2,6 +2,16 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.27.1 — 2026-10-07 · Run-15 fixes: namespace-alias false blockers, research rebind unblocking, gate waiver
+
+用 run-15 真实运行（fast 档 13 页，卡死 producing、0 渲染 0 critic）逐条取证的修复。
+
+- **命名空间别名假 blocker（根因级）**：`normalize.py` 只注册 c/a 前缀，CJK deck 重序列化把 presentationml 的 `p:` 改名 `ns0:`——structural 门字面正则 `<p:pic` 匹配不到，slide 1 明明有 2 张图却判 `asset_required_missing` critical（run-15 实测复现并修复验证）。normalize 现在锁定 p/r 前缀；structural 门改命名空间无关匹配（纵深防御）。
+- **repair --cancel --waive（关闭 cancel→advance 死循环）**：run-15 里认定门误报后 cancel，advance 立即重新注册同一 repair，qa/render/spec--force 全部无出口。现在 `--waive` 把 pre-QA 报告的 critical/major finding 复制进 `build.gate_waivers`（stage+code+slide 指纹），pre-QA 聚合在后续 build/QA 按指纹剔除并保留 waived 计数——门报告文件本身不动（证据不可变），豁免全程可审计。
+- **研究绑定歧义根除**：run-15 研究员 ledger 的 reads 全空（PostToolUse Read 记录缺失），父会话活动标记被主回合清理后，SendMessage 续做的检索被 `work_dir_ambiguous` 永久拒绝——resume 轮只能靠 SubagentStart 时把 research-task.json 绑定种子化进 ledger（与 child-ledger 兜底分支同源），不再依赖 runtime 递送 Read 事件。
+- **self_check 新门**：`key_line-duplicates-claim`——D11 收尾带把 claim 原文再渲染一遍（run-15 封面实况：同页同文出现两次）。
+- 测试 1346 全绿（新增 waive 流程回归 1 项；waive 单测含失败报告 fixture）。
+
 ## 0.27.0 — 2026-10-07 · Fewer round-trips: incremental review, calibration fold-up
 
 Builder/critic 往返的下一批结构性收敛（每轮修复的 critic 成本减半、rigorous 短 deck 省一整轮 builder）。

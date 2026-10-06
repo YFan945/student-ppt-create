@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -66,13 +67,71 @@ def _cancel_pending_repair(
             "repairs_used": repairs,
         }
     )
+    # 0.27.1：cancel 是"这是门侧缺陷、页面无可修"的正式认定——run-15 live：认定后
+    # advance 立即重新注册同一个 repair，cancel→advance 死循环把 fast 档 13 页卡死
+    # 在 producing（qa/render/spec--force 全部无出口）。--waive 把当前 pre-QA 报告里
+    # 的 critical/major finding 复制进 manifest 的 gate_waivers（stage+code+slide+
+    # message 指纹），pre-QA 聚合在后续 build/QA 里按指纹剔除并保留 waived 计数。
+    # 门报告文件本身不动（证据不可变）；豁免是可审计的一等操作，不是静默绕门。
+    if getattr(args, "waive", False):
+        waived_findings: list[dict[str, Any]] = []
+        for report_name in (
+            "pre-qa-structural-contract.json",
+            "pre-qa-static-risk.json",
+            "pre-qa-rendered.json",
+            "pre-qa-actual-content.json",
+            "pre-qa-quality.json",
+        ):
+            report_path = work_dir / report_name
+            if not report_path.is_file():
+                continue
+            try:
+                report = json.loads(report_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            findings = report.get("findings") or report.get("issues") or []
+            for finding in findings:
+                if not isinstance(finding, dict):
+                    continue
+                if str(finding.get("severity") or "").lower() not in {"critical", "major"}:
+                    continue
+                waived_findings.append(
+                    {
+                        "stage": report_name.removeprefix("pre-qa-").removesuffix(".json"),
+                        "code": str(finding.get("code") or ""),
+                        "slide": finding.get("slide"),
+                        "message": str(finding.get("message") or "")[:200],
+                    }
+                )
+        build_info.setdefault("gate_waivers", []).append(
+            {
+                "reason": reason,
+                "blockers_at_cancellation": blockers,
+                "findings": waived_findings,
+            }
+        )
+        pre_qa_state = manifest.get("pre_qa") or {}
+        pre_qa_state["ok"] = True
+        pre_qa_state["waived"] = len(waived_findings)
+        pre_qa_state["waiver_reason"] = reason
+        manifest["pre_qa"] = pre_qa_state
+        print(
+            f"ppt_pipeline: {len(waived_findings)} pre-QA finding(s) waived as known gate "
+            "limitations — recorded in build.gate_waivers; advance proceeds to render"
+        )
     before = str(manifest.get("state"))
     record(manifest, "repair-cancelled", before, before, reason=reason, blockers=blockers)
     save_manifest(work_dir, manifest)
-    print(
-        f"ppt_pipeline: pending repair cancelled ({blockers} blocker(s) remain recorded) — "
-        "advance re-runs QA against the current evidence; a later real repair round is not spent"
-    )
+    if (manifest.get("pre_qa") or {}).get("waived"):
+        print(
+            "ppt_pipeline: pending repair cancelled; waived pre-QA findings recorded — "
+            "advance proceeds to render on the waived state"
+        )
+    else:
+        print(
+            f"ppt_pipeline: pending repair cancelled ({blockers} blocker(s) remain recorded) — "
+            "advance re-runs QA against the current evidence; a later real repair round is not spent"
+        )
     return 0
 
 

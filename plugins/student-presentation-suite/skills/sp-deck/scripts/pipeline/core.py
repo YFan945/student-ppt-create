@@ -663,10 +663,27 @@ def run_pre_qa_gates(manifest: dict[str, Any], work_dir: Path) -> dict[str, Any]
     """
     stages = pre_qa_stages(manifest, work_dir)
     pptx = Path(str(((manifest.get("build") or {}).get("pptx") or {}).get("path") or ""))
+    # 0.27.1：repair --cancel --waive 落盘的已知门限——按 (stage, code, slide) 指纹
+    # 从聚合中剔除，计数保留在 waived 里（报告文件本身不动）。
+    waiver_keys = {
+        (str(w.get("stage") or ""), str(w.get("code") or ""), str(w.get("slide")))
+        for entry in (manifest.get("build") or {}).get("gate_waivers") or []
+        for w in entry.get("findings") or []
+    }
     reports: dict[str, Any] = {}
     problems: list[dict[str, Any]] = []
+    waived: list[dict[str, Any]] = []
     for stage in stages:
         ok, stage_problems, binding = collect(stage)
+        if waiver_keys:
+            kept: list[dict[str, Any]] = []
+            for item in stage_problems:
+                key = (str(stage.name or ""), str(item.get("code") or ""), str(item.get("slide")))
+                if key in waiver_keys:
+                    waived.append({**item, "waived": True})
+                    continue
+                kept.append(item)
+            stage_problems = kept
         reports[stage.artifact] = binding
         problems.extend(stage_problems)
     blockers = sum(1 for item in problems if item["severity"] in QA_BLOCKING_SEVERITIES)
@@ -675,6 +692,7 @@ def run_pre_qa_gates(manifest: dict[str, Any], work_dir: Path) -> dict[str, Any]
     return {
         "ok": ok,
         "blockers": blockers,
+        "waived": len(waived),
         "problems": problems,
         "stages": reports,
         "pptx_sha256": sha256_file(pptx) if pptx.is_file() else None,

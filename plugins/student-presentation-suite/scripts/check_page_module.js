@@ -330,6 +330,15 @@ for (const rel of pages) {
         remedy: ['claim 改为补充视角：时间窗、场景、承诺或差异点，不要复述标题'],
       });
     }
+    if (s.key_line && s.claim && String(s.key_line).trim() === String(s.claim).trim()) {
+      // run-15 live：D11 收尾带把 claim 原文再渲染一遍，同一页同一段话出现两次。
+      findings.push({
+        page: rel,
+        kind: 'key-line-duplicates-claim',
+        message: 'key_line 与 claim 逐字相同——D11 收尾带把 claim 又画了一遍，同页同文出现两次',
+        remedy: ['key_line 改为一句话结论/行动含义，或置空让收尾带不渲染'],
+      });
+    }
     const visualType = s.visual && s.visual.type ? String(s.visual.type).toLowerCase() : null;
     if (visualType && !KNOWN_VISUAL_TYPES.includes(visualType)) {
       findings.push({

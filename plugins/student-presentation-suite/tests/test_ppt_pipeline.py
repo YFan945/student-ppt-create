@@ -850,6 +850,38 @@ class BuildTests(PipelineTestCase):
         payload = self.next_dispatch_payload()
         self.assertNotEqual(pp.BUILDER_AGENT, payload.get("agent"))
 
+    def test_repair_cancel_waive_records_gate_limitations_and_unblocks(self) -> None:
+        """0.27.1: --cancel --waive is the sanctioned exit for proven gate false
+        positives — the pre-QA critical/major findings are copied into
+        build.gate_waivers (the report files stay untouched), pre_qa.ok flips to
+        the waived state, and the aggregation filters matching findings on the
+        next build so the cancel→advance→re-register loop cannot recur."""
+        self.prepared()
+        entry = self.entry()
+        pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)])
+        manifest = self.manifest()
+        manifest["state"] = "producing"
+        manifest["pre_qa"] = {
+            "ok": False, "blockers": 1, "pptx_sha256": manifest["build"]["pptx"]["sha256"],
+            "rounds": 1, "max_rounds": 2,
+        }
+        # a failing structural report the waiver can copy its finding from
+        (self.work / "pre-qa-structural-contract.json").write_text(json.dumps({
+            "ok": False,
+            "issues": [{"slide": 1, "severity": "critical", "code": "asset_required_missing",
+                        "message": "layout promises an asset but none renders"}],
+        }), encoding="utf-8")
+        pp.save_manifest(self.work, manifest)
+        pp.main(["repair", "--work-dir", str(self.work), "--reason", "fix"])
+        self.assertEqual(0, pp.main([
+            "repair", "--work-dir", str(self.work), "--cancel", "--waive",
+            "--reason", "structural gate false positive: ns0 namespace alias broke the literal regex",
+        ]))
+        manifest = self.manifest()
+        self.assertTrue(manifest["pre_qa"]["ok"], "waived state unblocks the pipeline")
+        self.assertTrue(manifest["build"]["gate_waivers"][0]["findings"], "waiver embeds the finding fingerprints")
+        self.assertFalse(manifest["build"]["pending_repair"])
+
     def test_repair_cancel_requires_a_real_reason(self) -> None:
         self.prepared()
         manifest = self.manifest()

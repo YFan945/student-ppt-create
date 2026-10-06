@@ -228,6 +228,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="cancel a pending repair whose blockers proved to be gate-side, not page work (reason required)",
     )
+    repair.add_argument(
+        "--waive",
+        action="store_true",
+        help="with --cancel: record the current pre-QA critical/major findings as known gate "
+             "limitations (matched by stage+code+slide in later aggregations; audit stays in the manifest)",
+    )
     repair.set_defaults(func=cmd_repair)
 
     complete = sub.add_parser("complete", help="qa + delivery ok -> complete")

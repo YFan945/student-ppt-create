@@ -20,6 +20,14 @@ from .package import pack_directory, safe_extract_package
 
 C_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
+R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+# 0.27.1：只注册 c/a 时，ElementTree 重序列化把 presentationml 的前缀改名成
+# ns0:——run-15 实测 structural 门字面正则 `<p:pic` 匹配不到 `<ns0:pic>`，
+# 中文 deck 必现假 blocker（asset_required_missing）。p/r 是 slide 部件的主
+# 命名空间，必须与前缀表锁定；下游字面正则也改成了命名空间无关匹配。
+StdET.register_namespace("p", P_NS)
+StdET.register_namespace("r", R_NS)
 StdET.register_namespace("c", C_NS)
 StdET.register_namespace("a", A_NS)
 
