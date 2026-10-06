@@ -536,14 +536,54 @@ function addStyledTable(slide, data, area, tokens, lang) {
     h: area.h,
   };
   const colCount = columns.length || (bodyRows[0] ? bodyRows[0].length : 1);
-  slide.addTable([headerCells, ...bodyRows], {
-    x: tableBox.x,
-    y: tableBox.y,
-    w: tableBox.w,
-    h: tableBox.h,
-    colW: widths.length === colCount ? widths.map(Number) : undefined,
-    border: { type: 'solid', color: p.muted, pt: 0.5 },
-    margin: 0.06,
+  // 0.27.0：pptxgenjs addTable 在 LibreOffice 渲染下位置/列宽失真，整表变成
+  // 页缘乱码条（run-14 live + 最小用例复现）。表格改为形状+文本矩阵绘制——
+  // 走 registry/fit 门控，跨渲染器所见即所得。
+  const colWs =
+    widths.length === colCount
+      ? widths.map(Number)
+      : Array.from({ length: colCount }, () => tableBox.w / colCount);
+  const dataRows = bodyRows.length;
+  const rowH = tableBox.h / Math.max(1, dataRows + (columns.length ? 1 : 0));
+  if (!dataRows || colWs.reduce((sum, w) => sum + w, 0) <= 0) {
+    throw new RangeError('addStyledTable requires non-empty rows and positive column widths.');
+  }
+  const drawCell = (text, fill, color, box, bold, label) => {
+    slide.addShape('rect', {
+      x: box.x, y: box.y, w: box.w, h: box.h,
+      fill: { color: fill },
+      line: { type: 'solid', color: p.muted, pt: 0.5 },
+    });
+    H.addTextBox(slide, text, box, tokens, lang, {
+      role: 'label',
+      margin: 6,
+      bold: Boolean(bold),
+      color,
+      label,
+    });
+  };
+  if (headerCells.length) {
+    let hx = tableBox.x;
+    headerCells.forEach((cell, colIndex) => {
+      const cellW = colWs[colIndex] ?? tableBox.w / colCount;
+      drawCell(cell.text, p.accent, readableOn(p.accent, p),
+        { x: hx, y: tableBox.y, w: cellW, h: rowH }, true,
+        `table-header[${colIndex}]`);
+      hx += cellW;
+    });
+  }
+  const dataTop = tableBox.y + (headerCells.length ? rowH : 0);
+  const dataH = tableBox.h - (headerCells.length ? rowH : 0);
+  const dataRowH = dataRows ? dataH / dataRows : 0;
+  bodyRows.forEach((row, rowIndex) => {
+    let cellX = tableBox.x;
+    row.forEach((cell, colIndex) => {
+      const cellW = colWs[colIndex] ?? tableBox.w / colCount;
+      drawCell(cell.text, cell.options.fill.color, cell.options.color,
+        { x: cellX, y: dataTop + rowIndex * dataRowH, w: cellW, h: dataRowH },
+        cell.options.bold, `table[${rowIndex}][${colIndex}]`);
+      cellX += cellW;
+    });
   });
   if (takeaway) {
     addPanel(slide, takeaway.box, tokens, { line: p.accent2 });
@@ -963,18 +1003,64 @@ const COMPONENTS = {
 };
 
 function renderVisual(slide, family, data, area, tokens, lang) {
+  const d = data || {};
+  const stringList = items(d.items).filter((entry) => typeof entry === 'string');
+  const structured =
+    items(d.series).length || items(d.rows).length || items(d.stages).length || items(d.nodes).length;
+  if (stringList.length && !structured) {
+    // 0.27.0 处方式兜底：字符串清单是确定性内容，必须上屏——短清单（2-4 条、
+    // 每条 ≤12 字）走 KPI 卡，其余走条目列表；绝不静默留白（run-14 live）。
+    const short = stringList.every((text) => [...text].length <= 12);
+    if (short && stringList.length >= 2 && stringList.length <= 4) {
+      return addMetricDashboard(slide, d, area, tokens, lang);
+    }
+    return addItemList(slide, d, area, tokens, lang);
+  }
   const component =
-    family === 'dashboard' && items((data || {}).series).length
+    family === 'dashboard' && items(d.series).length
       ? addChartWithTakeaway
       : COMPONENTS[family];
   if (!component) throw new RangeError(`Unknown visual layout family: ${family}`);
-  return component(slide, data || {}, area, tokens, lang);
+  return component(slide, d, area, tokens, lang);
+}
+
+/**
+ * 0.27.0：字符串条目列表的确定性渲染（accent 角标 + 逐条文本，均分区域）。
+ * 这不是某个 art-direction 组件，是"内容必须上屏"的最后防线——列表形状的
+ * 载荷（builder 最常写的形状）在任何 family 下都可渲染。
+ */
+function addItemList(slide, data, area, tokens, lang) {
+  const list = items(data.items).filter((entry) => typeof entry === 'string' && entry.trim());
+  if (!list.length) throw new RangeError('addItemList requires a non-empty string items list.');
+  const p = palette(tokens);
+  const gap = Math.min(0.1, area.h / (list.length * 8));
+  const rowH = (area.h - gap * (list.length - 1)) / list.length;
+  list.forEach((text, index) => {
+    const row = { x: area.x, y: area.y + index * (rowH + gap), w: area.w, h: rowH };
+    const tick = { x: row.x, y: row.y + rowH * 0.34, w: Math.min(0.08, row.w * 0.035), h: rowH * 0.32 };
+    slide.addShape('roundRect', {
+      x: tick.x, y: tick.y, w: tick.w, h: tick.h,
+      fill: { color: p.accent }, line: { type: 'none' },
+    });
+    H.addTextBox(
+      slide, text,
+      { x: row.x + tick.w + 0.14, y: row.y, w: row.w - tick.w - 0.14, h: rowH },
+      tokens, lang,
+      { role: 'body', label: `items[${index}]`, margin: 8 },
+    );
+  });
 }
 
 function renderVisualSpec(slide, visual, family, area, tokens, lang) {
   const normalized = visual && typeof visual === 'object' ? visual : {};
+  // 0.27.0: builder 常用字符串数组表达清单/指标载荷（run-14 的 kpi-band /
+  // taxonomy-grid）。数组 details 规范化为 items，否则数组展开成数字键、
+  // 所有组件都拿到空载荷——整块视觉静默留白。
+  const arrayItems = Array.isArray(normalized.details)
+    ? normalized.details.filter((entry) => typeof entry === 'string' && entry.trim())
+    : undefined;
   const data = {
-    ...(normalized.details && typeof normalized.details === 'object' ? normalized.details : {}),
+    ...(arrayItems ? { items: arrayItems } : normalized.details && typeof normalized.details === 'object' ? normalized.details : {}),
     ...Object.fromEntries(
       ['asset', 'alt_text', 'purpose', 'type']
         .filter((key) => normalized[key] !== undefined)
@@ -984,7 +1070,19 @@ function renderVisualSpec(slide, visual, family, area, tokens, lang) {
   return renderVisual(slide, family, data, area, tokens, lang);
 }
 
+// 0.27.0: 自检处方用——slots.visual.type 的合法词汇（能映射到真实组件）。
+const KNOWN_VISUAL_TYPES = Object.freeze([
+  ...new Set([
+    ...Object.keys(COMPONENTS),
+    'image',
+    'illustration',
+    'screenshot',
+  ]),
+]);
+
 module.exports = {
+  addItemList,
+  KNOWN_VISUAL_TYPES,
   addAnnotatedVisual,
   addArchitecture,
   addChartWithTakeaway,

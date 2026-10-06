@@ -220,6 +220,7 @@ if (!tokens || !tokens.palette) {
 }
 const allowedColors = paletteColors(tokens);
 const { SlideElementRegistry } = require(path.join(SCRIPTS_DIR, 'pptx-element-registry.js'));
+const { KNOWN_VISUAL_TYPES } = require(path.join(SCRIPTS_DIR, 'pptx-visuals.js'));
 
 const findings = [];
 const pages = PAGES_ARG.split(',')
@@ -247,8 +248,9 @@ for (const rel of pages) {
     });
     continue;
   }
+  let mod = null;
   try {
-    const mod = require(pagePath);
+    mod = require(pagePath);
     const n = Number((rel.match(/p(\d+)-/) || [])[1] || 0);
     const ctx = {
       pptx: {},
@@ -286,6 +288,60 @@ for (const rel of pages) {
       kind: 'escape-hatch',
       message: '函数式页面须在页内注释声明 custom 理由（D9）；非自定义坐标请用声明式页面',
     });
+  }
+  // 0.27.0 三道内容完整性检查——run-14 的三个校准页全部"自检通过"却把 KPI/导航
+  // 载荷静默丢光，registry 门只看画出来的几何，看不见"声明了但没画"。
+  // 0.27.0：函数式包装页（BUILDER_DONE 修导出形态的产物）也在 function 上
+  // 挂了 slots/kind 属性——内容完整性检查对两种形态都生效。
+  if (mod && (typeof mod === 'object' || typeof mod === 'function') && mod.slots && typeof mod.slots === 'object') {
+    const s = mod.slots;
+    const declared = [];
+    if (typeof s.title === 'string' && s.title.trim()) declared.push(s.title);
+    if (typeof s.claim === 'string' && s.claim.trim()) declared.push(s.claim);
+    for (const item of Array.isArray(s.body) ? s.body : []) {
+      if (typeof item === 'string' && item.trim()) declared.push(item);
+    }
+    if (s.visual && Array.isArray(s.visual.details)) {
+      for (const item of s.visual.details) {
+        if (typeof item === 'string' && item.trim()) declared.push(item);
+      }
+    }
+    const renderedBlob = calls.map((c) => JSON.stringify(c.args)).join('\n');
+    const missing = declared.filter((text) => text.trim().length >= 4 && !renderedBlob.includes(text));
+    if (missing.length) {
+      findings.push({
+        page: rel,
+        kind: 'slot-not-rendered',
+        message:
+          `声明的载荷未上屏：${missing.map((m) => `"${m.slice(0, 24)}"`).join('、')}。` +
+          '渲染结果与声明不一致（引擎静默丢内容或版式没消费该槽位）——绝不能交付',
+        remedy: [
+          '换用 slots.visual.type 的合法词汇（见 pptx-visuals KNOWN_VISUAL_TYPES）；' +
+            '字符串清单载荷会被引擎确定性渲染为 KPI 卡/条目列表；' +
+            '若用自定义形状，改用受支持的 visual 组件而不是手画',
+        ],
+      });
+    }
+    if (mod.kind === 'cover' && s.title && s.claim && s.claim === s.title) {
+      findings.push({
+        page: rel,
+        kind: 'cover-claim-duplicates-title',
+        message: '封面的 claim 与标题逐字相同——信息量为零，等于没有副标题（run-14 live 封面实况）',
+        remedy: ['claim 改为补充视角：时间窗、场景、承诺或差异点，不要复述标题'],
+      });
+    }
+    const visualType = s.visual && s.visual.type ? String(s.visual.type).toLowerCase() : null;
+    if (visualType && !KNOWN_VISUAL_TYPES.includes(visualType)) {
+      findings.push({
+        page: rel,
+        kind: 'warning',
+        code: 'unknown-visual-type',
+        message: `visual.type "${s.visual.type}" 不是受支持词汇（当前由字符串清单兜底渲染）`,
+        remedy: [
+          `受支持：${KNOWN_VISUAL_TYPES.join(', ')}；结构化图表请用 series/rows/stages/nodes 载荷`,
+        ],
+      });
+    }
   }
   if (!functionPage) {
     // COPY 双源防线：slots 的字符串字面量必须引用 COPY.*（逐字节文案门的前提）；

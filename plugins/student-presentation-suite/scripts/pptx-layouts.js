@@ -218,6 +218,15 @@ function isFeasible(layout, context) {
   if (requirements.asset === 'required' && !context.hasAsset) return false;
   if (requirements.data === 'required' && !context.hasData) return false;
   if (requirements.quote === 'required' && !context.hasQuote) return false;
+  // 0.27.0：声明了 visual 载荷的页，候选版式必须有真实可用的 visual zone——
+  // claim-focus 之类文本版式的 visual 区只占页面 3%，表格/KPI 缩到不可见
+  // （run-14 live：4 行 KPI 表被挤进 2.46×0.59in，成页 60% 空白）。
+  if (context.hasVisualPayload) {
+    const zone = layout.zones && layout.zones.visual;
+    if (!Array.isArray(zone)) return false;
+    // zones 是页面归一化分数；正文页下限 = 高 1.0in、面积 2.5in²
+    if (zone[3] < 1.0 / 5.63 || zone[2] * zone[3] < 2.5 / (10 * 5.63)) return false;
+  }
 
   const itemCount = Number.isFinite(context.itemCount) ? context.itemCount : null;
   if (itemCount !== null && Array.isArray(requirements.items)) {
@@ -430,8 +439,17 @@ function isDisplayFamily(family) {
  */
 function resolveVisualPayload(visual) {
   if (!visual || typeof visual !== 'object') return {};
-  const details = visual.details && typeof visual.details === 'object' ? visual.details : {};
   const top = Object.fromEntries(Object.entries(visual).filter(([key]) => key !== 'details'));
+  // 0.27.0：builder 常用字符串数组表达清单/指标载荷。数组 details 规范化为
+  // items——按旧实现数组展开成数字键，所有组件都拿到空载荷，整块视觉静默
+  // 留白（run-14 live：kpi-band 的三个 KPI、taxonomy-grid 的八个维度全部没上屏）。
+  if (Array.isArray(visual.details)) {
+    return {
+      ...top,
+      items: visual.details.filter((entry) => typeof entry === 'string' && entry.trim()),
+    };
+  }
+  const details = visual.details && typeof visual.details === 'object' ? visual.details : {};
   return { ...details, ...top };
 }
 
@@ -596,6 +614,21 @@ function renderDeclaredPage(ctx, spec = {}) {
   derived.itemCount = bodyItems.length + (slots.claim ? 1 : 0);
   if (typeof slots.title === 'string') derived.titleChars = [...slots.title].length;
   if (spec.kind && String(spec.kind) !== 'content') derived.slideKind = String(spec.kind);
+  // 0.27.0：visual 载荷的存在性由真实 slots 推导，不信 builder 手写的
+  // context.hasData/hasAsset——run-14 的 KPI 页载荷是 4 行表格，context 却写
+  // hasData:false，引擎因此选了没有 visual 区的文本版式。载荷证明的数据/资产
+  // 与显式声明做 OR（载荷是事实，声明是意图）。
+  const visualPayload = slots.visual && typeof slots.visual === 'object' ? slots.visual : null;
+  if (visualPayload && Object.keys(visualPayload).length) {
+    derived.hasVisualPayload = true;
+    const structured =
+      Array.isArray(visualPayload.rows) ||
+      Array.isArray(visualPayload.series) ||
+      Array.isArray(visualPayload.stages) ||
+      Array.isArray(visualPayload.nodes) ||
+      String(visualPayload.component || '') === 'table';
+    if (structured && spec.context && spec.context.hasData !== true) derived.hasData = true;
+  }
   const result = renderArchetype(
     { ...ctx, tokens: pageTokens },
     {
@@ -648,6 +681,19 @@ function _renderOnLayout(ctx, request, layoutId, area) {
   }
 
   const n = Number.isInteger(ctx.slideNumber) ? ctx.slideNumber : 0;
+  // 0.27.0 硬门：visual 载荷存在但本版式的 visual 区放不下真实内容时，按
+  // fit 失败处理走 fallback 链，绝不把表格/KPI 缩成不可见的窄条静默交付。
+  const visualPayloadHere = slots.visual && typeof slots.visual === 'object' && Object.keys(slots.visual).length
+    ? slots.visual
+    : null;
+  if (visualPayloadHere && zones.visual && (zones.visual.h < 1.0 || zones.visual.w * zones.visual.h < 2.5)) {
+    throw _fitError(
+      `slide ${n}: archetype "${selection.id}" visual zone is ` +
+        `${zones.visual.w.toFixed(2)}x${zones.visual.h.toFixed(2)}in — too small for the declared ` +
+        'visual payload. Pick a layout with a real visual zone (visual-left/right, data-*, ' +
+        'claim-evidence, evidence-stack, compare-*), or move the content into slots.body',
+    );
+  }
   const register = (element) => {
     if (ctx.registry && n) ctx.registry.register(n, element);
   };

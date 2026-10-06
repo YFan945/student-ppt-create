@@ -2,6 +2,16 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.26.1 — 2026-10-06 · Visual integrity: render what was declared, refuse what cannot be seen
+
+用 run-14 校准渲染图实测取证的视觉质量修复——三页校准稿两页大面积空白、一页载荷被裁成页缘窄条，而自检全部通过。
+
+- **根因一（引擎静默丢载荷）**：builder 常用**字符串数组**表达清单/指标载荷（`details: ["2030 碳达峰", …]`），旧实现把数组展开成数字键、所有视觉组件都拿到空载荷——`kpi-band` 的三个 KPI、`taxonomy-grid` 的八个维度全部没上屏。引擎现在把数组 details 规范化为 `items` 并确定性渲染：短清单（2-4 条、每条 ≤12 字）走 KPI 卡，其余走条目列表（新增 `addItemList` 组件，accent 角标 + 逐条文本），任何 family 下"内容必须上屏"。
+- **根因二（pptxgenjs addTable 渲染缺陷）**：`addTable` 在 LibreOffice 渲染下位置/列宽失真，整表变成页缘乱码条（最小用例复现）。`addStyledTable` 改为形状 + 文本矩阵绘制——走 registry/fit 门控，跨渲染器所见即所得；支持表头（accent 底 + 反色文字）与斑马纹。
+- **根因三（视觉区挤压）**：builder 误报 `context.hasData:false`（实际载荷是 4 行表格），引擎选了 visual 区只占页面 3% 的 `claim-focus`，表格缩到 2.46×0.59in 不可见。修复分两层：`renderDeclaredPage` 从**真实 slots 载荷**推导 `hasVisualPayload`/`hasData`（载荷证明的事实与显式声明做 OR，不再信任手写误报）；`_renderOnLayout` 硬门——visual 载荷存在而本版式 visual 区小于 1.0in 高 / 2.5in² 时按 fit 失败走 fallback 链，绝不把表格缩成窄条静默交付。
+- **self_check 三道内容完整性门**（run-14 三页全部"自检通过"却把载荷丢光——registry 门只看画出来的几何，看不见"声明了但没画"）：`slot-not-rendered`（声明的 title/claim/body/details 字符串必须出现在渲染调用里，缺失即 blocker + 处方）；`cover-claim-duplicates-title`（封面副标题与标题逐字相同 = 信息量为零，blocker + 处方）；`unknown-visual-type`（非受支持词汇 warning + 受支持词汇表处方，当前由字符串清单兜底渲染）。检查对声明式与函数式包装页两种形态生效。
+- 实测验证：run-14 三页用新引擎重渲——p2 的 4 行 KPI 表完整上屏、p3 的八维度导航全部可见、封面重复标题被新门拦截。测试 1339 全绿（含最小用例与渲染冒烟）；ruff / prettier / smoke / 双 release 检查全过。
+
 ## 0.26.0 — 2026-10-05 · Fewer builder/critic rounds: autofix, prescriptions, single review
 
 Builder/critic 协作的结构性收敛（目标：修复与查看轮次更少、每轮 token 更省）。
