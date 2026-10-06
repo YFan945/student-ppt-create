@@ -98,7 +98,8 @@
             "enum": ["none", "minor", "major"],
             "description": "major 在 rigorous 阻断，在 fast/standard 为 advisory；不要用 mild/strong 等未定义取值。"
           },
-          "issues": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+          "carried_over": {"type": "boolean", "description": "0.27.0 增量评审：本页渲染 PNG 哈希与上一轮评审一致，判定从上一轮评审逐字继承（含 issues 与分数）；变更页必须重新评审，不得携带 carried_over。"},
+        "issues": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
         }
       }
     },

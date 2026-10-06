@@ -354,7 +354,7 @@ locally — they read the PPTX and the spec and need no critic; while they fail,
 the critic never reviews a doomed deck.
 
 `quality_level: fast` (the default) uses one Builder below the 8-page shard line, two shards above it and three above the 14-page speed line, plus one final independent review. Subjective visual scores and style suggestions remain visible advisories; unusable pages and deterministic failures still block delivery.
-`quality_level: standard` / `rigorous` first calibrate representative pages (standard one round, rigorous up to two). Standard decks at or below 8 pages (the calibration page line, frozen at plan time) skip calibration and build directly — the whole-deck rework calibration insures against is bounded there.
+`quality_level: standard` / `rigorous` first calibrate representative pages (standard one round, rigorous up to two). Standard and rigorous decks at or below 8 pages (the calibration page line, frozen at plan time) skip calibration and build directly — the whole-deck rework calibration insures against is bounded there.
 Calibration is gated deterministically: production `build` is refused
 until the calibration preview evidence is current and the palette + style-summary
 gates pass; fix rounds stay within the tier budget. The independent

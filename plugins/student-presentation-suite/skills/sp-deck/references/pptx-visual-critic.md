@@ -84,6 +84,8 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
   "deck_rhythm": {"macro": "<全 deck 节奏判断>", "micro": "<页间衔接判断>"}
 }
 ```
+增量评审（0.27.0）：spawn 参数带 `incremental_review` 时，只重看 `changed_slides` 的 preview 与 contact sheet；unchanged_slides 的条目从 `prior_review` 逐字复制并加 `"carried_over": true`。`page_sha256` 仍覆盖当前渲染全部页（map 条目携带每页 source_sha256，抄写即可），`pptx_sha256` 绑定当前 PPTX；carried_over 条目的 finding 照常计入 blocker。
+
 
 `reference_ids` 和 `selected_candidate_id` 只记录设计 provenance，不要求像素级复制。`reference_intent_preserved` 判断的是 focal ownership、silhouette/read path 和 positive design rationale 是否仍被保留。
 

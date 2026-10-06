@@ -105,8 +105,31 @@ def cmd_qa(args: argparse.Namespace) -> int:
         manifest["receipt_policy"] = receipt_policy
     receipt = execution_receipt(work_dir, "critic", visual_review, policy=receipt_policy)
     degraded_receipt = bool(receipt.get("degraded"))
+    # 0.27.0 增量评审范围：dispatch 在 critic 边界落盘 review-scope.json（变更页
+    # 清单 + 上一轮评审哈希）。范围有效时 receipt 只须覆盖 contact sheet + 变更页
+    # （未变更页判定逐字继承），且 critic 必须读过上一轮评审——carried_over 条目
+    # 的出处凭据。范围无效/缺失 = 全量覆盖检查，行为与旧契约一致。
+    scope_path = work_dir / "review-scope.json"
+    scope = load_json(scope_path) if scope_path.is_file() else None
+    changed_slides = None
+    if isinstance(scope, dict) and isinstance(scope.get("changed_slides"), list) and scope["changed_slides"]:
+        page_count = len(manifest["render"]["pages"])
+        numbers = [int(item) for item in scope["changed_slides"]]
+        if all(1 <= number <= page_count for number in numbers) and len(set(numbers)) == len(numbers):
+            changed_slides = set(numbers)
     if not degraded_receipt:
-        for item in [manifest["render"]["contact_sheet"], *manifest["render"]["pages"]]:
+        required_images = [manifest["render"]["contact_sheet"], *manifest["render"]["pages"]]
+        if changed_slides is not None:
+            required_images = [manifest["render"]["contact_sheet"], *[
+                item for index, item in enumerate(manifest["render"]["pages"], 1)
+                if index in changed_slides
+            ]]
+            prior_read_sha = receipt.get("reads", {}).get(str(scope.get("prior_review") or ""))
+            if prior_read_sha != scope.get("prior_review_sha256"):
+                raise RefusedError(
+                    "incremental critic did not read the prior review it carried entries from"
+                )
+        for item in required_images:
             if receipt.get("reads", {}).get(item["path"]) != item["sha256"]:
                 raise RefusedError("independent critic did not read every current render image")
     fingerprint = qa_input_fingerprint(pptx, visual_review, notes, previews)

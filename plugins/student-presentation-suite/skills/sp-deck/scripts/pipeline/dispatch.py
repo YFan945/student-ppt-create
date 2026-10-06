@@ -116,7 +116,16 @@ def _current_critic_review(work_dir: Path, manifest: dict[str, Any]) -> bool:
             work_dir, "critic", review_path, policy=work_id_receipt_policy(manifest)
         )
         if not receipt.get("degraded"):
-            for binding in [contact, *pages]:
+            # 0.27.0：增量评审轮的 receipt 只覆盖 contact sheet + 变更页——与
+            # qa 的范围检查同口径；非增量轮仍要求全页覆盖。
+            scope_path = work_dir / "review-scope.json"
+            scope = load_json(scope_path) if scope_path.is_file() else None
+            changed = None
+            if isinstance(scope, dict) and isinstance(scope.get("changed_slides"), list) and scope["changed_slides"]:
+                changed = {int(item) for item in scope["changed_slides"]}
+            for index, binding in enumerate([contact, *pages], 0):
+                if index and changed is not None and index not in changed:
+                    continue
                 if receipt.get("reads", {}).get(binding.get("path")) != binding.get("sha256"):
                     return False
         return True
@@ -148,6 +157,51 @@ def _implemented_calibration_slides(work_dir: Path) -> list[int]:
         if path is None or SCAFFOLD_MARKER in path.read_text(encoding="utf-8"):
             return []
     return slides
+
+
+REVIEW_SCOPE_NAME = "review-scope.json"
+
+
+def _incremental_review_scope(work_dir: Path, manifest: dict[str, Any]) -> dict[str, Any] | None:
+    """Changed-page set for an incremental critic round, or None for a full review.
+
+    A prior review that does not bind the current render normally forces a FULL
+    re-review. When it carries a page_sha256 map, the pages whose render PNG
+    hash is unchanged need no second look: their verdicts are carried over and
+    the critic re-reviews only the changed pages (0.27.0 — a one-page autofix
+    used to cost a full-deck critic pass). None means "review everything":
+    no prior review, no page map, or every page changed.
+    """
+    review_path = work_dir / "visual-review.json"
+    if not review_path.is_file():
+        return None
+    try:
+        prior = load_json(review_path)
+        prior_pages = prior.get("page_sha256") if isinstance(prior, dict) else None
+        if not isinstance(prior_pages, dict) or not prior_pages:
+            return None
+        pages = (manifest.get("render") or {}).get("pages") or []
+        if not pages:
+            return None
+        current = {str(i): item.get("sha256") for i, item in enumerate(pages, 1)}
+        changed = sorted(int(k) for k, sha in current.items() if prior_pages.get(k) != sha)
+        unchanged = sorted(int(k) for k in current if prior_pages.get(k) == current[k])
+        if not changed or not unchanged:
+            return None
+        return {
+            "changed_slides": changed,
+            "unchanged_slides": unchanged,
+            "prior_review": str(review_path.resolve()),
+            "prior_review_sha256": sha256_file(review_path),
+        }
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+
+
+def _persist_review_scope(work_dir: Path, scope: dict[str, Any]) -> Path:
+    path = work_dir / REVIEW_SCOPE_NAME
+    path.write_text(json.dumps(scope, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return path
 
 
 def _try_autofix(work_dir: Path) -> dict[str, Any] | None:
@@ -664,6 +718,12 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                     payload["visual_evidence_reused"] = True
                 else:
                     preview_failure = _materialize_critic_previews(work_dir)
+                    # 0.27.0 增量评审：修复轮后只有变更页需要重看——未变更页的
+                    # 渲染 PNG 哈希与上一轮评审一致，判定逐字继承（carried_over）。
+                    # 全量评审只在首轮或全部页都变更时发生。
+                    scope = _incremental_review_scope(work_dir, manifest)
+                    if scope:
+                        _persist_review_scope(work_dir, scope)
                     payload["notes"] = (
                         "Spawn student-presentation-suite:visual-critic WITHOUT a `name` "
                         "parameter — a named Agent call becomes a teammate whose agent_type is the name, "
@@ -681,6 +741,16 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             else "Wait for critic-execution.json before QA."
                         )
                     )
+                    if scope:
+                        payload["incremental_review"] = scope
+                        payload["notes"] += (
+                            f" INCREMENTAL REVIEW: only slides {scope['changed_slides']} changed since the "
+                            f"prior review ({scope['prior_review']}); slides {scope['unchanged_slides']} are "
+                            "byte-identical. Re-review the changed pages and the contact sheet, copy the "
+                            "prior entries verbatim for unchanged slides adding \"carried_over\": true, and "
+                            "write the FULL page_sha256 mapping for the current render. The receipt "
+                            "coverage check accepts this scope."
+                        )
                     if preview_failure:
                         payload["notes"] += (
                             f" Preview materialization failed ({preview_failure}); run "

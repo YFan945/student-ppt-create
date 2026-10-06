@@ -287,6 +287,23 @@ class PipelineTestCase(unittest.TestCase):
         files["pptx"].write_bytes(b"PK\x03\x04 fake")
         return files
 
+    def write_rich_spec(self, count: int) -> None:
+        slides = [
+            {
+                "id": n,
+                "title": f"Slide {n}",
+                "claim": f"Claim {n}",
+                "layout": "cover" if n == 1 else "content",
+                "content": [],
+                "slide_copy": [f"Copy {n}"],
+            }
+            for n in range(1, count + 1)
+        ]
+        self.files["spec"].write_text(
+            json.dumps({"meta": {"slide_count": count, "topic": "test"}, "slides": slides}),
+            encoding="utf-8",
+        )
+
     def plan(self, files: dict[str, Path], runner: FakeRunner | None = None, extra_args: list[str] | None = None) -> FakeRunner:
         runner = runner or FakeRunner(self.work)
         pp._core._runner = runner
@@ -734,6 +751,7 @@ class PreQaGateTests(PipelineTestCase):
         self.assertEqual(0, pre_qa["rounds"])
 
 
+
 class BuildTests(PipelineTestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -1042,6 +1060,7 @@ class BuildTests(PipelineTestCase):
     def test_next_after_plan_dispatches_to_calibration_builder(self) -> None:
         """Fresh planned create-mode work must spawn the builder, not edit pages directly."""
         self.quality_level = "rigorous"
+        self.write_rich_spec(9)
         self.plan(self.files)
         payload = self.next_dispatch_payload()
         self.assertEqual("planned", payload["state"])
@@ -1067,6 +1086,7 @@ class BuildTests(PipelineTestCase):
         self.assertEqual(0, pp.main(["build", "--work-dir", str(self.work)]))
 
     def test_high_score_cannot_build_without_calibration(self) -> None:
+        self.write_rich_spec(9)
         spec = json.loads(self.files["spec"].read_text(encoding="utf-8"))
         spec["meta"]["quality_level"] = "high-score"
         self.files["spec"].write_text(json.dumps(spec), encoding="utf-8")
@@ -1076,6 +1096,7 @@ class BuildTests(PipelineTestCase):
 
     def test_next_with_calibration_manifest_but_no_render_points_at_preview(self) -> None:
         self.quality_level = "rigorous"
+        self.write_rich_spec(9)
         self.plan(self.files)
         calibration = self.work / "calibration"
         calibration.mkdir()
@@ -1145,6 +1166,7 @@ class BuildTests(PipelineTestCase):
     def test_calibration_round_budget_releases_the_build_with_recorded_risk(self) -> None:
         """Tiers cap calibration rounds (standard 1 / rigorous 2): then production carries risk."""
         self.quality_level = "rigorous"
+        self.write_rich_spec(9)
         self.plan(self.files)
         calibration = self.calibration_with_render()
         # 0.26.0: the gate set is deterministic — a failing palette report, not a
@@ -1167,6 +1189,7 @@ class BuildTests(PipelineTestCase):
 
     def test_build_carries_calibration_risk_once_the_round_budget_is_spent(self) -> None:
         self.quality_level = "rigorous"
+        self.write_rich_spec(9)
         self.plan(self.files)
         calibration = self.calibration_with_render()
         # 0.26.0: deterministic gates decide; see the dispatch test above.
@@ -1200,6 +1223,7 @@ class BuildTests(PipelineTestCase):
 
     def test_next_after_a_green_calibration_review_authorises_the_full_build(self) -> None:
         self.quality_level = "rigorous"
+        self.write_rich_spec(9)
         self.plan(self.files)
         calibration = self.calibration_with_render()
         self.write_calibration_review(calibration)
@@ -1209,6 +1233,7 @@ class BuildTests(PipelineTestCase):
 
     def test_next_keeps_the_builder_on_a_calibration_that_still_fails_the_gates(self) -> None:
         self.quality_level = "rigorous"
+        self.write_rich_spec(9)
         self.plan(self.files)
         calibration = self.calibration_with_render()
         self.write_calibration_review(calibration)  # style summary present
@@ -2011,23 +2036,6 @@ class ParallelBuilderShardTests(PipelineTestCase):
     the old re-read-everything flow and the projection is dead code.
     """
 
-    def write_rich_spec(self, count: int) -> None:
-        slides = [
-            {
-                "id": n,
-                "title": f"Slide {n}",
-                "claim": f"Claim {n}",
-                "layout": "cover" if n == 1 else "content",
-                "content": [],
-                "slide_copy": [f"Copy {n}"],
-            }
-            for n in range(1, count + 1)
-        ]
-        self.files["spec"].write_text(
-            json.dumps({"meta": {"slide_count": count, "topic": "test"}, "slides": slides}),
-            encoding="utf-8",
-        )
-
     def write_art(self, leverage: list[int]) -> None:
         self.files["art"].write_text(
             "typography:" + "\n"
@@ -2106,8 +2114,10 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.files = self.write_inputs()
         self.plan(self.files)
         payload = self.next_dispatch_payload()
-        self.assertIn("builder_packet", payload)
-        self.assertEqual([1], payload["builder_packet"]["slides"])
+        # 0.27.0: rigorous 1-page decks skip calibration and dispatch the initial
+        # builder directly; the packet arrives via builder_packets.
+        self.assertIn("builder_packets", payload)
+        self.assertEqual([1], payload["builder_packets"][0]["slides"])
         self.assertEqual("student-presentation-suite:presentation-builder", payload.get("agent"))
 
     def test_initial_packets_are_prepared_per_shard_for_a_large_deck(self) -> None:
@@ -2402,23 +2412,6 @@ class AdvanceTests(PipelineTestCase):
         super().setUp()
         self.files = self.write_inputs()
 
-    def write_rich_spec(self, count: int) -> None:
-        slides = [
-            {
-                "id": n,
-                "title": f"Slide {n}",
-                "claim": f"Claim {n}",
-                "layout": "cover" if n == 1 else "content",
-                "content": [],
-                "slide_copy": [f"Copy {n}"],
-            }
-            for n in range(1, count + 1)
-        ]
-        self.files["spec"].write_text(
-            json.dumps({"meta": {"slide_count": count, "topic": "test"}, "slides": slides}),
-            encoding="utf-8",
-        )
-
     def write_art(self, leverage: list[int]) -> None:
         self.files["art"].write_text(
             "typography:" + "\n"
@@ -2484,7 +2477,9 @@ class AdvanceTests(PipelineTestCase):
         self.assertEqual("needs_agent", result["status"])
         self.assertNotIn("dispatch", result)
         self.assertNotIn("contract", result)
-        self.assertIn("packet", result)
+        # 0.27.0: rigorous 1-page decks skip calibration — the brief carries the
+        # initial builder's packets instead of a single calibration packet.
+        self.assertIn("packets", result)
 
     def test_without_a_manifest_it_needs_the_user(self) -> None:
         result = self.advance()

@@ -125,13 +125,19 @@ def effective_shard_cap(value: Any, page_count: int | None = None) -> int:
 def calibration_enabled(value: Any, page_count: int | None = None) -> bool:
     """Whether a concrete deck runs the calibration round at all.
 
-    fast never calibrates. rigorous always does. standard does unless the deck
-    is at or below STANDARD_CALIBRATION_PAGE_LINE pages. ``page_count`` is the
-    FROZEN spec's total slide count — not the count of still-scaffolded pages —
-    so a session resumed mid-calibration keeps the decision it planned with.
+    fast never calibrates. standard and rigorous skip calibration for decks at
+    or below STANDARD_CALIBRATION_PAGE_LINE pages (0.27.0 aligns rigorous with
+    standard: with the calibration critic gone the two-phase split buys nothing
+    when the whole-deck rework is bounded by the page line — the deterministic
+    gates plus the single production review cover short decks). ``page_count``
+    is the FROZEN spec's total slide count — not the count of still-scaffolded
+    pages — so a session resumed mid-calibration keeps the decision it planned
+    with.
     """
     policy = tier_policy(value)
     if not policy["calibration"]:
+        return False
+    if page_count is not None and page_count <= STANDARD_CALIBRATION_PAGE_LINE:
         return False
     if policy["tier"] == "standard" and page_count is not None:
         return page_count > STANDARD_CALIBRATION_PAGE_LINE

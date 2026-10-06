@@ -93,8 +93,11 @@ class CalibrationLineTests(unittest.TestCase):
     def test_fast_never_and_rigorous_always_calibrate(self) -> None:
         self.assertFalse(calibration_enabled("fast", 3))
         self.assertFalse(calibration_enabled("basic", 30))
-        self.assertTrue(calibration_enabled("rigorous", 3))
-        self.assertTrue(calibration_enabled("high-score", 3))
+        # 0.27.0: rigorous aligns with standard at/below the calibration page line.
+        self.assertFalse(calibration_enabled("rigorous", 3))
+        self.assertFalse(calibration_enabled("high-score", 3))
+        self.assertTrue(calibration_enabled("rigorous", 9))
+        self.assertTrue(calibration_enabled("high-score", 9))
 
 
 class TierGateMatrixTests(unittest.TestCase):

@@ -2,6 +2,15 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.27.0 — 2026-10-07 · Fewer round-trips: incremental review, calibration fold-up
+
+Builder/critic 往返的下一批结构性收敛（每轮修复的 critic 成本减半、rigorous 短 deck 省一整轮 builder）。
+
+- **增量评审**：修复轮后 critic 只重看**变更页**——dispatch 在 critic 边界对比上一轮评审的 `page_sha256` 与当前渲染页哈希，落盘 `review-scope.json`（变更页清单 + 上一轮评审哈希）；critic 重看变更页与 contact sheet，把未变更页的条目**逐字继承**（新增 schema 字段 `carried_over`）；QA 的 receipt 覆盖检查按范围生效（contact sheet + 变更页 + 上一轮评审读取凭据），范围缺失时保持全页检查的旧契约。一页 autofix 不再触发全 deck 的 critic 大图重读。
+- **校准折叠**：rigorous 页数 ≤ 8 的 deck 与 standard 对齐，跳过校准直接全量构建——校准 critic 已移除，确定性门 + 单次生产评审足以覆盖短 deck；分片 deck（>8 页）保留校准以固定 shard 间的风格基准。`calibration_enabled` 语义、契约 tier 文案、SKILL 第 7 步、中英 README 同步。
+- **QA 并行化核实（无代码改动）**：确定性门在 build 阶段已运行且 QA 按输入指纹缓存（"相同 PPTX/评审/预览自动复用"），critic 返回后的 QA 只剩评审依赖的 quality/delivery 两门——串行成本已接近于零，无需调度改动。
+- 测试 1345 全绿（新增增量评审范围/receipt 覆盖/档位语义回归 6 项；`write_rich_spec` 上移基类，7 项钉旧"rigorous 必校准"行为的测试改用 9 页 spec 或新断言）。
+
 ## 0.26.1 — 2026-10-06 · Visual integrity: render what was declared, refuse what cannot be seen
 
 用 run-14 校准渲染图实测取证的视觉质量修复——三页校准稿两页大面积空白、一页载荷被裁成页缘窄条，而自检全部通过。

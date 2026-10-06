@@ -115,6 +115,11 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - 每条 issue 必须有 code（小写英文）、severity、`element`（元素定位）与 `fix`（可执行修法：
   改什么、改成什么）；major/critical 还要 `repair_level`（art-direction / reference /
   composition / asset / implementation）。修法要具体到修复者不用翻找。
+- **增量评审（spawn 参数带 `incremental_review` 时）**：只重看 `changed_slides` 的 preview
+  与 contact sheet；先读 `prior_review`，把 unchanged_slides 的条目**逐字复制**进新报告并加
+  `"carried_over": true`——不重看、不重打分。报告仍写完整 `page_sha256`（map 条目里有每页
+  source_sha256）与当前 `pptx_sha256`。carried_over 的 major/critical 照常进 blocker 计数：
+  没被修复的问题不会因为换页而消失。
 - 只写复核报告，不生成或修复任何页面/PPTX。
 - 完成后只回：报告路径 + blocker 计数。
 ```

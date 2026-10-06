@@ -283,7 +283,7 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 与每月依赖巡检报告。
 
 `quality_level: fast`（默认）在 8 页分片线以下由一个 Builder 完成全部页面，超过分 2 片、超过 14 页分 3 片，再做一次最终独立评审。主观视觉分数和风格建议保留为 advisory；页面不可用及确定性门失败仍阻止交付。
-`quality_level: standard` / `rigorous` 先校准代表页（standard 校准一轮，rigorous 至多两轮且风格 Major 阻断）。standard 页数 ≤ 8（校准页数线，plan 时冻结）时跳过校准直接整副构建——校准所保住的全 deck 返工在这个规模是有界的。**校准由确定性门判定：证据现势 + palette 门 + style summary**，正式 `build`
+`quality_level: standard` / `rigorous` 先校准代表页（standard 校准一轮，rigorous 至多两轮）。standard / rigorous 页数 ≤ 8（校准页数线，plan 时冻结）时跳过校准直接整副构建——校准所保住的全 deck 返工在这个规模是有界的。**校准由确定性门判定：证据现势 + palette 门 + style summary**，正式 `build`
 在校准确定性门变绿前会被机械拒绝。独立 `visual-critic` 评审收敛为生产边界的一次——主会话是
 Slide Spec 与 Art Direction 的作者，永远不代替 critic 看图；dispatch 在 critic 边界物化
 `critic-preview-map.json`（hook 启用时 spawn 时再刷新）；hook 启用时 critic 只能读取
