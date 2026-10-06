@@ -2,6 +2,17 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.26.0 — 2026-10-05 · Fewer builder/critic rounds: autofix, prescriptions, single review
+
+Builder/critic 协作的结构性收敛（目标：修复与查看轮次更少、每轮 token 更省）。
+
+- **机械化修复层（autofix）**：页面自 0.22.0 起是声明式数据，部分 critic 发现（`repair_level: "implementation"` 且修法点名版式库存在的 layout id）可以脚本直接修——新增 `scripts/apply_page_fixes.js`（换 `layout`，COPY/slots 字节不动，page_copy_fidelity 不受影响）与 `pipeline/autofix.py` 路由：**当且仅当**全部待修 finding 都是机械项时，repair 边界由管线自修并直接走"重建 → 渲染 → 全新评审"，不再为一个字符串改动点火一个 builder 实例；混合/创意 finding 仍整轮走 builder（packet 投影保持唯一任务来源）。审计落 `autofix-report.json`。
+- **确定性失败必须带处方**：`check_page_module.js` 的 throw / off-palette finding 现在携带 `remedy`——未知版式列出该 kind 可用的版式 id；fit 链全败给出同族更大容量版式与容量区间、并提示裁剪方向；off-palette 给出 hex→token 角色的映射。builder 的循环从"失败→猜"变成照方抓药（run-14 实测：同一条 fit 链连败 6 次只有症状没有出路）。
+- **评审收敛为终审一次**：校准改由确定性门判定（证据现势 + palette 门 + style summary），独立 `visual-critic` 只在生产边界评审一次；历史校准评审文件降级为 advisory（`review_advisory`），receipt 缺失/损坏不再设门。依据：声明式页面 + token 集中使系统性视觉缺陷的修复是 token/params 级，为它预付一整轮"3 页评审 + builder + 重预览"不再划算。契约 `calibration_requires_independent_review` 置 false，tier 文案、build_rules、SKILL 第 8 步、spawn-templates（校准 critic 模板退役）、中英 README 同步。
+- **冷启动单读**：packet 内联 `example_page`（正确的声明式页形态 + 注释约定），builder 不必翻生产源码对照导出契约。
+- **加固**：`openxml.py` 程序集替换补 6×0.3s 重试（Windows AV 瞬时锁，与 build.py 同款——本次全量验证中被僵尸 dotnet 进程锁触发过）。
+- 测试 1339 全绿（新增 autofix/处方/单评审回归 9 项；钉旧"校准必经 critic"契约的 11 项测试按新契约改写）；ruff / eslint / prettier / smoke / 双 release 检查 / claude plugin validate 全过。
+
 ## 0.25.4 — 2026-10-05 · Run-14 fixes: UTF-8 hooks, preview glue, and sanctioned research rebind
 
 来源：2026-10-04 真实运行（12 页 rigorous deck，止于校准评审边界、无交付）的逐条取证与修复。

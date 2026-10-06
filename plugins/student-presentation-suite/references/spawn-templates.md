@@ -119,11 +119,12 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - 完成后只回：报告路径 + blocker 计数。
 ```
 
-## critic（calibration 评审，同一 agent，不同范围）
+## critic（生产评审——0.26.0 起唯一一次独立评审）
 
-校准稿只有 2–3 页，问的不是"这一页好不好看"，而是"这套视觉系统铺到 13 页会怎样"。
-2026-09-18 live：主会话自己看了校准图并接受，独立 critic 在全量建完后判定"每页都是同一个
-带边框通栏面板"，要求全 deck 重做——76.4M token（该次会话的 58.8%），而这次评审只要 1.4M。
+0.26.0 前这里还有一个校准 critic 模板；校准改为确定性门（证据现势 + palette + style
+summary）后，独立评审收敛为生产边界的一次。历史教训仍然成立：2026-09-18 主会话自己看
+校准图并接受，独立 critic 在全量建完后判定"每页都是同一个带边框通栏面板"要求全 deck
+重做——76.4M token（该次会话的 58.8%）。**主会话永远不代替 critic 看图**。
 
 ```text
 你是这次校准预览的独立视觉复核者。只评审已实现的 <N> 页校准稿，不猜未实现的页面。
@@ -131,28 +132,17 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
 - work-dir（绝对路径）：<absolute work-dir>
 - 你的工具是 Read/Write + 只读发现（Grep/Glob），没有 shell。所需绝对路径全部在
   `critic-preview-map.json` 里（`schema_path` / `reference_path` / `art_direction` /
-  `review_output` / `receipt_output`）——先读 map，只打开它点名的路径，
-  猜测任何其它路径都是你最贵的动作。map 不存在就不要探测文件系统，
-  直接回报"hook 未物化预览映射"。
+  `review_output`）——先读 map，只打开它点名的路径，猜测任何其它路径都是你最贵的动作。
+  map 不存在就不要探测文件系统，直接回报"hook 未物化预览映射"。
 - <work-dir>/critic-preview-map.json 在 spawn 前必须已存在：dispatch 在 critic 边界物化它
-  （hook 启用时会在 spawn 时刷新）。先确认 map 的 `scope` 是 `calibration`，再逐张读取
-  `entries[].preview_path`；这些 preview 保留原始 slide id，并绑定 calibration.pptx 与原始 PNG 哈希。
+  （hook 启用时会在 spawn 时刷新）。确认 map 的 `scope`（0.26.0 起为 `production`），
+  再逐张读取 `entries[].preview_path`；这些 preview 绑定当前 PPTX 与 PNG 哈希。
   不读 slide-spec.yaml / slide-spec-compiled.yaml / build-manifest.json（任何目的）。
 - 报告形状的唯一来源是 map 里的 `schema_path`（hook 写入的已安装插件绝对路径）；
-  写到 map 的 `review_output`（即 <work-dir>/calibration/calibration-visual-review.json），`slides` 恰好覆盖
-  <calibration slide ids>（不是 1..N），`pptx_sha256` 用 calibration.pptx 的哈希。
-- 判断准绳：<work-dir>/art-direction.yaml。
-- **只判会扩散到全 deck 的形态**，逐条回答：
-  1. 这几页是不同的页型（封面 / 高密度数据页 / 代表性图文页）——它们是否被套上了**同一个**
-     结构或同一个容器样式？页型之间还看得出区别吗？
-  2. 这套 surface / 边框 / 分栏 / 图元语言，复制到全部页之后会变成"每页一个样"吗？
-  3. 是否与 Art Direction 的角色色、留白节奏、明暗交替一致？有无超出调色板角色的色值？
-  4. 页型角色的层级是否成立（封面不像内容页、数据页的读数装置先于正文被读到）？
-- 细则打磨（字号层级微调、单页构图留白）**不在本次范围**——留给最终 critic，不要在这里
-  判 Major。本次给 Major/Critical 的每一条都必须是"铺开到全 deck 会重复出现"的形态。
+  写到 map 的 `review_output`（即 <work-dir>/visual-review.json），`slides` 恰好覆盖
+  1..<page_count>，`pptx_sha256` 用当前 PPTX 的哈希。
+- 判断准绳：<work-dir>/art-direction.yaml；高杠杆页：<ids>。
 - 每条 issue 必须有 code 与 severity；只写报告，不生成或修复任何页面/PPTX。
-- 正常停止后 hook 写 <work-dir>/calibration/calibration-critic-execution.json；不要自己创建、
-  轮询或伪造该文件。生产 build 会验证它确实覆盖了 map 中每张校准 preview 的读取。
 - 完成后只回：报告路径 + blocker 计数（口径 = critical + major）。
 ```
 

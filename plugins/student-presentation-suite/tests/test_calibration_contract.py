@@ -22,13 +22,17 @@ class CalibrationContractTests(unittest.TestCase):
         initial_pos = build.index("mode=initial")
         self.assertLess(calibration_pos, preview_pos)
         self.assertLess(preview_pos, initial_pos)
-        self.assertIn("calibration-visual-review.json", build)
+        # 0.26.0: the independent review moved to a single production-boundary pass;
+        # calibration is gated by deterministic evidence + palette + style summary.
+        self.assertFalse(repeat["calibration_requires_independent_review"])
+        self.assertIn("the independent review happens ONCE at the production boundary", build)
+        self.assertNotIn("calibration-visual-review.json", build)
         self.assertIn("does not mutate production manifest/build state", build)
 
     def test_skill_requires_visual_check_before_remaining_pages(self) -> None:
         skill = self.read("skills/sp-deck/SKILL.md")
         calibration_pos = skill.index("**Calibration Build**")
-        preview_pos = skill.index("**Calibration Preview**")
+        preview_pos = skill.index("**Calibration Preview（确定性门，无 critic）**")
         full_pos = skill.index("**Full Isolated Page Build**")
         production_pos = skill.index("**Exploration Gates + Production Build**")
         self.assertLess(calibration_pos, preview_pos)
@@ -37,18 +41,21 @@ class CalibrationContractTests(unittest.TestCase):
         self.assertIn("不触碰生产 manifest/state", skill)
         self.assertIn("剩余 scaffold 页面", skill)
 
-    def test_calibration_review_is_independent_not_a_self_check(self) -> None:
-        """2026-09-18: the main session accepted its own calibration PNGs — an author cannot
-        see that its own treatment repeats on every page — and the independent critic then
-        rejected the pattern on all 13 built pages (76.4M tokens, 58.8% of that session)."""
+    def test_calibration_is_deterministic_and_review_is_production_only(self) -> None:
+        """0.26.0: the 2026-09-18 lesson (main session accepted its own calibration PNGs;
+        the independent critic then rejected the repeated treatment on all 13 built pages,
+        76.4M tokens = 58.8% of that session) is now carried by the production-boundary
+        review — calibration itself is gated deterministically (evidence + palette +
+        style summary), and an old review file is advisory only."""
         skill = self.read("skills/sp-deck/SKILL.md")
-        self.assertIn("校准必须由独立 critic 评审，不能由主会话自己看图", skill)
+        self.assertIn("校准不再有 critic 轮", skill)
+        self.assertIn("review_advisory", skill)
         self.assertIn("student-presentation-suite:visual-critic", skill)
-        self.assertIn("calibration-visual-review.json", skill)
-        self.assertIn("评审全绿之前正式 `build` 会被机械拒绝", skill)
+        self.assertIn("失败归属判定", skill)
         templates = self.read("references/spawn-templates.md")
-        self.assertIn("calibration 评审，同一 agent，不同范围", templates)
-        self.assertIn("只判会扩散到全 deck 的形态", templates)
+        self.assertIn("critic（生产评审——0.26.0 起唯一一次独立评审）", templates)
+        self.assertIn("主会话永远不代替 critic 看图", templates)
+        self.assertNotIn("calibration 评审，同一 agent，不同范围", templates)
 
     def test_builder_has_distinct_calibration_and_initial_modes(self) -> None:
         builder = self.read("agents/presentation-builder.md")

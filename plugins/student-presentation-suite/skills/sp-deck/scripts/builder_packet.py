@@ -68,6 +68,36 @@ FORBIDDEN_ACTIONS = [
 # v0.18 反AI味硬规则（references/pptx-design-grammar.md 的 D1-D10 紧凑投影）。
 # 带 ✔ 的条目有 registry/渲染门做机器执行，其余由 critic 按 D 编码引用；
 # 这里只投影规则文本，不复制判定逻辑——判定阈值单一属于 registry/gate。
+# 0.26.0 冷启动单读：packet 内联正确的声明式页形态，builder 不必翻生产源码
+# 对照导出契约（run-14 live：builder 的第 9 次读才是第一个页面文件）。
+DECLARATIVE_PAGE_EXAMPLE = {
+    "header": (
+        "'use strict';\n"
+        "/** Slide N — <标题> */\n"
+        "/* ON-SCREEN REQUIRED — 逐字渲染 title/claim（actual-content 门字节级匹配） */\n"
+        "const COPY = { title: \"…\", claim: \"…\", keyLine: \"\", slideCopy: [\"…\"] };\n"
+        "/* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */"
+    ),
+    "exports": {
+        "dark": False,
+        "kind": "content",
+        "context": {"slideId": 1, "slideKind": "content", "role": "method", "itemCount": 3,
+                    "title": "…", "titleChars": 8, "hasAsset": False, "hasData": False,
+                    "hasQuote": False, "density": None},
+        "layout": None,
+        "slots": {"title": "COPY.title", "claim": "COPY.claim || undefined",
+                  "key_line": "COPY.keyLine || undefined",
+                  "body": "COPY.slideCopy（数组）", "visual": "可选：结构化 visual 载荷"},
+        "params": {},
+        "notes": "每页一次、纯文本讲稿（质量门读它）",
+    },
+    "notes_lines": [
+        "module.exports = { dark, kind, context, layout, slots, params, notes } — 纯数据，glue 由 deck.js 的 L.renderDeclaredPage 统一执行。",
+        "需要自定义坐标（D9）才写 module.exports = function (ctx) {…} 并在页内注释声明 custom 理由。",
+        "layout 留 undefined 由引擎按 context 自选；自检失败读 findings 的 remedy 处方，照方抓药。",
+    ],
+}
+
 VISUAL_RULES = [
     "D1 ✔ 标题正下方禁止强调线/细横线（registry 硬拦）：标题与正文之间用留白。",
     "D2 ✔ 禁止装饰性细色条、单侧色边（min边≤0.09in 的形状条）：分隔用留白、"
@@ -658,6 +688,8 @@ def build_packet(
             f'node "{plugin_root / "scripts" / "check_page_module.js"}" '
             f'--work-dir "{work_dir}" --pages "{page_args}"'
         )
+    # 0.26.0 冷启动单读：内联声明式页范例，builder 不必翻生产源码对照契约。
+    packet["example_page"] = DECLARATIVE_PAGE_EXAMPLE
     return packet
 
 

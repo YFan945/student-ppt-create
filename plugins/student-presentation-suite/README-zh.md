@@ -283,14 +283,13 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 与每月依赖巡检报告。
 
 `quality_level: fast`（默认）在 8 页分片线以下由一个 Builder 完成全部页面，超过分 2 片、超过 14 页分 3 片，再做一次最终独立评审。主观视觉分数和风格建议保留为 advisory；页面不可用及确定性门失败仍阻止交付。
-`quality_level: standard` / `rigorous` 先校准代表页（standard 校准一轮，rigorous 至多两轮且风格 Major 阻断）。standard 页数 ≤ 8（校准页数线，plan 时冻结）时跳过校准直接整副构建——校准所保住的全 deck 返工在这个规模是有界的。**校准由独立 `visual-critic` 评审，不由主会话自己看图**：主会话是 Slide Spec 与
-Art Direction 的作者，看不见自己选的视觉语言在每页重复，所以它读预览 PNG 不算评审；
-在 `calibration/calibration-visual-review.json` 存在、绑定当前校准 PPTX、且无
-critical/major 之前，正式 `build` 会被机械拒绝。dispatch 在 critic 边界按 production / calibration
-范围物化 `critic-preview-map.json`（hook 启用时 spawn 时再刷新）；hook 启用时 critic 只能读取
-其中列出的当前压缩预览、写 map 指定的 `review_output`；校准评审正常停止后，hook 另写
-`calibration/calibration-critic-execution.json`，正式 build 会验证它覆盖了每张当前校准预览。
-陈旧 render、错误报告路径和损坏/错绑 receipt 都会在放行前被拒绝。通过
+`quality_level: standard` / `rigorous` 先校准代表页（standard 校准一轮，rigorous 至多两轮且风格 Major 阻断）。standard 页数 ≤ 8（校准页数线，plan 时冻结）时跳过校准直接整副构建——校准所保住的全 deck 返工在这个规模是有界的。**校准由确定性门判定：证据现势 + palette 门 + style summary**，正式 `build`
+在校准确定性门变绿前会被机械拒绝。独立 `visual-critic` 评审收敛为生产边界的一次——主会话是
+Slide Spec 与 Art Direction 的作者，永远不代替 critic 看图；dispatch 在 critic 边界物化
+`critic-preview-map.json`（hook 启用时 spawn 时再刷新）；hook 启用时 critic 只能读取
+其中列出的当前压缩预览、写 map 指定的 `review_output`。校准由确定性门判定
+（证据现势 + palette 门 + style summary），独立评审收敛为生产边界的一次；历史校准评审文件
+只作 advisory，不再设门。通过
 `builder_packet.py --mode calibration --slides ...` 指定的校准样本会与 active round 原子记录，
 后续 `next` / `advance` 会保持这组页面，不会静默退回默认样本。
 校准绿灯仅在其绑定的 Slide Spec、Art Direction、页面源码、校准 PPTX、每张预览 PNG、

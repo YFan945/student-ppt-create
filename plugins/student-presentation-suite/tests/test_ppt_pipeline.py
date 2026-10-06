@@ -1129,18 +1129,28 @@ class BuildTests(PipelineTestCase):
         self.write_calibration_receipt(review)
         return review
 
+    def write_palette_gate_failure(self, calibration: Path, slides=(1,)) -> None:
+        """Deterministic calibration failure: palette report not ok (0.26.0 gate set)."""
+        (calibration / "palette-report.json").write_text(
+            json.dumps({
+                "ok": False,
+                "issues": [
+                    {"slide": slide, "code": "off_palette", "message": "off-palette hex"}
+                    for slide in slides
+                ],
+            }),
+            encoding="utf-8",
+        )
+
     def test_calibration_round_budget_releases_the_build_with_recorded_risk(self) -> None:
         """Tiers cap calibration rounds (standard 1 / rigorous 2): then production carries risk."""
         self.quality_level = "rigorous"
         self.plan(self.files)
         calibration = self.calibration_with_render()
-        self.write_calibration_review(calibration, slides=[
-            {"slide": 1, "visual_structure": "cover", "issues": [
-                {"code": "style", "severity": "major", "message": "weak hierarchy"},
-            ]},
-            {"slide": 6, "visual_structure": "chart-led", "issues": []},
-            {"slide": 7, "visual_structure": "compare", "issues": []},
-        ])
+        # 0.26.0: the gate set is deterministic — a failing palette report, not a
+        # critic verdict, is what costs a fix round.
+        self.write_calibration_review(calibration)
+        self.write_palette_gate_failure(calibration)
         manifest = self.manifest()
         manifest["calibration"] = {"rounds": 1}
         pp.save_manifest(self.work, manifest)
@@ -1159,13 +1169,9 @@ class BuildTests(PipelineTestCase):
         self.quality_level = "rigorous"
         self.plan(self.files)
         calibration = self.calibration_with_render()
-        self.write_calibration_review(calibration, slides=[
-            {"slide": 1, "visual_structure": "cover", "issues": [
-                {"code": "style", "severity": "major", "message": "weak hierarchy"},
-            ]},
-            {"slide": 6, "visual_structure": "chart-led", "issues": []},
-            {"slide": 7, "visual_structure": "compare", "issues": []},
-        ])
+        # 0.26.0: deterministic gates decide; see the dispatch test above.
+        self.write_calibration_review(calibration)
+        self.write_palette_gate_failure(calibration)
         self.implement_scaffolded_pages()
         manifest = self.manifest()
         manifest["calibration"] = {"rounds": 1}
@@ -1176,22 +1182,21 @@ class BuildTests(PipelineTestCase):
         pp.save_manifest(self.work, manifest)
         self.assertEqual(0, pp.main(["build", "--work-dir", str(self.work)]))
 
-    def test_next_with_calibration_render_dispatches_the_independent_review(self) -> None:
-        """Calibration is reviewed by the critic, not by the session that chose the treatment.
-
-        2026-09-18 live: the main session read its own calibration PNGs, accepted the visual
-        system, and the independent critic then rejected the pattern on all 13 built pages.
-        """
+    def test_next_after_calibration_render_proceeds_to_production_without_a_critic(self) -> None:
+        """0.26.0: calibration is gated deterministically; the independent review happens
+        ONCE at the production boundary. The 2026-09-18 lesson (the main session must not
+        judge its own calibration PNGs) is carried by that single production review, whose
+        spawn template forbids the main session from reading renders."""
         self.quality_level = "rigorous"
         self.plan(self.files)
-        self.calibration_with_render()
+        calibration = self.calibration_with_render()
+        self.write_calibration_review(calibration)  # style summary present
+        (calibration / "calibration-visual-review.json").unlink()  # review file is optional now
         payload = self.next_dispatch_payload()
-        self.assertEqual("student-presentation-suite:visual-critic", payload["agent"])
-        self.assertNotIn("build", payload["next_command"])
-        self.assertIn("no independent calibration review on disk", payload["calibration"]["status"])
-        self.assertEqual([1, 6, 7], payload["calibration"]["slides"])
-        self.assertIn("visual-critic", payload["notes"])
-        self.assertEqual("build", payload["contract"]["stage"])
+        self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
+        self.assertEqual("initial", payload["builder_mode"])
+        self.assertNotIn("visual-critic", payload["notes"])
+        self.assertNotIn("calibration-visual-review", json.dumps(payload))
 
     def test_next_after_a_green_calibration_review_authorises_the_full_build(self) -> None:
         self.quality_level = "rigorous"
@@ -1202,37 +1207,31 @@ class BuildTests(PipelineTestCase):
         self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
         self.assertIn("mode=initial", payload["notes"])
 
-    def test_next_keeps_the_builder_on_a_calibration_that_still_has_findings(self) -> None:
+    def test_next_keeps_the_builder_on_a_calibration_that_still_fails_the_gates(self) -> None:
         self.quality_level = "rigorous"
         self.plan(self.files)
         calibration = self.calibration_with_render()
-        self.write_calibration_review(
-            calibration,
-            [
-                {"slide": 1, "visual_structure": "cover", "issues": [
-                    {"severity": "major", "code": "repetitive_structure_run", "message": "same bordered panel"},
-                ]},
-                {"slide": 6, "visual_structure": "panel", "issues": []},
-                {"slide": 7, "visual_structure": "compare", "issues": []},
-            ],
-        )
+        self.write_calibration_review(calibration)  # style summary present
+        (calibration / "calibration-visual-review.json").unlink()
+        self.write_palette_gate_failure(calibration, slides=(1,))
         payload = self.next_dispatch_payload()
         self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
         self.assertEqual("calibration", payload["builder_mode"])
         self.assertEqual([1], payload["builder_packet"]["slides"])
-        self.assertIn("repetitive_structure_run", payload["calibration"]["status"])
+        self.assertIn("colors outside the approved token palettes", payload["calibration"]["status"])
 
-    def test_next_retries_critic_when_review_exists_but_receipt_is_missing(self) -> None:
+    def test_missing_calibration_receipt_no_longer_gates(self) -> None:
+        """0.26.0: the calibration critic receipt checked a review that no longer gates;
+        a missing receipt (or review file) leaves the deterministic gates in charge."""
         self.quality_level = "rigorous"
         self.plan(self.files)
         calibration = self.calibration_with_render()
         self.write_calibration_review(calibration)
         (calibration / "calibration-critic-execution.json").unlink()
+        (calibration / "calibration-visual-review.json").unlink()
         payload = self.next_dispatch_payload()
-        self.assertEqual("student-presentation-suite:visual-critic", payload["agent"])
-        self.assertNotIn("builder_mode", payload)
-        self.assertIn("missing successful isolated calibration critic receipt", payload["calibration"]["status"])
-        self.assertIn("scope=calibration", payload["notes"])
+        self.assertEqual("student-presentation-suite:presentation-builder", payload["agent"])
+        self.assertEqual("initial", payload["builder_mode"])
 
     def prepared_calibrated_without_review(self) -> Path:
         self.prepared()
@@ -2505,7 +2504,9 @@ class AdvanceTests(PipelineTestCase):
         self.assertEqual("calibration", result["dispatch"]["builder_mode"])
         self.assertIn("builder_packet", result["dispatch"])
 
-    def test_advance_runs_the_calibration_preview_itself_then_needs_the_critic(self) -> None:
+    def test_advance_runs_the_calibration_preview_then_reports_the_gate_failure(self) -> None:
+        """0.26.0: advance runs the preview itself; the deterministic gates (here: missing
+        style summary) decide the next step — a targeted calibration builder, not a critic."""
         self.quality_level = "rigorous"
         self.write_rich_spec(9)
         self.write_art([1, 3, 4])
@@ -2519,8 +2520,9 @@ class AdvanceTests(PipelineTestCase):
         self.use_fake_runtime()
         result = self.advance()
         self.assertEqual("needs_agent", result["status"])
-        self.assertEqual(["calibration_preview"], result["actions"])
-        self.assertEqual(pp.CRITIC_AGENT, result["dispatch"]["agent"])
+        self.assertIn("calibration_preview", result["actions"])
+        self.assertEqual(pp.BUILDER_AGENT, result["dispatch"]["agent"])
+        self.assertEqual("calibration", result["dispatch"]["builder_mode"])
         self.assertTrue(list((self.work / "calibration" / "render").glob("calibration-*.png")))
 
     def test_advance_renders_a_built_deck_then_needs_the_critic(self) -> None:

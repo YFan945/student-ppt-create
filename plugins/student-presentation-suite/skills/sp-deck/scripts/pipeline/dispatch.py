@@ -150,6 +150,52 @@ def _implemented_calibration_slides(work_dir: Path) -> list[int]:
     return slides
 
 
+def _try_autofix(work_dir: Path) -> dict[str, Any] | None:
+    """Mechanical layout-swap fixes for the current review, or None for a builder.
+
+    Best-effort by design: any failure (node missing, malformed review, script
+    error) falls back to the repair builder — autofix must never make the
+    pipeline more fragile than the round it replaces.
+    """
+    try:
+        from pipeline.autofix import autofix_pending_repair
+
+        return autofix_pending_repair(work_dir)
+    except Exception:
+        return None
+
+
+def _dispatch_repair_builder(
+    work_dir: Path, payload: dict[str, Any], manifest: dict[str, Any], basic: bool
+) -> None:
+    """Request the post-QA repair builder with the projected packet."""
+    payload["agent"] = "student-presentation-suite:presentation-builder"
+    payload["builder_mode"] = "repair"
+    payload["notes"] = "repair is recorded; fix the blocker pages, then build → render → qa"
+    try:
+        blocker_slides = slides_named_in_reports(
+            work_dir,
+            ("pipeline-qa.json", "pre-qa-quality.json", "pre-qa-actual-content.json", "pre-qa-rendered.json"),
+        )
+        if (work_dir / "pipeline-qa.json").is_file():
+            repair_targets = blocker_slides or sorted(page_files_by_slide(work_dir))
+            packets = _packet.prepare_packets(
+                work_dir, "repair", repair_targets, ["pipeline-qa.json"],
+                single_builder=basic or not blocker_slides,
+                max_parallel=effective_shard_cap(manifest.get("quality_level"), len(repair_targets)),
+                convergence=repair_convergence(work_dir),
+            )
+            if packets:
+                payload["builder_packets"] = packets
+                payload["notes"] += (
+                    " Repair packets with the projected blockers are generated under "
+                    "builder-packets/ (builder_packets field) — pass each builder its packet "
+                    "path; it must not re-read the reports the packet covers."
+                )
+    except Exception as exc:
+        observe_packet_failure(work_dir, payload, "repair", exc)
+
+
 def _dispatch_calibration_builder(work_dir: Path, payload: dict[str, Any]) -> None:
     """Request a calibration builder with the projected packet (v0.15 Batch 2)."""
     payload["agent"] = "student-presentation-suite:presentation-builder"
@@ -382,6 +428,10 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                         and rounds >= policy["calibration_max_rounds"]
                     )
                     if not review["ok"] and not budget_spent:
+                        # 0.26.0: not-ok is deterministic only (stale evidence → rerun the
+                        # preview; palette violation / style summary missing → targeted
+                        # builder repair). The critic no longer gates calibration — it
+                        # reviews the deck once at the production boundary.
                         payload["calibration"] = {
                             "slides": review["slides"],
                             "pptx": str(work_dir / CALIBRATION_DIR_NAME / "calibration.pptx"),
@@ -390,9 +440,6 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                                 for path in sorted((work_dir / CALIBRATION_DIR_NAME / "render").glob("calibration-*.png"))
                             ],
                             "manifest": str(work_dir / CALIBRATION_DIR_NAME / CALIBRATION_MANIFEST_NAME),
-                            "review_output": review["path"],
-                            "receipt_output": review["receipt"],
-                            "critic_preview_map": str(work_dir / "critic-preview-map.json"),
                             "status": review["reason"],
                         }
                         if review.get("action") == "preview":
@@ -403,49 +450,34 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                             )
                             payload["notes"] = (
                                 f"Calibration evidence is stale: {review['reason']}. Rerun the exact "
-                                "preview command above before spawning another critic; an old green "
-                                "review cannot authorize the current page bytes."
+                                "preview command above; the deterministic gates re-verify the current page bytes."
                             )
-                        elif review.get("action") == "builder":
+                        else:
                             repair_slides = review.get("repair_slides") or review["slides"]
                             payload["agent"] = "student-presentation-suite:presentation-builder"
                             payload["builder_mode"] = "calibration"
                             calibration_reports = [
-                                work_dir / "calibration" / "calibration-visual-review.json",
-                                work_dir / "calibration" / "palette-report.json",
+                                report
+                                for report in [work_dir / "calibration" / "palette-report.json"]
+                                if report.is_file()
                             ]
                             packets = _packet.prepare_packets(
                                 work_dir, "calibration", repair_slides,
-                                [report for report in calibration_reports if report.is_file()],
+                                calibration_reports,
                             )
                             if packets:
                                 payload["builder_packet"] = packets[0]
                             payload["notes"] = (
-                                f"The independent calibration review requires a targeted builder repair: "
-                                f"{review['reason']}. Spawn presentation-builder (no `name`) with "
-                                f"mode=calibration for slides {repair_slides} using the packet above, then "
-                                "rerun calibration_preview.py for the complete calibration set."
+                                f"Calibration is not deterministically green: {review['reason']}. "
+                                f"Spawn presentation-builder (no `name`) with mode=calibration for slides "
+                                f"{repair_slides} using the packet above, then rerun calibration_preview.py "
+                                "for the complete calibration set."
                             )
-                        else:
-                            preview_failure = _materialize_critic_previews(work_dir)
-                            payload["agent"] = "student-presentation-suite:visual-critic"
-                            payload["high_leverage_slides"] = _high_leverage(work_dir)
-                            payload["notes"] = (
-                                "Calibration evidence needs an independent visual-critic run. Spawn "
-                                "student-presentation-suite:visual-critic (no `name`) with the absolute "
-                                "work-dir. A scope=calibration critic-preview-map.json with compressed "
-                                "previews is materialized under the work-dir (the runtime hook refreshes "
-                                "it at spawn when hooks are enabled); the critic reads every mapped "
-                                "preview and writes only its review_output. Scope the review to repeated structure "
-                                "across different page roles, Art Direction conformance, and whether roles "
-                                "remain visually distinct. The main session's own read is not a review. "
-                                f"Current status: {review['reason']}"
-                            )
-                            if preview_failure:
+                            if review.get("review_advisory", {}).get("blockers"):
                                 payload["notes"] += (
-                                    f" Preview materialization failed ({preview_failure}); run "
-                                    f'{python} "{ROOT / "scripts" / "critic_preview.py"}" --work-dir "{work_dir}" '
-                                    "--json before spawning, or the critic must read the calibration render PNGs directly."
+                                    " Advisory (non-gating): an existing calibration review file reports "
+                                    f"{len(review['review_advisory']['blockers'])} blocker(s) — fold them into "
+                                    "this repair where they are real."
                                 )
                     else:
                         remaining = remaining_scaffold_slides(work_dir)
@@ -580,31 +612,22 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 # has not edited yet. The boundary is the repair builder, not the critic:
                 # the render evidence is still technically current, but the deck is about
                 # to change, so reviewing the old render would waste a critic pass.
-                payload["agent"] = "student-presentation-suite:presentation-builder"
-                payload["builder_mode"] = "repair"
-                payload["notes"] = "repair is recorded; fix the blocker pages, then build → render → qa"
-                try:
-                    blocker_slides = slides_named_in_reports(
-                        work_dir,
-                        ("pipeline-qa.json", "pre-qa-quality.json", "pre-qa-actual-content.json", "pre-qa-rendered.json"),
+                # 0.26.0 autofix: when EVERY pending finding is a mechanical layout swap
+                # (repair_level=implementation, fix names a library id), the pipeline
+                # applies them itself — a builder instance for one-line data edits is the
+                # most expensive way to change a string. Mixed/creative findings still
+                # take the builder path below.
+                autofix_report = _try_autofix(work_dir)
+                if autofix_report:
+                    payload["autofix"] = autofix_report
+                    payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
+                    payload["notes"] = (
+                        f"autofix applied {autofix_report.get('applied_count')} mechanical layout fix(es) "
+                        f"(report: {Path(work_dir) / 'autofix-report.json'}): rebuild → render → a FRESH "
+                        "independent review verifies them; do NOT spawn a builder for these findings."
                     )
-                    if (work_dir / "pipeline-qa.json").is_file():
-                        repair_targets = blocker_slides or sorted(page_files_by_slide(work_dir))
-                        packets = _packet.prepare_packets(
-                            work_dir, "repair", repair_targets, ["pipeline-qa.json"],
-                            single_builder=basic or not blocker_slides,
-                            max_parallel=effective_shard_cap(manifest.get("quality_level"), len(repair_targets)),
-                            convergence=repair_convergence(work_dir),
-                        )
-                        if packets:
-                            payload["builder_packets"] = packets
-                            payload["notes"] += (
-                                " Repair packets with the projected blockers are generated under "
-                                "builder-packets/ (builder_packets field) — pass each builder its packet "
-                                "path; it must not re-read the reports the packet covers."
-                            )
-                except Exception as exc:
-                    observe_packet_failure(work_dir, payload, "repair", exc)
+                else:
+                    _dispatch_repair_builder(work_dir, payload, manifest, basic)
             elif (
                 render_is_current(manifest)
                 and requested_prepared_deliverables(manifest)

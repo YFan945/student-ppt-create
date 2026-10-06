@@ -124,14 +124,15 @@ class StyleContractTests(unittest.TestCase):
         )
         self.assertIsNone(sc.build_style_contract(self.work))
 
-    def test_calibration_review_requires_hook_owned_receipt(self) -> None:
+    def test_calibration_receipts_are_advisory_after_0_26_0(self) -> None:
+        """0.26.0: the review file and its hook receipt no longer gate calibration —
+        the deterministic gates (evidence + palette + style summary) decide."""
         self.green_calibration([1])
         receipt = self.work / "calibration" / "calibration-critic-execution.json"
         receipt.unlink()
         result = cr.calibration_review(self.work)
-        self.assertFalse(result["ok"])
-        self.assertEqual("critic", result["action"])
-        self.assertIn("missing successful isolated calibration critic receipt", result["reason"])
+        self.assertTrue(result["ok"], result["reason"])
+        self.assertIsNone(result["action"])
 
     def test_allow_missing_degrades_only_an_absent_calibration_receipt(self) -> None:
         self.green_calibration([1])
@@ -142,11 +143,9 @@ class StyleContractTests(unittest.TestCase):
         )
         result = cr.calibration_review(self.work)
         self.assertTrue(result["ok"])
-        self.assertTrue(result["receipt_degraded"])
         receipt.write_text("{}", encoding="utf-8")
         result = cr.calibration_review(self.work)
-        self.assertFalse(result["ok"])
-        self.assertIn("identity is invalid", result["reason"])
+        self.assertTrue(result["ok"], "a malformed advisory review must not gate calibration")
 
     def test_green_review_is_invalidated_when_a_calibration_page_changes(self) -> None:
         calibration = self.work / "calibration"

@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.25.4
+version: 0.26.0
 ---
 
 # Student Presentation PPT
@@ -95,20 +95,18 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" status --w
 5. **Plan**：`<wd>` 必须为项目 `outputs/.pptx-work/<work-id>`；`edit_ooxml` 自动解包到 `ooxml/`，不生成 JS；`rebuild_from_source` 须先写 `source-analysis.md`，参考 deck 质量好时先用 `reference_deck_analysis.py` 产出逐页类型/版式建议，再 `plan --reference-analysis` 引导 archetype 选择（见 `references/reference-deck-ingestion.md`）。`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证 Production Summary、copy-fit、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/` 并建立 `build-manifest.json`。仍处于 `planned` 时确需更新 spec / research chain，直接给同一命令加 `--force --reason <具体原因>`；管线会调用 revision、保留锁的 revision/parent 链，不要 reset intake、移动旧锁或直调 `slide_spec_guard.py`。`--validation-report` 若描述的不是将被 freeze 的那个 spec（研究型 deck 会是 plan 自己编译出的 `slide-spec-compiled.yaml`），plan 会**自动对该 spec 重新生成报告**并在 manifest 记 `spec_report_regenerated`；不要为此手工跑第二遍 plan，也不要自己猜 compiled 文件的哈希。
 6. **Reference + Composition**：high-leverage 页保存 reference selection、2–3 个 silhouette candidates 与 wireframe 选择证据；普通页保留明确 composition intent。
 7. **Calibration Build**：仅 `standard` / `rigorous` 的 `create` / `rebuild_from_source`（校准轮次上限 standard 1、rigorous 2，超限后遗留 finding 记为风险继续生产）；`fast` 直接进入第 9 步；**standard 页数 ≤ 8**（`STANDARD_CALIBRATION_PAGE_LINE`，plan 时冻结在 `manifest.scaffold.slides`）同样直接进入第 9 步——短 deck 的全 deck 返工上限就是这页数，不值得为它多付一整轮校准往返。按 **archetype coverage** 使用 Builder Packet 默认的 2–3 张代表页；只有需要覆盖默认集遗漏的视觉语法时，才用 `builder_packet.py --mode calibration --slides <ids>` 改样本，脚本会拒绝降低覆盖度的选法。主会话 spawn `student-presentation-suite:presentation-builder`（不传 `name`），传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder 只实现这些页面，**剩余 scaffold 页面**保持不变；覆盖度细则见 `../../references/pipeline-contract.json`。
-8. **Calibration Preview**：收到 `BUILDER_DONE(mode=calibration)` 后，主会话调用 `advance --brief-json` 自动运行确定性 helper；排查预览故障时才直接调用：
+8. **Calibration Preview（确定性门，无 critic）**：收到 `BUILDER_DONE(mode=calibration)` 后，主会话调用 `advance --brief-json` 自动运行确定性 helper；排查预览故障时才直接调用：
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/calibration_preview.py" \
   --work-dir <wd> --slides <id1> <id2> <id3> --json
 ```
 
-helper 只把这些已实现页面组装成临时 `calibration/calibration.pptx`，渲染到 `calibration/render/`，并写绑定 Slide Spec、Art Direction、页面源码、PPTX、PNG、palette 与 render manifest SHA256 的 `calibration-manifest.json`；**不触碰生产 manifest/state**。后续每次读取 green 都会重验这些绑定；任一变化都会回到 preview / critic，不能沿用陈旧绿灯。
+helper 只把这些已实现页面组装成临时 `calibration/calibration.pptx`，渲染到 `calibration/render/`，并写绑定 Slide Spec、Art Direction、页面源码、PPTX、PNG、palette 与 render manifest SHA256 的 `calibration-manifest.json`；**不触碰生产 manifest/state**。后续每次读取 green 都会重验这些绑定；任一变化都会回到 preview，不能沿用陈旧绿灯。
 
-**校准必须由独立 critic 评审，不能由主会话自己看图**。它只判断会扩散到整套 PPT 的视觉系统问题；细节留给最终评审。原因与案例见 `../../references/cost-discipline.md` 的 CD-9。
+**校准不再有 critic 轮**：green 由确定性门判定（证据现势 + palette 门 + style summary）。独立评审收敛为**生产边界的一次**（第 13 步）——声明式页面 + token 集中之后，系统性视觉缺陷的修复是 token/params 级，不再需要为它预付一整轮"3 页评审 + builder + 重预览"。校准确定性门不绿（palette 违规 / style summary 缺失）时 `advance` 返回带 packet 的定向 builder 修复（轮次上限 standard 1、rigorous 2，超限记风险继续）；evidence 过期则重跑预览。历史校准评审文件只作 advisory（`review_advisory`），不设门。
 
-`advance` 给出 critic 的 spawn 参数与 `calibration/calibration-visual-review.json` 写入路径：spawn `student-presentation-suite:visual-critic`（不传 `name`）。压缩预览与 critic-preview-map.json 由 advance 在 critic 边界物化（hook 启用时 spawn 时再刷新），hook 另写 receipt；生产 build 校验报告与 receipt 对当前 PPTX/PNG 的绑定。评审带 Major/Critical 就 spawn builder `mode=calibration` 修这些页，再调用 `advance` 重跑预览；**评审全绿之前正式 `build` 会被机械拒绝**。receipt 降级与预览契约见 `../../references/pipeline-contract.json`。
-
-**失败归属判定（决定要不要派 builder）**：预览/构建失败的堆栈若落在生成的 assembly 文件（`calibration/calibration-deck.js`、`deck.js`）而非 `pages/pNN-*.js`，属插件 glue 缺陷——**不得为它 spawn builder 修页面**（页面没有可修的东西），如实上报并停止。页面导出形态以生产 `deck.js` 的双分支为准（声明式对象 = 正确形态）；"把页面改成函数式以适配预览" 是反向修复，禁止。spawn critic 后不要结束会话——critic 在后台运行，会话关闭即丢失该轮评审。
+**失败归属判定（决定要不要派 builder）**：预览/构建失败的堆栈若落在生成的 assembly 文件（`calibration/calibration-deck.js`、`deck.js`）而非 `pages/pNN-*.js`，属插件 glue 缺陷——**不得为它 spawn builder 修页面**（页面没有可修的东西），如实上报并停止。页面导出形态以生产 `deck.js` 的双分支为准（声明式对象 = 正确形态）；"把页面改成函数式以适配预览" 是反向修复，禁止。确定性失败（fit/未知版式/off-palette）自检输出自带 `remedy` 处方——照方抓药，不要猜。
 
 显式改校准样本时，`builder_packet.py --mode calibration --slides <ids>` 会把 packet 与 `builder-active-round.json` **原子地一起更新**；随后 `next` / `advance` 复用这组 slide ids，不会重新落回默认校准集。不要手改 packet 或只改其中一个文件；builder 对每次页面访问都会重验已登记 packet 的 SHA-256，登记后篡改会立即撤销授权。**任何非默认轮任务说明（修复目标、豁免、降级约定）必须同步投影进 packet，不得只存在于 spawn 提示词**——packet 是 builder 的唯一任务输入，旁路它 builder 就无从对照契约（run-14 live：修导出形态的任务只在提示词里，builder 无从发现该任务与声明式契约矛盾）。
 9. **Full Isolated Page Build**：`standard`/`rigorous` 在 Calibration 经独立评审可接受后，`fast` 在 plan 后，spawn `presentation-builder`，传绝对 work-dir 与 `mode=initial`。Builder 保留已校准页面，按它们已建立的 typography/spacing/surface/image language 实现**所有剩余 scaffold 页面**。scaffold 页由版式引擎供几何：页面调用 `L.renderArchetype`（v0.18），builder 填 slots/调 params/换 `layout.id`，自由坐标须注释声明 custom 理由；反 AI 味规则见 Packet 的 `visual_rules` 与 `pptx-design-grammar.md` D1–D10。主会话不得打开逐页源码复核，只接受紧凑信封。

@@ -124,7 +124,7 @@ def cmd_build(args: argparse.Namespace) -> int:
             and rounds < policy["calibration_max_rounds"]
         ):
             raise RefusedError(
-                "full build refused: " + (review["reason"] or "calibration review is not green")
+                "full build refused: " + (review["reason"] or "calibration is not deterministically green")
                 + f". Run `next --json`; the review is written to {review['path']}"
             )
     if editing:

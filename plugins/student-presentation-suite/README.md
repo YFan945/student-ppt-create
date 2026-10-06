@@ -354,26 +354,24 @@ locally — they read the PPTX and the spec and need no critic; while they fail,
 the critic never reviews a doomed deck.
 
 `quality_level: fast` (the default) uses one Builder below the 8-page shard line, two shards above it and three above the 14-page speed line, plus one final independent review. Subjective visual scores and style suggestions remain visible advisories; unusable pages and deterministic failures still block delivery.
-`quality_level: standard` / `rigorous` first calibrate representative pages (standard one round, rigorous up to two with blocking style majors). Standard decks at or below 8 pages (the calibration page line, frozen at plan time) skip calibration and build directly — the whole-deck rework calibration insures against is bounded there.
-Calibration is reviewed by the independent `visual-critic`, not by the main
-session. The main session authors the Slide Spec and the Art Direction, so it
-cannot see that its own treatment repeats on every page; its own reading of the
-preview PNGs is therefore not the review, and production `build` is refused until
-`calibration/calibration-visual-review.json` exists, is bound to the current
-calibration PPTX, carries no critical/major finding, and has a hook-owned
-`calibration/calibration-critic-execution.json` proving that the critic read
-every current calibration preview. A scope-aware
-`critic-preview-map.json` is materialized at the critic boundary (dispatch/advance;
-the hook refreshes it at spawn when hooks fire) and, when hooks fire, the critic may
-only write that map's `review_output`; stale renders and wrong output
-paths are rejected before review. An explicit calibration sample created with
+`quality_level: standard` / `rigorous` first calibrate representative pages (standard one round, rigorous up to two). Standard decks at or below 8 pages (the calibration page line, frozen at plan time) skip calibration and build directly — the whole-deck rework calibration insures against is bounded there.
+Calibration is gated deterministically: production `build` is refused
+until the calibration preview evidence is current and the palette + style-summary
+gates pass; fix rounds stay within the tier budget. The independent
+`visual-critic` reviews the deck ONCE at the production boundary — the main
+session authors the Slide Spec and the Art Direction, so it never stands in for
+the critic. A scope-aware `critic-preview-map.json` is materialized at the critic
+boundary (dispatch/advance; the hook refreshes it at spawn when hooks fire) and,
+when hooks fire, the critic may only write that map's `review_output`; stale
+renders and wrong output paths are rejected before review. An explicit
+calibration sample created with
 `builder_packet.py --mode calibration --slides ...` is recorded atomically as
 the active round, so `next` and `advance` preserve it instead of silently
 restoring the default sample.
 Every calibration green result remains valid only while the bound Slide Spec,
 Art Direction, page sources, calibration PPTX, preview PNGs, palette report,
 and render manifest still match their recorded hashes; stale evidence routes
-back to preview or critic. Calibration preview and the final rendered gate also
+back to preview or a builder repair round. Calibration preview and the final rendered gate also
 inspect slide, chart, and diagram XML in the PPTX, resolve theme scheme colors,
 and reject colors outside the selected style's light/dark six-role palettes.
 This static check resolves the base scheme color and literal XML colors; it does not

@@ -218,10 +218,12 @@ def style_summary_valid(work_dir: Path) -> tuple[bool, str]:
 
 
 def calibration_review(work_dir: Path) -> dict[str, Any]:
-    """Status of the INDEPENDENT calibration review (SKILL.md step 8).
+    """Deterministic calibration green (0.26.0): evidence + palette + style summary.
 
-    Only applies once calibration evidence exists, so a work-dir that never ran
-    calibration is not retroactively blocked by this contract.
+    The independent critic reviews the deck ONCE at the production boundary now;
+    a calibration review file, when present, is advisory only (see the
+    review_advisory block). Only applies once calibration evidence exists, so a
+    work-dir that never ran calibration is not retroactively blocked.
     """
     target = work_dir / CALIBRATION_DIR_NAME
     manifest_path = target / CALIBRATION_MANIFEST_NAME
@@ -252,8 +254,6 @@ def calibration_review(work_dir: Path) -> dict[str, Any]:
     status["required"] = True
     slides = [int(value) for value in calibration.get("slides") or [] if isinstance(value, int)]
     status["slides"] = slides
-    expected_pptx = str((calibration.get("pptx") or {}).get("sha256") or "")
-
     current, current_reason = calibration_evidence_is_current(calibration)
     if not current:
         status["action"] = "preview"
@@ -288,65 +288,41 @@ def calibration_review(work_dir: Path) -> dict[str, Any]:
         )
         return status
 
-    if not review_path.is_file():
-        status["reason"] = (
-            "no independent calibration review on disk; the main session's own read of the "
-            "calibration PNGs is not a substitute (it is the session that chose the treatment)"
-        )
-        return status
-    status["present"] = True
-    try:
-        review = _read_object(review_path)
-    except Exception as exc:
-        status["reason"] = f"calibration review is unreadable: {exc}"
-        return status
+    # 0.26.0: calibration green is DETERMINISTIC — evidence currency + palette +
+    # style summary below. The independent critic moved to a single production
+    # review: with declarative pages and centralized tokens a systemic visual
+    # defect is a token/params fix, not per-page rework, so paying one full
+    # critic round before the first full build no longer buys proportionate
+    # assurance (the calibration PREVIEW still renders the sample for the
+    # deterministic gates and the recorded risk trail). An existing review file
+    # is read as an advisory block only — it never gates the build.
+    advisory: dict[str, Any] = {"present": False}
+    if review_path.is_file():
+        status["present"] = True
+        try:
+            review = _read_object(review_path)
+            advisory["present"] = True
+            blocking: list[str] = []
+            repair_slides: set[int] = set()
+            for item in review.get("slides") or []:
+                if not isinstance(item, dict):
+                    continue
+                slide_no = int(item.get("slide") or 0)
+                if str(item.get("ai_template_feel") or "none").strip().lower() == "major":
+                    blocking.append(f"slide {slide_no}: ai_template_feel=major")
+                    repair_slides.add(slide_no)
+                for finding in item.get("issues") or []:
+                    if not isinstance(finding, dict):
+                        continue
+                    if normalise_severity(review, finding) in QA_BLOCKING_SEVERITIES:
+                        blocking.append(f"slide {slide_no}: {finding.get('code') or 'visual_finding'}")
+                        repair_slides.add(slide_no)
+            advisory["blockers"] = blocking
+            advisory["repair_slides"] = sorted(repair_slides)
+        except Exception as exc:
+            advisory["error"] = f"calibration review file is unreadable: {exc}"
+    status["review_advisory"] = advisory
 
-    if not expected_pptx or review.get("pptx_sha256") != expected_pptx:
-        status["reason"] = "calibration review is not bound to the current calibration render"
-        return status
-
-    reviewed = {
-        int(item["slide"])
-        for item in review.get("slides") or []
-        if isinstance(item, dict) and isinstance(item.get("slide"), int)
-    }
-    if reviewed != set(slides):
-        status["reason"] = (
-            f"calibration review covers slides {sorted(reviewed)} but the calibrated pages are {sorted(slides)}"
-        )
-        return status
-
-    receipt_ok, receipt_degraded, receipt_reason = calibration_receipt_valid(
-        work_dir, calibration, review_path
-    )
-    if not receipt_ok:
-        status["reason"] = receipt_reason
-        return status
-    status["receipt_verified"] = not receipt_degraded
-    status["receipt_degraded"] = receipt_degraded
-
-    blocking: list[str] = []
-    repair_slides: set[int] = set()
-    for item in review.get("slides") or []:
-        if not isinstance(item, dict):
-            continue
-        slide_no = int(item.get("slide") or 0)
-        if str(item.get("ai_template_feel") or "none").strip().lower() == "major":
-            blocking.append(f"slide {slide_no}: ai_template_feel=major")
-            repair_slides.add(slide_no)
-        for finding in item.get("issues") or []:
-            if not isinstance(finding, dict):
-                continue
-            if normalise_severity(review, finding) in QA_BLOCKING_SEVERITIES:
-                blocking.append(f"slide {slide_no}: {finding.get('code') or 'visual_finding'}")
-                repair_slides.add(slide_no)
-    status["blockers"] = len(blocking)
-    status["ok"] = not blocking
-    if blocking:
-        status["action"] = "builder"
-        status["repair_slides"] = sorted(repair_slides)
-        status["reason"] = "calibration review still reports systemic findings: " + "; ".join(blocking[:6])
-        return status
     # Hard invariant (Batch 1-4 closure): green ALSO requires the calibration
     # builder's style summary, so the established visual system is guaranteed to
     # reach later builders via the style contract instead of only the Art Direction.
@@ -354,9 +330,10 @@ def calibration_review(work_dir: Path) -> dict[str, Any]:
     if not ok:
         status["action"] = "builder"
         status["repair_slides"] = slides
-        status["blockers"] = len(blocking) + 1
+        status["blockers"] = 1
         status["ok"] = False
         status["reason"] = reason
     else:
         status["action"] = None
+        status["ok"] = True
     return status

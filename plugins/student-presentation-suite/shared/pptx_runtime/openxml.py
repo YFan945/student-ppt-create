@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 
 OPENXML_SDK_VERSION = "3.5.1"
@@ -113,7 +114,19 @@ def build_openxml_validator() -> Path:
         raise RuntimeError(f"failed to build Open XML validator: {detail.strip()}")
     output.parent.mkdir(parents=True, exist_ok=True)
     try:
-        temporary.replace(output)
+        # Windows AV transiently locks a freshly written assembly (same flake
+        # class build.py fixed for deck.pptx): retry the swap before giving up.
+        last_error: OSError | None = None
+        for _ in range(6):
+            try:
+                temporary.replace(output)
+                last_error = None
+                break
+            except OSError as exc:
+                last_error = exc
+                time.sleep(0.3)
+        if last_error is not None:
+            raise last_error
     except OSError:
         if not assembly.is_file():
             raise

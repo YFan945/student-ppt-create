@@ -124,6 +124,90 @@ function paletteColors(tokens) {
   return set;
 }
 
+// 0.26.0 处方机制：把确定性失败翻译成可执行修法。
+const LAYOUT_LIBRARY = (() => {
+  try {
+    return require(
+      path.join(SCRIPTS_DIR, '..', 'skills', 'sp-deck', 'references', 'layout-library.json'),
+    );
+  } catch (_error) {
+    return { layouts: [] };
+  }
+})();
+
+function paletteRoleMap(tokens) {
+  const roleByHex = {};
+  const walk = (node, trail) => {
+    if (Array.isArray(node)) {
+      node.forEach((value, index) => walk(value, `${trail}[${index}]`));
+    } else if (node && typeof node === 'object') {
+      for (const [key, value] of Object.entries(node)) walk(value, trail ? `${trail}.${key}` : key);
+    } else if (typeof node === 'string') {
+      const t = node.toUpperCase();
+      if (/^[0-9A-F]{6}$/.test(t) && !roleByHex[t]) roleByHex[t] = trail;
+    }
+  };
+  walk(tokens, '');
+  return roleByHex;
+}
+
+function remedyForThrow(error, pagePath) {
+  const message = String((error && error.message) || error);
+  let mod = null;
+  try {
+    mod = require(pagePath);
+  } catch (_error) {
+    mod = null;
+  }
+  const kind = mod && typeof mod === 'object' ? String(mod.kind || 'content') : null;
+  const eligible = (LAYOUT_LIBRARY.layouts || []).filter(
+    (l) => !kind || !l.eligible_kinds || l.eligible_kinds.includes(kind),
+  );
+  const unknown = message.match(/Unknown layout:\s*(\S+)/);
+  if (unknown) {
+    return [
+      `未知版式 "${unknown[1]}"。kind=${kind || '?'} 的可用版式：` +
+        `${eligible
+          .slice(0, 12)
+          .map((l) => l.id)
+          .join(', ')}（全表见 skills/sp-deck/references/layout-library.json）`,
+    ];
+  }
+  const chain = message.match(/fallback chain \[([^\]]*)\] all failed/);
+  if (chain) {
+    const failed = chain[1].split('->').map((s) => s.trim());
+    const family = ((LAYOUT_LIBRARY.layouts || []).find((l) => l.id === failed[0]) || {}).family;
+    const alternatives = (LAYOUT_LIBRARY.layouts || []).filter(
+      (l) =>
+        family &&
+        l.family === family &&
+        !failed.includes(l.id) &&
+        (!kind || !l.eligible_kinds || l.eligible_kinds.includes(kind)),
+    );
+    const bodyCount =
+      mod && mod.slots && Array.isArray(mod.slots.body) ? mod.slots.body.length : null;
+    const parts = [
+      `版式链 ${chain[1]} 全部放不下当前载荷（slots.body ${bodyCount === null ? '?' : `${bodyCount} 条`}）。处方：`,
+    ];
+    if (alternatives.length) {
+      parts.push(
+        `同族更大容量版式：${alternatives
+          .slice(0, 4)
+          .map(
+            (l) => `${l.id}（body_items ${JSON.stringify((l.capacity || {}).body_items || '?')}）`,
+          )
+          .join('；')}；`,
+      );
+    }
+    if (bodyCount !== null && bodyCount > 1) {
+      parts.push('或把 body 裁到更少条目后重试（COPY 同步裁剪，保内容门）；');
+    }
+    parts.push('禁止为放得下去掉必出内容或转函数式页面。');
+    return [parts.join(' ')];
+  }
+  return [];
+}
+
 const deckPath = path.join(WORK_DIR, 'deck.js');
 if (!fs.existsSync(deckPath)) {
   process.stdout.write(`check_page_module: ${deckPath} 不存在——先 plan 生成 deck.js 再自检\n`);
@@ -183,11 +267,16 @@ for (const rel of pages) {
       require(path.join(SCRIPTS_DIR, 'pptx-layouts.js')).renderDeclaredPage(ctx, mod);
     }
   } catch (error) {
-    findings.push({
+    const finding = {
       page: rel,
       kind: 'throw',
       message: String((error && error.message) || error).slice(0, 300),
-    });
+    };
+    // 0.26.0 处方：确定性失败必须带可执行修法，builder 的循环从"猜"变成照方抓药
+    // （run-14 live：同一 fit 链连续失败 6 次，每次只有症状没有出路）。
+    const remedy = remedyForThrow(error, pagePath);
+    if (remedy.length) finding.remedy = remedy;
+    findings.push(finding);
     continue;
   }
   const functionPage = /module\.exports\s*=\s*function/.test(source);
@@ -251,10 +340,19 @@ for (const rel of pages) {
   }
   const offPalette = collectColors(calls).filter((hex) => !allowedColors.has(hex));
   if (offPalette.length) {
+    const roleMap = paletteRoleMap(tokens);
+    const mapping = [...new Set(offPalette)]
+      .map((hex) =>
+        roleMap[hex]
+          ? `${hex}→就是 tokens 的 ${roleMap[hex]}，改用角色引用`
+          : `${hex}→无同值角色，改用 palette.* 角色色`,
+      )
+      .join('；');
     findings.push({
       page: rel,
       kind: 'off-palette',
       message: `疑似非调色板色值：${[...new Set(offPalette)].join(', ')}（颜色一律走 tokens 角色色，D13）`,
+      remedy: [mapping],
     });
   }
 }
