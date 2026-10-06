@@ -259,15 +259,16 @@ critic 成本）；不绿时 `render` 拒绝、`next` 指向免 repair 轮的 bu
 QA 暴露；2026-09-18 live：build #1 报 0 blocker，render + critic 付完之后 QA 回 48 条，
 其中 16 条只靠 PPTX 与 spec 就能算出来）。
 
-**校准的评审者必须是独立 critic，不能是主会话**：主会话写了 spec 与 art direction，
-检查 hierarchy/密度/配色时会全部通过，唯独看不见自己选的视觉语言在每页重复。2026-09-18
-live：主会话接受了校准图，独立 critic 在全量建完后判定"13 页套同一个带边框通栏面板"，
-代价 76.4M token（该次会话 58.8%），而 3 页规模的评审只需 1.4M。
+**作者不能自评审（0.26.0 起收敛为生产边界的一次独立评审）**：主会话写了 spec 与 art
+direction，检查 hierarchy/密度/配色时会全部通过，唯独看不见自己选的视觉语言在每页重复。
+2026-09-18 live：主会话接受了校准图，独立 critic 在全量建完后判定"13 页套同一个带边框
+通栏面板"，代价 76.4M token（该次会话 58.8%）。0.26.0 起校准反馈全部确定性化（palette 门 +
+style summary），独立评审收敛为生产边界的一次——教训由该次评审的 spawn 模板承载：主会话
+永远不代替 critic 看图。
 
 **可验证**：同一 PNG sha256 的 Read 次数 ≤ 1；含图的回合里 `Read` 次数 > 1
 （并行发出），而不是每张图单独一轮；`visual-review.json` 绑定的渲染图 SHA256 与
-`manifest.render.contact_sheet.sha256` 同源；`calibration/calibration-visual-review.json`
-存在且早于正式 build。
+`manifest.render.contact_sheet.sha256` 同源。
 
 ## CD-10 一个 builder 实例只服务一轮
 每轮 repair 都 **spawn 一个新的 builder**，不要用 SendMessage 继续上一个实例。

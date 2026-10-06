@@ -148,8 +148,8 @@ Windows 下用这个 python 形式。`edit_ooxml` 走原 OOXML 路径；create/r
 Production Summary confirmation
 → isolated research / compiled Slide Spec / Art Direction
 → ppt_pipeline plan
-→ standard/rigorous(>8 页): isolated builder(calibration) + preview + independent critic
-→ fast / standard(≤8 页): skip calibration
+→ standard/rigorous(>8 页): isolated builder(calibration) + preview + deterministic gates
+→ fast / standard(≤8 页) / rigorous(≤8 页): skip calibration
 → isolated builder(initial: remaining pages, preserving calibration)
 → exploration gates → production build（确定性预检：static-risk + rendered + actual-content + structural-contract + quality 确定性部分）
 → render（预检全绿才放行）→ prepare-deliverables（仅已确认类型）→ isolated visual-critic + QA DAG（内容门全跑后汇总）
@@ -157,7 +157,7 @@ Production Summary confirmation
 → build → render → prepare-deliverables → critique → QA → complete
 ```
 
-核心原则：**standard/rigorous 先用极少数真实页面校准视觉系统（standard ≤ 8 页的短 deck 除外，直接整副实现）；fast 在最终成品阶段集中评审。** Skill 负责智能编排，Builder/Researcher/Critic 各自隔离高上下文工作，Pipeline 负责确定性状态和交付；Calibration helper 只负责便宜、可追溯的早期视觉反馈，**但它的判定权属于独立 critic，不属于 spec 的作者**。
+核心原则：**standard/rigorous(>8 页) 先用极少数真实页面校准视觉系统（三档 ≤ 8 页的短 deck 都直接整副实现）；视觉判定权属于生产边界的唯一一次独立评审，不属于 spec 的作者。** Skill 负责智能编排，Builder/Researcher/Critic 各自隔离高上下文工作，Pipeline 负责确定性状态和交付；Calibration helper 只负责便宜、可追溯的早期确定性反馈（palette 门 + style summary），不设 critic。
 
 ## Output contract
 

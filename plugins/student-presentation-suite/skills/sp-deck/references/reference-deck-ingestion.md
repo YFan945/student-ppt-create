@@ -48,8 +48,9 @@ cues because the chart takeaway panel's default English text contains
 ## Boundaries
 
 - Suggestions are **advisory inputs to the engine**, not overrides: capacity,
-  contraindications and fallback chains still apply, and the calibration
-  round + independent critic keep their authority over the visual system.
+  contraindications and fallback chains still apply, and the deterministic
+  calibration gates + the single production review keep their authority over
+  the visual system.
 - The analyzer never reads or modifies the reference deck's media; images are
   the image-strategy contract's business, not ingestion's.
 - `edit_ooxml` does not use this route (it preserves the source file directly);
