@@ -17,6 +17,7 @@
   },
   "overrides": {
     "brace-expansion": "^2.0.1",
+    "image-size": "$image-size",
     "js-yaml": "4.3.2"
   }
 }

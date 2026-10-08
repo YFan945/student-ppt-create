@@ -2,6 +2,20 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## Unreleased
+
+- `fetch-text` 在连接前拒绝回环、私网、链路本地和保留地址，重定向的每一跳都重新检查，响应体限制为 16 MiB，并记录最终 URL。检索结果页和目录页仍只分类、不按题材拦截。
+- `repair --cancel --waive` 与 pre-QA、QA 使用同一指纹（`quality-deterministic` 记为 `quality`），在计 blocker 之前生效。已豁免的 required-asset 失败可以走完 QA 并 complete。
+- 锁定的 `image-size` 统一为 2.0.4，包括 pptxgenjs 原先嵌套的 1.2.1。
+- `delete-slide` 只删除 `ppt/slides/slideN.xml`。关系目标若不是这个部件名，或解析后离开 `ppt/slides`，不会被删除。
+- 装不下的 `key_line` 与其他溢出一样让该页失败；内容检查在声明的结论句没有上屏时记 `missing_key_line`。
+- 图片 provider 的 `{query}`、`{url}`、`{output}` 只能作为完整 argv；shell 包装被拒绝；结果文件解析后必须留在输出目录内。
+- 生产入口守卫在本仓库内仍然生效。把内部入口通过管道送进 python 或 node 会被拒绝。允许列表里的维护命令和只读命令仍可运行。
+- 缺少 critic 回执时，拒绝文本不再提示 `--receipt-policy allow-missing`。`complete` 仍为 `complete`，并显式记下 `completion: degraded`。
+- 安装脚本使用 `python-constraints.txt`。pull request 跑带该约束文件的 unittest；push 不跑。
+- 生成的档位表写出 fast 的有效分片上限和页数阈值。
+- 两页校准预览是下一步调度，短 deck 和 fast 的直接 `build` 不会仅因预览缺失而被拒绝。更长的 standard / rigorous 仍会拒绝。README 与该行为一致。
+
 ## 0.28.1 — 2026-10-09 · 封面色面，铺开前先看两页
 
 六个动作各自拉开剪影，封面不再是贴边细条。每一档在写其余页之前先看封面和一张内容页。

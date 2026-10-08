@@ -1130,6 +1130,28 @@ class BuildTests(PipelineTestCase):
         self.assertNotEqual("initial", payload.get("builder_mode"))
         self.assertIn("calibration_preview.py", payload.get("next_command", ""))
 
+    def test_short_standard_build_is_not_refused_without_a_two_page_preview(self) -> None:
+        self.write_rich_spec(8)
+        spec = json.loads(self.files["spec"].read_text(encoding="utf-8"))
+        spec["meta"]["quality_level"] = "standard"
+        self.files["spec"].write_text(json.dumps(spec), encoding="utf-8")
+        self.plan(self.files)
+        self.implement_scaffolded_pages()
+        self.assertEqual(0, pp.main(["build", "--work-dir", str(self.work)]))
+
+    def test_longer_standard_build_is_refused_without_calibration(self) -> None:
+        self.write_rich_spec(9)
+        spec = json.loads(self.files["spec"].read_text(encoding="utf-8"))
+        spec["meta"]["quality_level"] = "standard"
+        self.files["spec"].write_text(json.dumps(spec), encoding="utf-8")
+        self.plan(self.files)
+        self.implement_scaffolded_pages()
+        err = io.StringIO()
+        with redirect_stderr(err):
+            code = pp.main(["build", "--work-dir", str(self.work)])
+        self.assertEqual(2, code)
+        self.assertIn("full build refused", err.getvalue())
+
     def test_high_score_cannot_build_without_calibration(self) -> None:
         self.write_rich_spec(9)
         spec = json.loads(self.files["spec"].read_text(encoding="utf-8"))
@@ -1352,6 +1374,91 @@ class QaDagTests(PipelineTestCase):
         pp.main(["build", "--work-dir", str(self.work), "--entry", str(entry)])
         self.render_evidence(self.files)
         return self.manifest()
+
+    def test_waived_required_asset_failure_stays_waived_through_qa(self) -> None:
+        """A waived pre-QA blocker uses one fingerprint through QA and complete.
+
+        The quality pre-QA stage is named quality-deterministic, but its report
+        is pre-qa-quality.json. The waiver must key ``quality`` so QA, which
+        runs the same finding under the quality stage, still drops it before
+        blocker counts.
+        """
+        self.producing_manifest()
+        manifest = self.manifest()
+        manifest["state"] = "producing"
+        manifest["pre_qa"] = {
+            "ok": False,
+            "blockers": 2,
+            "pptx_sha256": manifest["build"]["pptx"]["sha256"],
+            "rounds": 1,
+            "max_rounds": 2,
+        }
+        (self.work / "pre-qa-structural-contract.json").write_text(json.dumps({
+            "ok": False,
+            "issues": [{
+                "slide": 1, "severity": "critical", "code": "asset_required_missing",
+                "message": "layout promises an asset but none renders",
+            }],
+        }), encoding="utf-8")
+        (self.work / "pre-qa-quality.json").write_text(json.dumps({
+            "ok": False,
+            "issues": [{
+                "slide": "slide-2", "severity": "major", "code": "evidence_unbound",
+                "message": "claim has no bound evidence",
+            }],
+        }), encoding="utf-8")
+        pp.save_manifest(self.work, manifest)
+        pp.mirror_workflow_state(manifest, manifest["state"])
+        self.assertEqual(pp.main(["repair", "--work-dir", str(self.work), "--reason", "fix"]), 0)
+        self.assertEqual(pp.main([
+            "repair", "--work-dir", str(self.work), "--cancel", "--waive",
+            "--reason", "known gate limitations: required asset and unbound evidence",
+        ]), 0)
+        stored = [
+            (item["stage"], item["code"], item["slide"])
+            for item in self.manifest()["build"]["gate_waivers"][0]["findings"]
+        ]
+        self.assertIn(("structural-contract", "asset_required_missing", 1), stored)
+        self.assertIn(("quality", "evidence_unbound", 2), stored)
+        self.assertNotIn("quality-deterministic", [item[0] for item in stored])
+
+        runner = FakeRunner(self.work)
+        runner.report_failures = {
+            "pre-qa-structural-contract.json": [{
+                "slide": 1, "severity": "critical", "code": "asset_required_missing",
+                "message": "layout promises an asset but none renders",
+            }],
+            "pre-qa-quality.json": [{
+                "slide": 2, "severity": "major", "code": "evidence_unbound",
+                "message": "claim has no bound evidence",
+            }],
+            "qa-structural-contract.json": [{
+                "slide": 1, "severity": "critical", "code": "asset_required_missing",
+                "message": "layout promises an asset but none renders",
+            }],
+            "qa-quality.json": [{
+                "slide": 2, "severity": "major", "code": "evidence_unbound",
+                "message": "claim has no bound evidence",
+            }],
+        }
+        pp._core._runner = runner
+        pre_qa = pp.run_pre_qa_gates(self.manifest(), self.work)
+        self.assertEqual(0, pre_qa["blockers"], pre_qa["problems"])
+        self.assertTrue(pre_qa["ok"], pre_qa)
+        self.assertGreaterEqual(pre_qa["waived"], 2)
+
+        self.assertEqual(pp.main([
+            "qa", "--work-dir", str(self.work),
+            "--visual-review", str(self.files["visual_review"]),
+        ]), 0)
+        qa_report = json.loads((self.work / "pipeline-qa.json").read_text(encoding="utf-8"))
+        codes = [item.get("code") for item in qa_report["problems"]]
+        self.assertNotIn("asset_required_missing", codes)
+        self.assertNotIn("evidence_unbound", codes)
+        self.assertGreaterEqual(qa_report["waived"], 2)
+        self.assertTrue(self.manifest()["qa"]["stages"]["structural_contract"]["ok"])
+        self.assertTrue(self.manifest()["qa"]["stages"]["quality"]["ok"])
+        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 0)
 
     def test_delivery_consumes_this_runs_reports_in_contract_order(self) -> None:
         self.producing_manifest()
@@ -1847,6 +1954,7 @@ class CompleteTests(PipelineTestCase):
         self.state_qa(ok=True, delivery_checked=True)
         self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 0)
         self.assertEqual(self.manifest()["state"], "complete")
+        self.assertEqual(self.manifest()["completion"], "verified")
         published = self.manifest()["published"]["pptx"]
         self.assertEqual(Path(published["path"]), self.work.parent.parent / "work-01-presentation.pptx")
         self.assertTrue(pp.binding_is_current(published))
@@ -1893,8 +2001,12 @@ class CompleteTests(PipelineTestCase):
         manifest["qa"]["critic_execution"] = None
         manifest["qa"]["critic_receipt"] = "missing-allowed"
         pp.save_manifest(self.work, manifest)
-        self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 0)
+        buffer = io.StringIO()
+        with redirect_stdout(buffer):
+            self.assertEqual(pp.main(["complete", "--work-dir", str(self.work)]), 0)
         self.assertEqual(self.manifest()["state"], "complete")
+        self.assertEqual(self.manifest()["completion"], "degraded")
+        self.assertIn("complete (degraded)", buffer.getvalue())
 
     def test_complete_with_unmarked_missing_critic_execution_is_refused(self) -> None:
         self.state_qa(ok=True, delivery_checked=True)
@@ -2929,8 +3041,11 @@ class ReceiptPolicyTests(PipelineTestCase):
         receipt = pp.execution_receipt(self.work, "research", artifact, policy="allow-missing")
         self.assertFalse(receipt["spawn_verified"])
         self.assertEqual(receipt["degraded"], "receipt-missing-allowed")
-        with self.assertRaises(pp.RefusedError):
+        with self.assertRaises(pp.RefusedError) as caught:
             pp.execution_receipt(self.work, "research", artifact)
+        self.assertNotIn("allow-missing", str(caught.exception))
+        self.assertNotIn("--receipt-policy", str(caught.exception))
+        self.assertIn("doctor", str(caught.exception))
         (self.work / "research-execution.json").write_text(
             json.dumps({"agent": "wrong-agent"}), encoding="utf-8"
         )

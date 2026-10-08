@@ -120,29 +120,32 @@ function paintKeyLine(ctx, frame) {
   if (!frame.key || !frame.keyBand) return;
   const lang = ctx.lang || 'chinese';
   const band = frame.keyBand;
+  const textBox = { x: band.x, y: band.y + 0.06, w: band.w, h: band.h - 0.12 };
+  const fit = H.fitText(frame.key, textBox, { min: 14, max: 22, margin: 0, role: 'body' });
+  if (!fit.fits) throw layoutFit('key_line does not fit the closing band');
   const ruleY = band.y - 0.04;
+  H.addDivider(ctx.slide, band.x, ruleY, band.w, ctx.tokens, 'hairline');
+  register(ctx, { type: 'line', x1: band.x, y1: ruleY, x2: band.x + band.w, y2: ruleY });
   try {
-    H.addDivider(ctx.slide, band.x, ruleY, band.w, ctx.tokens, 'hairline');
-    register(ctx, { type: 'line', x1: band.x, y1: ruleY, x2: band.x + band.w, y2: ruleY });
-    const textBox = { x: band.x, y: band.y + 0.06, w: band.w, h: band.h - 0.12 };
-    const fit = H.fitText(frame.key, textBox, { min: 14, max: 22, margin: 0, role: 'body' });
-    if (!fit.fits) return;
     H.addFittedText(ctx.slide, frame.key, textBox, ctx.tokens, lang, 'body', {
       bold: true,
       margin: 0,
       fontSize: fit.fontSize,
       label: 'key_line',
     });
-    register(ctx, {
-      type: 'text',
-      role: 'subtitle',
-      text: frame.key,
-      ...textBox,
-      fontSize: fit.fontSize,
-    });
   } catch (error) {
-    if (!(error instanceof RangeError)) throw error;
+    if (error instanceof RangeError) {
+      throw layoutFit(`key_line does not fit the closing band — ${error.message}`);
+    }
+    throw error;
   }
+  register(ctx, {
+    type: 'text',
+    role: 'subtitle',
+    text: frame.key,
+    ...textBox,
+    fontSize: fit.fontSize,
+  });
 }
 
 function visualLanguage(ctx) {

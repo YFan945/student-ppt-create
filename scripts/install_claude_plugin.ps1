@@ -225,13 +225,13 @@ if (-not $Local) {
     if (-not $pluginRoot) {
         Write-Warning "Could not locate the cached plugin under $(Get-PluginCacheRoot)."
         Write-Warning "Install dependencies manually there, then restart Claude Code:"
-        Write-Warning "  pip install -r requirements.txt -r requirements-claude-pptx.txt && npm ci"
+        Write-Warning "  pip install -r requirements.txt -r requirements-claude-pptx.txt -c python-constraints.txt && npm ci"
     } else {
         Write-Output "Installing dependencies in $pluginRoot"
         if (-not $SkipDependencies) {
             Install-ManagedDotNetSdk
-            Invoke-Checked python @("-m", "pip", "install", "-r", (Join-Path $pluginRoot "requirements.txt"))
-            Invoke-Checked python @("-m", "pip", "install", "-r", (Join-Path $pluginRoot "requirements-claude-pptx.txt"))
+            Invoke-Checked python @("-m", "pip", "install", "-r", (Join-Path $pluginRoot "requirements.txt"), "-c", (Join-Path $pluginRoot "python-constraints.txt"))
+            Invoke-Checked python @("-m", "pip", "install", "-r", (Join-Path $pluginRoot "requirements-claude-pptx.txt"), "-c", (Join-Path $pluginRoot "python-constraints.txt"))
             Invoke-Checked npm @("--prefix", $pluginRoot, "ci")
         }
     }

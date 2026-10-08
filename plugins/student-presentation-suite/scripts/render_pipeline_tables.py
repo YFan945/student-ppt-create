@@ -26,7 +26,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared.quality_tiers import TIERS, tier_policy  # noqa: E402
+from shared.quality_tiers import (  # noqa: E402
+    FAST_SHARD_PAGE_THRESHOLD,
+    FAST_SHARD_SECOND_LINE,
+    TIERS,
+    effective_shard_cap,
+    tier_policy,
+)
 
 CONTRACT_PATH = ROOT / "references" / "pipeline-contract.json"
 READMES = {
@@ -35,6 +41,27 @@ READMES = {
 }
 MARKER_START = "<!-- pipeline-table:start -->"
 MARKER_END = "<!-- pipeline-table:end -->"
+
+
+def shard_cap_cell(tier: str, lang: str) -> str:
+    """The cap a deck of this tier actually gets, including fast page thresholds."""
+    policy = tier_policy(tier)
+    if tier != "fast":
+        return str(policy["shard_cap"])
+    low = effective_shard_cap(tier, FAST_SHARD_PAGE_THRESHOLD)
+    mid = effective_shard_cap(tier, FAST_SHARD_SECOND_LINE)
+    high = effective_shard_cap(tier, FAST_SHARD_SECOND_LINE + 1)
+    if lang == "zh":
+        return (
+            f"{low}（≤{FAST_SHARD_PAGE_THRESHOLD} 页），"
+            f"{mid}（{FAST_SHARD_PAGE_THRESHOLD + 1}–{FAST_SHARD_SECOND_LINE}），"
+            f"{high}（多于 {FAST_SHARD_SECOND_LINE}）"
+        )
+    return (
+        f"{low} (≤{FAST_SHARD_PAGE_THRESHOLD} pages), "
+        f"{mid} ({FAST_SHARD_PAGE_THRESHOLD + 1}–{FAST_SHARD_SECOND_LINE}), "
+        f"{high} (above {FAST_SHARD_SECOND_LINE})"
+    )
 
 
 def load_contract() -> dict:
@@ -70,7 +97,7 @@ def render_block(contract: dict, lang: str) -> str:
                 else "+ style majors + visual regression + three identical moves"
             )
         rows.append(
-            f"| `{tier}` | {policy['calibration_max_rounds']} | {policy['shard_cap']} | {blocks} |"
+            f"| `{tier}` | {policy['calibration_max_rounds']} | {shard_cap_cell(tier, lang)} | {blocks} |"
         )
     tier_rows = "\n".join(rows)
 

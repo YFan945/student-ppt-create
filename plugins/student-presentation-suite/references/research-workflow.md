@@ -243,9 +243,10 @@ claim 写成内容，不写成检索动作；条数越界仅为 minor 提示，�
 `www.bing.com` / `so.com` / `sogou.com` / `duckduckgo.com` / `lite.duckduckgo.com` /
 `html.duckduckgo.com` / `search.brave.com` / `mojeek.com` / `search.yahoo.com` / `baidu.com` /
 `google.com`、任何 `link?m=` 跳转，以及政府站的**站内检索接口返回的记录页**，都只算定位手段。
-定位交给检索工具；要读的是它给出的**文档 URL**。`fetch-text` 不做题材审查：你让它取哪个 URL
-它就取哪个，只在 provenance 里标出 host 类别（`host_class`），所以痕迹是诚实的，判断仍在
-你这边——但结果页写进 `sources` 就是证据错误。
+定位交给检索工具；要读的是它给出的**文档 URL**。`fetch-text` 不做题材审查：检索结果页和
+目录页会取回，并在 provenance 里标出 host 类别（`host_class`），所以痕迹是诚实的，判断仍在
+你这边。回环、私网、链路本地和保留地址在连接前拒绝，重定向的每一跳都重新检查，响应体有
+上限，记录里写下最终 URL。结果页写进 `sources` 就是证据错误。
 
 定位页的 `host_class` 为 `listing`：发布方记录端点、末级 /news、/press-releases、
 /xwdt、/xwfb 和 index.htm/index.html。文章位于这些目录下不自动成为定位页；

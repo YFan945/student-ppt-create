@@ -196,6 +196,58 @@ class FetchImagesTests(unittest.TestCase):
             self.assertIn("escapes project root", " ".join(report["gate_reasons"]))
             self.assertFalse((project / "fetched" / "lab-photo-user-photos.png").exists())
 
+    def test_placeholders_are_argv_entries_and_output_stays_inside(self) -> None:
+        import importlib
+        import tempfile
+
+        image_runtime = importlib.import_module("shared.pptx_runtime.fetch_images")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            out = tmp_path / "fetched"
+            out.mkdir()
+            notes: list[str] = []
+            result = image_runtime._run_command(
+                {"id": "sh", "command": "bash -c 'printf x > {output}'"},
+                "cover",
+                out,
+                10,
+                notes,
+            )
+            self.assertIsNone(result)
+            self.assertIn("shell", " ".join(notes))
+
+            notes = []
+            embedded = f"{sys.executable} -c \"open('{{output}}','wb').write(b'x')\""
+            result = image_runtime._run_command(
+                {"id": "emb", "command": embedded},
+                "cover",
+                out,
+                10,
+                notes,
+            )
+            self.assertIsNone(result)
+            self.assertIn("entire argv", " ".join(notes))
+
+            outside = tmp_path / "outside.bin"
+            outside.write_bytes(b"secret-bytes")
+            link_cmd = (
+                f"{sys.executable} -c "
+                "\"import os,sys; os.symlink(sys.argv[1], sys.argv[2])\" "
+                f"{outside} {{output}}"
+            )
+            notes = []
+            result = image_runtime._run_command(
+                {"id": "link", "command": link_cmd},
+                "cover",
+                out,
+                10,
+                notes,
+            )
+            self.assertIsNone(result)
+            self.assertEqual(b"secret-bytes", outside.read_bytes())
+            self.assertIn("escapes", " ".join(notes))
+
     def test_example_contract_matches_schema(self) -> None:
         from jsonschema import Draft202012Validator
 

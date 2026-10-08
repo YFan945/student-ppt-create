@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from shared.pptx_runtime.charts import validate_charts
-from shared.pptx_runtime.edit import clean_package
+from shared.pptx_runtime.edit import clean_package, delete_slide
 from shared.pptx_runtime.normalize import normalize_unpacked
 from shared.pptx_runtime.package import pack_directory, safe_extract_package
 from shared.pptx_runtime.render import align_rendered_pages
@@ -65,6 +65,61 @@ def write_clean_fixture(root: Path, dangling: bool = False) -> bytes:
 
 
 class PackageSafetyTests(unittest.TestCase):
+    def test_delete_slide_only_removes_a_real_slide_part(self) -> None:
+        slide_rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            outside = root / "outside.txt"
+            outside.write_text("keep", encoding="utf-8")
+            parts = {
+                "[Content_Types].xml": (
+                    '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+                    '<Override PartName="/ppt/slides/slide1.xml" ContentType="application/xml"/>'
+                    '<Override PartName="/ppt/slides/slide2.xml" ContentType="application/xml"/>'
+                    "</Types>"
+                ),
+                "ppt/presentation.xml": (
+                    '<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" '
+                    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+                    '<p:sldIdLst><p:sldId id="256" r:id="rId1"/><p:sldId id="257" r:id="rId2"/>'
+                    '<p:sldId id="258" r:id="rId3"/></p:sldIdLst></p:presentation>'
+                ),
+                "ppt/_rels/presentation.xml.rels": (
+                    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+                    f'<Relationship Id="rId1" Type="{slide_rel}" Target="slides/slide1.xml"/>'
+                    f'<Relationship Id="rId2" Type="{slide_rel}" Target="slides/slide2.xml"/>'
+                    f'<Relationship Id="rId3" Type="{slide_rel}" Target="slides/../../outside.txt"/>'
+                    "</Relationships>"
+                ),
+                "ppt/slides/slide1.xml": "<slide>one</slide>",
+                "ppt/slides/slide2.xml": "<slide>two</slide>",
+            }
+            for name, payload in parts.items():
+                path = root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(payload, encoding="utf-8")
+            before = (root / "ppt" / "presentation.xml").read_text(encoding="utf-8")
+            with self.assertRaises(ValueError):
+                delete_slide(root, "../../outside.txt")
+            self.assertEqual("keep", outside.read_text(encoding="utf-8"))
+            self.assertEqual(before, (root / "ppt" / "presentation.xml").read_text(encoding="utf-8"))
+
+            target = root / "outside-target.txt"
+            target.write_text("target", encoding="utf-8")
+            slide2 = root / "ppt" / "slides" / "slide2.xml"
+            slide2.unlink()
+            slide2.symlink_to(target)
+            with self.assertRaises(ValueError):
+                delete_slide(root, "slide2.xml")
+            self.assertEqual("target", target.read_text(encoding="utf-8"))
+            self.assertTrue(slide2.is_symlink())
+
+            slide2.unlink()
+            slide2.write_text("<slide>two</slide>", encoding="utf-8")
+            delete_slide(root, "slide2.xml")
+            self.assertFalse(slide2.exists())
+            self.assertTrue((root / "ppt" / "slides" / "slide1.xml").is_file())
+
     def test_extract_rejects_excessive_compression_ratio(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

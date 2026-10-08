@@ -1,6 +1,7 @@
 # Python 依赖 constraints——由 requirements*.txt 的范围解析出的精确闭包。
 # 生成方式：pip install --dry-run --ignore-installed --report <file> -r requirements-claude-pptx.txt
-# 用法：python -m pip install -r requirements.txt -c python-constraints.txt（CI 全部走 -c）。
+# 用法：python -m pip install -r requirements.txt -c python-constraints.txt
+# 安装脚本、pull request 的 unittest 工作流和 live canary 使用 -c。
 # 手工升级范围后需重新生成；本文件不做范围判断，只钉版本。
 # dependabot 不参与 pip 版本更新（其发现器会解析本文件并独立升传递钉，2026-09-26
 # 曾连续四例与父约束或 3.11/win32 平台冲突）。重新生成时需覆盖 CI 矩阵的全部

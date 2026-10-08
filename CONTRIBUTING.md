@@ -10,8 +10,8 @@ git clone https://github.com/YFan945/student-ppt-create.git
 cd student-ppt-create
 
 # Python 依赖
-pip install -r plugins/student-presentation-suite/requirements.txt
-pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt
+pip install -r plugins/student-presentation-suite/requirements.txt -c plugins/student-presentation-suite/python-constraints.txt
+pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt -c plugins/student-presentation-suite/python-constraints.txt
 
 # Node.js 依赖
 npm --prefix plugins/student-presentation-suite ci
@@ -47,7 +47,7 @@ PYTHONPATH=. python -m unittest discover -s tests
 1. 从 `main` 创建功能分支
 2. 实施修改并添加测试
 3. 运行全部测试确保通过
-4. 提交 PR 到 `main` 分支，并说明本地验证结果；push/PR 不再运行自动 CI
+4. 提交 PR 到 `main` 分支，并说明本地验证结果；pull request 会跑 unittest 套件（带 `python-constraints.txt`），push 不跑，发布没有必需的状态检查
 
 ## 版本发布
 

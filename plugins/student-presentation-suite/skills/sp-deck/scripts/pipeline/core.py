@@ -369,15 +369,14 @@ def execution_receipt(
             f"missing successful isolated {role} runtime receipt (hook-owned: "
             "runtime_evidence.py writes it at SubagentStop; the model cannot write it). "
             "Run doctor --work-dir <wd> to check whether this runtime delivers subagent "
-            "hook events; if it does not, re-run plan/qa with --receipt-policy allow-missing"
+            "hook events."
         )
     receipt = load_json(receipt_path) or {}
     if receipt.get("agent") != f"student-presentation-suite:{expected}" or not receipt.get("agent_id") or receipt.get("spawn_verified") is not True or receipt.get("work_id") != work_dir.name:
         raise RefusedError(
             f"invalid isolated {role} runtime receipt at {receipt_path} (present but "
             "empty, corrupt or identity-mismatched) — a present receipt can never "
-            "degrade via --receipt-policy allow-missing; it must be re-issued by the "
-            "hook or removed together with the work-dir"
+            "degrade; it must be re-issued by the hook or removed together with the work-dir"
         )
     if receipt.get("artifact") != bind(artifact):
         raise RefusedError(
@@ -663,27 +662,18 @@ def run_pre_qa_gates(manifest: dict[str, Any], work_dir: Path) -> dict[str, Any]
     """
     stages = pre_qa_stages(manifest, work_dir)
     pptx = Path(str(((manifest.get("build") or {}).get("pptx") or {}).get("path") or ""))
-    # 0.27.1：repair --cancel --waive 落盘的已知门限——按 (stage, code, slide) 指纹
-    # 从聚合中剔除，计数保留在 waived 里（报告文件本身不动）。
-    waiver_keys = {
-        (str(w.get("stage") or ""), str(w.get("code") or ""), str(w.get("slide")))
-        for entry in (manifest.get("build") or {}).get("gate_waivers") or []
-        for w in entry.get("findings") or []
-    }
+    # repair --cancel --waive records (stage, code, slide). The same fingerprint
+    # is applied here and in QA, before blocker counts. Report files stay immutable.
+    waiver_keys = gate_waiver_keys(manifest)
     reports: dict[str, Any] = {}
     problems: list[dict[str, Any]] = []
-    waived: list[dict[str, Any]] = []
+    waived_count = 0
     for stage in stages:
-        ok, stage_problems, binding = collect(stage)
-        if waiver_keys:
-            kept: list[dict[str, Any]] = []
-            for item in stage_problems:
-                key = (str(stage.name or ""), str(item.get("code") or ""), str(item.get("slide")))
-                if key in waiver_keys:
-                    waived.append({**item, "waived": True})
-                    continue
-                kept.append(item)
-            stage_problems = kept
+        _ok, stage_problems, binding = collect(stage)
+        stage_problems, binding, waived_n = apply_gate_waivers(
+            stage.name, stage_problems, binding, waiver_keys
+        )
+        waived_count += waived_n
         reports[stage.artifact] = binding
         problems.extend(stage_problems)
     blockers = sum(1 for item in problems if item["severity"] in QA_BLOCKING_SEVERITIES)
@@ -692,7 +682,7 @@ def run_pre_qa_gates(manifest: dict[str, Any], work_dir: Path) -> dict[str, Any]
     return {
         "ok": ok,
         "blockers": blockers,
-        "waived": len(waived),
+        "waived": waived_count,
         "problems": problems,
         "stages": reports,
         "pptx_sha256": sha256_file(pptx) if pptx.is_file() else None,
@@ -766,6 +756,73 @@ def slide_number_of(value: Any) -> int | None:
         number = int(match.group(1))
         return number if number > 0 else None
     return None
+
+
+def canonical_waiver_stage(stage: str) -> str:
+    """One stage id for pre-QA and QA.
+
+    Pre-QA renames the quality stage to ``quality-deterministic`` so its report
+    is not confused with the later critic pass, but the file is still
+    ``pre-qa-quality.json``. Waivers key that file's stage, ``quality``.
+    """
+    name = str(stage or "").replace("_", "-")
+    if name == "quality-deterministic":
+        return "quality"
+    return name
+
+
+def waiver_fingerprint(stage: Any, code: Any, slide: Any) -> tuple[str, str, str]:
+    """The waiver key: canonical stage, code, and a normalized slide number.
+
+    The message is stored on the waiver record for the audit and is not part of
+    the key. Both sides normalize slide labels (``3``, ``"3"``, ``"slide-3"``).
+    """
+    number = slide_number_of(slide)
+    return (
+        canonical_waiver_stage(str(stage or "")),
+        str(code or ""),
+        "" if number is None else str(number),
+    )
+
+
+def gate_waiver_keys(manifest: dict[str, Any]) -> set[tuple[str, str, str]]:
+    keys: set[tuple[str, str, str]] = set()
+    for entry in (manifest.get("build") or {}).get("gate_waivers") or []:
+        if not isinstance(entry, dict):
+            continue
+        for finding in entry.get("findings") or []:
+            if not isinstance(finding, dict):
+                continue
+            keys.add(waiver_fingerprint(finding.get("stage"), finding.get("code"), finding.get("slide")))
+    return keys
+
+
+def apply_gate_waivers(
+    stage_name: str,
+    problems: list[dict[str, Any]],
+    binding: dict[str, Any],
+    keys: set[tuple[str, str, str]],
+) -> tuple[list[dict[str, Any]], dict[str, Any], int]:
+    """Drop waived findings before blocker counts. Leave the report file untouched.
+
+    When every remaining finding is non-blocking, the stage binding is marked ok
+    so a waived required-asset failure can still reach complete.
+    """
+    if not keys:
+        return problems, binding, 0
+    kept: list[dict[str, Any]] = []
+    waived = 0
+    for item in problems:
+        key = waiver_fingerprint(stage_name, item.get("code"), item.get("slide"))
+        if key in keys:
+            waived += 1
+            continue
+        kept.append(item)
+    if waived and not any(item["severity"] in QA_BLOCKING_SEVERITIES for item in kept):
+        binding = {**binding, "ok": True, "waived": waived}
+    elif waived:
+        binding = {**binding, "waived": waived}
+    return kept, binding, waived
 
 
 def collect(stage: Stage) -> tuple[bool, list[dict[str, Any]], dict[str, Any]]:

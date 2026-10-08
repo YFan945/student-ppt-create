@@ -11,11 +11,13 @@ tool rather than by a reminder.
 from __future__ import annotations
 
 import json
+import socket
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -69,12 +71,11 @@ class GateTests(unittest.TestCase):
                 self.assertEqual("scheme_not_allowed", record["reason"])
 
     def test_hosts_are_fetched_on_demand_and_only_classified(self) -> None:
-        """The fetcher does not police what you read (owner, 2026-09-29).
+        """Search and listing pages are classified, not topic-blocked (owner, 2026-09-29).
 
-        A result page is not a *source* — that is an evidence rule for the pack, not
-        a rule about which URLs may be read. Refusing the fetch would only teach the
-        agent to reach the same page by another route, so the record carries the
-        classification instead.
+        A result page is not a *source* — that is an evidence rule for the pack.
+        The production client still refuses non-public addresses; the getter here
+        is the classification seam, not that client.
         """
         cases = {
             "https://cn.bing.com/search?q=x": "search_engine",
@@ -83,9 +84,6 @@ class GateTests(unittest.TestCase):
             "https://www.nea.gov.cn/xwdt/gnxw.htm": "public",
             "https://www.gov.cn/zhengce/2021-10/26/content_5644989.htm": "public",
             "https://www.gov.cn/zhengce/news/P0202.pdf": "public",
-            "http://127.0.0.1:8080/docs": "private",
-            "http://10.0.0.5/status": "private",
-            "http://localhost/x": "private",
             "https://www.nea.gov.cn/2025/page.html": "public",
         }
         with TemporaryDirectory() as tmp:
@@ -100,6 +98,173 @@ class GateTests(unittest.TestCase):
                     self.assertEqual(expected, record["host_class"])
                     if expected != "public":
                         self.assertIn("note", record)
+
+    def test_non_public_literals_are_classified_private(self) -> None:
+        for url in (
+            "http://127.0.0.1:8080/docs",
+            "http://10.0.0.5/status",
+            "http://localhost/x",
+            "http://169.254.1.1/x",
+            "http://[::1]/x",
+            "http://2130706433/",
+            "http://[::ffff:127.0.0.1]/",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual("private", fetch_text.host_class(url))
+
+    def test_private_literals_are_refused_before_connect(self) -> None:
+        def open_once(*_args, **_kwargs):  # pragma: no cover - must never run
+            raise AssertionError("a refused address must not be connected")
+
+        urls = (
+            "http://127.0.0.1:8080/docs",
+            "http://10.0.0.5/status",
+            "http://localhost/x",
+            "http://169.254.1.1/link",
+            "http://192.168.1.9/x",
+            "http://240.0.0.1/x",
+            "http://[::1]/x",
+            "http://[fe80::1]/x",
+            "http://[fc00::1]/x",
+            "http://2130706433/secret",
+            "http://[::ffff:127.0.0.1]/secret",
+            "http://0.0.0.0/",
+        )
+        with patch.object(fetch_text, "_open_once", open_once), TemporaryDirectory() as tmp:
+            for url in urls:
+                with self.subTest(url=url):
+                    record = fetch_text.fetch_one(url, Path(tmp), scope="A")
+                    self.assertFalse(record["ok"])
+                    self.assertEqual("address_not_allowed", record["reason"])
+                    self.assertFalse(any(Path(tmp).glob("*.raw")))
+
+    def test_a_redirect_to_a_private_address_is_refused_before_the_next_connect(self) -> None:
+        class Opener:
+            def __init__(self) -> None:
+                self.calls: list[str] = []
+
+            def open(self, request, timeout=None):  # noqa: ANN001
+                del timeout
+                self.calls.append(request.full_url)
+                if request.full_url.endswith("/start"):
+                    raise fetch_text.RedirectRequestedError("http://127.0.0.1/secret")
+                raise AssertionError(request.full_url)
+
+        opener = Opener()
+
+        def resolve(host: str, port: int):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+
+        with self.assertRaises(fetch_text.AddressNotAllowedError) as caught:
+            fetch_text.perform_fetch(
+                "https://example.org/start",
+                5,
+                opener=opener,
+                resolve=resolve,
+            )
+        self.assertEqual(["https://example.org/start"], opener.calls)
+        self.assertEqual("http://127.0.0.1/secret", caught.exception.url)
+
+    def test_a_name_that_resolves_to_a_private_address_is_refused(self) -> None:
+        def resolve(_host: str, port: int):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", port))]
+
+        def open_once(*_args, **_kwargs):  # pragma: no cover - must never run
+            raise AssertionError("must not connect")
+
+        with (
+            patch.object(fetch_text, "_resolve_host", resolve),
+            patch.object(fetch_text, "_open_once", open_once),
+            TemporaryDirectory() as tmp,
+        ):
+            record = fetch_text.fetch_one("https://intranet.example/doc", Path(tmp), scope="A")
+        self.assertEqual("address_not_allowed", record["reason"])
+        self.assertEqual("https://intranet.example/doc", record["final_url"])
+
+    def test_an_oversized_body_is_refused_and_not_stored(self) -> None:
+        class Response:
+            status = 200
+            headers = {"content-type": "text/plain"}
+
+            def read(self, n: int = -1) -> bytes:
+                return b"x" * (n if n and n > 0 else 64)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        class Opener:
+            def open(self, request, timeout=None):  # noqa: ANN001
+                del request, timeout
+                return Response()
+
+        def resolve(_host: str, port: int):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+
+        with self.assertRaises(fetch_text.BodyTooLargeError):
+            fetch_text.perform_fetch(
+                "https://example.org/huge",
+                5,
+                opener=Opener(),
+                resolve=resolve,
+                max_bytes=8,
+            )
+        real = fetch_text.perform_fetch
+
+        def capped(url: str, timeout: int, **kwargs):
+            kwargs.setdefault("max_bytes", 8)
+            kwargs.setdefault("opener", Opener())
+            kwargs.setdefault("resolve", resolve)
+            return real(url, timeout, **kwargs)
+
+        with patch.object(fetch_text, "perform_fetch", capped), TemporaryDirectory() as tmp:
+            record = fetch_text.fetch_one("https://example.org/huge", Path(tmp), scope="A")
+            self.assertEqual("body_too_large", record["reason"])
+            self.assertFalse(any(Path(tmp).glob("*.raw")))
+
+    def test_the_recorded_final_url_is_the_post_redirect_address(self) -> None:
+        class Response:
+            def __init__(self) -> None:
+                self.status = 200
+                self.headers = {"content-type": "text/plain"}
+                self._body = b"evidence"
+
+            def read(self, n: int = -1) -> bytes:
+                if n is None or n < 0:
+                    data, self._body = self._body, b""
+                    return data
+                data, self._body = self._body[:n], self._body[n:]
+                return data
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                return False
+
+        class Opener:
+            def open(self, request, timeout=None):  # noqa: ANN001
+                del timeout
+                if request.full_url.endswith("/start"):
+                    raise fetch_text.RedirectRequestedError("https://example.org/landed")
+                return Response()
+
+        def resolve(_host: str, port: int):
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", port))]
+
+        real = fetch_text.perform_fetch
+
+        def followed(url: str, timeout: int, **kwargs):
+            kwargs.setdefault("opener", Opener())
+            kwargs.setdefault("resolve", resolve)
+            return real(url, timeout, **kwargs)
+
+        with patch.object(fetch_text, "perform_fetch", followed), TemporaryDirectory() as tmp:
+            record = fetch_text.fetch_one("https://example.org/start", Path(tmp), scope="A")
+        self.assertTrue(record["ok"], record)
+        self.assertEqual("https://example.org/landed", record["final_url"])
 
     def test_a_listing_url_is_still_requested_and_marked_listing(self) -> None:
         seen: list[str] = []

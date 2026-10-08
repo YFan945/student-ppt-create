@@ -45,9 +45,11 @@ A number that reaches a slide must be **verbatim**, so retrieval itself is
 deterministic: `pptx_tool.py fetch-text` stores the HTTP body and the extracted
 text side by side and binds both with their sha256 — no summarizing model sits
 between the publisher's sentence and the pack. `--scope` is the permission gate
-(only A/B authorize web retrieval; C/D are refused); the fetcher does not police
-*what* you read — it classifies each host (`host_class`) instead of refusing, and
-a search-engine result page is a locator, never a source. Claims close one by one
+(only A/B authorize web retrieval; C/D are refused). Search-result and listing
+hosts are classified (`host_class`) rather than topic-blocked; loopback, private,
+link-local, and reserved addresses are refused before connect and on every
+redirect, and the record keeps the final URL. A search-engine result page is a
+locator, never a source. Claims close one by one
 (one readable source for ordinary claims; independent cross-checks when the task requires them), which is what stops a run from asking the same question eighty times.
 Rules live in `references/research-workflow.md` §七. New A/B tasks bind claims, numbers and quotes to
 verbatim source excerpts and file hashes. Unknown search response formats are advisory; only confirmed non-execution pauses
@@ -355,10 +357,7 @@ locally — they read the PPTX and the spec and need no critic; while they fail,
 the critic never reviews a doomed deck.
 
 `quality_level: fast` (the default) uses one Builder below the 8-page shard line, two shards above it and three above the 14-page speed line, plus one final independent review. Subjective visual scores and style suggestions remain visible advisories; unusable pages and deterministic failures still block delivery.
-Every tier looks at sample pages before the rest of the deck is written. Fast decks, and standard or rigorous decks at or below 8 pages, look at the cover plus one content page. Longer standard decks calibrate one archetype sample; longer rigorous decks may use two rounds.
-Calibration is gated deterministically: production `build` is refused
-until the calibration preview evidence is current and the palette + style-summary
-gates pass; fix rounds stay within the tier budget. The independent
+Every tier looks at sample pages before the rest of the deck is written. Fast decks, and standard or rigorous decks at or below 8 pages, look at the cover plus one content page. That two-page preview is the next dispatch step; a direct `build` is not refused only because the preview is missing. Longer standard and rigorous decks refuse `build` until the archetype calibration evidence is current and the palette + style-summary gates pass, or that tier's calibration round budget is spent. Longer standard decks calibrate one archetype sample; longer rigorous decks may use two rounds. The independent
 `visual-critic` reviews the deck ONCE at the production boundary — the main
 session authors the Slide Spec and the Art Direction, so it never stands in for
 the critic. A scope-aware `critic-preview-map.json` is materialized at the critic
@@ -429,8 +428,9 @@ renders a temporary scenario matrix for coursework, English
 classroom, defense, competition, club showcase, research, software project,
 data survey, and school-template editing; no generated deck or preview is
 committed to the repository.
-Pushes and pull requests no longer run automatic CI. Release validation runs
-locally; the manual live canary and monthly dependency report remain available.
+Pull requests run the unittest suite with `python-constraints.txt`. Pushes do not.
+Release validation still runs locally; there is no required release status check.
+The manual live canary and monthly dependency report remain available.
 
 ## Runtime
 
@@ -438,8 +438,8 @@ Claude Code does not automatically install this package's Python or Node runtime
 dependencies. Use the repository-level installer or install manually:
 
 ```powershell
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-claude-pptx.txt
+python -m pip install -r requirements.txt -c python-constraints.txt
+python -m pip install -r requirements-claude-pptx.txt -c python-constraints.txt
 npm ci
 ```
 
@@ -558,7 +558,7 @@ Delivery tiers (`quality_level`; legacy `basic` / `high-score` accepted as alias
 
 | Tier | Calibration rounds | Shard cap | Blocks |
 | --- | --- | --- | --- |
-| `fast` | 0 | 1 | critical + deterministic failures |
+| `fast` | 0 | 1 (≤8 pages), 2 (9–14), 3 (above 14) | critical + deterministic failures |
 | `standard` | 1 | 2 | same; subjective scores and exploration files are advisory |
 | `rigorous` | 2 | 3 | + style majors + visual regression + three identical moves |
 

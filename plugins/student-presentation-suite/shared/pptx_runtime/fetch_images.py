@@ -12,8 +12,11 @@ Safety model:
 - ``image-generation`` providers require ``permission.allow_generation: true``;
 - commands declared in ``requires`` must resolve on PATH or the provider is
   skipped with a recorded reason;
-- every command runs with a timeout and its output must land inside the
-  requested output directory.
+- ``{query}``, ``{url}`` and ``{output}`` are substituted only when the
+  placeholder is an entire argv entry;
+- shell wrappers (sh, bash, dash, zsh, cmd, powershell, pwsh) are rejected;
+- every command runs with a timeout and a result file is accepted only when
+  its resolved path stays inside the requested output directory.
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ from typing import Any
 MAX_PARALLEL_QUERIES = 4
 
 _PLACEHOLDER = re.compile(r"\{(query|url|output)\}")
+_SHELLS = frozenset({"sh", "bash", "dash", "zsh", "cmd", "powershell", "pwsh"})
 _SCHEMA_PATH = Path(__file__).resolve().parents[2] / "references" / "image-sources.schema.json"
 
 
@@ -161,13 +165,10 @@ def _run_command(
         "url": provider.get("url_template", "").replace("{query}", urllib.parse.quote_plus(query)),
         "output": str(output),
     }
-    # shlex 的 posix 模式默认会保留反斜杠（只在引号内转义），Windows 路径不会被吞；
-    # 且只有 posix 模式才会剥离参数引号，非 posix 模式会让 `python -c "..."` 的实参
-    # 带上字面引号而失效。因此始终用默认 posix 解析。
-    parts = shlex.split(str(command_template))
-    rendered = []
-    for part in parts:
-        rendered.append(_PLACEHOLDER.sub(lambda m: placeholders[m.group(1)], part))
+    rendered = _render_command(str(command_template), placeholders)
+    if isinstance(rendered, str):
+        notes.append(f"{provider.get('id')}: {rendered}")
+        return None
     try:
         subprocess.run(
             rendered,
@@ -184,10 +185,43 @@ def _run_command(
         detail = str(getattr(exc, "stderr", "") or "").strip()
         notes.append(f"{provider.get('id')}: {type(exc).__name__}: {exc} {detail}".rstrip())
         return None
-    if not output.exists() or output.stat().st_size == 0:
+    if not output.exists() or output.is_dir() or output.stat().st_size == 0:
         notes.append(f"{provider.get('id')}: command produced no output file")
         return None
+    resolved = output.resolve()
+    root = out_dir.resolve()
+    if resolved != root and root not in resolved.parents:
+        notes.append(f"{provider.get('id')}: output escapes the output directory")
+        return None
     return {"path": output, "source_url": placeholders["url"] or None}
+
+
+def _argv0_name(token: str) -> str:
+    name = Path(token).name.lower()
+    if name.endswith(".exe"):
+        name = name[:-4]
+    return name
+
+
+def _render_command(command_template: str, placeholders: dict[str, str]) -> list[str] | str:
+    """Placeholders stay whole argv entries. Shell wrappers are not a template."""
+    try:
+        parts = shlex.split(command_template)
+    except ValueError as exc:
+        return f"command template could not be parsed: {exc}"
+    if not parts:
+        return "command template is empty"
+    if _argv0_name(parts[0]) in _SHELLS:
+        return "shell wrappers are not accepted; placeholders must be separate argv entries"
+    rendered: list[str] = []
+    for part in parts:
+        if _PLACEHOLDER.fullmatch(part):
+            rendered.append(placeholders[part[1:-1]])
+            continue
+        if _PLACEHOLDER.search(part):
+            return "placeholders must be entire argv entries, not embedded in a script or flag"
+        rendered.append(part)
+    return rendered
 
 
 def fetch_images(

@@ -175,8 +175,7 @@ RECEIPT_FACT = (
     " If the goal is a 'missing successful isolated research runtime receipt' refusal: the "
     "receipt is hook-owned (runtime_evidence.py writes it at SubagentStop) and cannot be "
     "written by the model. Run `ppt_pipeline.py doctor --work-dir <wd>` to check whether "
-    "this runtime delivers subagent hook events; if it does not, re-run plan/qa with "
-    "--receipt-policy allow-missing."
+    "this runtime delivers subagent hook events."
 )
 BUILDER = pipeline_context.BUILDER
 

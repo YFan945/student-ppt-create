@@ -37,8 +37,9 @@ sp-research → sp-outline → sp-deck → sp-review
 
 会上屏的数字要求**逐字**，所以取原文这一层是确定性的：`pptx_tool.py fetch-text` 直接取
 HTTP 原文与抽取文本并落盘，两份 sha256 一起写进 provenance——中间不经过会改写数字的小模型。
-`--scope` 是权限门（只有 A/B 授权联网取原文，C/D 一律拒绝）；工具不审查你**取什么**，
-只给每个 host 打类别（`host_class`），而结果页是定位手段、永远不是来源。claim 逐条收口
+`--scope` 是权限门（只有 A/B 授权联网取原文，C/D 一律拒绝）。检索结果页和目录页按
+`host_class` 分类，不做题材拦截；回环、私网、链路本地和保留地址在连接前拒绝，重定向的
+每一跳都重新检查，记录里保留最终 URL。结果页是定位手段、永远不是来源。claim 逐条收口
 （普通论断一个可读来源即可，关键论断按任务做独立交叉核验），这才是"同一个问题不问八十遍"的机制。
 规则见 `references/research-workflow.md` §七。 新 A/B 任务将 claim、数字与引文绑定到原文片段及文件哈希。
 未知搜索响应只提示，确认未执行才暂停 WebSearch；原文读取仍开放；有效包允许明确的未解决 claim。
@@ -280,12 +281,11 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 不绿则 `render` 拒绝、`next` 指向免 repair 轮的 builder 改页重建——critic 从不评审
 注定返工的 deck。QA 通过后 `complete` 使用 `ppt_pipeline.py complete --work-dir <wd>`。
 本地 `scripts/scenario_render_matrix.py --require-render` 可渲染完整场景矩阵，
-不会提交生成产物。push/PR 不再运行自动 CI，发布验收在本地完成；保留手动真实验收
-与每月依赖巡检报告。
+不会提交生成产物。pull request 会用 `python-constraints.txt` 跑 unittest 套件；push 不跑。
+发布验收仍在本地完成，没有必需的发布状态检查；保留手动真实验收与每月依赖巡检报告。
 
 `quality_level: fast`（默认）在 8 页分片线以下由一个 Builder 完成全部页面，超过分 2 片、超过 14 页分 3 片，再做一次最终独立评审。主观视觉分数和风格建议保留为 advisory；页面不可用及确定性门失败仍阻止交付。
-每一档都先看样本页再写其余页。fast，以及 standard / rigorous 页数 ≤ 8，先看封面加一张内容页。更长的 standard 校准一轮 archetype 样本，rigorous 至多两轮。**校准由确定性门判定：证据现势 + palette 门 + style summary**，正式 `build`
-在校准确定性门变绿前会被机械拒绝。独立 `visual-critic` 评审收敛为生产边界的一次——主会话是
+每一档都先看样本页再写其余页。fast，以及 standard / rigorous 页数 ≤ 8，先看封面加一张内容页。这两页预览是下一步调度，不会仅因为预览还没生成就拒绝直接 `build`。更长的 standard / rigorous 在 archetype 校准证据现势且 palette 与 style-summary 通过之前会拒绝 `build`，或者该档校准轮次预算已经用完。更长的 standard 校准一轮 archetype 样本，rigorous 至多两轮。独立 `visual-critic` 评审收敛为生产边界的一次——主会话是
 Slide Spec 与 Art Direction 的作者，永远不代替 critic 看图；dispatch 在 critic 边界物化
 `critic-preview-map.json`（hook 启用时 spawn 时再刷新）；hook 启用时 critic 只能读取
 其中列出的当前压缩预览、写 map 指定的 `review_output`。校准由确定性门判定
@@ -333,8 +333,8 @@ Claude Code 不会自动安装本包的 Python 和 Node runtime 依赖。可以�
 根目录安装脚本，或在本目录手动执行：
 
 ```powershell
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-claude-pptx.txt
+python -m pip install -r requirements.txt -c python-constraints.txt
+python -m pip install -r requirements-claude-pptx.txt -c python-constraints.txt
 npm ci
 ```
 
@@ -443,7 +443,7 @@ QA 门按契约顺序执行：`package` → `static_risk` → `rendered` → `ac
 
 | 档位 | 校准轮 | 分片上限 | 阻断项 |
 | --- | --- | --- | --- |
-| `fast` | 0 | 1 | critical + 确定性失败 |
+| `fast` | 0 | 1（≤8 页），2（9–14），3（多于 14） | critical + 确定性失败 |
 | `standard` | 1 | 2 | 同上；主观分和探索材料只作建议 |
 | `rigorous` | 2 | 3 | + 风格 Major + 视觉回归 + 连续三页同一动作 |
 

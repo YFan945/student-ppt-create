@@ -969,8 +969,8 @@ function _renderOnLayout(ctx, request, layoutId, area) {
   }
 
   // D11 收尾带（引擎统一渲染）：细规线 + key_line 结论句（bold body 角色），
-  // 来源行由 builder 画在更下方的 footer 区。key_line 过长时宁缺勿炸：
-  // 跳过收尾带（critic 的 D11 会把缺失当 finding 抓出来），不许炸整页。
+  // 来源行由 builder 画在更下方的 footer 区。装不下时与其他溢出一样失败，
+  // 交给 fallback 链换版式，而不是留下一页没有结论句的绿页。
   if (keyLine && keyBand) {
     try {
       const ruleY = keyBand.y - 0.04;
@@ -1002,7 +1002,10 @@ function _renderOnLayout(ctx, request, layoutId, area) {
         ...textBox,
       });
     } catch (error) {
-      if (!(error instanceof RangeError)) throw error;
+      if (error instanceof RangeError) {
+        throw _fitError(`slide ${n}: key_line does not fit the closing band — ${error.message}`);
+      }
+      throw error;
     }
   }
 

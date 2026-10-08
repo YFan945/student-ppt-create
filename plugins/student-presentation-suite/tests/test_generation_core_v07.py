@@ -150,6 +150,25 @@ console.log(JSON.stringify(registry.analyzeDeck()));
         self.assertTrue(report["ok"])
         self.assertEqual(0, report["blocker_count"])
 
+    def test_actual_content_check_flags_a_missing_distinct_key_line(self) -> None:
+        spec = {
+            "slides": [
+                {
+                    "id": 1,
+                    "title": "模型表现",
+                    "claim": "准确率达到82.7%",
+                    "key_line": "结论句必须留在页面上",
+                    "slide_copy": ["核心结果稳定复现"],
+                }
+            ]
+        }
+        report = self.actual.check(
+            spec,
+            ["模型表现\n准确率达到 82.7%\n核心结果稳定复现"],
+        )
+        self.assertFalse(report["ok"])
+        self.assertIn("missing_key_line", {item["code"] for item in report["issues"]})
+
     def test_actual_content_check_blocks_missing_title_and_number(self) -> None:
         spec = {
             "slides": [

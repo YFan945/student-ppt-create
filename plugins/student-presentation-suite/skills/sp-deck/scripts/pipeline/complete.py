@@ -91,6 +91,7 @@ def cmd_complete(args: argparse.Namespace) -> int:
     before = str(manifest.get("state"))
     manifest["published"] = published
     manifest["state"] = "complete"
+    manifest["completion"] = "degraded" if degraded_receipt else "verified"
     record(manifest, "complete", before, "complete")
     save_manifest(work_dir, manifest)
     write_stage_summary(
@@ -114,16 +115,22 @@ def cmd_complete(args: argparse.Namespace) -> int:
                 []
                 if not degraded_receipt
                 else [
-                    "- degraded: independent-critic receipt was missing-allowed "
-                    "(--receipt-policy allow-missing); visual review exists but carries no "
-                    "hook-verified hash binding — state this to the user at delivery"
+                    "- degraded: independent-critic receipt was missing; visual review "
+                    "exists but carries no hook-verified hash binding — state this to the "
+                    "user at delivery"
                 ]
             ),
             "- do not re-inject /sp-deck; run sp-review only if the user asks",
         ],
     )
     mirror_workflow_state(manifest, "complete")
-    print("ppt_pipeline: complete — delivery and intake authorization are hash-bound")
+    if degraded_receipt:
+        print(
+            "ppt_pipeline: complete (degraded) — delivery and intake authorization are "
+            "hash-bound; critic receipt was missing"
+        )
+    else:
+        print("ppt_pipeline: complete — delivery and intake authorization are hash-bound")
     return 0
 
 

@@ -185,6 +185,16 @@ def check(spec: dict[str, Any], actual: list[str]) -> dict[str, Any]:
         if claim and len(normalize(claim)) >= 6 and normalize(claim) not in actual_norm:
             slide_issues.append({"severity": "major", "code": "missing_key_claim", "expected": claim})
 
+        key_line = str(planned.get("key_line") or "").strip()
+        claim_text = str(planned.get("claim") or "").strip()
+        if (
+            key_line
+            and key_line != claim_text
+            and len(normalize(key_line)) >= 6
+            and normalize(key_line) not in actual_norm
+        ):
+            slide_issues.append({"severity": "major", "code": "missing_key_line", "expected": key_line})
+
         copy_fragments = requirements["copy_fragments"]
         missing_copy = [frag for frag in copy_fragments if len(normalize(frag)) >= 6 and normalize(frag) not in actual_norm]
         if missing_copy:

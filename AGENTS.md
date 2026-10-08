@@ -16,8 +16,10 @@ implementation line and is not supported here.
 ## Repository Layout
 
 - `.claude-plugin/marketplace.json`: marketplace manifest and published plugin version.
-- `.github/workflows/`: manual live-cost canary and monthly dependency freshness
-  reporting only; pushes and pull requests do not trigger CI.
+- `.github/workflows/`: pull requests run `.github/workflows/unittest.yml` (the
+  existing unittest suite with `python-constraints.txt`). Pushes do not. The
+  live-cost canary is manual and dependency freshness is monthly. There is no
+  required release status check.
 - `.github/dependabot.yml`: automated dependency updates for npm and GitHub
   Actions. pip is intentionally not covered: `python-constraints.txt` is a
   cross-platform frozen pin set (consumed with `pip install -c`) that
@@ -224,8 +226,8 @@ python -m pip install ruff
 Then run from the repository root:
 
 ```powershell
-python -m pip install -r plugins/student-presentation-suite/requirements.txt
-python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt
+python -m pip install -r plugins/student-presentation-suite/requirements.txt -c plugins/student-presentation-suite/python-constraints.txt
+python -m pip install -r plugins/student-presentation-suite/requirements-claude-pptx.txt -c plugins/student-presentation-suite/python-constraints.txt
 npm --prefix plugins/student-presentation-suite ci
 $env:PYTHONPATH=(Resolve-Path "plugins/student-presentation-suite").Path
 
@@ -250,8 +252,9 @@ claude plugin validate .
 git diff --check
 ```
 
-All local checks must pass before publishing. There is no remote CI gate or
-required status check. Run `pip-audit -r plugins/student-presentation-suite/python-constraints.txt`
+All local checks must pass before publishing. Pull requests run the unittest
+suite with `python-constraints.txt`; pushes do not, and there is no required
+release status check. Run `pip-audit -r plugins/student-presentation-suite/python-constraints.txt`
 and `python plugins/student-presentation-suite/scripts/npm_audit_gate.py --json`
 locally for dependency vulnerability scanning; the monthly freshness workflow
 also reports Python advisories without blocking releases.

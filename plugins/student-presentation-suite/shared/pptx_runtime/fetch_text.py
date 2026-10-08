@@ -17,15 +17,18 @@ The caller must pass its scope explicitly and C/D are refused, so the D-class
 rule is enforced mechanically instead of by reminder.
 
 Safety model:
-On-demand by design (owner, 2026-09-29): the fetcher does not police *what* you
-fetch. Search-result hosts and private hosts are fetched like anything else; the
-record carries `host_class` (`search_engine` / `listing` / `private` / `public`) plus a note,
-because "a result page is not a source" is an evidence rule for the pack, not a
-rule about which URLs may be read — and a fence here would only teach the agent
-to reach the same page by another route.
+On-demand by design (owner, 2026-09-29) for *which document* you asked for:
+search-result and listing hosts are fetched and classified (`host_class`:
+`search_engine` / `listing` / `private` / `public`), because "a result page is
+not a source" is an evidence rule for the pack. The production HTTP client still
+refuses addresses that are not public — loopback, private, link-local, and
+reserved — before connect and again on every redirect, caps the body, and
+records `final_url`. An injected getter is a test seam, not that client.
 
 Safety model:
 - http/https only; per-request timeout;
+- non-public addresses refused before connect and on each redirect;
+- response body capped (16 MiB);
 - only text-ish content types are extracted, so a binary body is refused instead
   of decoded into garbage;
 - every attempt is recorded in the report, failures included.
@@ -45,6 +48,7 @@ import html
 import ipaddress
 import json
 import re
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -101,6 +105,34 @@ def slug(text: str) -> str:
     return value[:60] or "source"
 
 
+def _literal_address(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
+    """Parse a host that is already an address, including decimal IPv4 and IPv4-mapped IPv6."""
+    text = host.strip("[]")
+    try:
+        return ipaddress.ip_address(text)
+    except ValueError:
+        pass
+    if text.isascii() and text.isdigit():
+        value = int(text)
+        if 0 <= value <= 0xFFFFFFFF:
+            return ipaddress.IPv4Address(value)
+    return None
+
+
+def _checked_address(
+    address: ipaddress.IPv4Address | ipaddress.IPv6Address,
+) -> ipaddress.IPv4Address | ipaddress.IPv6Address:
+    mapped = getattr(address, "ipv4_mapped", None)
+    return mapped if isinstance(mapped, ipaddress.IPv4Address) else address
+
+
+def _address_disallowed(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    checked = _checked_address(address)
+    return bool(
+        checked.is_loopback or checked.is_private or checked.is_link_local or checked.is_reserved
+    )
+
+
 def host_class(url: str) -> str:
     """Classify the host for the provenance trail: search_engine / listing / private / public."""
     parsed = urllib.parse.urlsplit(url)
@@ -111,13 +143,10 @@ def host_class(url: str) -> str:
         return "listing"
     if host in {"localhost", "localhost.localdomain"} or host.endswith(".localhost"):
         return "private"
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
+    literal = _literal_address(host)
+    if literal is None:
         return "public"
-    if address.is_loopback or address.is_private or address.is_link_local or address.is_reserved:
-        return "private"
-    return "public"
+    return "private" if _address_disallowed(literal) else "public"
 
 
 _HOST_CLASS_NOTES = {
@@ -129,7 +158,7 @@ _HOST_CLASS_NOTES = {
         "an index, news listing, or publisher record endpoint is a locator, not a source — "
         "read the document URL it points at"
     ),
-    "private": "loopback/private host: fine for local checks, never citable evidence",
+    "private": "loopback, private, link-local, or reserved host; not citable evidence",
 }
 
 
@@ -212,7 +241,106 @@ def extract_text(decoded: str, content_type: str) -> tuple[str, str]:
     return _BLANK_LINES.sub("\n\n", body).strip(), title
 
 
-def _default_getter(url: str, timeout: int) -> tuple[int, dict[str, str], bytes]:
+MAX_BODY_BYTES = 16 * 1024 * 1024
+MAX_REDIRECTS = 5
+
+
+class RedirectRequestedError(Exception):
+    def __init__(self, url: str) -> None:
+        self.url = url
+        super().__init__(url)
+
+
+class AddressNotAllowedError(Exception):
+    def __init__(self, url: str) -> None:
+        self.url = url
+        super().__init__(url)
+
+
+class BodyTooLargeError(Exception):
+    def __init__(self, size: int) -> None:
+        self.size = size
+        super().__init__(str(size))
+
+
+class SchemeNotAllowedError(Exception):
+    def __init__(self, url: str) -> None:
+        self.url = url
+        super().__init__(url)
+
+
+class TooManyRedirectsError(Exception):
+    def __init__(self, url: str) -> None:
+        self.url = url
+        super().__init__(url)
+
+
+class _StopRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, _fp, _code, _msg, _headers, newurl):  # noqa: ANN001
+        raise RedirectRequestedError(urllib.parse.urljoin(req.full_url, newurl))
+
+
+def _resolve_host(host: str, port: int) -> list[Any]:
+    return socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+
+
+def address_refusal(
+    url: str,
+    *,
+    resolve: Callable[..., list[Any]] | None = None,
+) -> str | None:
+    """Refuse loopback, private, link-local, and reserved addresses before connect.
+
+    Literals (including decimal IPv4 and IPv4-mapped IPv6) are judged without a
+    connection. Names are resolved, and any non-public answer refuses the URL, so
+    each redirect is checked the same way as the first request.
+    """
+    parsed = urllib.parse.urlsplit(url)
+    host = parsed.hostname
+    if not host:
+        return "address_not_allowed"
+    if host_class(url) == "private":
+        return "address_not_allowed"
+    port = parsed.port
+    if port is None:
+        port = 443 if parsed.scheme.lower() == "https" else 80
+    resolver = resolve or _resolve_host
+    try:
+        infos = resolver(host, port)
+    except OSError:
+        return None
+    for info in infos:
+        try:
+            ip_text = str(info[4][0]).split("%", 1)[0]
+            address = ipaddress.ip_address(ip_text)
+        except (IndexError, TypeError, ValueError):
+            return "address_not_allowed"
+        if _address_disallowed(address):
+            return "address_not_allowed"
+    return None
+
+
+def read_capped(response: Any, limit: int) -> bytes:
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        block = response.read(min(65536, limit - total + 1))
+        if not block:
+            break
+        total += len(block)
+        if total > limit:
+            raise BodyTooLargeError(total)
+        chunks.append(block)
+    return b"".join(chunks)
+
+
+def _open_once(
+    url: str,
+    timeout: int,
+    *,
+    opener: Any = None,
+    max_bytes: int = MAX_BODY_BYTES,
+) -> tuple[int, dict[str, str], bytes]:
     request = urllib.request.Request(
         url,
         headers={
@@ -220,9 +348,51 @@ def _default_getter(url: str, timeout: int) -> tuple[int, dict[str, str], bytes]
             "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
         },
     )
-    with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310 - scheme gated
+    client = opener or urllib.request.build_opener(_StopRedirect)
+    response = client.open(request, timeout=timeout)
+    with response:
         headers = {key.lower(): value for key, value in response.headers.items()}
-        return int(getattr(response, "status", 200) or 200), headers, response.read()
+        declared = headers.get("content-length")
+        if declared:
+            try:
+                if int(declared) > max_bytes:
+                    raise BodyTooLargeError(int(declared))
+            except ValueError:
+                pass
+        status = int(getattr(response, "status", 200) or 200)
+        return status, headers, read_capped(response, max_bytes)
+
+
+def perform_fetch(
+    url: str,
+    timeout: int,
+    *,
+    opener: Any = None,
+    resolve: Callable[..., list[Any]] | None = None,
+    max_bytes: int = MAX_BODY_BYTES,
+) -> tuple[int, dict[str, str], bytes, str]:
+    """GET ``url``, re-checking the address before every connect, including redirects."""
+    current = url
+    for hop in range(MAX_REDIRECTS + 1):
+        if scheme_refusal(current):
+            raise SchemeNotAllowedError(current)
+        if address_refusal(current, resolve=resolve):
+            raise AddressNotAllowedError(current)
+        try:
+            status, headers, body = _open_once(
+                current, timeout, opener=opener, max_bytes=max_bytes
+            )
+        except RedirectRequestedError as exc:
+            if hop == MAX_REDIRECTS:
+                raise TooManyRedirectsError(exc.url) from exc
+            current = urllib.parse.urljoin(current, exc.url)
+            continue
+        return status, headers, body, current
+    raise TooManyRedirectsError(current)
+
+
+def _default_getter(url: str, timeout: int) -> tuple[int, dict[str, str], bytes, str]:
+    return perform_fetch(url, timeout)
 
 
 def _pdf_text(raw: bytes) -> tuple[str | None, str]:
@@ -291,9 +461,34 @@ def fetch_one(
     if klass in _HOST_CLASS_NOTES:
         record["note"] = _HOST_CLASS_NOTES[klass]
 
-    get = getter or _default_getter
+    final_url = url
     try:
-        status, headers, raw = get(url, timeout)
+        if getter is None:
+            status, headers, raw, final_url = perform_fetch(url, timeout)
+        else:
+            result = getter(url, timeout)
+            status, headers, raw = result[0], result[1], result[2]
+            if len(result) > 3 and result[3]:
+                final_url = str(result[3])
+    except AddressNotAllowedError as exc:
+        record["reason"] = "address_not_allowed"
+        record["detail"] = _REFUSAL_DETAIL["address_not_allowed"]
+        record["final_url"] = exc.url
+        return record
+    except BodyTooLargeError:
+        record["reason"] = "body_too_large"
+        record["detail"] = _REFUSAL_DETAIL["body_too_large"]
+        return record
+    except SchemeNotAllowedError as exc:
+        record["reason"] = "scheme_not_allowed"
+        record["detail"] = _REFUSAL_DETAIL["scheme_not_allowed"]
+        record["final_url"] = exc.url
+        return record
+    except TooManyRedirectsError as exc:
+        record["reason"] = "too_many_redirects"
+        record["detail"] = _REFUSAL_DETAIL["too_many_redirects"]
+        record["final_url"] = exc.url
+        return record
     except urllib.error.HTTPError as exc:
         record["reason"] = "http_error"
         record["detail"] = f"HTTP {exc.code}"
@@ -305,6 +500,7 @@ def fetch_one(
 
     content_type = headers.get("content-type", "")
     record["status"] = status
+    record["final_url"] = final_url
     record["content_type"] = content_type
     record["bytes"] = len(raw)
     record["raw_sha256"] = hashlib.sha256(raw).hexdigest()
@@ -349,6 +545,11 @@ def fetch_one(
 _REFUSAL_DETAIL = {
     "scope_not_authorized": "pass --scope A or B; C/D never authorize retrieval",
     "scheme_not_allowed": "only http/https URLs can be fetched",
+    "address_not_allowed": (
+        "loopback, private, link-local, and reserved addresses are refused before connect"
+    ),
+    "body_too_large": "response body exceeds the 16 MiB fetch cap",
+    "too_many_redirects": "too many redirects",
 }
 
 
@@ -508,6 +709,7 @@ def call_summary(report: dict[str, Any], report_path: Path) -> dict[str, Any]:
         "host_class",
         "title",
         "detail",
+        "final_url",
     )
     rows = []
     for record in report.get("this_call") or []:

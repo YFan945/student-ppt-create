@@ -209,8 +209,8 @@ class RuntimeEvidenceScopeTests(ScopeFixture):
 class ProductionEntryScopeTests(ScopeFixture):
     # TEST 07 — bypassing the pipeline is refused in any user project, whatever
     # the session type; this protection is deliberately NOT scoped to managed
-    # PPT sessions. The one exception is the plugin's own source tree: a
-    # maintenance session there may run internals directly (2026-09-28).
+    # PPT sessions. Being inside this checkout does not turn the guard off.
+    # Allow-listed maintenance commands still run.
     def test_direct_production_entry_is_refused_outside_ppt_work(self) -> None:
         command = (
             "node plugins/student-presentation-suite/scripts/run_with_pptxgenjs.js "
@@ -234,7 +234,7 @@ class ProductionEntryScopeTests(ScopeFixture):
         marker.parent.mkdir(parents=True)
         marker.write_text("{}", encoding="utf-8")
 
-    def test_marketplace_checkout_maintenance_may_run_internals_directly(self) -> None:
+    def test_marketplace_checkout_does_not_disable_the_guard(self) -> None:
         self.make_source_repository()
         for command in (
             "python "
@@ -245,9 +245,15 @@ class ProductionEntryScopeTests(ScopeFixture):
             "--check",
         ):
             with self.subTest(command=command):
-                self.assertEqual(0, entry_guard.handle(self.event("Bash", command=command)))
+                self.assertEqual(2, entry_guard.handle(self.event("Bash", command=command)))
+        allowed = (
+            "python "
+            f'"{self.project.as_posix()}/plugins/student-presentation-suite/skills/sp-deck/scripts/calibration_preview.py" '
+            "--check"
+        )
+        self.assertEqual(0, entry_guard.handle(self.event("Bash", command=allowed)))
 
-    def test_session_inside_the_plugin_tree_is_maintenance_too(self) -> None:
+    def test_session_inside_the_plugin_tree_keeps_the_allow_list(self) -> None:
         # cwd inside the plugin checkout itself (no marketplace layout above):
         # maintenance context as well — covers the name + manifest signal.
         (self.project / "student-presentation-suite").mkdir()
@@ -268,6 +274,14 @@ class ProductionEntryScopeTests(ScopeFixture):
             "cwd": str(plugin_dir),
         }
         self.assertEqual(0, entry_guard.handle(event))
+        refused = {
+            **self.event(
+                "Bash",
+                command=f'python "{(plugin_dir / "composer.py").as_posix()}" --check',
+            ),
+            "cwd": str(plugin_dir),
+        }
+        self.assertEqual(2, entry_guard.handle(refused))
 
     def test_user_project_without_the_layout_is_still_refused(self) -> None:
         # A plugin path in the command is not enough: the project must carry

@@ -344,7 +344,27 @@ def _slide_id_tags(presentation_text: str) -> list[tuple[str, str]]:
     return result
 
 
+_SLIDE_PART_NAME = re.compile(r"^slide[1-9][0-9]*\.xml$")
+
+
+def _contained_slide_part(root: Path, slide_name: str) -> Path:
+    """A real slide part under ppt/slides, never a relationship target that escapes."""
+    if not _SLIDE_PART_NAME.fullmatch(slide_name):
+        raise ValueError(f"slide name must be a ppt/slides/slideN.xml part: {slide_name}")
+    slides = (root / "ppt" / "slides").resolve()
+    slide = slides / slide_name
+    if slide.resolve().parent != slides:
+        raise ValueError(f"slide part resolves outside ppt/slides: {slide_name}")
+    rels = slides / "_rels" / f"{slide_name}.rels"
+    if rels.exists() or rels.is_symlink():
+        rels_dir = (slides / "_rels").resolve()
+        if rels.resolve().parent != rels_dir:
+            raise ValueError(f"slide relationships resolve outside ppt/slides: {slide_name}")
+    return slide
+
+
 def delete_slide(root: Path, slide_name: str) -> None:
+    slide = _contained_slide_part(root, slide_name)
     presentation = root / "ppt" / "presentation.xml"
     presentation_rels = root / "ppt" / "_rels" / "presentation.xml.rels"
     presentation_text = presentation.read_text(encoding="utf-8")
@@ -372,11 +392,10 @@ def delete_slide(root: Path, slide_name: str) -> None:
         raise ValueError(f"could not remove slide registration cleanly: {slide_name}")
     presentation.write_text(presentation_text, encoding="utf-8")
     presentation_rels.write_text(rels_text, encoding="utf-8")
-    slide = root / "ppt" / "slides" / slide_name
-    slide_rels = root / "ppt" / "slides" / "_rels" / f"{slide_name}.rels"
-    if slide.is_file():
+    slide_rels = slide.parent / "_rels" / f"{slide_name}.rels"
+    if slide.is_file() or slide.is_symlink():
         slide.unlink()
-    if slide_rels.is_file():
+    if slide_rels.is_file() or slide_rels.is_symlink():
         slide_rels.unlink()
     content_types = root / "[Content_Types].xml"
     types_text = content_types.read_text(encoding="utf-8")

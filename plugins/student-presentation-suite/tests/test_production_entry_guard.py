@@ -159,6 +159,9 @@ class ProductionEntryGuardTests(unittest.TestCase):
             'FOO=bar python skills/sp-deck/scripts/quality_gate.py --json',
             'grep x skills/sp-deck/scripts/quality_gate.py && python skills/sp-deck/scripts/quality_gate.py --json',
             'python "${CLAUDE_PLUGIN_ROOT}/scripts/research_pack_to_evidence.py" pack.json',
+            'cat "${CLAUDE_PLUGIN_ROOT}/scripts/research_pack_to_evidence.py" | python',
+            "cat plugins/student-presentation-suite/skills/sp-deck/scripts/composer.py | python3",
+            'cat "${CLAUDE_PLUGIN_ROOT}/scripts/run_with_pptxgenjs.js" | node',
         ]
         for command in commands:
             with self.subTest(command=command[:60]):

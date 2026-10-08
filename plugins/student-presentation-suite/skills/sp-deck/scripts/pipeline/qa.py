@@ -24,12 +24,14 @@ from pipeline.core import (  # noqa: E402
     QA_HARD_STOP_STAGES,
     QA_ORDER,
     RefusedError,
+    apply_gate_waivers,
     bind,
     binding_is_current,
     build_qa_stages,
     collect,
     dedupe,
     execution_receipt,
+    gate_waiver_keys,
     load_json,
     load_manifest,
     mirror_workflow_state,
@@ -172,8 +174,15 @@ def cmd_qa(args: argparse.Namespace) -> int:
         raise RefusedError("QA DAG is empty")
     problems: list[dict[str, Any]] = []
     reports: dict[str, Any] = {}
+    waiver_keys = gate_waiver_keys(manifest)
+    waived_total = 0
     for stage in stages:
         ok, stage_problems, binding = collect(stage)
+        stage_problems, binding, waived_n = apply_gate_waivers(
+            stage.name, stage_problems, binding, waiver_keys
+        )
+        waived_total += waived_n
+        ok = binding.get("ok") is True
         reports[stage.artifact] = binding
         if not ok and stage.name in QA_DERIVED_AFTER_UPSTREAM_FAILURE and any(
             not data.get("ok", True) for name, data in reports.items() if name != stage.artifact
@@ -239,7 +248,7 @@ def cmd_qa(args: argparse.Namespace) -> int:
     })
     gate_history["_rounds"] = rounds[-8:]
     qa_report = {
-        "ok": blockers == 0, "pipeline_version": MANIFEST_VERSION,
+        "ok": blockers == 0, "waived": waived_total, "pipeline_version": MANIFEST_VERSION,
         "qa_order": list(QA_ORDER), "pptx": str(pptx),
         "counts": {"blockers": blockers, **counts}, "problems": problems, "reports": reports,
         # Every content gate runs before this report is written, so a repair round can be

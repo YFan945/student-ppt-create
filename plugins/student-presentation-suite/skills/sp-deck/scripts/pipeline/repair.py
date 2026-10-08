@@ -26,6 +26,7 @@ from pipeline.core import (  # noqa: E402
     require_state,
     save_manifest,
     validate_manifest_authorization,
+    waiver_fingerprint,
 )
 from pipeline.scheduler import slides_named_in_reports  # noqa: E402
 
@@ -70,8 +71,10 @@ def _cancel_pending_repair(
     # 0.27.1：cancel 是"这是门侧缺陷、页面无可修"的正式认定——run-15 live：认定后
     # advance 立即重新注册同一个 repair，cancel→advance 死循环把 fast 档 13 页卡死
     # 在 producing（qa/render/spec--force 全部无出口）。--waive 把当前 pre-QA 报告里
-    # 的 critical/major finding 复制进 manifest 的 gate_waivers（stage+code+slide+
-    # message 指纹），pre-QA 聚合在后续 build/QA 里按指纹剔除并保留 waived 计数。
+    # 的 critical/major finding 复制进 manifest 的 gate_waivers。指纹是
+    # canonical stage + code + normalized slide（message 只进审计记录）。
+    # pre-QA 的 quality 阶段名叫 quality-deterministic，报告文件仍是
+    # pre-qa-quality.json；指纹用 quality，和 QA 的 quality 阶段是同一把钥匙。
     # 门报告文件本身不动（证据不可变）；豁免是可审计的一等操作，不是静默绕门。
     if getattr(args, "waive", False):
         waived_findings: list[dict[str, Any]] = []
@@ -95,11 +98,16 @@ def _cancel_pending_repair(
                     continue
                 if str(finding.get("severity") or "").lower() not in {"critical", "major"}:
                     continue
+                stage, code, slide = waiver_fingerprint(
+                    report_name.removeprefix("pre-qa-").removesuffix(".json"),
+                    finding.get("code"),
+                    finding.get("slide"),
+                )
                 waived_findings.append(
                     {
-                        "stage": report_name.removeprefix("pre-qa-").removesuffix(".json"),
-                        "code": str(finding.get("code") or ""),
-                        "slide": finding.get("slide"),
+                        "stage": stage,
+                        "code": code,
+                        "slide": int(slide) if slide else None,
                         "message": str(finding.get("message") or "")[:200],
                     }
                 )

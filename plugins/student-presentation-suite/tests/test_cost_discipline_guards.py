@@ -329,6 +329,11 @@ class CostGuardTests(unittest.TestCase):
         self.assertEqual(store.name, "seen-task-a.json")
         self.assertIn(".guard", store.parts)
 
+    def test_receipt_fact_does_not_name_the_degrade_flag(self) -> None:
+        self.assertNotIn("allow-missing", cost_guard.RECEIPT_FACT)
+        self.assertNotIn("--receipt-policy", cost_guard.RECEIPT_FACT)
+        self.assertIn("doctor", cost_guard.RECEIPT_FACT)
+
 
 class ResearchEnvelopeTests(unittest.TestCase):
     def test_compact_done_envelope_passes(self) -> None:

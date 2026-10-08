@@ -333,6 +333,37 @@ class RenderArchetypeTests(unittest.TestCase):
         self.assertTrue(any(abs(y - (out["keyY"] - 0.08)) < 0.06 for y in out["rules"]), out)
         self.assertEqual([], out["errors"], out)
 
+    def test_a_key_line_that_does_not_fit_fails_the_page(self) -> None:
+        out = self.run_node(
+            """
+            const C = require(path.join(SCRIPTS, 'pptx-composition.js'));
+            const slide = mock();
+            const key = '收'.repeat(800);
+            let archetype = null;
+            try {
+              L.renderArchetype(
+                { slide, tokens: TOKENS, slideNumber: 3 },
+                { layout: { id: 'claim-focus' },
+                  slots: { title: '标题', claim: '主张一句话', body: ['要点一'], key_line: key } });
+            } catch (error) {
+              archetype = String(error && error.message || error);
+            }
+            let move = null;
+            try {
+              C.renderMove(
+                { slide: mock(), tokens: TOKENS, slideNumber: 4, pageKind: 'content' },
+                { move: 'thesis', slots: { title: '标题', claim: '主张一句话', key_line: key } });
+            } catch (error) {
+              move = String(error && error.message || error);
+            }
+            console.log(JSON.stringify({ archetype, move }));
+            """
+        )
+        self.assertIsNotNone(out["archetype"], out)
+        self.assertIn("key_line", out["archetype"])
+        self.assertIsNotNone(out["move"], out)
+        self.assertIn("key_line", out["move"])
+
     def test_timeline_labels_fit_with_tight_margin(self) -> None:
         """2026-09-29 live："2021 双碳目标写入中…" 15 字在默认 6pt 内边距下差 2%
         放不下，校准构建连败。margin 2 后 16pt 两行可容纳。"""
