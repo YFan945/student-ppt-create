@@ -593,9 +593,29 @@ function renderArchetype(ctx, request = {}) {
 
 /**
  * 声明式页面的统一 glue：背景、深浅盘、版式渲染、D11 收尾带、notes。
- * 页面模块只导出 { dark, kind, context, layout, slots, params, notes }，
+ * 页面模块导出 { dark, kind, context, move, layout, slots, params, notes }。
+ * 有 move 时先按生成时构图绘制；装不下再退回 archetype。只有 layout 的旧页仍走分区。
  * 函数式页面（D9 自定义坐标转义口）仍由页面自己执行。
  */
+function alternateMoves(move, slots) {
+  const body = Array.isArray(slots.body)
+    ? slots.body.filter(Boolean)
+    : slots.body
+      ? [slots.body]
+      : [];
+  const claim = String(slots.claim || '');
+  const longClaim = [...claim].length >= 24;
+  const visual =
+    slots.visual && typeof slots.visual === 'object' && Object.keys(slots.visual).length;
+  const order = [];
+  if (longClaim) order.push('weighted');
+  if (body.length >= 2) order.push('sequence');
+  if (visual) order.push('proof', 'figure');
+  if (!longClaim) order.push('thesis');
+  if (body.length >= 1) order.push('weighted');
+  return [...new Set(order)].filter((item) => item !== move);
+}
+
 function renderDeclaredPage(ctx, spec = {}) {
   const H = _sibling('pptx-helpers');
   const { slide, tokens } = ctx;
@@ -629,15 +649,56 @@ function renderDeclaredPage(ctx, spec = {}) {
       String(visualPayload.component || '') === 'table';
     if (structured && spec.context && spec.context.hasData !== true) derived.hasData = true;
   }
-  const result = renderArchetype(
-    { ...ctx, tokens: pageTokens },
-    {
-      context: { ...derived, ...(spec.context || {}) },
-      layout: spec.layout ? { id: spec.layout } : undefined,
-      slots: slots,
-      params: spec.params || {},
-    },
-  );
+  const request = {
+    context: { ...derived, ...(spec.context || {}) },
+    layout: spec.layout ? { id: spec.layout } : undefined,
+    slots,
+    params: spec.params || {},
+  };
+  const pageCtx = { ...ctx, tokens: pageTokens };
+  let result;
+  if (spec.move) {
+    const C = _sibling('pptx-composition');
+    const probeCtx = {
+      ...pageCtx,
+      slide: _probeSlide(),
+      registry: undefined,
+      layoutReport: undefined,
+    };
+    const attempts = [String(spec.move), ...alternateMoves(String(spec.move), slots)];
+    let fitted = null;
+    for (const move of attempts) {
+      try {
+        C.renderMove(probeCtx, { ...request, move });
+        fitted = move;
+        break;
+      } catch (error) {
+        if (error && error.layoutFit) continue;
+        throw error;
+      }
+    }
+    if (fitted) {
+      result = C.renderMove(pageCtx, { ...request, move: fitted });
+      if (fitted !== String(spec.move) && pageCtx.layoutReport) {
+        const last = [...pageCtx.layoutReport]
+          .reverse()
+          .find((row) => row.slide === pageCtx.slideNumber);
+        if (last) last.fallbackFrom = String(spec.move);
+      }
+      if (fitted !== String(spec.move)) result = { ...result, fallbackFrom: String(spec.move) };
+    } else {
+      result = renderArchetype(pageCtx, request);
+      result = { ...result, fallbackFrom: String(spec.move) };
+      if (pageCtx.layoutReport) {
+        const last = [...pageCtx.layoutReport]
+          .reverse()
+          .find((row) => row.slide === pageCtx.slideNumber);
+        if (last) last.fallbackFrom = String(spec.move);
+      }
+    }
+  } else {
+    result = renderArchetype(pageCtx, request);
+  }
   if (spec.notes) slide.addNotes(String(spec.notes));
   return result;
 }
@@ -683,10 +744,15 @@ function _renderOnLayout(ctx, request, layoutId, area) {
   const n = Number.isInteger(ctx.slideNumber) ? ctx.slideNumber : 0;
   // 0.27.0 硬门：visual 载荷存在但本版式的 visual 区放不下真实内容时，按
   // fit 失败处理走 fallback 链，绝不把表格/KPI 缩成不可见的窄条静默交付。
-  const visualPayloadHere = slots.visual && typeof slots.visual === 'object' && Object.keys(slots.visual).length
-    ? slots.visual
-    : null;
-  if (visualPayloadHere && zones.visual && (zones.visual.h < 1.0 || zones.visual.w * zones.visual.h < 2.5)) {
+  const visualPayloadHere =
+    slots.visual && typeof slots.visual === 'object' && Object.keys(slots.visual).length
+      ? slots.visual
+      : null;
+  if (
+    visualPayloadHere &&
+    zones.visual &&
+    (zones.visual.h < 1.0 || zones.visual.w * zones.visual.h < 2.5)
+  ) {
     throw _fitError(
       `slide ${n}: archetype "${selection.id}" visual zone is ` +
         `${zones.visual.w.toFixed(2)}x${zones.visual.h.toFixed(2)}in — too small for the declared ` +

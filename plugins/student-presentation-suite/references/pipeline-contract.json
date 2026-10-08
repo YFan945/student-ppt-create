@@ -172,19 +172,17 @@
   "calibration_sample_selection": "archetype_coverage_with_leverage_priority",
   "deck_rhythm_plan": "archetype_families_with_background_rhythm",
   "visual_score_policy": {
-    "structural_hard_floor": [
-      "hierarchy",
-      "focal_point"
-    ],
+    "structural_hard_floor": [],
     "advisory_only": [
+      "hierarchy",
+      "focal_point",
+      "composition",
+      "visual_interest",
       "whitespace"
     ],
     "deck_average": "advisory",
-    "note": "fast treats subjective scores/style as advisory; standard and rigorous block hierarchy/focal_point/composition/visual_interest below 6; rigorous also blocks style majors and regression. Deterministic failures and critical findings block all tiers.",
-    "aesthetic_hard_floor": [
-      "composition",
-      "visual_interest"
-    ]
+    "note": "Subjective scores are advisory on every tier. Rigorous still blocks style majors and regressions. Deterministic failures and critical findings block all tiers. Wireframes and composition-candidate files are exploration notes, not delivery blockers.",
+    "aesthetic_hard_floor": []
   },
   "production_modes": [
     "create",
@@ -194,8 +192,8 @@
   "quality_level_policy": {
     "default": "fast for new intake; legacy Slide Specs with missing quality_level also resolve to fast",
     "fast": "one builder packet for all pages and repairs, deterministic pre-QA, render and one final independent critic; subjective style findings, style majors and regressions are advisory, critical and deterministic failures block; no calibration",
-    "standard": "decks above the standard calibration page line (8 pages): one calibration sample (deterministic palette/archetype verification; the independent critic reviews the finished deck once), then full generation with shards <= 2; decks at or below the line skip calibration and dispatch the initial builder directly; structural lows (hierarchy/focal_point) block, style majors and regressions advisory",
-    "rigorous": "the full high-score path: decks at or below the 8-page line skip calibration like standard; above it, calibration verified by deterministic gates (palette/archetype/style summary), fix rounds <= 2 (shards <= 3); one independent production review, structural + style-major + regression findings block, per-slide floor 6.0",
+    "standard": "decks above the standard calibration page line (8 pages): one calibration sample (deterministic palette/archetype verification; the independent critic reviews the finished deck once), then full generation with shards <= 2; decks at or below the line skip calibration and dispatch the initial builder directly; subjective scores and exploration files are advisory, style majors and regressions advisory",
+    "rigorous": "the full high-score path: decks at or below the 8-page line skip calibration like standard; above it, calibration verified by deterministic gates (palette/archetype/style summary), fix rounds <= 2 (shards <= 3); one independent production review; subjective scores are advisory; style-major and regression findings block; critical and deterministic failures block",
     "aliases": {
       "basic": "fast",
       "high-score": "rigorous"

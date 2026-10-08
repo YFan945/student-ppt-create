@@ -20,7 +20,7 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 `rigorous` 的 blocker = `critical` + `major`。`fast` 的主观视觉分数、重复版式和
 `major` 风格意见只作 advisory；只有无法使用的页面（例如文字无法辨认）报 `critical` 并
 阻塞。Critic 应把 `fast` 档的风格建议写成 `minor`，`blocker_count` 与回给主会话的计数按
-当前质量档计算。QA 保留这些建议，但不会因此要求 Builder 反复改版。`standard/rigorous` 的 hierarchy、focal_point、composition、visual_interest 低于 6.0 均阻断；whitespace 和整套平均低分为 advisory。
+当前质量档计算。QA 保留这些建议，但不会因此要求 Builder 反复改版。hierarchy、focal_point、composition、visual_interest、whitespace 和整套平均低分在三档都是 advisory。无法阅读的 critical 仍然阻断。rigorous 的风格 major 与视觉回归仍然阻断。
 
 2026-09-17 live：critic 按自己的习惯回报"blocker 数：0（critical 0 / major 8 / minor 12）"，
 主会话据此判断"独立复核已判定可交付"，而质量门同一份报告算出 23 个 blocker。现在必须
@@ -100,11 +100,7 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 - `whitespace`：留白是否服务层级，而不是拥挤或“空但没设计”；
 - `art_direction_alignment`：页面/整套是否真正执行确认后的 type scale、image treatment、chart/component language、motif 和 background rhythm。
 
-High-score 默认每项不低于 6、整套平均不低于 7。Batch 4.4 起，`hierarchy` / `focal_point`
-低于阈值属于 Major（页面结构性损坏，需要 repair）；`composition` / `visual_interest` /
-`whitespace` 低于阈值与平均分不达标属于 **advisory**——照实写进报告、由管线计数，但不机械
-阻塞交付。若 `art_direction_alignment < 6`，即使页面本身不难看，也要检查是否 style seed/art
-direction 在生产时被丢失。
+High-score 默认每项不低于 6、整套平均不低于 7。这些低分照实写入报告，三档都不因此阻断交付。无法阅读的页面仍以 critical 返修。
 
 ## visual_structure vocabulary
 

@@ -8,7 +8,7 @@
  * instead of from adjectives. Config arrives as JSON on stdin:
  *   { "out": "<abs path>.pptx", "topic": "...", "tokens": {resolved tokens} }
  *
- * The engine does all geometry (renderBackground + renderArchetype); the copy
+ * The engine does all geometry through renderDeclaredPage moves. The copy
  * is fixed sample content themed by the topic — this is a style sample, not a
  * content draft.
  */
@@ -42,44 +42,29 @@ process.stdin.on('end', () => {
     slideH: H.SLIDE_H_IN,
   });
 
-  // Page 1 — dark cover: the style's field, band, motif and type scale.
   const cover = pptx.addSlide();
-  H.renderBackground(cover, tokens, { kind: 'cover', dark: true });
-  L.renderArchetype(
-    { slide: cover, tokens: H.paletteMode(tokens, 'dark'), registry, slideNumber: 1 },
+  const coverClaim = [...topicText].length <= 14 ? topicText : '这一句是页面的主张';
+  L.renderDeclaredPage(
+    { slide: cover, tokens, registry, slideNumber: 1, lang: 'chinese' },
     {
-      layout: { id: 'cover-editorial' },
-      slots: {
-        title: topicText,
-        claim: '一次结构化、可核证的汇报',
-      },
+      dark: true,
+      kind: 'cover',
+      move: 'thesis',
+      slots: { title: '风格', claim: coverClaim, body: ['先看这一句'] },
     },
   );
 
-  // Page 2 — light content: chart language + claim + takeaway of the style.
   const content = pptx.addSlide();
-  H.renderBackground(content, tokens, { kind: 'content', dark: false });
-  L.renderArchetype(
-    { slide: content, tokens: H.paletteMode(tokens, 'light'), registry, slideNumber: 2 },
+  L.renderDeclaredPage(
+    { slide: content, tokens, registry, slideNumber: 2, lang: 'chinese' },
     {
-      layout: { id: 'data-chart-takeaway' },
+      dark: false,
+      kind: 'content',
+      move: 'metric',
       slots: {
         title: '关键结果',
-        claim: '三项指标全部达标',
-        visual: {
-          type: 'chart',
-          details: {
-            takeaway: '本方法在全部数据集上领先（图表结论组件样式）',
-            series: [
-              {
-                name: '本方法',
-                labels: ['数据集 1', '数据集 2', '数据集 3'],
-                values: [82, 88, 91],
-              },
-              { name: '基线', labels: ['数据集 1', '数据集 2', '数据集 3'], values: [76, 81, 84] },
-            ],
-          },
-        },
+        claim: '91',
+        body: ['本方法在全部数据集上领先'],
       },
     },
   );

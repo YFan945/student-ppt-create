@@ -1,5 +1,7 @@
 # PPTX Design Grammar
 
+生产时的写法以 builder packet 的 `visual_rules` 和示例页为准。本文件不进入生产会话。
+
 本文件位于 visual style 与 layout inspiration 之上：**style 决定视觉气质，design grammar 决定整套
 PPT 如何用页面语法表达内容，layout 只提供局部构图参考。** 默认 create/rebuild 必须先选一个 grammar，
 再逐页决定具体 composition；不得用固定 layout 配额代替设计判断。
@@ -10,9 +12,10 @@ PPT 如何用页面语法表达内容，layout 只提供局部构图参考。** 
 2. 同一 deck 需要视觉节奏：大图/大数字/结构图/文字主导/数据页交替，避免连续 3 页同构；连续两页使用等宽卡片、普通列表、三等分栏也应主动改构图。
 3. 视觉元素必须承担信息功能。没有合适图片时宁可使用 typography、原生图表、关系结构或留白，禁止 filler icon/card。
 4. 每页只允许一个 primary focal point；次要元素围绕焦点建立层级。
-5. `pptx-layouts.js` 的 36 个 layout 是 inspiration catalog，不是页面类型枚举，也不是模板配额。
-6. 允许高质量 text-led slide。`visual_strategy: typography` 是合法结构化视觉策略，不得因 high-score 模式强制塞图。
-7. “无越界/无重叠”只是工程底线，不是视觉完成标准。High-score 还必须通过结构化 render visual critic 与 deck rhythm 检查。
+5. `pptx-layouts.js` 的 36 个 layout 是装不下构图动作时的退路，不是页面的起点。
+6. 生成时的视觉由 `move` 决定：引擎按 thesis / weighted / metric / proof / sequence / figure 计算字号、主区域和留白。模型写出主张和支撑，不手填分区矩形。
+7. 允许高质量 text-led slide。`visual_strategy: typography` 是合法结构化视觉策略，不得因 high-score 模式强制塞图。
+8. “无越界/无重叠”只是工程底线，不是视觉完成标准。High-score 还必须通过结构化 render visual critic 与 deck rhythm 检查。
 
 ## Grammar families
 
@@ -181,8 +184,7 @@ artifact readback、Slide Spec freeze 与 render-conditioned visual review 负�
   不要把大数字塞进等宽卡片（那是 D8）。
 - **D8 连续等宽卡片/三栏是弱结构。** "有 N 项 → N 个等宽矩形"禁止；用
   weightedColumns 权重、highlight 焦点卡、process/timeline 结构表达主次。
-- **D9 版式几何由引擎执行。** `renderArchetype` 拥有 zones 几何；builder 填槽、调
-  params、换 layout.id；自由坐标必须先在页内注释声明 custom 理由，且过全部几何门。
+- **D9 先选构图动作，再填槽。** `move` 为 thesis / weighted / metric / proof / sequence / figure 之一，配 slots；三列及以上写不相等的 `params.weights`。36 套分区只在该动作装不下当前文案时退回。自由坐标必须先在页内注释声明 custom 理由，且过全部几何门。
 - **D10 每页只允许一个 primary focal point**；次要元素围绕焦点降级（颜色/字号/位置），
   禁止全页等权重并列。
 

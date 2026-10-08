@@ -230,36 +230,38 @@ function addProcessFlow(slide, data, area, tokens, lang) {
   }
   const gap = H.spacing(tokens, 3);
   const cells = H.weightedColumns(area, steps.length, data.weights, gap);
-  const cardH = area.h * 0.72;
-  const y = area.y + (area.h - cardH) / 2;
+  const p = palette(tokens);
   steps.forEach((step, index) => {
-    const x = cells[index].x;
-    const cardW = cells[index].w;
-    const shape = 'roundRect';
-    const card = { x, y, w: cardW, h: cardH };
-    const inset = S.safeInsetForShape(shape, card);
-    addPanel(slide, card, tokens, { shape, variant: index });
-    addLabel(
-      slide,
+    const cell = cells[index];
+    const text =
       data.numbered === false
         ? textOf(step, `Step ${index + 1}`)
-        : `${index + 1}. ${textOf(step, `Step ${index + 1}`)}`,
-      { x: x + inset.x, y: y + inset.y, w: cardW - inset.x * 2, h: cardH - inset.y * 2 },
+        : `${index + 1}. ${textOf(step, `Step ${index + 1}`)}`;
+    addLabel(
+      slide,
+      text,
+      {
+        x: cell.x,
+        y: cell.y + (index === 0 ? area.h * 0.08 : area.h * 0.22),
+        w: cell.w,
+        h: index === 0 ? area.h * 0.62 : area.h * 0.42,
+      },
       tokens,
       lang,
-      { bold: true, role: 'node', label: `流程步骤 ${index + 1}` },
+      {
+        bold: index === 0,
+        role: index === 0 ? 'subtitle' : 'body',
+        align: 'left',
+        label: `流程步骤 ${index + 1}`,
+      },
     );
     if (index < steps.length - 1) {
       slide.addShape(SHAPE.line, {
-        x: x + cardW,
-        y: y + cardH * 0.5,
+        x: cell.x + cell.w,
+        y: cell.y + area.h * 0.38,
         w: gap,
         h: 0,
-        line: {
-          color: palette(tokens).accent2,
-          width: 2,
-          endArrowType: 'triangle',
-        },
+        line: { color: p.accent2, width: 1.25 },
       });
     }
   });
@@ -355,6 +357,18 @@ function addComparison(slide, data, area, tokens, lang) {
   }
   const cells = H.weightedColumns(area, entries.length, weights, gap);
   const p = palette(tokens);
+  if (entries.length >= 3) {
+    entries.forEach((entry, index) => {
+      const cell = cells[index];
+      addLabel(slide, textOf(entry), cell, tokens, lang, {
+        bold: index === 0,
+        role: index === 0 ? 'subtitle' : 'body',
+        align: 'left',
+        label: `对比 ${index + 1}`,
+      });
+    });
+    return;
+  }
   entries.forEach((entry, index) => {
     const shape = 'roundRect';
     addPanel(slide, cells[index], tokens, {
@@ -550,7 +564,10 @@ function addStyledTable(slide, data, area, tokens, lang) {
   }
   const drawCell = (text, fill, color, box, bold, label) => {
     slide.addShape('rect', {
-      x: box.x, y: box.y, w: box.w, h: box.h,
+      x: box.x,
+      y: box.y,
+      w: box.w,
+      h: box.h,
       fill: { color: fill },
       line: { type: 'solid', color: p.muted, pt: 0.5 },
     });
@@ -566,9 +583,14 @@ function addStyledTable(slide, data, area, tokens, lang) {
     let hx = tableBox.x;
     headerCells.forEach((cell, colIndex) => {
       const cellW = colWs[colIndex] ?? tableBox.w / colCount;
-      drawCell(cell.text, p.accent, readableOn(p.accent, p),
-        { x: hx, y: tableBox.y, w: cellW, h: rowH }, true,
-        `table-header[${colIndex}]`);
+      drawCell(
+        cell.text,
+        p.accent,
+        readableOn(p.accent, p),
+        { x: hx, y: tableBox.y, w: cellW, h: rowH },
+        true,
+        `table-header[${colIndex}]`,
+      );
       hx += cellW;
     });
   }
@@ -579,9 +601,14 @@ function addStyledTable(slide, data, area, tokens, lang) {
     let cellX = tableBox.x;
     row.forEach((cell, colIndex) => {
       const cellW = colWs[colIndex] ?? tableBox.w / colCount;
-      drawCell(cell.text, cell.options.fill.color, cell.options.color,
+      drawCell(
+        cell.text,
+        cell.options.fill.color,
+        cell.options.color,
         { x: cellX, y: dataTop + rowIndex * dataRowH, w: cellW, h: dataRowH },
-        cell.options.bold, `table[${rowIndex}][${colIndex}]`);
+        cell.options.bold,
+        `table[${rowIndex}][${colIndex}]`,
+      );
       cellX += cellW;
     });
   });
@@ -965,7 +992,8 @@ function addSummary(slide, data, area, tokens, lang) {
       label: '总结结论',
     });
   }
-  return addProcessFlow(slide, { steps: takeaways, numbered: false }, area, tokens, lang);
+  const weights = takeaways.map((_, index) => (index === 0 ? 1.8 : 1));
+  return addProcessFlow(slide, { steps: takeaways, numbered: false, weights }, area, tokens, lang);
 }
 
 function addReferenceList(slide, data, area, tokens, lang) {
@@ -1006,48 +1034,60 @@ function renderVisual(slide, family, data, area, tokens, lang) {
   const d = data || {};
   const stringList = items(d.items).filter((entry) => typeof entry === 'string');
   const structured =
-    items(d.series).length || items(d.rows).length || items(d.stages).length || items(d.nodes).length;
+    items(d.series).length ||
+    items(d.rows).length ||
+    items(d.stages).length ||
+    items(d.nodes).length;
   if (stringList.length && !structured) {
-    // 0.27.0 处方式兜底：字符串清单是确定性内容，必须上屏——短清单（2-4 条、
-    // 每条 ≤12 字）走 KPI 卡，其余走条目列表；绝不静默留白（run-14 live）。
-    const short = stringList.every((text) => [...text].length <= 12);
-    if (short && stringList.length >= 2 && stringList.length <= 4) {
-      return addMetricDashboard(slide, d, area, tokens, lang);
-    }
+    // 字符串清单必须上屏，但不再改写成等宽 KPI。第一条承担视觉重量，其余降级。
     return addItemList(slide, d, area, tokens, lang);
   }
   const component =
-    family === 'dashboard' && items(d.series).length
-      ? addChartWithTakeaway
-      : COMPONENTS[family];
+    family === 'dashboard' && items(d.series).length ? addChartWithTakeaway : COMPONENTS[family];
   if (!component) throw new RangeError(`Unknown visual layout family: ${family}`);
   return component(slide, d, area, tokens, lang);
 }
 
 /**
- * 0.27.0：字符串条目列表的确定性渲染（accent 角标 + 逐条文本，均分区域）。
- * 这不是某个 art-direction 组件，是"内容必须上屏"的最后防线——列表形状的
- * 载荷（builder 最常写的形状）在任何 family 下都可渲染。
+ * 字符串条目列表。第一条占更高的行、用更大的字号，其余逐条变轻。
+ * 这是内容必须上屏的最后防线，不再把短清单画成等宽 KPI。
  */
 function addItemList(slide, data, area, tokens, lang) {
   const list = items(data.items).filter((entry) => typeof entry === 'string' && entry.trim());
   if (!list.length) throw new RangeError('addItemList requires a non-empty string items list.');
   const p = palette(tokens);
-  const gap = Math.min(0.1, area.h / (list.length * 8));
-  const rowH = (area.h - gap * (list.length - 1)) / list.length;
+  const gap = Math.min(0.12, area.h / (list.length * 10));
+  const weights = list.map((_, index) => (index === 0 ? 2.35 : Math.max(0.85, 1.2 - index * 0.08)));
+  const total = weights.reduce((sum, weight) => sum + weight, 0);
+  const usable = area.h - gap * (list.length - 1);
+  let y = area.y;
   list.forEach((text, index) => {
-    const row = { x: area.x, y: area.y + index * (rowH + gap), w: area.w, h: rowH };
-    const tick = { x: row.x, y: row.y + rowH * 0.34, w: Math.min(0.08, row.w * 0.035), h: rowH * 0.32 };
+    const rowH = (usable * weights[index]) / total;
+    const row = { x: area.x, y, w: area.w, h: rowH };
+    const tickH = Math.min(rowH * 0.28, index === 0 ? 0.22 : 0.12);
+    const tick = { x: row.x, y: row.y + rowH * 0.28, w: index === 0 ? 0.12 : 0.07, h: tickH };
     slide.addShape('roundRect', {
-      x: tick.x, y: tick.y, w: tick.w, h: tick.h,
-      fill: { color: p.accent }, line: { type: 'none' },
+      x: tick.x,
+      y: tick.y,
+      w: tick.w,
+      h: tick.h,
+      fill: { color: index === 0 ? p.accent : p.accent2 },
+      line: { type: 'none' },
     });
     H.addTextBox(
-      slide, text,
-      { x: row.x + tick.w + 0.14, y: row.y, w: row.w - tick.w - 0.14, h: rowH },
-      tokens, lang,
-      { role: 'body', label: `items[${index}]`, margin: 8 },
+      slide,
+      text,
+      { x: row.x + 0.28, y: row.y, w: row.w - 0.28, h: rowH },
+      tokens,
+      lang,
+      {
+        role: index === 0 ? 'subtitle' : 'body',
+        label: `items[${index}]`,
+        margin: 4,
+        color: index === 0 ? p.text : p.muted,
+      },
     );
+    y += rowH + gap;
   });
 }
 
@@ -1060,7 +1100,11 @@ function renderVisualSpec(slide, visual, family, area, tokens, lang) {
     ? normalized.details.filter((entry) => typeof entry === 'string' && entry.trim())
     : undefined;
   const data = {
-    ...(arrayItems ? { items: arrayItems } : normalized.details && typeof normalized.details === 'object' ? normalized.details : {}),
+    ...(arrayItems
+      ? { items: arrayItems }
+      : normalized.details && typeof normalized.details === 'object'
+        ? normalized.details
+        : {}),
     ...Object.fromEntries(
       ['asset', 'alt_text', 'purpose', 'type']
         .filter((key) => normalized[key] !== undefined)
@@ -1072,12 +1116,7 @@ function renderVisualSpec(slide, visual, family, area, tokens, lang) {
 
 // 0.27.0: 自检处方用——slots.visual.type 的合法词汇（能映射到真实组件）。
 const KNOWN_VISUAL_TYPES = Object.freeze([
-  ...new Set([
-    ...Object.keys(COMPONENTS),
-    'image',
-    'illustration',
-    'screenshot',
-  ]),
+  ...new Set([...Object.keys(COMPONENTS), 'image', 'illustration', 'screenshot']),
 ]);
 
 module.exports = {

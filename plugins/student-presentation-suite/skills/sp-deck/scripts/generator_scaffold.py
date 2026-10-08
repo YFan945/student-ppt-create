@@ -119,14 +119,15 @@ const COPY = {{
 }};
 /* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */
 
-/* 声明式页面：只填槽位与参数，glue（背景/深浅盘/版式渲染/D11 收尾带/notes）由
-   deck.js 的 L.renderDeclaredPage 统一执行。需要自定义坐标时才改回函数式页面
-   （module.exports = function (ctx) {{…}}）并在页内注释声明 custom 理由；几何门
-   照常全检。slots.key_line 非空时 D11 收尾带自动渲染，不要手画第二条；来源行
-   （11pt）画在更下方的 footer 区。 */
+/* 声明式页面：选 move、填 slots。glue 由 deck.js 的 L.renderDeclaredPage 执行。
+   例：move: "thesis"，claim 是页面上最大的那句话。
+   或 move: "weighted", params: {{ weights: [2.4, 1, 0.7] }}（三列起权重必须不等）。
+   move 装不下时才退回 layout。自定义坐标才改函数式页面并注释 custom。
+   slots.key_line 非空时 D11 收尾带自动渲染，不要手画第二条。 */
 module.exports = {{
   dark: {dark_js},
   kind: {kind_js},
+  move: {move_js},
   context: {context_js},
   /* 需要钉版式时填 id（如 "cover-split"）；留空由引擎按 context 自选。 */
   layout: undefined,
@@ -344,6 +345,31 @@ def _archetype_context(slide: dict[str, Any], layout_override: str | None = None
     return json.dumps(context, ensure_ascii=False)
 
 
+def _suggested_move(slide: dict[str, Any]) -> str:
+    """构图动作的起点。引擎按它计算字号和主次；builder 可以改。"""
+    kind = str(slide.get("kind") or "").strip().lower()
+    role = str(slide.get("role") or "").strip().lower()
+    visual = slide.get("visual") if isinstance(slide.get("visual"), dict) else {}
+    visual_type = str(visual.get("type") or "").strip().lower()
+    if visual_type in {"image", "illustration", "screenshot"}:
+        return "figure"
+    if visual_type in {"chart", "table", "data"}:
+        return "proof"
+    if visual_type in {"process", "timeline", "flow"} or role in {"process", "method"}:
+        return "sequence"
+    if visual_type in {"kpi", "stat", "dashboard"} or role in {"result", "data"}:
+        return "metric"
+    if role in {"comparison", "compare", "decision"}:
+        return "weighted"
+    if kind in {"cover", "section", "closing"}:
+        return "thesis"
+    copy_value = slide.get("slide_copy") if slide.get("slide_copy") is not None else slide.get("content")
+    items = copy_value if isinstance(copy_value, list) else ([copy_value] if copy_value else [])
+    if len([item for item in items if item]) >= 2:
+        return "weighted"
+    return "thesis"
+
+
 def _page_background(slide: dict[str, Any]) -> tuple[str, str]:
     """(kind, dark) JS 字面量：背景指令页型 + 深浅三明治默认。"""
     kind = str(slide.get("kind") or "").strip().lower() or "content"
@@ -475,6 +501,7 @@ def scaffold_generator(
             dark_js=dark_js,
             context_js=_archetype_context(slide, suggestion),
             visual_js=_visual_payload(slide),
+            move_js=json.dumps(_suggested_move(slide), ensure_ascii=False),
         )
         target = pages_dir / name
         if write_if_scaffoldable(target, stub):

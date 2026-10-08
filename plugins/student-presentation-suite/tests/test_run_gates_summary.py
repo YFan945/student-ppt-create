@@ -188,10 +188,14 @@ class RunGatesSummaryTests(unittest.TestCase):
             )
             self.assertEqual(2, code)
             lines = stdout.splitlines()
-            self.assertEqual(4, len(lines), stdout)
-            self.assertTrue(lines[-1].startswith("  …"), lines[-1])
+            # Exploration files (wireframes, candidates, reference selections) are
+            # minor. One remaining major keeps the run blocked, and the summary
+            # stays inside the cap without an ellipsis.
+            self.assertEqual(2, len(lines), stdout)
+            self.assertFalse(lines[-1].startswith("  …"), lines[-1])
             report = json.loads(out.read_text(encoding="utf-8"))
-            self.assertGreater(report["counts"]["blockers"], len(lines) - 2)
+            self.assertEqual(1, report["counts"]["blockers"])
+            self.assertGreater(report["counts"]["minor"], 0)
 
     def test_json_mode_emits_the_full_report(self) -> None:
         with TemporaryDirectory() as tmp:

@@ -259,18 +259,18 @@ A reproducible
 [golden sample](examples/golden-sample/README.md) exercises the whole pipeline and reaches
 `status: complete`.
 
-All styles share 36 page-layout inspirations in `layout-library.json` through
-`pptx-layouts.js`. Suggestions map Slide Spec-native kind/visual values and filter by
+All styles share 36 page-layout inspirations in `layout-library.json`. They are the fallback
+when a composition move cannot fit the copy. The default page declares a `move`
+(`thesis`, `weighted`, `metric`, `proof`, `sequence`, or `figure`); `pptx-composition.js`
+computes type scale, primary mass, and whitespace while drawing. Suggestions still map
+Slide Spec-native kind/visual values and filter by
 assets, data, item counts, contraindications, declared capacity, and estimated
 title-zone fit before scoring density and recent silhouettes. Missing
 inputs follow explicit feasible fallback chains. `scripts/visual_system_smoke_gallery.py` produces
 12x6 freeform style-reference galleries, a separate 36-layout reference/fallback gallery, and a
 12-page SVG atlas, with optional rendering.
 
-Since v0.18 the layout library is also **executable**: `pptx-layouts.js renderArchetype()`
-compiles the library's normalized zones into pptxgenjs geometry so scaffolded pages place
-title/claim/body/visual slots through the engine instead of hand-computed coordinates
-(fallback chains swap archetypes when content does not fit). Backgrounds are machine
+`renderArchetype()` remains the fallback compiler for those 36 zones. Backgrounds are machine
 directives too — `resolve_design_tokens()` derives per-page-kind `background_directives`
 (dark/light-sandwich gradient fields, patterns, corner motifs, structural bands) from each
 style's `visual_language`, and `pptx-helpers.js renderBackground()` executes them
@@ -558,8 +558,8 @@ Delivery tiers (`quality_level`; legacy `basic` / `high-score` accepted as alias
 | Tier | Calibration rounds | Shard cap | Blocks |
 | --- | --- | --- | --- |
 | `fast` | 0 | 1 | critical + deterministic failures |
-| `standard` | 1 | 2 | + structural/aesthetic lows (hierarchy/focal_point/composition/visual_interest < 6) |
-| `rigorous` | 2 | 3 | + style majors + visual regression, per-slide floor 6.0 |
+| `standard` | 1 | 2 | same; subjective scores and exploration files are advisory |
+| `rigorous` | 2 | 3 | + style majors + visual regression |
 
 Delivery guarantee: every confirmed artifact is content-verified against the frozen
 Slide Spec (PPTX/PDF page counts, per-page script sections) and hash-bound to its

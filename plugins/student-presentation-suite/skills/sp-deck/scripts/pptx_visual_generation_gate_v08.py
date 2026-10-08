@@ -129,13 +129,12 @@ def validate_visual_generation(
     quality: str = "high-score",
 ) -> dict[str, Any]:
     issues: list[dict[str, Any]] = []
-    # D2: the wireframe render is exploration breadth, and fast's one-shot build
-    # gets its silhouette evidence from the composition candidates instead — a
-    # missing wireframe degrades to advisory there and stays critical elsewhere.
+    # 线框、候选 JSON、reference selection 是画之前的探索材料。三档都只记录，
+    # 不因此停交付。文件损坏或页码对不上仍然是失败。
     tier_policy_value = tier_policy(quality)
     tier = tier_policy_value["tier"]
     high_score = tier_policy_value["strict_v08"]
-    wireframe_missing_severity = "minor" if tier == "fast" else "critical"
+    exploration_severity = "minor"
     quality = tier  # report the canonical tier, not a legacy alias
     try:
         spec = load_structured(slide_spec)
@@ -187,31 +186,31 @@ def validate_visual_generation(
 
         item: dict[str, Any] = {"slide": slide_no}
         if not ref_path.is_file():
-            issues.append(issue("critical", "reference_selection_missing", f"Missing visual reference selection for high-leverage slide {slide_no}.", slide=slide_no))
+            issues.append(issue(exploration_severity, "reference_selection_missing", f"Missing visual reference selection for high-leverage slide {slide_no}.", slide=slide_no))
             ref_result = {"valid": False, "errors": ["missing"]}
         else:
             ref_result = validate_reference_selection(ref_path, known_reference_ids=known_refs, minimum=2)
             if not ref_result["valid"]:
-                issues.append(issue("major", "reference_selection_invalid", f"Invalid reference selection for slide {slide_no}: {ref_result['errors']}", slide=slide_no))
+                issues.append(issue(exploration_severity, "reference_selection_invalid", f"Invalid reference selection for slide {slide_no}: {ref_result['errors']}", slide=slide_no))
             item["reference_selection_sha256"] = ref_result.get("sha256")
             item["reference_ids"] = ref_result.get("reference_ids", [])
 
         if not candidate_path.is_file():
-            issues.append(issue("critical", "composition_candidates_missing", f"Missing composition candidates for high-leverage slide {slide_no}.", slide=slide_no))
+            issues.append(issue(exploration_severity, "composition_candidates_missing", f"Missing composition candidates for high-leverage slide {slide_no}.", slide=slide_no))
             candidate_result = {"ok": False, "candidate_count": 0}
         else:
             candidate_data = load_structured(candidate_path)
             if int(candidate_data.get("slide_id") or 0) != slide_no:
                 issues.append(issue("critical", "candidate_slide_mismatch", f"Candidate file for slide {slide_no} declares another slide id.", slide=slide_no))
             if candidate_data.get("high_leverage") is not True:
-                issues.append(issue("major", "candidate_not_high_leverage", f"Candidate file for slide {slide_no} must declare high_leverage=true.", slide=slide_no))
+                issues.append(issue(exploration_severity, "candidate_not_high_leverage", f"Candidate file for slide {slide_no} should declare high_leverage=true.", slide=slide_no))
             candidate_result = candidate_check.validate_candidates(
                 candidate_data,
                 known_reference_ids=known_refs,
                 high_score=high_score,
             )
             if not candidate_result["ok"]:
-                issues.append(issue("major", "composition_candidates_invalid", f"Composition candidates for slide {slide_no} failed validation.", slide=slide_no, candidate_issues=candidate_result["issues"]))
+                issues.append(issue(exploration_severity, "composition_candidates_invalid", f"Composition candidates for slide {slide_no} failed validation.", slide=slide_no, candidate_issues=candidate_result["issues"]))
             candidate_refs = {
                 str(ref)
                 for candidate in candidate_data.get("candidates") or []
@@ -225,26 +224,26 @@ def validate_visual_generation(
             if not selected_refs or not candidate_refs:
                 issues.append(
                     issue(
-                        "major",
+                        exploration_severity,
                         "evidence_chain_incomplete",
                         f"Slide {slide_no} lacks retrieved references or candidate references; evidence chain is broken.",
                         slide=slide_no,
                     )
                 )
             elif not candidate_refs.intersection(selected_refs):
-                issues.append(issue("major", "candidate_reference_disconnected", f"Slide {slide_no} candidates do not use any retrieved visual reference.", slide=slide_no))
+                issues.append(issue(exploration_severity, "candidate_reference_disconnected", f"Slide {slide_no} candidates do not use any retrieved visual reference.", slide=slide_no))
             item["composition_candidates_sha256"] = sha256_file(candidate_path)
             item["candidate_count"] = candidate_result.get("candidate_count")
             item["selected_id"] = candidate_result.get("selected_id")
 
         if not wireframe_path.is_file():
-            issues.append(issue(wireframe_missing_severity, "wireframe_missing", f"Missing wireframe PPTX for high-leverage slide {slide_no}.", slide=slide_no))
+            issues.append(issue(exploration_severity, "wireframe_missing", f"Missing wireframe PPTX for high-leverage slide {slide_no}.", slide=slide_no))
         else:
             count = wireframe_slide_count(wireframe_path)
             if count is None:
                 issues.append(issue("critical", "wireframe_invalid", f"Wireframe file for slide {slide_no} is not a readable PPTX.", slide=slide_no))
             elif candidate_result.get("candidate_count") and count != candidate_result.get("candidate_count"):
-                issues.append(issue("major", "wireframe_candidate_count_mismatch", f"Wireframe slide count {count} does not match candidate count for slide {slide_no}.", slide=slide_no))
+                issues.append(issue(exploration_severity, "wireframe_candidate_count_mismatch", f"Wireframe slide count {count} does not match candidate count for slide {slide_no}.", slide=slide_no))
             item["wireframe_sha256"] = sha256_file(wireframe_path)
             item["wireframe_slide_count"] = count
         evidence.append(item)

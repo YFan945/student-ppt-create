@@ -127,8 +127,9 @@ class GenerationCoreV08Tests(unittest.TestCase):
         data["typography"]["slide_title_pt"] = 24
         data["typography"]["body_pt"] = 22
         result = self.art.validate_art_direction(data, high_score=True)
-        self.assertFalse(result["ok"])
-        self.assertIn("weak_type_hierarchy", {item["code"] for item in result["issues"]})
+        self.assertTrue(result["ok"], result["issues"])
+        weak = next(item for item in result["issues"] if item["code"] == "weak_type_hierarchy")
+        self.assertEqual("minor", weak["severity"])
 
     def test_art_direction_blocks_missing_high_leverage_plan(self) -> None:
         data = self.good_art_direction()
@@ -232,8 +233,9 @@ class GenerationCoreV08Tests(unittest.TestCase):
         data = self.good_candidate_set()
         data["candidates"][1]["silhouette"] = data["candidates"][0]["silhouette"]
         result = self.candidates.validate_candidates(data, known_reference_ids=self.reference_ids, high_score=True)
-        self.assertFalse(result["ok"])
-        self.assertIn("candidate_silhouettes_not_distinct", {item["code"] for item in result["issues"]})
+        self.assertTrue(result["ok"], result["issues"])
+        duplicate = next(item for item in result["issues"] if item["code"] == "candidate_silhouettes_not_distinct")
+        self.assertEqual("minor", duplicate["severity"])
 
     def test_high_leverage_candidates_block_out_of_bounds_zone(self) -> None:
         data = self.good_candidate_set()
@@ -399,10 +401,11 @@ class GenerationCoreV08Tests(unittest.TestCase):
                 slide_spec=spec,
                 art_direction=art,
                 evidence_dir=root,
-                quality="high-score",
+                quality="standard",
             )
-            self.assertFalse(result["ok"])
-            self.assertIn("wireframe_missing", {item["code"] for item in result["issues"]})
+            self.assertTrue(result["ok"], result["issues"])
+            missing = next(i for i in result["issues"] if i["code"] == "wireframe_missing")
+            self.assertEqual("minor", missing["severity"])
 
     def test_missing_wireframe_is_advisory_in_fast(self) -> None:
         """D2: fast gets its silhouette evidence from the composition candidates;

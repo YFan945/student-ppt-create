@@ -351,6 +351,37 @@ class BuilderPacketTests(unittest.TestCase):
             "deck-level blockers must be visible without reading the report",
         )
 
+    def test_repair_packet_reads_low_scores_and_repeated_moves(self) -> None:
+        self.prepare_qa()
+        (self.work / "visual-review.json").write_text(
+            json.dumps({
+                "slides": [{
+                    "slide": 2,
+                    "scores": {
+                        "hierarchy": 8, "composition": 4, "focal_point": 8,
+                        "visual_interest": 8, "whitespace": 8,
+                    },
+                }],
+            }),
+            encoding="utf-8",
+        )
+        (self.work / "deck.pptx.layout-report.json").write_text(
+            json.dumps([
+                {"slide": 1, "move": "thesis"},
+                {"slide": 2, "move": "thesis"},
+                {"slide": 3, "move": "thesis"},
+                {"slide": 4, "move": "metric"},
+            ]),
+            encoding="utf-8",
+        )
+        _, packet = self.packet.write_packet(self.work, "repair", [2, 3], None, ["pipeline-qa.json"])
+        reading = " ".join(packet["reading"])
+        self.assertIn("composition", reading)
+        self.assertIn("not a delivery blocker", reading)
+        self.assertIn("repeat move thesis", reading)
+        self.assertIn("change move", packet["minimal_edit"]["scope"])
+        self.assertNotIn("composition", [item["code"] for item in packet["deck_blockers"]])
+
     def test_repair_blockers_coming_from_reports_beat_state_projections(self) -> None:
         """Without reports the packet falls back to deck state; with reports it uses
         them — the two sources must not be silently mixed."""

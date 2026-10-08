@@ -188,6 +188,8 @@ class CalibrationDeterministicGateTests(unittest.TestCase):
         example = packet.DECLARATIVE_PAGE_EXAMPLE
         self.assertIn("exports", example)
         self.assertIn("L.renderDeclaredPage", example["notes_lines"][0])
+        self.assertEqual("thesis", example["exports"]["move"])
+        self.assertIn("流畅不是证据", example["header"])
         self.assertIn('packet["example_page"]', (ROOT / "skills" / "sp-deck" / "scripts" / "builder_packet.py").read_text(encoding="utf-8"))
 
 

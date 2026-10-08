@@ -11,15 +11,16 @@ Tier semantics (owner's spec):
   No calibration. Subjective scores, style majors and regressions are advisory;
   only critical findings and deterministic failures block.
 - ``standard``: one calibration sample + independent review, then full
-  generation (shards <= 2). Structural lows (hierarchy / focal_point) block;
-  style majors stay advisory. Short decks (at or below
+  generation (shards <= 2). Subjective score floors stay advisory. Style
+  majors stay advisory. Short decks (at or below
   ``STANDARD_CALIBRATION_PAGE_LINE``) skip calibration: the whole-deck rework
   that calibration insures against is bounded there, while the calibration
   round (builder + preview + independent critic) costs proportionally more —
   dispatch and build both consult :func:`calibration_enabled`.
 - ``rigorous``: the full high-score path (calibration <= 2 rounds until green,
-  shards <= 3, structural + style-major + regression findings block, per-slide
-  floor 6.0).
+  shards <= 3). Style-major and regression findings still block. Subjective
+  score floors (hierarchy, focal point, composition, visual interest) are
+  recorded and do not block delivery. Unreadable critical findings still do.
 
 Legacy values keep working as aliases: ``basic`` -> fast, ``high-score`` ->
 rigorous. A missing or unknown value is fast — ordinary tasks stopped paying
@@ -67,12 +68,12 @@ _POLICY_ROWS = {
         "calibration": True,
         "calibration_max_rounds": 1,
         "shard_cap": 2,
-        "block_structural": True,
+        "block_structural": False,
         "block_style_major": False,
         "block_regression": False,
-        # v0.18 美学门：composition / visual_interest 低于 6.0 在 standard 及以上
-        # 阻断——"plain but readable" 不再免费过关。fast 维持 advisory。
-        "block_aesthetic_low": True,
+        # 主观分（hierarchy / focal_point / composition / visual_interest）三档都只记录。
+        # 模型看图就能判断好不好看；无法阅读的 critical 与确定性失败仍然阻断。
+        "block_aesthetic_low": False,
         "score_floor": 5.0,
         "strict_v08": False,
     },
@@ -80,10 +81,10 @@ _POLICY_ROWS = {
         "calibration": True,
         "calibration_max_rounds": 2,
         "shard_cap": 3,
-        "block_structural": True,
+        "block_structural": False,
         "block_style_major": True,
         "block_regression": True,
-        "block_aesthetic_low": True,
+        "block_aesthetic_low": False,
         "score_floor": 6.0,
         "strict_v08": True,
     },

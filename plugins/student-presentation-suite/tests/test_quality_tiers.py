@@ -61,7 +61,8 @@ class QualityTierTableTests(unittest.TestCase):
         self.assertTrue(policy["calibration"])
         self.assertEqual(1, policy["calibration_max_rounds"])
         self.assertEqual(2, policy["shard_cap"])
-        self.assertTrue(policy["block_structural"])
+        self.assertFalse(policy["block_structural"])
+        self.assertFalse(policy["block_aesthetic_low"])
         self.assertFalse(policy["block_style_major"])
         self.assertFalse(policy["block_regression"])
 
@@ -71,7 +72,8 @@ class QualityTierTableTests(unittest.TestCase):
         self.assertTrue(policy["calibration"])
         self.assertEqual(2, policy["calibration_max_rounds"])
         self.assertEqual(3, policy["shard_cap"])
-        self.assertTrue(policy["block_structural"])
+        self.assertFalse(policy["block_structural"])
+        self.assertFalse(policy["block_aesthetic_low"])
         self.assertTrue(policy["block_style_major"])
         self.assertTrue(policy["block_regression"])
         self.assertTrue(policy["strict_v08"])
@@ -132,18 +134,19 @@ class TierGateMatrixTests(unittest.TestCase):
         scores.update(over)
         return scores
 
-    def test_standard_blocks_structural_lows_but_advises_style_majors(self) -> None:
+    def test_standard_records_score_lows_without_blocking(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             pptx = root / "deck.pptx"
             pptx.write_bytes(b"pptx")
-            report = self.write_review(root, pptx, self.base_scores(hierarchy=4), [])
+            report = self.write_review(root, pptx, self.base_scores(hierarchy=4, composition=4), [])
             result = self.quality.validate_visual_report(
                 report, pptx, 1, policy=tier_policy("standard")
             )
-            self.assertFalse(result["ok"])
+            self.assertTrue(result["ok"], result["issues"])
             low = [item for item in result["issues"] if item["code"] == "visual_score_low"]
-            self.assertEqual(["major"], [item["severity"] for item in low])
+            self.assertTrue(low)
+            self.assertTrue(all(item["severity"] == "advisory" for item in low))
 
             report = self.write_review(
                 root, pptx, self.base_scores(),

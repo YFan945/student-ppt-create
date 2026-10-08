@@ -210,15 +210,15 @@ PPTX skill 先从三类、每类四种风格中选择一个，或选择“其他
 仓库内含可复现的[黄金样例](examples/golden-sample/README.md)，跑通全流程并达到
 `status: complete`。
 
-所有风格共享 `layout-library.json` 中的 36 套页面构图灵感。`pptx-layouts.js` 会映射 Slide Spec
+所有风格共享 `layout-library.json` 中的 36 套页面构图，它们是构图动作装不下文案时的退路。
+默认页面声明一个 `move`（`thesis`、`weighted`、`metric`、`proof`、`sequence`、`figure`），
+由 `pptx-composition.js` 在绘制时计算字号、主区域和留白。`pptx-layouts.js` 仍会映射 Slide Spec
 原生 kind/visual 值，先按素材、数据、项目数量、禁用条件、声明容量和标题区几何容量过滤，
 缺输入时沿明确且可行的 fallback 链处理，再结合密度和连续轮廓排序，视觉风格不参与排序。
 `scripts/visual_system_smoke_gallery.py` 会生成 12×6 轻量风格参考 gallery、独立
 36 版式参考/兜底 gallery 和 12 页 SVG atlas，并在 LibreOffice/Poppler 可用时渲染。
 
-自 v0.18 起版式库同时**可执行**：`pptx-layouts.js` 的 `renderArchetype()` 把库内
-normalized zones 编译成 pptxgenjs 几何，scaffold 出的页面经引擎放置 title/claim/body/visual
-槽位，不再逐页手算坐标（内容装不下时沿 fallback 链换 archetype）。背景同样机读化——
+`renderArchetype()` 仍把库内 normalized zones 编译成退路几何。背景同样机读化——
 `resolve_design_tokens()` 从每个风格的 `visual_language` 派生按页型的
 `background_directives`（深浅三明治渐变场、纹理、角部母题、结构色块），由
 `pptx-helpers.js` 的 `renderBackground()` 确定性执行。`pptx-design-grammar.md` 的反 AI 味
@@ -443,8 +443,8 @@ QA 门按契约顺序执行：`package` → `static_risk` → `rendered` → `ac
 | 档位 | 校准轮 | 分片上限 | 阻断项 |
 | --- | --- | --- | --- |
 | `fast` | 0 | 1 | critical + 确定性失败 |
-| `standard` | 1 | 2 | + 结构与美学低分（hierarchy/focal_point/composition/visual_interest < 6） |
-| `rigorous` | 2 | 3 | + 风格 Major + 视觉回归，单页底线 6.0 |
+| `standard` | 1 | 2 | 同上；主观分和探索材料只作建议 |
+| `rigorous` | 2 | 3 | + 风格 Major + 视觉回归 |
 
 交付保证：每个已确认产物在 `complete` 前按冻结 Slide Spec 核对内容与页数（PPTX/PDF 页数、
 逐页讲稿段数），并绑定最终路径与哈希到 `outputs/` 目录。

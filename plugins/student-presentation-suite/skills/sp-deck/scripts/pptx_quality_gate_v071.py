@@ -44,9 +44,8 @@ SCORE_FIELDS = ("hierarchy", "focal_point", "composition", "visual_interest", "w
 # delivery failure on their own. Specific defects (overflow, collision, palette
 # violation, content mismatch…) arrive as critic findings with their own severity and
 # block exactly as before.
-# v0.18 美学门：composition / visual_interest 在 standard/rigorous 升为阻断
-# （policy.block_aesthetic_low）——"plain but readable" 不再免费过关；whitespace
-# 维持 advisory（误报面大，且底部死区已由 rendered gate 硬检查）。
+# 主观分（hierarchy / focal_point / composition / visual_interest / whitespace）
+# 三档都只记录。无法阅读的 critical 与确定性失败仍然阻断。
 STRUCTURAL_SCORE_FIELDS = ("hierarchy", "focal_point")
 AESTHETIC_BLOCKING_FIELDS = ("composition", "visual_interest")
 ADVISORY_SCORE_FIELDS = tuple(

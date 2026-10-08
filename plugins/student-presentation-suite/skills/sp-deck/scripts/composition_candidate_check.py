@@ -127,7 +127,7 @@ def validate_candidates(
         if isinstance(focal_share, bool) or not isinstance(focal_share, (int, float)):
             issues.append(issue("major", "focal_share_missing", f"Candidate {candidate_id} needs focal_share.", candidate=candidate_id))
         elif not 0.35 <= float(focal_share) <= 0.78:
-            issues.append(issue("major", "focal_share_weak", f"Candidate {candidate_id} focal_share should normally be 0.35–0.78.", candidate=candidate_id))
+            issues.append(issue("minor", "focal_share_weak", f"Candidate {candidate_id} focal_share is outside 0.35–0.78. Recorded for the author; it does not block delivery.", candidate=candidate_id))
 
         title_pt = candidate.get("title_pt")
         body_pt = candidate.get("body_pt")
@@ -158,7 +158,7 @@ def validate_candidates(
 
     distinct_silhouettes = {item for item in silhouettes if item}
     if high_leverage and len(distinct_silhouettes) < 2:
-        issues.append(issue("major", "candidate_silhouettes_not_distinct", "High-leverage candidates must explore at least two genuinely different silhouettes."))
+        issues.append(issue("minor", "candidate_silhouettes_not_distinct", "High-leverage candidates repeat one silhouette. The author can see that; it does not block delivery."))
 
     selected_id = str(data.get("selected_id") or "").strip()
     if not selected_id:
@@ -181,9 +181,9 @@ def validate_candidates(
             if len(justification) < 40:
                 issues.append(
                     issue(
-                        "major",
+                        "minor",
                         "weak_high_leverage_structure",
-                        f"High-leverage slide selected weak structure {selected_silhouette} without a strong exception justification.",
+                        f"High-leverage slide selected weak structure {selected_silhouette}. Recorded for the author; it does not block delivery.",
                         candidate=selected_id,
                     )
                 )

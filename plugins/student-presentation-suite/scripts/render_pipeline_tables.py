@@ -57,17 +57,17 @@ def render_block(contract: dict, lang: str) -> str:
             blocks = (
                 "critical + 确定性失败"
                 if tier == "fast"
-                else "+ 结构与美学低分（hierarchy/focal_point/composition/visual_interest < 6）"
+                else "同上；主观分和探索材料只作建议"
                 if tier == "standard"
-                else "+ 风格 Major + 视觉回归，单页底线 6.0"
+                else "+ 风格 Major + 视觉回归"
             )
         else:
             blocks = (
                 "critical + deterministic failures"
                 if tier == "fast"
-                else "+ structural/aesthetic lows (hierarchy/focal_point/composition/visual_interest < 6)"
+                else "same; subjective scores and exploration files are advisory"
                 if tier == "standard"
-                else "+ style majors + visual regression, per-slide floor 6.0"
+                else "+ style majors + visual regression"
             )
         rows.append(
             f"| `{tier}` | {policy['calibration_max_rounds']} | {policy['shard_cap']} | {blocks} |"

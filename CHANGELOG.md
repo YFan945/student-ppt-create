@@ -2,6 +2,18 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.28.0 — 2026-10-08 · 生成时构图，主观分不再阻断
+
+默认制页改为生成时构图，而不是再加一套检测门或再扩一套朴素分区。
+
+- 页面以 `move`（`thesis` / `weighted` / `metric` / `proof` / `sequence` / `figure`）声明视觉工作。`pptx-composition.js` 在绘制时计算字号、主区域和留白；模型提供主张和支撑。
+- 36 套版式只在该动作装不下当前文案时退回。只写 `layout` 的旧页仍可渲染。
+- 三列及以上缺权重或近似等宽时，绘制代码把第一列拉开。短字符串清单不再画成等宽 KPI，第一条更重。
+- 编写说明只留 Packet 的 `visual_rules`。动作装不下时先换一个能装下的动作，再退回 36 套分区，并记入 layout report。
+- 返工时若 `reading` 点名某一页，允许改该页的 `move`、`params.primaryShare` 或 `params.emphasis`。同一动作先把字号降到角色下限再放弃，减少掉回 36 套分区。
+- 风格预览改为 thesis 封面加 metric 内容页。流程步骤和三列对照不再默认画等大圆角卡片。
+- 主观分（hierarchy / focal_point / composition / visual_interest）和线框、候选构图、reference selection 三档都只记录，不挡交付。内容没上屏、溢出重叠、跑出色板、空讲稿仍然阻断。无法阅读的 critical 仍然阻断。
+
 ## 0.27.1 — 2026-10-07 · Run-15 fixes: namespace-alias false blockers, research rebind unblocking, gate waiver
 
 用 run-15 真实运行（fast 档 13 页，卡死 producing、0 渲染 0 critic）逐条取证的修复。

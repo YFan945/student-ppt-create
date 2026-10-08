@@ -33,21 +33,49 @@ For `calibration` mode:
 - before returning, write `calibration/style-summary.json` recording what you actually established: `{"established": {"title_treatment": "…", "body_treatment": "…", "surface_language": "…", "image_language": "…", "chart_language": "…", "rhythm": "…"}, "do_not_repeat": ["…"]}` — one line per key, facts only; the pipeline assembles later builders' style contract from these bytes;
 - return the changed slide ids; do not implement the rest of the deck.
 
-## Page modules are DECLARATIVE (default shape)
+## Write the page the audience sees first
 
-The scaffold stub exports a plain object — fill it, do not hand-write glue:
+Each page is a declarative module. Choose the move from what the audience should see first, then fill the slots. `L.renderDeclaredPage` draws the type scale, the primary mass, and the whitespace.
 
-- `COPY` keeps the verbatim string literals (title/claim/keyLine/slideCopy) —
-  page_copy_fidelity_check reads them byte-exact from this file;
-- `module.exports = { dark, kind, context, layout, slots, params, notes }` — the
-  harness's `L.renderDeclaredPage` executes background / paletteMode /
-  renderArchetype / D11 closing band / notes for you. `slots.key_line` is
-  rendered as the closing band automatically — never hand-draw it;
-- set `layout` to a catalog id only to pin one; leave undefined to let the
-  engine choose from `context`;
-- write a FUNCTION module (`module.exports = function (ctx) {…}`) ONLY for
-  custom coordinates (D9 escape hatch: comment the custom reason, registry
-  gates still apply) — everything else stays declarative.
+- `thesis`: one sentence is the page. Put it in `claim`. A shorter support, if any, goes in `body`.
+- `weighted`: one judgment is wider than the supports. Put the judgment in `claim` and the supports in `body`.
+- `metric`: one number is the page. Put it in `claim` or `slots.visual.value`. The note is shorter and sits beside it.
+- `proof`: a claim on one side, a chart or figure on the other. The visual is the larger region.
+- `sequence`: real steps or years. The first step is the largest; later steps get quieter.
+- `figure`: one image or native chart owns the page. Text is a caption.
+
+`COPY` holds the verbatim title, claim, key line, and body. The fidelity check reads those literals byte for byte from this file. Colors use token roles. `slots.key_line` is drawn by the engine; do not draw a second closing band.
+
+`layout` is the fallback the engine uses only after the chosen move and a fit at the role's minimum size both fail. Do not start from a layout id. Vary a repeated move with `params.primaryShare` (0.52–0.74) or `params.emphasis` (which step is largest). If `reading` names a slide, change that page's `move` or those params. Write `module.exports = function (ctx) {…}` only when none of the six moves can say the page, and comment why.
+
+```js
+'use strict';
+/** Slide 3 — 模型优化的是像 */
+/* ON-SCREEN REQUIRED — 逐字渲染 title/claim（actual-content 门字节级匹配） */
+const COPY = {
+  title: '模型优化的是像',
+  claim: '流畅不是证据',
+  keyLine: '先写出能核对的一句',
+  slideCopy: ['其余解释都退到这句话后面'],
+};
+/* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */
+module.exports = {
+  dark: false,
+  kind: 'content',
+  move: 'thesis',
+  context: { slideId: 3, slideKind: 'content', role: 'claim' },
+  slots: {
+    title: COPY.title,
+    claim: COPY.claim,
+    key_line: COPY.keyLine,
+    body: COPY.slideCopy,
+  },
+  params: {},
+  notes: '先停在「流畅不是证据」，再用后面那句解释为什么。',
+};
+```
+
+The harness runs background, palette, the move, and notes. Do not hand-write that glue.
 
 ## Self-check before returning (all modes)
 

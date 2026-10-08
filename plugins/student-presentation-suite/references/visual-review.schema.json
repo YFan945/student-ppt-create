@@ -36,7 +36,7 @@
     "blocker_count": {
       "type": "integer",
       "minimum": 0,
-      "description": "由 shared/quality_tiers.py 按 fast/standard/rigorous 计算；standard/rigorous 的 hierarchy/focal_point/composition/visual_interest 低于 6 为 blocker，rigorous 另阻断风格 major。"
+      "description": "由 shared/quality_tiers.py 按 fast/standard/rigorous 计算。主观分三档都只记录；rigorous 仍阻断风格 major 与视觉回归。无法阅读的 critical 与确定性失败仍然阻断。"
     },
     "severity_counts": {
       "type": "object",

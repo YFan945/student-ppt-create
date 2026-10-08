@@ -195,7 +195,7 @@ def validate_art_direction(
     if title_pt is None or body_pt is None:
         issues.append(issue("major", "type_scale_missing", "slide_title_pt and body_pt are required."))
     elif body_pt <= 0 or title_pt / body_pt < 1.45:
-        issues.append(issue("major", "weak_type_hierarchy", "Slide title/body scale must create clear visual hierarchy (normally >= 1.45x)."))
+        issues.append(issue("minor", "weak_type_hierarchy", "Slide title/body scale should normally create clear visual hierarchy (>= 1.45x). The model can see this on the page; it does not block delivery."))
     if cover_pt is not None and title_pt is not None and cover_pt < title_pt * 1.2:
         issues.append(issue("minor", "weak_cover_scale", "Cover title should normally be materially larger than ordinary slide titles."))
     if key_pt is not None and body_pt is not None and key_pt < body_pt * 1.25:
@@ -303,7 +303,7 @@ def validate_art_direction(
         if isinstance(raw_high, list):
             for item in raw_high:
                 if not isinstance(item, dict) or len(str(item.get("reason") or "").strip()) < 16:
-                    issues.append(issue("major", "high_leverage_reason_missing", "Each high-leverage slide needs a concrete reason for multi-candidate exploration."))
+                    issues.append(issue("minor", "high_leverage_reason_missing", "Each high-leverage slide should say why it matters. A short reason does not block delivery."))
                     break
 
     blockers = [item for item in issues if item["severity"] in BLOCKING]

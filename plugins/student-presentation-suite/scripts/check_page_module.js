@@ -163,6 +163,14 @@ function remedyForThrow(error, pagePath) {
   const eligible = (LAYOUT_LIBRARY.layouts || []).filter(
     (l) => !kind || !l.eligible_kinds || l.eligible_kinds.includes(kind),
   );
+  const unknownMove = message.match(/Unknown move:\s*(\S+)/);
+  if (unknownMove) {
+    return [
+      `未知构图动作 "${unknownMove[1].replace(/\.$/, '')}"。改用 thesis、weighted、metric、proof、sequence、figure 之一，` +
+        '并填 slots。三列及以上在 params.weights 写不相等权重，例如 [2.4, 1, 0.7]。' +
+        '不要先改 layout.id。',
+    ];
+  }
   const unknown = message.match(/Unknown layout:\s*(\S+)/);
   if (unknown) {
     return [
@@ -293,7 +301,12 @@ for (const rel of pages) {
   // 载荷静默丢光，registry 门只看画出来的几何，看不见"声明了但没画"。
   // 0.27.0：函数式包装页（BUILDER_DONE 修导出形态的产物）也在 function 上
   // 挂了 slots/kind 属性——内容完整性检查对两种形态都生效。
-  if (mod && (typeof mod === 'object' || typeof mod === 'function') && mod.slots && typeof mod.slots === 'object') {
+  if (
+    mod &&
+    (typeof mod === 'object' || typeof mod === 'function') &&
+    mod.slots &&
+    typeof mod.slots === 'object'
+  ) {
     const s = mod.slots;
     const declared = [];
     if (typeof s.title === 'string' && s.title.trim()) declared.push(s.title);
@@ -307,7 +320,9 @@ for (const rel of pages) {
       }
     }
     const renderedBlob = calls.map((c) => JSON.stringify(c.args)).join('\n');
-    const missing = declared.filter((text) => text.trim().length >= 4 && !renderedBlob.includes(text));
+    const missing = declared.filter(
+      (text) => text.trim().length >= 4 && !renderedBlob.includes(text),
+    );
     if (missing.length) {
       findings.push({
         page: rel,

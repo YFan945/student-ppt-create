@@ -73,54 +73,45 @@ FORBIDDEN_ACTIONS = [
 DECLARATIVE_PAGE_EXAMPLE = {
     "header": (
         "'use strict';\n"
-        "/** Slide N — <标题> */\n"
+        "/** Slide 3 — 模型优化的是像 */\n"
         "/* ON-SCREEN REQUIRED — 逐字渲染 title/claim（actual-content 门字节级匹配） */\n"
-        "const COPY = { title: \"…\", claim: \"…\", keyLine: \"\", slideCopy: [\"…\"] };\n"
+        "const COPY = {\n"
+        "  title: \"模型优化的是像\",\n"
+        "  claim: \"流畅不是证据\",\n"
+        "  keyLine: \"先写出能核对的一句\",\n"
+        "  slideCopy: [\"其余解释都退到这句话后面\"],\n"
+        "};\n"
         "/* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */"
     ),
     "exports": {
         "dark": False,
         "kind": "content",
-        "context": {"slideId": 1, "slideKind": "content", "role": "method", "itemCount": 3,
-                    "title": "…", "titleChars": 8, "hasAsset": False, "hasData": False,
-                    "hasQuote": False, "density": None},
-        "layout": None,
-        "slots": {"title": "COPY.title", "claim": "COPY.claim || undefined",
-                  "key_line": "COPY.keyLine || undefined",
-                  "body": "COPY.slideCopy（数组）", "visual": "可选：结构化 visual 载荷"},
+        "context": {"slideId": 3, "slideKind": "content", "role": "claim"},
+        "move": "thesis",
+        "slots": {
+            "title": "COPY.title",
+            "claim": "COPY.claim",
+            "key_line": "COPY.keyLine",
+            "body": "COPY.slideCopy",
+        },
         "params": {},
-        "notes": "每页一次、纯文本讲稿（质量门读它）",
+        "notes": "先停在「流畅不是证据」，再用后面那句解释为什么。",
     },
     "notes_lines": [
-        "module.exports = { dark, kind, context, layout, slots, params, notes } — 纯数据，glue 由 deck.js 的 L.renderDeclaredPage 统一执行。",
-        "需要自定义坐标（D9）才写 module.exports = function (ctx) {…} 并在页内注释声明 custom 理由。",
-        "layout 留 undefined 由引擎按 context 自选；自检失败读 findings 的 remedy 处方，照方抓药。",
+        "module.exports = { dark, kind, context, move, slots, params, notes } — glue 由 deck.js 的 L.renderDeclaredPage 统一执行。",
+        "先决定观众第一眼看见什么，再选 move：thesis / weighted / metric / proof / sequence / figure。",
+        "claim、数字或 visual 放那一眼；较短的支撑放 body。引擎绘制时计算字号、主区域和留白。",
+        "layout 只在这个动作装不下文案时由引擎退回。六个动作都表达不了才写函数式坐标，并在注释里说明原因。",
     ],
 }
 
 VISUAL_RULES = [
-    "D1 ✔ 标题正下方禁止强调线/细横线（registry 硬拦）：标题与正文之间用留白。",
-    "D2 ✔ 禁止装饰性细色条、单侧色边（min边≤0.09in 的形状条）：分隔用留白、"
-    "hairline line（≤1pt）或完整面板。",
-    "D3 ✔ 连接器必须横平竖直（orthogonal）；跨行走折线，禁止斜线。",
-    "D4 ✔ 内容整体挤在半幅、单侧留白 >2.2in 会记 dead-zone warning：调列权重或换版式。",
-    "D5 正文/列表左对齐，禁止居中；只有 label/quote/stat 居中。",
-    "D6 内容页禁止 text-only：至少一个第二视觉元素（原生图表/图像/结构组件/stat/双栏）。",
-    "D7 大数字结论用 role:'stat'（36-60pt）配足够盒子，不塞等宽卡片。",
-    "D8 禁止'N 项 → N 个等宽矩形'：用 weights/highlight/process/timeline 表达主次。",
-    "D9 整页几何由 pptx-layouts renderArchetype 执行：改 slots/params/layout.id；"
-    "自由坐标先在页内注释声明 custom 理由，几何门照常全检。",
-    "D10 每页只一个 primary focal point，次要元素降级（色/号/位），禁止等权重并列。",
-    "D11 meta.include_key_lines 时收尾带由版式引擎自动渲染（slots.key_line 非空即出"
-    "细规线 + 结论句，字号 fitText 16-24pt 自适应不锁死）——builder 不要手画第二条；"
-    "来源行画在更下方的 footer 区。缺失 = 页面没把 key_line 传进 slots 或覆写了渲染，"
-    "critic 记 major。",
-    "D12 时间轴/年份序列的节点间距必须与真实时间间隔成比例（引擎 addTimeline 对带年份的 "
-    "stages 自动按比例；自绘时间轴同规），否则不画连续连接轴——等距渲染 2021→2060 把 "
-    "30 年画成 4 年，critic 记 major。",
-    "D13 图表与形状颜色一律走 tokens 角色色（pptx-visuals 的图表 options 已绑定调色板）；"
-    "手写默认黑 000000 / 默认 chrome 会被调色板门记 major（2026-09-28 live：图表框线与"
-    "数据标签 3 处 000000，预览后才被确定性门拦下，多烧一整轮）。",
+    "先决定这一页观众第一眼该看见什么，再选 thesis / weighted / metric / proof / sequence / figure。",
+    "那一眼写进 claim、一个数字，或 slots.visual；较短的支撑写进 body。",
+    "COPY 里的标题和主张与冻结文案逐字相同。颜色只用 tokens 角色，不要写死十六进制。",
+    "slots.key_line 由引擎画成收尾带，不要再手画一条。",
+    "同一动作连续出现时，用 params.emphasis 或 params.primaryShare（0.52–0.74）换主次，或改 move。",
+    "layout 不是起点。六个动作都表达不了这一页时才写函数式坐标，并注释原因。",
 ]
 NO_REREAD = (
     "this packet is the complete task input for its assigned slides: do not re-read "
@@ -456,6 +447,54 @@ def _inputs_match(packet: dict[str, Any]) -> bool:
     return True
 
 
+def visual_reading(work_dir: Path) -> list[str]:
+    """Scores and repeated moves the builder should read. They do not block delivery."""
+    notes: list[str] = []
+    review_path = work_dir / "visual-review.json"
+    if review_path.is_file():
+        try:
+            review = json.loads(review_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            review = {}
+        for slide in review.get("slides") or []:
+            if not isinstance(slide, dict):
+                continue
+            scores = slide.get("scores") if isinstance(slide.get("scores"), dict) else {}
+            lows = [
+                name
+                for name, value in scores.items()
+                if isinstance(value, (int, float)) and not isinstance(value, bool) and float(value) < 6
+            ]
+            if lows:
+                notes.append(
+                    f"slide {slide.get('slide')}: low {', '.join(lows)} — change the move or the claim. "
+                    "This is reading, not a delivery blocker."
+                )
+    reports = sorted(work_dir.glob("*.layout-report.json"))
+    if reports:
+        try:
+            rows = json.loads(reports[-1].read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            rows = []
+        moves = [
+            str(row.get("move") or row.get("layout") or "")
+            for row in rows
+            if isinstance(row, dict)
+        ]
+        run_start = 0
+        while run_start < len(moves):
+            run_end = run_start + 1
+            while run_end < len(moves) and moves[run_end] and moves[run_end] == moves[run_start]:
+                run_end += 1
+            if moves[run_start] and run_end - run_start >= 3:
+                notes.append(
+                    f"slides {run_start + 1}-{run_end} repeat move {moves[run_start]} — "
+                    "pick a different move for one of them. This is reading, not a delivery blocker."
+                )
+            run_start = run_end
+    return notes
+
+
 def build_packet(
     work_dir: Path,
     mode: str,
@@ -623,16 +662,29 @@ def build_packet(
             }),
             "deck_level": bool(deck_level),
         }
-        packet["minimal_edit"] = {
-            "rule": (
-                "diff only the blocker element's call and its direct dependencies; "
-                "no layout rewrites, no unrelated polish, no whole-page redesign"
-            ),
-            "scope": (
-                "slides[].blockers / deck_blockers name the ONLY elements to touch this "
-                "round; use Edit with targeted replacements, not file rewrites"
-            ),
-        }
+        packet["reading"] = visual_reading(work_dir)
+        if packet["reading"]:
+            packet["minimal_edit"] = {
+                "rule": (
+                    "reading names pages whose move, params.primaryShare, or params.emphasis "
+                    "should change. That edit is allowed. Other edits stay on blocker elements."
+                ),
+                "scope": (
+                    "slides[].blockers / deck_blockers, plus any slide named in reading: "
+                    "change move, params.primaryShare, or params.emphasis there"
+                ),
+            }
+        else:
+            packet["minimal_edit"] = {
+                "rule": (
+                    "diff only the blocker element's call and its direct dependencies; "
+                    "no layout rewrites, no unrelated polish, no whole-page redesign"
+                ),
+                "scope": (
+                    "slides[].blockers / deck_blockers name the ONLY elements to touch this "
+                    "round; use Edit with targeted replacements, not file rewrites"
+                ),
+            }
         if convergence:
             packet["repair_convergence"] = convergence
         packet["must_not_regress_note"] = (

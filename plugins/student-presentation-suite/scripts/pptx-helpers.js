@@ -866,8 +866,25 @@ function gridLayout(area, columns, rows, opts) {
 }
 
 /**
- * 不对称列布局：按权重分配横向空间（对比组件的去等宽化原语）。
- * weights 缺省/非法时退化为等宽（与 gridLayout 单行一致，向后兼容）。
+ * 三列及以上缺权重、或权重彼此差不到 15% 时，绘制时把第一列拉开。
+ * 两列仍允许等分。
+ */
+function hierarchyWeights(count) {
+  const weights = [];
+  for (let index = 0; index < count; index += 1) {
+    weights.push(index === 0 ? 2.8 : Math.max(0.82, 1.35 - (index - 1) * 0.16));
+  }
+  return weights;
+}
+
+function weightsAreFlat(weights) {
+  const max = Math.max(...weights);
+  const min = Math.min(...weights);
+  return !(max > 0) || (max - min) / max < 0.15;
+}
+
+/**
+ * 不对称列布局：按权重分配横向空间。
  * @param {{ x: number, y: number, w: number, h: number }} area
  * @param {number} count
  * @param {number[]|undefined} weights 每列权重（正值）
@@ -880,7 +897,11 @@ function weightedColumns(area, count, weights, gap) {
   }
   const valid =
     Array.isArray(weights) && weights.length === count && weights.every((w) => Number(w) > 0);
-  const ws = valid ? weights.map(Number) : Array(count).fill(1);
+  const explicit = valid ? weights.map(Number) : null;
+  const ws =
+    count >= 3 && (!explicit || weightsAreFlat(explicit))
+      ? hierarchyWeights(count)
+      : explicit || Array(count).fill(1);
   const total = ws.reduce((a, b) => a + b, 0);
   // gap 缺省时旧实现算出 NaN，而 `NaN <= 0` 为 false，守卫形同虚设，
   // NaN 坐标会被直接写进 OOXML。这里补默认值并对结果做有限性校验。
@@ -1204,6 +1225,7 @@ module.exports = {
   safeArea,
   footerArea,
   gridLayout,
+  hierarchyWeights,
   weightedColumns,
   solveStack,
   spacing,

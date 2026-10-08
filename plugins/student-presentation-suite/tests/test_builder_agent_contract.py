@@ -28,6 +28,15 @@ class BuilderAgentContractTests(unittest.TestCase):
         self.assertIn("BUILDER_BLOCKED", text)
         self.assertIn("student-presentation-suite-scaffold", text)
         self.assertIn("`calibration`, `initial`, or `repair`", text)
+        self.assertIn("thesis", text)
+        self.assertIn("weighted", text)
+        self.assertIn("metric", text)
+        self.assertIn("proof", text)
+        self.assertIn("sequence", text)
+        self.assertIn("figure", text)
+        self.assertIn("流畅不是证据", text)
+        self.assertNotIn("leave undefined to let the", text)
+        self.assertIn("Do not start from a layout id", text)
 
     def test_machine_contract_routes_generation_and_repair_to_builder(self) -> None:
         contract = json.loads(self.read("references/pipeline-contract.json"))
