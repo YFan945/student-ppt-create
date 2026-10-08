@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.28.0
+version: 0.28.1
 ---
 
 # Student Presentation PPT
@@ -93,8 +93,8 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" status --w
 3. **Research Gate + Compile**：依赖外部事实时先跑 `sp-research` 产生 `research-pack.json` 与 validation。主会话 spawn `student-presentation-suite:presentation-researcher` **不传 `name`、禁止再套一层**；研究员的 claim 清单来自 Production Summary，**不需要先有 spec**。`ppt_pipeline.py plan` 自己编译 evidence map 与带 E ids 的 spec，不让模型猜编译 CLI。**Slide Spec 在 pack 验证零 blocker 之后一次性撰写**：数字直接用 pack 已核实值，检索没覆盖的维度就定性表述并标注口径限制——此后 research 不再触发 spec 重写。**禁止先冻结占位 spec、等 research 返回再大段回填**：spec 写两遍是本流程最贵的重复，还连带 re-validate / `plan --force` 重 scaffold / 页面 COPY 重同步（2026-09-28 live）。
 4. **Art Direction**：**先读 `../../references/design-tokens.json`，再呈现具体样式选项或做任何颜色/视觉承诺**——选项只能引用 token 名；6 角色位之外的配色语义（如"暖色琥珀当第二主角"）禁止承诺（2026-09-17 live：承诺"光伏配琥珀"后才发现调色板契约禁色族外颜色，被迫中途换风格并重绑确认哈希）。visual style 只作为 seed，形成 `art-direction.yaml` 与 3–5 个 high-leverage slides。
 5. **Plan**：`<wd>` 必须为项目 `outputs/.pptx-work/<work-id>`；`edit_ooxml` 自动解包到 `ooxml/`，不生成 JS；`rebuild_from_source` 须先写 `source-analysis.md`，参考 deck 质量好时先用 `reference_deck_analysis.py` 产出逐页类型/版式建议，再 `plan --reference-analysis` 引导 archetype 选择（见 `references/reference-deck-ingestion.md`）。`ppt_pipeline.py plan --work-dir <wd> --slide-spec <compiled> --validation-report <报告> --art-direction <ad>`。程序验证 Production Summary、copy-fit、freeze Slide Spec、scaffold `deck.js` + `pages/pNN-*.js` + `composition/` 并建立 `build-manifest.json`。仍处于 `planned` 时确需更新 spec / research chain，直接给同一命令加 `--force --reason <具体原因>`；管线会调用 revision、保留锁的 revision/parent 链，不要 reset intake、移动旧锁或直调 `slide_spec_guard.py`。`--validation-report` 若描述的不是将被 freeze 的那个 spec（研究型 deck 会是 plan 自己编译出的 `slide-spec-compiled.yaml`），plan 会**自动对该 spec 重新生成报告**并在 manifest 记 `spec_report_regenerated`；不要为此手工跑第二遍 plan，也不要自己猜 compiled 文件的哈希。
-6. **Reference + Composition**：high-leverage 页保存 reference selection、2–3 个 silhouette candidates 与 wireframe 选择证据；普通页保留明确 composition intent。
-7. **Calibration Build**：仅 `standard` / `rigorous` 的 `create` / `rebuild_from_source`（校准轮次上限 standard 1、rigorous 2，超限后遗留 finding 记为风险继续生产）；`fast` 直接进入第 9 步；**standard / rigorous 页数 ≤ 8**（`STANDARD_CALIBRATION_PAGE_LINE`，plan 时冻结在 `manifest.scaffold.slides`）同样直接进入第 9 步——短 deck 的全 deck 返工上限就是这页数，不值得为它多付一整轮校准往返。按 **archetype coverage** 使用 Builder Packet 默认的 2–3 张代表页；只有需要覆盖默认集遗漏的视觉语法时，才用 `builder_packet.py --mode calibration --slides <ids>` 改样本，脚本会拒绝降低覆盖度的选法。主会话 spawn `student-presentation-suite:presentation-builder`（不传 `name`），传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder 只实现这些页面，**剩余 scaffold 页面**保持不变；覆盖度细则见 `../../references/pipeline-contract.json`。
+6. **Composition**：每页的生产构图是一个 `move`（`thesis` / `weighted` / `metric` / `proof` / `sequence` / `figure`）。36 套分区只在该动作装不下时退回。reference selection、线框和候选构图是可选探索记录，不是 build 前置。
+7. **Calibration Build**：每一档都先看样本页再写其余页。`fast` 以及页数 ≤ 8 的 `standard` / `rigorous` 只看封面加一张内容页（优先 figure / metric / proof）。`fast` 看完就进入其余页，不再为这两页另开修复轮。更长的 `standard` / `rigorous` 仍按 archetype coverage 取 2–3 张代表页（standard 上限 1 轮，rigorous 上限 2 轮）。超限后遗留 finding 记为风险继续生产。主会话 spawn `student-presentation-suite:presentation-builder`（不传 `name`），传绝对 work-dir、`mode=calibration` 和目标 slide ids。Builder 只实现这些页面，**剩余 scaffold 页面**保持不变。预览 PNG 会进入后续 initial packet 的 `preview_images`。覆盖度细则见 `../../references/pipeline-contract.json`。
 8. **Calibration Preview（确定性门，无 critic）**：收到 `BUILDER_DONE(mode=calibration)` 后，主会话调用 `advance --brief-json` 自动运行确定性 helper；排查预览故障时才直接调用：
 
 ```bash
@@ -125,7 +125,7 @@ Windows 下用这个 python 形式。`edit_ooxml` 走原 OOXML 路径；create/r
 该 orchestrator 会把 delivery 所需的 canonical `visual-generation-report.json` 自动写入 work-dir；它是 repair 后可更新的生成证据，不是冻结输入，QA 会绑定当轮版本，complete 会拒绝 QA 后再次变化；不得直调内部 visual-generation gate 或手写报告。校准预览和正式 `rendered` gate 都会从 PPTX 成品的 slide、chart、diagram XML 核对所选 style 的浅/深六角色 palette，并解析 theme scheme 的基础色；静态门不完整模拟 `tint` / `shade` / `alpha` 等 OOXML 颜色变换，最终观感仍由渲染图与 visual-critic 判断，raster 图片由 provenance 与视觉评审负责。
 11. **Render**：`advance` 在 build 的确定性预检全绿后渲染全部页面；失败则返回免 repair 轮的 Builder 修法（上限 `max_pre_qa_rebuilds`）。相同 PPTX hash 复用渲染，repair 后重新渲染。Critic 只评审预检全绿的 deck。
 12. **Prepare Deliverables**：`advance` 在 render 后、Critic 前按冻结 Slide Spec 生成已确认类型。讲稿正文以最终 PPTX 备注区为准，缺页即拒绝；PDF 绑定当前 render。QA 后仅交付文件变化时复用有效视觉评审，只重跑确定性 QA/Delivery。
-13. **Visual Critique**：Agent `student-presentation-suite:visual-critic`，不传 `name`，独立读取当前预览，写绑定当前 SHA256 的 `visual-review.json`。`fast` 对主观分数与版式建议只记录 advisory，只有无法使用的页面报 critical；`standard` 额外阻断结构性低分；`rigorous` 的 Major/Critical 仍阻塞。具体口径由 `pptx-visual-critic.md` 和质量门共同定义。
+13. **Visual Critique**：Agent `student-presentation-suite:visual-critic`，不传 `name`，独立读取当前预览，写绑定当前 SHA256 的 `visual-review.json`。`fast` 与 `standard` 对主观分数、结构性低分和风格 major 只记录 advisory，只有无法使用的页面报 critical。`rigorous` 阻断风格 major（含 `ai_template_feel`）、视觉回归，以及 layout report 里连续三页相同的 `move`。`hierarchy` / `focal_point` / `composition` / `visual_interest` 三档都只记录。具体口径由 `pptx-visual-critic.md` 和质量门共同定义。
 14. **QA DAG**：Critic 返回后调用 `advance --brief-json`，它验证当前评审与 receipt，再运行 `package → static_risk → rendered → actual_content → structural_contract → quality → delivery`。产物可用性门失败即停，其余内容门同轮汇总；完整 blocker 在 `pipeline-qa.json`，派生问题不单独修。报告结构错误先交回 critic，不登记 Builder 修复。
 15. **Repair**：有 QA blocker 时，`advance` 自动登记 repair 并返回 `presentation-builder mode=repair` 的 Packet。Builder 只读 Packet 投影的完整 blocker；仅在 Packet 生成失败时回退到 `pipeline-qa.json`。一次处理所有 blocker，不按门分批。
 
@@ -149,7 +149,7 @@ Production Summary confirmation
 → isolated research / compiled Slide Spec / Art Direction
 → ppt_pipeline plan
 → standard/rigorous(>8 页): isolated builder(calibration) + preview + deterministic gates
-→ fast / standard(≤8 页) / rigorous(≤8 页): skip calibration
+→ fast / standard(≤8 页) / rigorous(≤8 页): cover + one content page, then the rest
 → isolated builder(initial: remaining pages, preserving calibration)
 → exploration gates → production build（确定性预检：static-risk + rendered + actual-content + structural-contract + quality 确定性部分）
 → render（预检全绿才放行）→ prepare-deliverables（仅已确认类型）→ isolated visual-critic + QA DAG（内容门全跑后汇总）

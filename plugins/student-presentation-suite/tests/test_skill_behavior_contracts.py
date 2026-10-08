@@ -112,7 +112,7 @@ class SkillBehaviorContractTests(unittest.TestCase):
         )
         qa = self.read("skills/sp-deck/references/pptx-qa.md")
         self.assertIn("pptxgenjs-safety.md", production)
-        self.assertIn("adaptive-freeform", production)
+        self.assertIn("→ move (thesis / weighted / metric / proof / sequence / figure)", production)
         self.assertIn("deterministic fallback", production)
         self.assertNotIn('**默认**\n   `require("pptx-composer")`', production)
         self.assertIn("safety preflight", production)

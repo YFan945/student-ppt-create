@@ -243,15 +243,16 @@ recipes, ratios, motifs, and normal density ranges remain adjustable to the
 slide's narrative job. Typography-led pages are valid when no meaningful visual
 is available, and filler icons, cards, or quotations are not acceptable.
 
-The 12 styles do not control layout, shapes, image treatment, chart grammar, components, or page
-rhythm. SVG motifs are optional and never inserted automatically; style references never override
-capacity, evidence, contrast, or template rules.
+The 12 styles do not choose the page move. Their `visual_language` does reach the drawing code:
+cover bands, the focal rule, the sequence emphasis marker, and the default chart type when a page
+does not name one. SVG motifs stay optional. Style references never override capacity, evidence,
+contrast, or template rules.
 
-Before final composition the deck resolves a 32-recipe
-[`visual-reference-library.json`](skills/sp-deck/references/visual-reference-library.json) into
-2–3 positive composition priors per slide, and high-leverage slides explore 2–3 genuinely
-different silhouettes. Image search and generation are never assumed: declare providers in
-`image-sources.json` (see
+The default page declares a `move` (`thesis`, `weighted`, `metric`, `proof`, `sequence`, or
+`figure`). Reference recipes and wireframe candidates in
+[`visual-reference-library.json`](skills/sp-deck/references/visual-reference-library.json) are
+optional exploration notes, not a step required before build. Image search and generation are
+never assumed: declare providers in `image-sources.json` (see
 [`references/image-sourcing.md`](references/image-sourcing.md)) and the environment check reports
 `image_search_ready` / `image_generation_ready` / `user_assets_ready`.
 
@@ -354,7 +355,7 @@ locally — they read the PPTX and the spec and need no critic; while they fail,
 the critic never reviews a doomed deck.
 
 `quality_level: fast` (the default) uses one Builder below the 8-page shard line, two shards above it and three above the 14-page speed line, plus one final independent review. Subjective visual scores and style suggestions remain visible advisories; unusable pages and deterministic failures still block delivery.
-`quality_level: standard` / `rigorous` first calibrate representative pages (standard one round, rigorous up to two). Standard and rigorous decks at or below 8 pages (the calibration page line, frozen at plan time) skip calibration and build directly — the whole-deck rework calibration insures against is bounded there.
+Every tier looks at sample pages before the rest of the deck is written. Fast decks, and standard or rigorous decks at or below 8 pages, look at the cover plus one content page. Longer standard decks calibrate one archetype sample; longer rigorous decks may use two rounds.
 Calibration is gated deterministically: production `build` is refused
 until the calibration preview evidence is current and the palette + style-summary
 gates pass; fix rounds stay within the tier budget. The independent
@@ -559,7 +560,7 @@ Delivery tiers (`quality_level`; legacy `basic` / `high-score` accepted as alias
 | --- | --- | --- | --- |
 | `fast` | 0 | 1 | critical + deterministic failures |
 | `standard` | 1 | 2 | same; subjective scores and exploration files are advisory |
-| `rigorous` | 2 | 3 | + style majors + visual regression |
+| `rigorous` | 2 | 3 | + style majors + visual regression + three identical moves |
 
 Delivery guarantee: every confirmed artifact is content-verified against the frozen
 Slide Spec (PPTX/PDF page counts, per-page script sections) and hash-bound to its

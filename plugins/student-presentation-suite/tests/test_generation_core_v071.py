@@ -384,6 +384,37 @@ class GenerationCoreV071Tests(unittest.TestCase):
             self.assertFalse(blocked["ok"])
             self.assertIn("unreadable", {item["code"] for item in blocked["issues"] if item["severity"] == "critical"})
 
+    def test_repeated_move_blocks_only_on_rigorous(self) -> None:
+        from shared.quality_tiers import tier_policy
+
+        rows = [
+            {"slide": 1, "move": "thesis"},
+            {"slide": 3, "move": "thesis"},
+            {"slide": 2, "move": "thesis"},
+            {"slide": 4, "layout": "claim-focus"},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "deck.pptx.layout-report.json"
+            path.write_text(json.dumps(rows), encoding="utf-8")
+            rigorous = self.quality.repeated_move_issues(path, tier_policy("rigorous"))
+            fast = self.quality.repeated_move_issues(path, tier_policy("fast"))
+            standard = self.quality.repeated_move_issues(path, tier_policy("standard"))
+            self.assertEqual(["repeated_move"], [item["code"] for item in rigorous])
+            self.assertEqual("major", rigorous[0]["severity"])
+            self.assertEqual([1, 2, 3], rigorous[0]["slides"])
+            self.assertIn("params.primaryShare", rigorous[0]["remedy"])
+            self.assertEqual("advisory", fast[0]["severity"])
+            self.assertEqual("advisory", standard[0]["severity"])
+            path.write_text(
+                json.dumps([
+                    {"slide": 1, "layout": "claim-focus"},
+                    {"slide": 2, "layout": "claim-focus"},
+                    {"slide": 3, "layout": "claim-focus"},
+                ]),
+                encoding="utf-8",
+            )
+            self.assertEqual([], self.quality.repeated_move_issues(path, tier_policy("rigorous")))
+
     def test_evidence_closure_blocks_missing_final_reference(self) -> None:
         spec = {
             "meta": {"citation_style": "classroom"},

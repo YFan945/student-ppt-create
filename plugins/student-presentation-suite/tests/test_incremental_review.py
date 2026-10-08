@@ -2,7 +2,7 @@
 
 Incremental review: after a repair only the changed pages are re-reviewed;
 unchanged pages carry their prior verdicts (bound by render PNG hashes). Plus
-rigorous short decks skip calibration like standard.
+rigorous short decks use the same two-page look as standard.
 """
 from __future__ import annotations
 
@@ -151,10 +151,11 @@ class IncrementalQaReceiptTests(PipelineTestCase):
 
 class RigorousShortDeckCalibrationTests(unittest.TestCase):
     def test_rigorous_skips_calibration_at_or_below_the_page_line(self):
-        self.assertFalse(tiers.calibration_enabled("rigorous", 8))
+        self.assertTrue(tiers.calibration_enabled("rigorous", 8))
+        self.assertTrue(tiers.uses_preview_pair("rigorous", 8))
         self.assertTrue(tiers.calibration_enabled("rigorous", 9))
         self.assertTrue(tiers.calibration_enabled("rigorous", None))
-        self.assertFalse(tiers.calibration_enabled("standard", 8))
+        self.assertTrue(tiers.calibration_enabled("standard", 8))
 
 
 if __name__ == "__main__":

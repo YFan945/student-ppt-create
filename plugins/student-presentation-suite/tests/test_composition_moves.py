@@ -188,6 +188,78 @@ class CompositionMoveTests(unittest.TestCase):
         self.assertTrue(sample.is_file(), sample)
         self.assertTrue(sample.read_bytes().startswith(b"PK"), sample)
 
+    def test_style_rule_and_chart_follow_visual_language(self) -> None:
+        out = self.run_node(
+            """
+            const V = require(path.join(SCRIPTS, 'pptx-visuals.js'));
+            const registry = new R.SlideElementRegistry({ slideW: 10, slideH: 5.625 });
+            const slide = mock();
+            L.renderDeclaredPage(
+              { slide, tokens: TOKENS, registry, slideNumber: 2, lang: 'chinese' },
+              { kind: 'content', move: 'thesis',
+                slots: { title: '课堂问题', claim: '模型优化的是像', body: ['而不是真'] } });
+            const chartSlide = mock();
+            V.addChartWithTakeaway(
+              chartSlide,
+              { series: [{ name: 'A', labels: ['甲'], values: [3] }], takeaway: '结论' },
+              { x: 0.8, y: 1.2, w: 8, h: 3.2 },
+              TOKENS,
+              'chinese',
+            );
+            const chart = chartSlide.calls.find((call) => call.k === 'chart');
+            console.log(JSON.stringify({
+              rule: TOKENS.visual_language.rule,
+              chart: TOKENS.visual_language.chart,
+              width: registry._slide(2).find((el) => el.role === 'stat').w,
+              area: H.contentArea(TOKENS, 'content').w,
+              chartType: chart && chart.a[0],
+            }));
+            """
+        )
+        self.assertEqual("underline-left", out["rule"])
+        self.assertEqual("line", out["chart"])
+        self.assertAlmostEqual(out["width"], out["area"], places=2)
+        self.assertEqual("line", out["chartType"])
+
+    def test_sequence_emphasis_marker_replaces_the_lead_number(self) -> None:
+        out = self.run_node(
+            """
+            const registry = new R.SlideElementRegistry({ slideW: 10, slideH: 5.625 });
+            const slide = mock();
+            L.renderDeclaredPage(
+              { slide, tokens: TOKENS, registry, slideNumber: 1, lang: 'chinese' },
+              { kind: 'content', move: 'sequence', params: { emphasis: 2 },
+                slots: { title: '步骤', claim: '先写下', body: ['收集', '核验', '写下'] } });
+            const elements = registry._slide(1);
+            console.log(JSON.stringify({
+              marker: TOKENS.visual_language.emphasis_marker,
+              stats: elements.filter((el) => el.role === 'stat').length,
+              shapes: slide.calls.filter((call) => call.k === 'shape').length,
+            }));
+            """
+        )
+        self.assertEqual("dash", out["marker"])
+        self.assertEqual(0, out["stats"])
+        self.assertGreaterEqual(out["shapes"], 1)
+
+    def test_short_thesis_owns_most_of_the_page(self) -> None:
+        out = self.run_node(
+            """
+            const registry = new R.SlideElementRegistry({ slideW: 10, slideH: 5.625 });
+            const slide = mock();
+            L.renderDeclaredPage(
+              { slide, tokens: TOKENS, registry, slideNumber: 2, lang: 'chinese' },
+              { kind: 'content', move: 'thesis',
+                slots: { title: '问题', claim: '像', body: ['不是真'] } });
+            const primary = registry._slide(2).find((el) => el.role === 'stat');
+            const area = H.contentArea(TOKENS, 'content');
+            console.log(JSON.stringify({
+              share: primary ? (primary.w * primary.h) / (area.w * area.h) : 0,
+            }));
+            """
+        )
+        self.assertGreaterEqual(out["share"], 0.7)
+
     def test_primary_share_widens_the_judgment(self) -> None:
         out = self.run_node(
             """

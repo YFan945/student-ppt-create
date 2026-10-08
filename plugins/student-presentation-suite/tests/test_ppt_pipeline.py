@@ -1110,12 +1110,25 @@ class BuildTests(PipelineTestCase):
         payload = self.next_dispatch_payload()
         self.assertEqual("fast", self.manifest()["quality_level"])
         self.assertEqual("basic", self.manifest()["quality_level_raw"])
-        self.assertEqual("initial", payload["builder_mode"])
-        self.assertNotIn("calibration", payload)
-        self.assertEqual(1, len(payload["builder_packets"]))
+        self.assertEqual("calibration", payload["builder_mode"])
+        self.assertLessEqual(len(payload["builder_packet"]["slides"]), 2)
         self.assertNotIn("builder_shards", payload)
         self.implement_scaffolded_pages()
         self.assertEqual(0, pp.main(["build", "--work-dir", str(self.work)]))
+
+    def test_fast_does_not_assign_remaining_pages_without_preview_pngs(self) -> None:
+        self.quality_level = "fast"
+        self.write_rich_spec(6)
+        self.plan(self.files)
+        calibration = self.work / "calibration"
+        calibration.mkdir()
+        (calibration / "calibration-manifest.json").write_text(
+            json.dumps({"slides": [1, 2], "version": "1.0"}),
+            encoding="utf-8",
+        )
+        payload = self.next_dispatch_payload()
+        self.assertNotEqual("initial", payload.get("builder_mode"))
+        self.assertIn("calibration_preview.py", payload.get("next_command", ""))
 
     def test_high_score_cannot_build_without_calibration(self) -> None:
         self.write_rich_spec(9)
@@ -2146,10 +2159,8 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.files = self.write_inputs()
         self.plan(self.files)
         payload = self.next_dispatch_payload()
-        # 0.27.0: rigorous 1-page decks skip calibration and dispatch the initial
-        # builder directly; the packet arrives via builder_packets.
-        self.assertIn("builder_packets", payload)
-        self.assertEqual([1], payload["builder_packets"][0]["slides"])
+        self.assertEqual("calibration", payload["builder_mode"])
+        self.assertEqual([1], payload["builder_packet"]["slides"])
         self.assertEqual("student-presentation-suite:presentation-builder", payload.get("agent"))
 
     def test_initial_packets_are_prepared_per_shard_for_a_large_deck(self) -> None:
@@ -2350,8 +2361,10 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.plan(self.files)
         payload = self.next_dispatch_payload()
         self.assertEqual(pp.BUILDER_AGENT, payload["agent"])
-        self.assertEqual(2, payload["builder_shards"]["parallel"])
-        self.assertGreaterEqual(len(payload.get("builder_packets") or []), 2)
+        self.assertEqual("calibration", payload["builder_mode"])
+        self.assertLessEqual(len(payload["builder_packet"]["slides"]), 2)
+        from shared.quality_tiers import effective_shard_cap
+        self.assertEqual(2, effective_shard_cap("fast", 9))
 
     def test_fast_deck_above_the_speed_line_offers_three_shards(self) -> None:
         """Owner-approved speed line (2026-09-27): 15+ fast pages shard to 3 —
@@ -2361,8 +2374,10 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.plan(self.files)
         payload = self.next_dispatch_payload()
         self.assertEqual(pp.BUILDER_AGENT, payload["agent"])
-        self.assertEqual(3, payload["builder_shards"]["parallel"])
-        self.assertGreaterEqual(len(payload.get("builder_packets") or []), 3)
+        self.assertEqual("calibration", payload["builder_mode"])
+        self.assertLessEqual(len(payload["builder_packet"]["slides"]), 2)
+        from shared.quality_tiers import effective_shard_cap
+        self.assertEqual(3, effective_shard_cap("fast", 15))
 
     def test_fast_deck_below_the_shard_line_stays_single_builder(self) -> None:
         self.quality_level = "fast"
@@ -2370,8 +2385,9 @@ class ParallelBuilderShardTests(PipelineTestCase):
         self.plan(self.files)
         payload = self.next_dispatch_payload()
         self.assertEqual(pp.BUILDER_AGENT, payload["agent"])
+        self.assertEqual("calibration", payload["builder_mode"])
         self.assertNotIn("builder_shards", payload)
-        self.assertEqual(1, len(payload.get("builder_packets") or []))
+        self.assertLessEqual(len(payload["builder_packet"]["slides"]), 2)
 
     def test_flat_rounds_on_the_same_pages_name_the_stall(self) -> None:
         """D3 (informational): two rounds naming exactly the same pages while not

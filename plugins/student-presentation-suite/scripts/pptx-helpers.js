@@ -274,39 +274,66 @@ function gradientBackground(slide, tokens, opts = {}) {
 }
 
 /**
- * 封面/章节的结构色块（visual_language.cover_band）。最小边 ≥ 0.9in——
- * 低于这个尺寸的色条就是 design grammar D2 禁止的"装饰性细条"。
+ * 封面色面占页面的一大块，文字留在剩余区域。
+ * 不画贴边细条：短边色条读成填充，不是这一页的画面。
+ * @param {string} band
+ * @returns {{x:number,y:number,w:number,h:number}|null}
+ */
+function coverFieldBox(band) {
+  if (!band || band === 'none') return null;
+  if (band === 'side-band') {
+    return { x: 0, y: 0, w: SLIDE_W_IN * 0.4, h: SLIDE_H_IN };
+  }
+  if (band === 'bottom-band') {
+    return { x: 0, y: SLIDE_H_IN * 0.58, w: SLIDE_W_IN, h: SLIDE_H_IN * 0.42 };
+  }
+  if (band === 'corner-block') {
+    const side = Math.max(SLIDE_H_IN / 3, 1.8);
+    return { x: SLIDE_W_IN - side, y: 0, w: side, h: side };
+  }
+  return null;
+}
+
+function bandFor(tokens, kind) {
+  const directive = (tokens.background_directives || {})[kind] || {};
+  return directive.band || 'none';
+}
+
+/**
+ * 封面/章节/收尾在色面之外的文字区。内容页用整幅安全区。
+ * @param {object} tokens
+ * @param {string} kind
+ */
+function contentArea(tokens, kind) {
+  const base = safeArea(SLIDE_W_IN, SLIDE_H_IN, tokens, { reserveTitle: false });
+  const pageKind = ['cover', 'section', 'closing'].includes(kind) ? kind : 'content';
+  const field = coverFieldBox(bandFor(tokens, pageKind));
+  if (!field || pageKind === 'content') return base;
+  const gap = 0.2;
+  if (field.h >= SLIDE_H_IN * 0.9 && field.w < SLIDE_W_IN) {
+    const x = Math.max(base.x, field.x + field.w + gap);
+    return { ...base, x, w: Math.max(2.6, base.x + base.w - x) };
+  }
+  if (field.y > SLIDE_H_IN * 0.4) {
+    return { ...base, h: Math.max(1.6, field.y - gap - base.y) };
+  }
+  return { ...base, w: Math.max(3.2, field.x - gap - base.x) };
+}
+
+/**
  * @param {object} slide
  * @param {object} tokens paletteMode 后的 tokens
- * @param {{band?: string, radius?: number}} directive
+ * @param {{band?: string}} directive
  */
 function renderCoverBand(slide, tokens, directive) {
-  const kind = directive && directive.band;
-  if (!kind || kind === 'none') return slide;
+  const field = coverFieldBox(directive && directive.band);
+  if (!field) return slide;
   const p = paletteOf(tokens);
-  const radius = Math.min(cornerRadius(tokens), Number(directive.radius) || cornerRadius(tokens));
-  if (kind === 'corner-block') {
-    slide.addShape(_shapeType.roundRect, {
-      x: SLIDE_W_IN * 0.66,
-      y: -radius,
-      w: SLIDE_W_IN * 0.36 + radius,
-      h: SLIDE_H_IN * 0.36,
-      fill: { color: p.primary_accent, transparency: 88 },
-      line: { color: p.primary_accent, transparency: 100 },
-      rectRadius: radius,
-    });
-    return slide;
-  }
-  if (kind === 'edge-block') {
-    slide.addShape(_shapeType.rect, {
-      x: 0,
-      y: SLIDE_H_IN * 0.86,
-      w: SLIDE_W_IN,
-      h: SLIDE_H_IN * 0.14,
-      fill: { color: p.primary_accent, transparency: 86 },
-      line: { color: p.primary_accent, transparency: 100 },
-    });
-  }
+  slide.addShape(_shapeType.rect, {
+    ...field,
+    fill: { color: p.primary_accent },
+    line: { color: p.primary_accent, transparency: 100 },
+  });
   return slide;
 }
 
@@ -1220,6 +1247,8 @@ module.exports = {
   patternBackground,
   gradientBackground,
   renderBackground,
+  coverFieldBox,
+  contentArea,
 
   // 几何计算
   safeArea,

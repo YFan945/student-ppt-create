@@ -80,6 +80,36 @@ def _lightness_for_contrast(hue: float, saturation: float, background: str, targ
     return _from_hls(hue, min(1.0, high + 0.02), saturation)
 
 
+def apply_topic_accent(tokens: dict[str, Any], topic_accent: str | None) -> dict[str, Any]:
+    """Move primary_accent onto the topic hue. Seed lightness stays, so contrast holds.
+
+    ``topic_accent`` is a 6-digit hex from art direction. A value that cannot
+    keep the accent contrast floor is ignored and the seed accent remains.
+    """
+    raw = str(topic_accent or "").strip().lstrip("#")
+    if not HEX_COLOR.fullmatch(raw):
+        return tokens
+    palette = tokens.get("palette")
+    if not isinstance(palette, dict) or "primary_accent" not in palette:
+        return tokens
+    hue, _, _ = _to_hls(raw)
+    _, lightness, saturation = _to_hls(str(palette["primary_accent"]))
+    shifted = _from_hls(hue, lightness, saturation)
+    canvas = str(palette.get("canvas") or "FFFFFF")
+    surface = str(palette.get("surface") or canvas)
+    if (
+        contrast_ratio(shifted, canvas) < ACCENT_CONTRAST_MIN
+        or contrast_ratio(shifted, surface) < ACCENT_CONTRAST_MIN
+    ):
+        return tokens
+    updated = copy.deepcopy(tokens)
+    updated["palette"]["primary_accent"] = shifted
+    updated["dark_palette"] = derive_dark_palette(updated["palette"])
+    updated["background_directives"] = derive_background_directives(updated)
+    updated["topic_accent"] = shifted
+    return updated
+
+
 def derive_dark_palette(palette: dict[str, Any]) -> dict[str, str]:
     """Deterministic, contrast-safe dark companion for a light palette."""
     hue_text, _, sat_text = _to_hls(str(palette["primary_text"]))
@@ -205,7 +235,7 @@ DEFAULT_VISUAL_LANGUAGE: dict[str, Any] = {
 
 PATTERN_KINDS = ("dots", "waves", "grid")
 MOTIF_ANCHORS = ("corner-tr", "corner-tl", "corner-br", "corner-bl")
-BAND_KINDS = ("corner-block", "edge-block", "none")
+BAND_KINDS = ("none", "bottom-band", "side-band", "corner-block")
 
 
 def _clean_enum(value: Any, allowed: tuple[str, ...]) -> str | None:

@@ -59,7 +59,7 @@ def render_block(contract: dict, lang: str) -> str:
                 if tier == "fast"
                 else "同上；主观分和探索材料只作建议"
                 if tier == "standard"
-                else "+ 风格 Major + 视觉回归"
+                else "+ 风格 Major + 视觉回归 + 连续三页同一动作"
             )
         else:
             blocks = (
@@ -67,7 +67,7 @@ def render_block(contract: dict, lang: str) -> str:
                 if tier == "fast"
                 else "same; subjective scores and exploration files are advisory"
                 if tier == "standard"
-                else "+ style majors + visual regression"
+                else "+ style majors + visual regression + three identical moves"
             )
         rows.append(
             f"| `{tier}` | {policy['calibration_max_rounds']} | {policy['shard_cap']} | {blocks} |"

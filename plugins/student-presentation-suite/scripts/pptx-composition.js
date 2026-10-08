@@ -145,6 +145,85 @@ function paintKeyLine(ctx, frame) {
   }
 }
 
+function visualLanguage(ctx) {
+  const language = ctx.tokens && ctx.tokens.visual_language;
+  return language && typeof language === 'object' ? language : {};
+}
+
+function addRuleLine(ctx, x1, y1, x2, y2) {
+  const color = H.color(ctx.tokens, 'primary_accent');
+  ctx.slide.addShape('line', {
+    x: Math.min(x1, x2),
+    y: Math.min(y1, y2),
+    w: Math.abs(x2 - x1),
+    h: Math.abs(y2 - y1),
+    line: { color, width: 1.25 },
+  });
+  register(ctx, { type: 'line', x1, y1, x2, y2 });
+}
+
+/** 主区域的面板。flush 不加线。装饰层不参与文字重叠判定。 */
+function paintFocalSurface(ctx, focal) {
+  if (!focal) return;
+  const panel = String(visualLanguage(ctx).panel || 'flush');
+  if (panel === 'flush' || panel === 'none') return;
+  const radius = Math.max(0, Math.min(0.2, Number(visualLanguage(ctx).radius) || 0));
+  const outlined = panel === 'outlined';
+  ctx.slide.addShape(radius > 0.02 ? 'roundRect' : 'rect', {
+    x: focal.x,
+    y: focal.y,
+    w: focal.w,
+    h: focal.h,
+    fill: { color: H.color(ctx.tokens, outlined ? 'canvas' : 'surface') },
+    line: outlined
+      ? { color: H.color(ctx.tokens, 'secondary_accent'), width: 1.25 }
+      : { color: H.color(ctx.tokens, 'surface'), transparency: 100 },
+    rectRadius: radius,
+  });
+  register(ctx, { type: 'shape', role: 'surface', decorative: true, ...focal });
+}
+
+function drawEmphasisMarker(ctx, box, marker) {
+  const color = H.color(ctx.tokens, 'primary_accent');
+  const mark = { x: box.x, y: box.y + 0.08, w: 0.18, h: 0.18 };
+  if (marker === 'dot' || marker === 'leaf') {
+    ctx.slide.addShape('ellipse', {
+      ...mark,
+      fill: { color },
+      line: { color, transparency: 100 },
+    });
+  } else if (marker === 'chevron') {
+    ctx.slide.addShape('chevron', {
+      x: mark.x,
+      y: mark.y,
+      w: 0.22,
+      h: 0.16,
+      fill: { color },
+      line: { color, transparency: 100 },
+    });
+  } else if (marker === 'dash') {
+    ctx.slide.addShape('rect', {
+      x: mark.x,
+      y: mark.y + 0.06,
+      w: 0.28,
+      h: 0.12,
+      fill: { color },
+      line: { color, transparency: 100 },
+    });
+  } else if (marker === 'slash') {
+    addRuleLine(ctx, mark.x, mark.y + 0.16, mark.x + 0.22, mark.y + 0.16);
+    addRuleLine(ctx, mark.x, mark.y, mark.x, mark.y + 0.16);
+    return;
+  } else {
+    ctx.slide.addShape('rect', {
+      ...mark,
+      fill: { color },
+      line: { color, transparency: 100 },
+    });
+  }
+  register(ctx, { type: 'shape', role: 'label', decorative: true, ...mark });
+}
+
 function kicker(ctx, canvas, title, claim) {
   if (!title || !claim || title === claim) return { box: null, planned: [] };
   const box = { x: canvas.x, y: canvas.y, w: Math.min(canvas.w * 0.7, 7.2), h: 0.38 };
@@ -182,16 +261,20 @@ function renderThesis(ctx, request, canvas) {
   if (maxPrimary < minPrimaryH) {
     throw layoutFit('thesis primary region is below 40% of the content area');
   }
-  const primaryH = Math.min(maxPrimary, Math.max(minPrimaryH, canvas.h * 0.58));
+  const word = [...primary].length <= 6 && !/\s/.test(primary);
+  const primaryH = word ? maxPrimary : Math.min(maxPrimary, Math.max(minPrimaryH, canvas.h * 0.58));
   const stackH = primaryH + supportH + gapAfter;
   const startY = top + Math.max(0, (avail - stackH) / 2);
-  const primaryBox = { x: canvas.x, y: startY, w: canvas.w * 0.9, h: primaryH };
+  const primaryBox = { x: canvas.x, y: startY, w: canvas.w, h: primaryH };
   const share = (primaryBox.w * primaryBox.h) / (canvas.w * canvas.h);
   if (share < 0.4) {
     throw layoutFit('thesis primary region is below 40% of the content area');
   }
   const sizes = H.fontSizeScale(ctx.tokens, ctx.lang || 'chinese');
-  const minPrimary = Math.max(44, Math.round(sizes.body * 2.2));
+  const shortClaim = [...primary].length <= 8;
+  const minPrimary = shortClaim
+    ? Math.max(52, Math.round(sizes.body * 2.4))
+    : Math.max(44, Math.round(sizes.body * 2.2));
   const planned = [...kick.planned];
   planned.push(
     planText(ctx, primary, primaryBox, 'stat', {
@@ -223,6 +306,7 @@ function renderThesis(ctx, request, canvas) {
       ),
     );
   }
+  paintFocalSurface(ctx, primaryBox);
   paint(ctx, planned);
   return { focal: primaryBox };
 }
@@ -326,6 +410,7 @@ function renderWeighted(ctx, request, canvas) {
     );
     supportY += rowH + railGap;
   });
+  paintFocalSurface(ctx, primary);
   paint(ctx, planned);
   return { focal: primary };
 }
@@ -340,9 +425,8 @@ function renderMetric(ctx, request, canvas) {
   const kick = kicker(ctx, canvas, title, figure);
   const top = kick.nextY || canvas.y;
   const bandH = canvas.y + canvas.h - top;
-  const gap = H.spacing(ctx.tokens, 4);
-  const statW = note ? canvas.w * 0.62 : canvas.w * 0.84;
-  const statBox = { x: canvas.x, y: top, w: statW, h: bandH * 0.78 };
+  const statH = note ? bandH * 0.7 : bandH * 0.84;
+  const statBox = { x: canvas.x, y: top, w: canvas.w, h: statH };
   const planned = [
     ...kick.planned,
     planText(ctx, figure, statBox, 'stat', {
@@ -355,13 +439,11 @@ function renderMetric(ctx, request, canvas) {
   ];
   if (note) {
     const noteBox = {
-      x: canvas.x + statW + gap,
-      y: top + bandH * 0.28,
-      w: canvas.w - statW - gap,
-      h: bandH * 0.46,
+      x: canvas.x,
+      y: statBox.y + statBox.h + 0.08,
+      w: canvas.w * 0.72,
+      h: Math.max(0.4, bandH - statH - 0.1),
     };
-    if (noteBox.w >= statBox.w)
-      throw layoutFit('metric annotation is not narrower than the figure');
     planned.push(
       planText(ctx, note, noteBox, 'body', {
         align: 'left',
@@ -371,6 +453,7 @@ function renderMetric(ctx, request, canvas) {
       }),
     );
   }
+  paintFocalSurface(ctx, statBox);
   paint(ctx, planned);
   return { focal: statBox };
 }
@@ -384,14 +467,17 @@ function renderProof(ctx, request, canvas) {
   const kick = kicker(ctx, canvas, title, claim);
   const top = kick.nextY || canvas.y;
   const band = { x: canvas.x, y: top, w: canvas.w, h: canvas.y + canvas.h - top };
-  const gap = H.spacing(ctx.tokens, 4);
-  const visualW = band.w * primaryShare(request.params, 0.62);
-  const textW = band.w - visualW - gap;
-  const visualBox = { x: band.x + textW + gap, y: band.y, w: visualW, h: band.h };
+  const claimH = Math.min(0.72, band.h * 0.22);
+  const visualBox = {
+    x: band.x,
+    y: band.y + claimH + 0.12,
+    w: band.w,
+    h: band.h - claimH - 0.12,
+  };
   if (visualBox.w * visualBox.h < 2.5 || visualBox.h < 1.2) {
     throw layoutFit('proof evidence region is too small for a real chart or figure');
   }
-  const claimBox = { x: band.x, y: band.y, w: textW, h: Math.min(band.h * 0.55, 2.1) };
+  const claimBox = { x: band.x, y: band.y, w: band.w * 0.86, h: claimH };
   const planned = [
     ...kick.planned,
     planText(ctx, claim, claimBox, 'subtitle', { align: 'left', margin: 0, label: 'proof claim' }),
@@ -453,30 +539,47 @@ function renderSequence(ctx, request, canvas) {
     return { focal: band };
   }
   const lead = emphasisIndex(request.params, steps.length);
-  const weights = steps.map((_, index) => (index === lead ? 3.4 : 1));
-  const gap = H.spacing(ctx.tokens, 3);
-  const cells = H.weightedColumns(band, steps.length, weights, gap);
+  const marker = String(visualLanguage(ctx).emphasis_marker || 'number');
+  const weights = steps.map((_, index) => (index === lead ? 2.2 : 1));
+  const weightTotal = weights.reduce((sum, value) => sum + value, 0);
+  let cursor = band.x;
+  const cells = steps.map((_, index) => {
+    const w = (band.w * weights[index]) / weightTotal;
+    const cell = { x: cursor, y: band.y, w: Math.max(0.8, w - 0.1), h: band.h };
+    cursor += w;
+    return cell;
+  });
+  const spineY = band.y + 0.28;
   const planned = [...head];
   const sizes = H.fontSizeScale(ctx.tokens, ctx.lang || 'chinese');
   steps.forEach((step, index) => {
     const cell = cells[index];
-    const numBox = { x: cell.x, y: cell.y, w: cell.w, h: Math.min(0.72, cell.h * 0.34) };
+    const node = index === lead ? 0.72 : 0.32;
+    const numBox = { x: cell.x, y: band.y, w: cell.w, h: node };
     const labelBox = {
       x: cell.x,
-      y: numBox.y + numBox.h + 0.08,
+      y: band.y + node + 0.1,
       w: cell.w,
-      h: cell.h - numBox.h - 0.08,
+      h: Math.max(0.7, band.h - node - 0.1),
     };
-    planned.push(
-      planText(ctx, String(index + 1).padStart(2, '0'), numBox, index === lead ? 'stat' : 'label', {
-        align: 'left',
-        min: index === lead ? 36 : undefined,
-        max: index === lead ? 48 : 20,
-        margin: 0,
-        label: `step ${index + 1} index`,
-        colorRole: index === lead ? 'primary_accent' : 'secondary_text',
-      }),
-    );
+    if (!(index === lead && marker !== 'number')) {
+      planned.push(
+        planText(
+          ctx,
+          String(index + 1).padStart(2, '0'),
+          numBox,
+          index === lead ? 'stat' : 'label',
+          {
+            align: 'left',
+            min: index === lead ? 28 : undefined,
+            max: index === lead ? 40 : 16,
+            margin: 0,
+            label: `step ${index + 1} index`,
+            colorRole: index === lead ? 'primary_accent' : 'secondary_text',
+          },
+        ),
+      );
+    }
     planned.push(
       planText(ctx, step, labelBox, index === lead ? 'subtitle' : 'body', {
         align: 'left',
@@ -486,21 +589,41 @@ function renderSequence(ctx, request, canvas) {
       }),
     );
   });
+  const slab = {
+    x: cells[lead].x,
+    y: band.y,
+    w: cells[lead].w,
+    h: Math.min(Math.max(1.15, band.h * 0.62), band.h),
+  };
+  ctx.slide.addShape('roundRect', {
+    x: slab.x,
+    y: slab.y,
+    w: slab.w,
+    h: slab.h,
+    fill: { color: H.color(ctx.tokens, 'primary_accent'), transparency: 82 },
+    line: { color: H.color(ctx.tokens, 'primary_accent'), transparency: 100 },
+    rectRadius: 0.06,
+  });
+  register(ctx, { type: 'shape', role: 'surface', decorative: true, ...slab });
   paint(ctx, planned);
+  if (marker !== 'number') drawEmphasisMarker(ctx, cells[lead], marker);
+  const spineColor = H.color(ctx.tokens, 'secondary_accent');
+  ctx.slide.addShape('line', {
+    x: band.x,
+    y: spineY,
+    w: band.w * 0.92,
+    h: 0,
+    line: { color: spineColor, width: 1.5 },
+  });
+  register(ctx, {
+    type: 'line',
+    x1: band.x,
+    y1: spineY,
+    x2: band.x + band.w * 0.92,
+    y2: spineY,
+  });
   register(ctx, { type: 'shape', role: 'visual', decorative: true, ...cells[lead] });
-  const p = H.color(ctx.tokens, 'secondary_accent');
-  for (let index = 0; index < cells.length - 1; index += 1) {
-    const left = cells[index];
-    const y = left.y + 0.36;
-    ctx.slide.addShape('line', {
-      x: left.x + left.w * 0.72,
-      y,
-      w: gap + cells[index + 1].w * 0.15,
-      h: 0,
-      line: { color: p, width: 1.25 },
-    });
-  }
-  return { focal: cells[0] };
+  return { focal: cells[lead] };
 }
 
 function renderFigure(ctx, request, canvas) {
@@ -513,7 +636,7 @@ function renderFigure(ctx, request, canvas) {
   const top = kick.nextY || canvas.y;
   const band = { x: canvas.x, y: top, w: canvas.w, h: canvas.y + canvas.h - top };
   const gap = H.spacing(ctx.tokens, 4);
-  const visualW = band.w * primaryShare(request.params, 0.64);
+  const visualW = band.w * primaryShare(request.params, 0.74);
   const visualBox = { x: band.x, y: band.y, w: visualW, h: band.h };
   const share = (visualBox.w * visualBox.h) / (canvas.w * canvas.h);
   if (share < 0.55) throw layoutFit('figure visual is under 55% of the content area');
@@ -537,14 +660,22 @@ function renderFigure(ctx, request, canvas) {
   }
   const family = visualComponent(visual);
   if (!family) throw layoutFit('figure visual needs an image or a native chart');
-  V.renderVisual(
-    ctx.slide,
-    family,
-    flatVisual(visual),
-    visualBox,
-    ctx.tokens,
-    ctx.lang || 'chinese',
-  );
+  const asset = flatVisual(visual).asset;
+  if (asset) {
+    ctx.slide.addImage({
+      path: asset,
+      ...V.coverImage(asset, visualBox),
+      altText: String(flatVisual(visual).alt_text || claim || 'Presentation visual'),
+    });
+  } else
+    V.renderVisual(
+      ctx.slide,
+      family,
+      flatVisual(visual),
+      visualBox,
+      ctx.tokens,
+      ctx.lang || 'chinese',
+    );
   register(ctx, { type: 'shape', role: 'visual', ...visualBox });
   paint(ctx, planned);
   return { focal: visualBox };
@@ -565,7 +696,7 @@ function renderMove(ctx, request = {}) {
   const move = String(request.move || '').trim();
   const render = RENDERERS[move];
   if (!render) throw new Error(`Unknown move: ${move}. Use one of ${MOVES.join(', ')}.`);
-  const full = H.safeArea(H.SLIDE_W_IN, H.SLIDE_H_IN, ctx.tokens, { reserveTitle: false });
+  const full = H.contentArea(ctx.tokens, ctx.pageKind || 'content');
   const slots = request.slots || {};
   const frame = contentFrame(full, slots);
   let drawn;

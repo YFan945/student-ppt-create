@@ -1,35 +1,32 @@
 # PPTX Visual Engine
 
-本文件定义 suite-owned 的视觉生成与安全辅助。v0.8 仍保留 `adaptive-freeform`，但不再让模型面对空白画布只靠抽象文字规则直接写坐标。最终自由构图必须建立在 **Art Direction + Visual Reference Retrieval +（高价值页）Multi-candidate Wireframe Selection** 之上。
+本文件定义 suite-owned 的视觉生成与安全辅助。create/rebuild 的默认页面声明一个 `move`，由 `pptx-composition.js` 在绘制时计算字号、主区域和留白。模型提供主张和支撑，不手填分区矩形。
 
-## v0.8 hierarchy of visual decisions
+## Production order
 
 ```text
-Style Seed
-  → Design Grammar
-  → Art Direction
-  → Visual Reference Recipes
-  → Composition Candidates / Wireframes
-  → Final PptxGenJS elements
+Frozen Slide Spec
+  → move (thesis / weighted / metric / proof / sequence / figure)
+  → engine draws type, mass, whitespace, and the style's visual_language
   → Actual Element Registry
 ```
 
-每层职责不同：
+36 套分区只在该动作装不下当前文案时退回。reference recipe、线框候选和自由坐标是可选探索与兼容路径，不是 build 前置。
 
-- style seed：用户可理解的气质、palette、背景起点；
-- design grammar：场景的叙事动作与页面语言；
-- Art Direction：字体尺度、图片裁切、图标/图表/组件语言、motif、背景节奏、asset mix；
-- reference recipe：具体的正向构图先验与 `why_it_works`；
-- candidate：当前页可比较的 2–3 个视觉解法；
-- final elements：最终真实可编辑 PPT 对象。
+各层职责：
 
-不要把这些层合并回“一份很长的 prompt → 直接 deck.js”。
+- style seed：气质、六角色 palette，以及会进入绘制的 `visual_language`（色块、rule、强调记号、默认图表类型）；
+- move：这一页观众第一眼看见什么；
+- Art Direction：字体尺度、图片处理、motif 与 asset mix，不另选一套分区；
+- final elements：引擎画出的可编辑对象，登记进 Actual Element Registry。
 
-## Adaptive-freeform, but reference-first
+不要把这些层合并回“一份很长的 prompt → 直接手写坐标”。
 
-Create/rebuild 默认仍由模型编写完整 `deck.js`，可以自由移动、缩放、合并、拆分区域，改变比例、形状和图片裁切，也可以明显偏离 reference recipe；但最终构图必须能解释它如何服务 slide claim、Art Direction 与选定/检索到的 positive prior。
+## Legacy: adaptive-freeform and wireframes
 
-`pptx-composer.js` 保留为辅助层：
+`adaptive-freeform`、reference retrieval 和多候选线框选择不再是 create 的默认路径。需要对照旧探索证据时仍可运行那些脚本；它们的缺失不挡交付。
+
+`pptx-composer.js` 保留为兼容层：
 
 - `suggestCompositions()`：返回局部构图灵感；
 - `resolveSlideComposition()`：默认只给 `adaptive-freeform` 建议；`layout_lock: true` 或 deterministic fallback 才解析精确版式；

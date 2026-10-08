@@ -447,8 +447,23 @@ def _inputs_match(packet: dict[str, Any]) -> bool:
     return True
 
 
+def _work_tier(work_dir: Path) -> str:
+    root = HERE.parents[2]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from shared.quality_tiers import normalize
+
+    spec_path = find_spec(work_dir)
+    if spec_path is None:
+        return normalize(None)
+    spec = load_structured(spec_path)
+    meta = spec.get("meta") if isinstance(spec, dict) else {}
+    quality = meta.get("quality_level") if isinstance(meta, dict) else None
+    return normalize(quality)
+
+
 def visual_reading(work_dir: Path) -> list[str]:
-    """Scores and repeated moves the builder should read. They do not block delivery."""
+    """Scores stay advisory. A run of three identical moves blocks only on rigorous."""
     notes: list[str] = []
     review_path = work_dir / "visual-review.json"
     if review_path.is_file():
@@ -476,10 +491,13 @@ def visual_reading(work_dir: Path) -> list[str]:
             rows = json.loads(reports[-1].read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             rows = []
+        ordered = sorted(
+            (row for row in rows if isinstance(row, dict) and isinstance(row.get("slide"), int)),
+            key=lambda row: int(row["slide"]),
+        )
         moves = [
-            str(row.get("move") or row.get("layout") or "")
-            for row in rows
-            if isinstance(row, dict)
+            str(row.get("move")).strip() if isinstance(row.get("move"), str) else ""
+            for row in ordered
         ]
         run_start = 0
         while run_start < len(moves):
@@ -487,9 +505,18 @@ def visual_reading(work_dir: Path) -> list[str]:
             while run_end < len(moves) and moves[run_end] and moves[run_end] == moves[run_start]:
                 run_end += 1
             if moves[run_start] and run_end - run_start >= 3:
+                tier = _work_tier(work_dir)
+                delivery = (
+                    "On rigorous this blocks delivery."
+                    if tier == "rigorous"
+                    else "On this tier it is reading, not a delivery blocker."
+                )
+                first = int(ordered[run_start]["slide"])
+                last = int(ordered[run_end - 1]["slide"])
                 notes.append(
-                    f"slides {run_start + 1}-{run_end} repeat move {moves[run_start]} — "
-                    "pick a different move for one of them. This is reading, not a delivery blocker."
+                    f"slides {first}-{last} repeat move {moves[run_start]} — "
+                    "change one page's move, or params.emphasis / params.primaryShare. "
+                    f"{delivery}"
                 )
             run_start = run_end
     return notes
@@ -742,6 +769,13 @@ def build_packet(
         )
     # 0.26.0 冷启动单读：内联声明式页范例，builder 不必翻生产源码对照契约。
     packet["example_page"] = DECLARATIVE_PAGE_EXAMPLE
+    previews = sorted((work_dir / "calibration" / "render").glob("calibration-*.png"))
+    if previews and mode == "initial":
+        packet["preview_images"] = [str(path.resolve()) for path in previews]
+        packet["preview_note"] = (
+            "Look at these renders before writing the remaining pages. "
+            "If they share one left-aligned stack, change the move on these pages first."
+        )
     return packet
 
 

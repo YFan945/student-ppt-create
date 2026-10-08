@@ -21,6 +21,8 @@ color_system:
   dominant_share_pct: 65
   contrast_mode: "dark-light-sandwich"
   accent_usage: "Only evidence, key numbers and selected navigation cues"
+  # Optional. One 6-digit hex. The seed accent keeps its lightness and moves onto this hue.
+  # topic_accent: "C4552A"
 
 typography:
   personality: "editorial sans with restrained serif accent"

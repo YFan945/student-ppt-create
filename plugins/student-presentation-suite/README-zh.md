@@ -197,13 +197,14 @@ PPTX skill 先从三类、每类四种风格中选择一个，或选择“其他
 内容适配；页面配方、比例、母题和常规密度范围均可根据叙事任务调整。没有合适视觉素材时
 允许排版主导页，不能用无意义图标、卡片或引文填空。
 
-12 种风格不控制布局、形状、图片处理、图表语法、组件或页面节奏。SVG 母题只作可选参考，
-不得自动插入；风格参考不能绕过容量、来源、对比度或用户模板规则。
+12 种风格不负责选择页面的 `move`。它们的 `visual_language` 会进入绘制：封面色块、焦点旁的
+rule、序列页的强调记号，以及页面未指定类型时的默认图表。SVG 母题仍是可选参考。风格参考不能
+绕过容量、来源、对比度或用户模板规则。
 
-在写最终坐标前，每页会从 32 条
+默认页面声明一个 `move`（`thesis`、`weighted`、`metric`、`proof`、`sequence`、`figure`）。
 [`visual-reference-library.json`](skills/sp-deck/references/visual-reference-library.json)
-中检索 2–3 个正向构图先验，高价值页必须产出 2–3 个真正不同的 silhouette 候选。搜图与生图
-从不默认可用：在 `image-sources.json` 中声明 provider（见
+里的参考配方和线框候选是可选探索记录，不是 build 前置。搜图与生图从不默认可用：在
+`image-sources.json` 中声明 provider（见
 [`references/image-sourcing.md`](references/image-sourcing.md)），环境检查会报告
 `image_search_ready` / `image_generation_ready` / `user_assets_ready`。
 
@@ -283,7 +284,7 @@ CD-8 按 200k 窗口工作、CD-9 DeepSeek 读图并行且同 hash 不重读）�
 与每月依赖巡检报告。
 
 `quality_level: fast`（默认）在 8 页分片线以下由一个 Builder 完成全部页面，超过分 2 片、超过 14 页分 3 片，再做一次最终独立评审。主观视觉分数和风格建议保留为 advisory；页面不可用及确定性门失败仍阻止交付。
-`quality_level: standard` / `rigorous` 先校准代表页（standard 校准一轮，rigorous 至多两轮）。standard / rigorous 页数 ≤ 8（校准页数线，plan 时冻结）时跳过校准直接整副构建——校准所保住的全 deck 返工在这个规模是有界的。**校准由确定性门判定：证据现势 + palette 门 + style summary**，正式 `build`
+每一档都先看样本页再写其余页。fast，以及 standard / rigorous 页数 ≤ 8，先看封面加一张内容页。更长的 standard 校准一轮 archetype 样本，rigorous 至多两轮。**校准由确定性门判定：证据现势 + palette 门 + style summary**，正式 `build`
 在校准确定性门变绿前会被机械拒绝。独立 `visual-critic` 评审收敛为生产边界的一次——主会话是
 Slide Spec 与 Art Direction 的作者，永远不代替 critic 看图；dispatch 在 critic 边界物化
 `critic-preview-map.json`（hook 启用时 spawn 时再刷新）；hook 启用时 critic 只能读取
@@ -444,7 +445,7 @@ QA 门按契约顺序执行：`package` → `static_risk` → `rendered` → `ac
 | --- | --- | --- | --- |
 | `fast` | 0 | 1 | critical + 确定性失败 |
 | `standard` | 1 | 2 | 同上；主观分和探索材料只作建议 |
-| `rigorous` | 2 | 3 | + 风格 Major + 视觉回归 |
+| `rigorous` | 2 | 3 | + 风格 Major + 视觉回归 + 连续三页同一动作 |
 
 交付保证：每个已确认产物在 `complete` 前按冻结 Slide Spec 核对内容与页数（PPTX/PDF 页数、
 逐页讲稿段数），并绑定最终路径与哈希到 `outputs/` 目录。

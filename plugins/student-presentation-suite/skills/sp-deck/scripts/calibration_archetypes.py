@@ -278,6 +278,53 @@ def calibration_coverage(
     return coverage_report(spec, high_leverage(work_dir), candidate, limit)
 
 
+def preview_pair_slides(spec: dict[str, Any]) -> list[int]:
+    """Cover, then the first content page that carries a figure, metric, or proof."""
+    slides = [item for item in spec.get("slides") or [] if isinstance(item, dict)]
+    if not slides:
+        return [1]
+    numbered: list[tuple[int, dict[str, Any]]] = []
+    for index, slide in enumerate(slides, 1):
+        try:
+            number = int(slide.get("id") or index)
+        except (TypeError, ValueError):
+            number = index
+        numbered.append((number, slide))
+    cover = next(
+        (
+            number
+            for number, slide in numbered
+            if str(slide.get("kind") or "").lower() == "cover"
+            or str(slide.get("role") or "").lower() == "cover"
+        ),
+        numbered[0][0],
+    )
+    content: int | None = None
+    for hint in ("figure", "metric", "proof", "chart", "image", "diagram"):
+        for number, slide in numbered:
+            if number == cover:
+                continue
+            visual = slide.get("visual") if isinstance(slide.get("visual"), dict) else {}
+            declared = str(slide.get("move") or visual.get("type") or "").lower()
+            if hint in declared:
+                content = number
+                break
+        if content is not None:
+            break
+    if content is None:
+        for number, slide in numbered:
+            if number == cover:
+                continue
+            kind = str(slide.get("kind") or "content").lower()
+            if kind not in {"cover", "section", "closing"}:
+                content = number
+                break
+    pair = [cover]
+    if content is not None and content not in pair:
+        pair.append(content)
+    return pair
+
+
 def default_calibration_slides(work_dir: Path, limit: int = 3) -> list[int]:
     """Work-dir entry point shared by builder_packet and calibration_preview.
 
@@ -294,4 +341,13 @@ def default_calibration_slides(work_dir: Path, limit: int = 3) -> list[int]:
         return leverage[:limit]
     if not isinstance(spec, dict):
         return leverage[:limit]
+    meta = spec.get("meta") if isinstance(spec.get("meta"), dict) else {}
+    pages = len(spec.get("slides") or [])
+    root = Path(__file__).resolve().parents[3]
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from shared.quality_tiers import uses_preview_pair
+
+    if uses_preview_pair(meta.get("quality_level"), pages or None):
+        return preview_pair_slides(spec)[: max(1, min(2, limit))]
     return coverage_slides(spec, leverage, limit)[:limit]

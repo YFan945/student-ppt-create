@@ -655,7 +655,7 @@ function renderDeclaredPage(ctx, spec = {}) {
     slots,
     params: spec.params || {},
   };
-  const pageCtx = { ...ctx, tokens: pageTokens };
+  const pageCtx = { ...ctx, tokens: pageTokens, pageKind: String(spec.kind || 'content') };
   let result;
   if (spec.move) {
     const C = _sibling('pptx-composition');

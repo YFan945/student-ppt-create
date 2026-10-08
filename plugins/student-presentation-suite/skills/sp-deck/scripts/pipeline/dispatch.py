@@ -53,7 +53,12 @@ from pipeline.scheduler import (  # noqa: E402
     remaining_scaffold_slides,
     slides_named_in_reports,
 )
-from shared.quality_tiers import calibration_enabled, effective_shard_cap, tier_policy  # noqa: E402
+from shared.quality_tiers import (  # noqa: E402
+    calibration_enabled,
+    effective_shard_cap,
+    tier_policy,
+    uses_preview_pair,
+)
 
 
 def _high_leverage(work_dir: Path) -> list[int]:
@@ -534,8 +539,28 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                                     "this repair where they are real."
                                 )
                     else:
-                        remaining = remaining_scaffold_slides(work_dir)
-                        if not remaining:
+                        preview_pngs = list(
+                            (work_dir / "calibration" / "render").glob("calibration-*.png")
+                        )
+                        if uses_preview_pair(
+                            manifest.get("quality_level"),
+                            int(deck_pages) if deck_pages else None,
+                        ) and not preview_pngs:
+                            slide_args = " ".join(str(slide) for slide in (review.get("slides") or []))
+                            payload["next_command"] = (
+                                f'{python} "{HERE / "calibration_preview.py"}" --work-dir "{work_dir}" '
+                                f"--slides {slide_args} --json"
+                            )
+                            payload["notes"] = (
+                                "preview renders are required before the remaining pages are assigned. "
+                                "Run calibration_preview.py. Do not spawn the initial builder yet."
+                            )
+                            remaining = None
+                        else:
+                            remaining = remaining_scaffold_slides(work_dir)
+                        if remaining is None:
+                            pass
+                        elif not remaining:
                             # Every scaffold page is implemented (no stub markers left): the
                             # initial builders are done, so the next step is the first full
                             # build — a deterministic step `advance` executes itself.

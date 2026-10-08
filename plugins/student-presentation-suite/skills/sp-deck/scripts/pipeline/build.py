@@ -40,7 +40,7 @@ from pipeline.core import (  # noqa: E402
 from pipeline.scheduler import (  # noqa: E402
     merge_speaker_note_shards,
 )
-from shared.quality_tiers import calibration_enabled, tier_policy  # noqa: E402
+from shared.quality_tiers import calibration_enabled, tier_policy, uses_preview_pair  # noqa: E402
 
 
 def enforce_page_copy_fidelity(work_dir: Path, spec: Path) -> None:
@@ -114,9 +114,12 @@ def cmd_build(args: argparse.Namespace) -> int:
         review = calibration_review(work_dir)
         policy = tier_policy(manifest.get("quality_level"))
         deck_pages = (manifest.get("scaffold") or {}).get("slides")
+        page_count = int(deck_pages) if deck_pages else None
+        # The two-page look is a dispatch step. It does not refuse a direct build.
+        # Longer archetype samples still have to be green, or their round budget spent.
         calibrates = calibration_enabled(
-            manifest.get("quality_level"), int(deck_pages) if deck_pages else None
-        )
+            manifest.get("quality_level"), page_count
+        ) and not uses_preview_pair(manifest.get("quality_level"), page_count)
         rounds = int((manifest.get("calibration") or {}).get("rounds") or 0)
         if (
             (calibrates or review["required"])

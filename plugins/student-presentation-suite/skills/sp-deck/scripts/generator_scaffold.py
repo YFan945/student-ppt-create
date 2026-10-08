@@ -415,16 +415,19 @@ def inline_tokens_json(spec: dict[str, Any], art_direction: Path | None) -> str:
     ).resolve()
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
-    from shared.design_tokens import resolve_design_tokens  # noqa: PLC0415
+    from shared.design_tokens import apply_topic_accent, resolve_design_tokens  # noqa: PLC0415
 
     meta = spec.get("meta") if isinstance(spec.get("meta"), dict) else {}
     style = meta.get("visual_style")
     custom = meta.get("visual_style_custom")
+    ad: dict[str, Any] = {}
     if art_direction is not None and Path(art_direction).is_file():
         try:
-            ad = load_spec(Path(art_direction))
+            loaded = load_spec(Path(art_direction))
         except ValueError:
-            ad = {}
+            loaded = {}
+        if isinstance(loaded, dict):
+            ad = loaded
         style = ad.get("style_seed") or ad.get("visual_style") or style
         custom = ad.get("visual_style_custom") or custom
     try:
@@ -432,6 +435,7 @@ def inline_tokens_json(spec: dict[str, Any], art_direction: Path | None) -> str:
             str(style) if style else None,
             custom if isinstance(custom, dict) else None,
         )
+        tokens = apply_topic_accent(tokens, ad.get("topic_accent") if isinstance(ad, dict) else None)
     except (OSError, ValueError, KeyError, TypeError):
         tokens = {"palette": {"canvas": "FFFFFF"}}
     return json.dumps(tokens, ensure_ascii=False, indent=2)

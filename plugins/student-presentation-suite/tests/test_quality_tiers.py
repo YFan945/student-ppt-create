@@ -21,6 +21,7 @@ from shared.quality_tiers import (  # noqa: E402
     effective_shard_cap,
     normalize,
     tier_policy,
+    uses_preview_pair,
 )
 
 
@@ -49,7 +50,7 @@ class QualityTierTableTests(unittest.TestCase):
 
     def test_fast_spends_nothing_beyond_one_shot(self) -> None:
         policy = tier_policy("fast")
-        self.assertFalse(policy["calibration"])
+        self.assertTrue(policy["calibration"])
         self.assertEqual(0, policy["calibration_max_rounds"])
         self.assertEqual(1, policy["shard_cap"])
         self.assertFalse(policy["block_structural"])
@@ -80,26 +81,30 @@ class QualityTierTableTests(unittest.TestCase):
 
 
 class CalibrationLineTests(unittest.TestCase):
-    """standard ≤ 8 pages skips the calibration round; rigorous never does."""
+    """Every tier looks before the rest of the deck. Short decks use a two-page pair."""
 
     def test_standard_skips_calibration_at_or_below_the_page_line(self) -> None:
-        self.assertFalse(calibration_enabled("standard", 8))
-        self.assertFalse(calibration_enabled("standard", 3))
+        self.assertTrue(calibration_enabled("standard", 8))
+        self.assertTrue(calibration_enabled("standard", 3))
         self.assertTrue(calibration_enabled("standard", 9))
         self.assertTrue(calibration_enabled("standard", 30))
+        self.assertTrue(uses_preview_pair("standard", 8))
+        self.assertFalse(uses_preview_pair("standard", 9))
 
     def test_unknown_page_count_keeps_the_table_rule(self) -> None:
         # 页数不可知时按 tier 表行事：standard 仍校准（宁可多付一轮，不静默降级）。
         self.assertTrue(calibration_enabled("standard", None))
 
     def test_fast_never_and_rigorous_always_calibrate(self) -> None:
-        self.assertFalse(calibration_enabled("fast", 3))
-        self.assertFalse(calibration_enabled("basic", 30))
-        # 0.27.0: rigorous aligns with standard at/below the calibration page line.
-        self.assertFalse(calibration_enabled("rigorous", 3))
-        self.assertFalse(calibration_enabled("high-score", 3))
+        self.assertTrue(calibration_enabled("fast", 3))
+        self.assertTrue(calibration_enabled("basic", 30))
+        self.assertTrue(uses_preview_pair("fast", 30))
+        self.assertTrue(calibration_enabled("rigorous", 3))
+        self.assertTrue(calibration_enabled("high-score", 3))
+        self.assertTrue(uses_preview_pair("rigorous", 3))
         self.assertTrue(calibration_enabled("rigorous", 9))
         self.assertTrue(calibration_enabled("high-score", 9))
+        self.assertFalse(uses_preview_pair("rigorous", 9))
 
 
 class TierGateMatrixTests(unittest.TestCase):

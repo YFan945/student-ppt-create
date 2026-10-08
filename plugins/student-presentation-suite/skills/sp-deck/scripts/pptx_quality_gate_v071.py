@@ -722,6 +722,54 @@ def check_visual_regression(
     return issues, merged
 
 
+def repeated_move_issues(report_path: Path, policy: dict[str, Any]) -> list[dict[str, Any]]:
+    """Three identical composition moves in a row.
+
+    Only the ``move`` field counts. A layout-id fallback is not a move, so a
+    page that dropped back to the 36-layout catalog breaks the run. Missing or
+    unreadable reports add nothing. ``rigorous`` (block_style_major) records a
+    major; fast and standard stay advisory.
+    """
+    if not report_path.is_file():
+        return []
+    try:
+        rows = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(rows, list):
+        return []
+    ordered = sorted(
+        (row for row in rows if isinstance(row, dict) and isinstance(row.get("slide"), int)),
+        key=lambda row: int(row["slide"]),
+    )
+    moves = [
+        str(row.get("move")).strip() if isinstance(row.get("move"), str) else ""
+        for row in ordered
+    ]
+    severity = "major" if policy.get("block_style_major") else ADVISORY_SEVERITY
+    found: list[dict[str, Any]] = []
+    run_start = 0
+    while run_start < len(moves):
+        run_end = run_start + 1
+        while run_end < len(moves) and moves[run_end] and moves[run_end] == moves[run_start]:
+            run_end += 1
+        if moves[run_start] and run_end - run_start >= 3:
+            slides = [int(ordered[index]["slide"]) for index in range(run_start, run_end)]
+            found.append(
+                issue(
+                    severity,
+                    "repeated_move",
+                    f"Slides {slides[0]}-{slides[-1]} repeat move {moves[run_start]}. "
+                    "Change one page to a different move, or vary params.emphasis / params.primaryShare.",
+                    slides=slides,
+                    move=moves[run_start],
+                    remedy="change move, or params.emphasis / params.primaryShare, on one of these pages",
+                )
+            )
+        run_start = run_end
+    return found
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Student PPT v0.7.1 quality gate")
     parser.add_argument("--pptx", type=Path, required=True)
@@ -786,7 +834,8 @@ def run(args: argparse.Namespace) -> int:
         # overwrite the critic's per-slide baseline with an empty map.
         regression, merged_scores = [], None
     lock_issues = [] if spec_lock["ok"] else [issue("critical", "slide_spec_lock_invalid", message) for message in spec_lock["errors"]]
-    all_issues = lock_issues + visual["issues"] + evidence["issues"] + timing["issues"] + regression
+    move_issues = repeated_move_issues(Path(str(args.pptx) + ".layout-report.json"), policy)
+    all_issues = lock_issues + visual["issues"] + evidence["issues"] + timing["issues"] + regression + move_issues
     blockers = [item for item in all_issues if item["severity"] in BLOCKING_SEVERITIES]
 
     result = {

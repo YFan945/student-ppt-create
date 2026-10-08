@@ -4,7 +4,7 @@
 
 | Baseline behavior | Suite-owned implementation | Evidence |
 | --- | --- | --- |
-| Create uses PptxGenJS with content-led page design | model-authored adaptive-freeform `deck.js`; helper safety plus optional composer fallback | composer/helper tests and create scenarios |
+| Create uses PptxGenJS with content-led page design | engine draws a declared `move`; the model supplies the claim and the evidence. Freeform coordinates are the escape hatch | composition tests and create scenarios |
 | Edit/template begins with text and thumbnail inspection | inspect → thumbnail → unpack | editing contract and scenario matrix |
 | Structural edits precede content edits | add/delete/reorder before replacements | OOXML scenario and command tests |
 | Clean before repack | clean → pack | package edit tests |
@@ -19,5 +19,4 @@
 人工复核可重点查看变更页和相邻页，但报告必须覆盖全部页面。第二次返工请求被拒绝；仍有
 blocker 时状态转为 `incomplete`。
 
-视觉层保持 document-skill 式内容驱动：12 种正式风格和 `Other` 只提供气质、颜色、背景与
-可选 SVG 参考，不选择版式或自动插入母题；页面构图仍由模型按内容自由完成。
+视觉层由引擎按 `move` 画剪影。12 套风格提供色板、封面色面和图表类型。`art-direction.yaml` 的可选 `topic_accent` 把强调色偏到本题色相，对比度下限不变。自由坐标只在六个动作都表达不了时使用。证据闭合、讲稿逐字和原生图表仍由本仓库的门负责。

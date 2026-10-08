@@ -2,7 +2,7 @@
 
 本文件只负责生产阶段编排。Intake、内容、证据、图片和视觉标准由共享 canonical references 负责；低层命令见 `pptx-runtime.md`，PptxGenJS 安全规则见 `pptxgenjs-safety.md`。
 
-生产前必须具备：已确认的 Production Summary、验证并冻结的 Presentation Brief / Slide Spec、明确 output prefix、selected visual style seed、selected design grammar，以及唯一 production mode。v0.8 create/rebuild 还必须先完成 Art Direction 与 composition exploration，不能从 Slide Spec 直接跳到 final `deck.js`。
+生产前必须具备：已确认的 Production Summary、验证并冻结的 Presentation Brief / Slide Spec、明确 output prefix、selected visual style seed，以及唯一 production mode。create/rebuild 的页面声明 `move`，由引擎绘制；不能从 Slide Spec 直接跳到手工坐标。reference、线框和 `adaptive-freeform` 是遗留探索，不是 build 前置。
 
 ## Context discipline in production
 
@@ -28,7 +28,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 
 - **禁止整文件重写（CD-2）**：生成器按页拆成 `deck.js` + `pages/pNN-*.js`，**不是**
   "一个文件里每页一个函数"。`deck.js` 只做装配与共享定义（tokens、helpers、registry、
-  网格常量），页面坐标一律在 `pages/` 下，每页一个文件、导出一个 `function (ctx)`。
+  网格常量），页面一律在 `pages/` 下，每页一个文件、导出声明式 `{ move, slots, ... }`。自由坐标的 `function (ctx)` 只作为六个动作都表达不了时的逃生口。
   `run_with_pptxgenjs.js --output <x.pptx> <deck.js>` 的入口契约不变。
   为修一处几何问题而重写整个生成器是本 suite 明确禁止的做法——它会让多个版本同时
   留在会话历史里，此后每一轮都为废弃版本付费。拆分的主要收益是让不同页的修复能
@@ -43,9 +43,9 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 
 | Mode | 使用条件 | 生产机制 |
 | --- | --- | --- |
-| `create` | 没有 source deck，或 source 为 PDF/preview 等非 PPTX（未损坏） | v0.8 visual exploration → PptxGenJS + suite helper |
+| `create` | 没有 source deck，或 source 为 PDF/preview 等非 PPTX（未损坏） | 声明式 `move` → PptxGenJS + suite helper |
 | `edit_ooxml` | 要保留模板、布局或已有内容；source 必须是可解包 `.pptx`/`.potx` | 解包、结构修改、内容修改、clean、pack |
-| `rebuild_from_source` | 原文件损坏或重建更安全，且理由已记录 | 读取原文件后走 v0.8 create core，不声称原位编辑 |
+| `rebuild_from_source` | 原文件损坏或重建更安全，且理由已记录 | 读取原文件后走 create 的 `move` 路径，不声称原位编辑 |
 
 `source_deck`、`edit_intent`、`review_findings`、`preserve` 和 `change_summary_required` 是 Slide Spec 顶层字段。存在可解包 PPTX/POTX 模板时优先 `edit_ooxml`；source 为 PDF/preview 不能 `edit_ooxml`；`edit_intent: "rebuild-clean-copy"` 走 rebuild 并记录理由。
 
@@ -57,21 +57,19 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/run_gates.py" \
 - 所有最终 candidate 必须通过 package validation、artifact readback、完整 render 和视觉复核；同一 package validation 证据要与 QA 和 delivery 绑定，不能重复生成相互矛盾的报告。
 - reference recipe、wireframe 和 Art Direction 是正向视觉先验，不是真实内容来源；事实、数字和引用仍受 Evidence Ledger 约束。
 
-## v0.8 visual generation front-end
+## Production visual order
 
-默认 `adaptive-freeform` 保留，但自由度必须建立在更强的视觉先验上。最终页面生成顺序固定为：
+默认页面生成顺序：
 
 ```text
 Frozen Slide Spec
-  → Design Grammar
-  → Art Direction
-  → Visual Reference Retrieval
-  → 2–3 Composition Candidates for high-leverage slides
-  → Low-cost Wireframe Render + Selection
-  → Final Actual PptxGenJS elements
+  → move (thesis / weighted / metric / proof / sequence / figure)
+  → engine draws type, mass, whitespace, and the style visual_language
   → Actual Element Registry
   → PPTX → Readback → Full Render → Visual Critic
 ```
+
+`adaptive-freeform`、reference retrieval 和线框选择是遗留探索。下面的命令只在需要对照旧证据时使用，缺失不挡交付。composer 仍是 deterministic fallback / compatibility path，`preflightSlide()` 只是 composition-level safety preflight。
 
 ### Art Direction
 
@@ -129,11 +127,11 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" render <wireframes-N.pptx> -
 
 ## Final create branch
 
-只有 visual generation front-end 完成后才开始正式 `deck.js`：
+页面实现以 Packet 的 `visual_rules` 和声明式 `move` 为准，不先完成线框探索：
 
-1. 加载 frozen Slide Spec、resolved tokens、Art Direction、当前页选中的/检索到的 reference recipes、`pptx-design-grammar.md` 与 `pptx-visual-engine.md`。
-2. 每页确定 `role`、`visual_strategy`、`focal_point`、`hierarchy`、`composition_intent`、reference ids；high-leverage 页还必须遵循其 selected candidate 的主要 silhouette/focal ownership，除非记录新的 repair reason。
-3. `suggestLayouts()` / `suggestCompositions()` 可以提供额外 2–3 个局部灵感，但 36-layout catalog 降为二级 inspiration/fallback；`layout_lock: true` 才是精确约束。
+1. 加载 frozen Slide Spec、resolved tokens 与 Art Direction。设计语法不进入生产会话。
+2. 每页选择一个 `move` 并填写 slots。引擎计算字号、主区域和留白。`layout` 只在动作装不下时退回。
+3. 36-layout catalog 是退路；`layout_lock: true` 才把某一个分区钉成精确约束。自由坐标必须在页内注释声明 custom 理由。
 4. 最终真实元素必须进入 `${CLAUDE_PLUGIN_ROOT}/scripts/pptx-element-registry.js`。`preflightSlide()` 只是 composition-level safety preflight，不替代 registry；composer 仅为 deterministic fallback / compatibility path，不是默认生成器。
 5. generator 在 `pptx.writeFile()` 前调用 `registry.assertSafe()`。阻断实际越界、明显文字重叠等几何错误；warning 在最终 render 中确认。
 6. `deck.js` 从 `process.argv[2]` 接收输出路径；每个输出只创建一个 pptxgen 实例。

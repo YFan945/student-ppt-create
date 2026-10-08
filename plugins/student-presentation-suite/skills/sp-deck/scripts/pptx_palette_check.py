@@ -290,7 +290,12 @@ def approved_colors(art_direction: Path) -> tuple[str, dict[str, str], dict[str,
         or art.get("visual_style")
         or "Modern Minimal"
     )
-    tokens = resolve_design_tokens(style, art.get("visual_style_custom"))
+    from shared.design_tokens import apply_topic_accent
+
+    tokens = apply_topic_accent(
+        resolve_design_tokens(style, art.get("visual_style_custom")),
+        art.get("topic_accent"),
+    )
     light = {role: str(tokens["palette"][role]).upper() for role in PALETTE_ROLES}
     dark = {role: str(tokens["dark_palette"][role]).upper() for role in PALETTE_ROLES}
     return str(tokens.get("style_name") or style), light, dark

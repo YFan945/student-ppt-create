@@ -15,7 +15,7 @@ PPT 如何用页面语法表达内容，layout 只提供局部构图参考。** 
 5. `pptx-layouts.js` 的 36 个 layout 是装不下构图动作时的退路，不是页面的起点。
 6. 生成时的视觉由 `move` 决定：引擎按 thesis / weighted / metric / proof / sequence / figure 计算字号、主区域和留白。模型写出主张和支撑，不手填分区矩形。
 7. 允许高质量 text-led slide。`visual_strategy: typography` 是合法结构化视觉策略，不得因 high-score 模式强制塞图。
-8. “无越界/无重叠”只是工程底线，不是视觉完成标准。High-score 还必须通过结构化 render visual critic 与 deck rhythm 检查。
+8. “无越界/无重叠”只是工程底线。`hierarchy` / `focal_point` / `composition` / `visual_interest` 只记录，不挡交付。`rigorous` 仍阻断风格 major，以及连续三页同一个 `move`。
 
 ## Grammar families
 
@@ -178,8 +178,8 @@ artifact readback、Slide Spec freeze 与 render-conditioned visual review 负�
 - **D4 ✔ 内容挤半幅即死区。** 内容整体宽度 <70% 画布且单侧留白 >2.2in → warning；
   重新配 column 权重或换版式。
 - **D5 正文/列表禁止居中**（rolePolicy 已强制 body/list 左对齐）；只有 label/quote/stat 可居中。
-- **D6 内容页禁止 text-only。** 每个内容页至少一个第二视觉元素：原生图表、图像、
-  结构组件、大数字 stat 或双栏结构；纯段落页交给 claim-focus + typography 语法。
+- **D6 thesis / weighted 这类字号主导页是合法视觉。** 不要求每个内容页再塞图表、图标或第二图形。
+  `proof` / `figure` / `metric` 才在主张旁边放证据或数字。纯段落堆砌仍然不是 thesis：焦点必须是一句主张或一个词，其余退到辅助层。
 - **D7 大数字结论用 stat 角色。** rolePolicy `stat`（36-60pt）+ 足够的盒子；
   不要把大数字塞进等宽卡片（那是 D8）。
 - **D8 连续等宽卡片/三栏是弱结构。** "有 N 项 → N 个等宽矩形"禁止；用

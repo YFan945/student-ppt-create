@@ -181,7 +181,7 @@
       "whitespace"
     ],
     "deck_average": "advisory",
-    "note": "Subjective scores are advisory on every tier. Rigorous still blocks style majors and regressions. Deterministic failures and critical findings block all tiers. Wireframes and composition-candidate files are exploration notes, not delivery blockers.",
+    "note": "Subjective scores are advisory on every tier. Rigorous still blocks style majors, regressions, and a run of three identical composition moves from the layout report. Deterministic failures and critical findings block all tiers. Wireframes and composition-candidate files are exploration notes, not delivery blockers.",
     "aesthetic_hard_floor": []
   },
   "production_modes": [
@@ -191,9 +191,9 @@
   ],
   "quality_level_policy": {
     "default": "fast for new intake; legacy Slide Specs with missing quality_level also resolve to fast",
-    "fast": "one builder packet for all pages and repairs, deterministic pre-QA, render and one final independent critic; subjective style findings, style majors and regressions are advisory, critical and deterministic failures block; no calibration",
-    "standard": "decks above the standard calibration page line (8 pages): one calibration sample (deterministic palette/archetype verification; the independent critic reviews the finished deck once), then full generation with shards <= 2; decks at or below the line skip calibration and dispatch the initial builder directly; subjective scores and exploration files are advisory, style majors and regressions advisory",
-    "rigorous": "the full high-score path: decks at or below the 8-page line skip calibration like standard; above it, calibration verified by deterministic gates (palette/archetype/style summary), fix rounds <= 2 (shards <= 3); one independent production review; subjective scores are advisory; style-major and regression findings block; critical and deterministic failures block",
+    "fast": "cover plus one content page first, then one builder packet for the remaining pages and repairs, deterministic pre-QA, render and one final independent critic; subjective style findings, style majors and regressions are advisory, critical and deterministic failures block",
+    "standard": "decks above the standard calibration page line (8 pages): one archetype calibration sample (deterministic palette/archetype verification; the independent critic reviews the finished deck once), then full generation with shards <= 2; decks at or below the line look at a cover plus one content page before the rest; subjective scores and exploration files are advisory, style majors and regressions advisory",
+    "rigorous": "the full high-score path: decks at or below the 8-page line look at a cover plus one content page; above it, archetype calibration verified by deterministic gates (palette/archetype/style summary), fix rounds <= 2 (shards <= 3); one independent production review; subjective scores are advisory; style-major findings, regressions, and three identical moves in a row block; critical and deterministic failures block",
     "aliases": {
       "basic": "fast",
       "high-score": "rigorous"
@@ -211,7 +211,7 @@
       "Classify research A/B/C/D and preserve existing-deck edit intent."
     ],
     "build": [
-      "standard/rigorous create/rebuild_from_source: pick the calibration sample for ARCHETYPE COVERAGE (calibration_archetypes.py classifies every spec slide and the packet projects the default set; high-leverage slides win group seats) and spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=calibration plus those slide ids. fast skips calibration and dispatches the initial builder for all scaffolded pages. standard decks at or below 8 pages (the calibration page line, frozen as manifest.scaffold.slides at plan time) also skip calibration and dispatch the initial builder directly.",
+      "Every tier looks before the rest of the deck. fast, and standard/rigorous at or below 8 pages, use a cover plus one content page (preview pair). Longer standard/rigorous decks pick the calibration sample for ARCHETYPE COVERAGE and spawn student-presentation-suite:presentation-builder WITHOUT a name with mode=calibration plus those slide ids.",
       "After BUILDER_DONE(calibration), the MAIN session calls advance --brief-json; it runs calibration_preview.py and the deterministic gates decide (palette report + style summary; 0.26.0 removed the calibration critic — the independent review happens ONCE at the production boundary). Calibration is green when the preview evidence is current and the gates pass; otherwise dispatch requests a targeted builder repair within the tier budget. An existing calibration review file is advisory only.",
       "For fast, spawn one presentation-builder mode=initial with the single packet covering all scaffold pages. For standard/rigorous, after calibration, use mode=initial with the Builder Packet; only if `next --json` supplies builder_shards, spawn those disjoint shards in one message (standard caps at 2 shards, rigorous at max_parallel_builders). Each Builder writes only its assigned pages. Build assembles any shard notes fragments.",
       "The main session must not implement or read page modules itself and must not receive page source back from the builder; calibration is a temporary preview only and does not mutate production manifest/build state.",

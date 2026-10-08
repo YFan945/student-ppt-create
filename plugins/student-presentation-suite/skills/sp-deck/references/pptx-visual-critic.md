@@ -6,7 +6,7 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 
 1. 先看真实 render，再写报告；不得根据 Slide Spec、deck.js、candidate JSON 或自我想象代替看图。
 2. `没有 overflow/overlap` 只代表工程可用，不代表设计优秀。
-3. High-score deck 的 Major/Critical 视觉问题必须 repair，不能只记录后 complete。
+3. `rigorous` 必须返修风格 major（含 `ai_template_feel`）和无法阅读的 critical。四个主观分只记录，不因低分阻断交付。
 4. 视觉问题优先修 actual artifact；不要为了过检查反向修改 frozen Slide Spec。
 5. 必须检查整套节奏：连续弱卡片/列表/三等分属于 AI-template repetition 风险。
 6. **Author/critic separation**：Pipeline 必须由主会话以不传 `name` 的方式独立 spawn `student-presentation-suite:visual-critic`。独立 critic 使用 Read 读取当前 contact sheet 和全部页图，并用 Write 写 visual-review.json；hook 生成 critic-execution.json。无法分离时必须 blocked，不能用生成者自评分替代。
@@ -19,8 +19,8 @@ v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计
 
 `rigorous` 的 blocker = `critical` + `major`。`fast` 的主观视觉分数、重复版式和
 `major` 风格意见只作 advisory；只有无法使用的页面（例如文字无法辨认）报 `critical` 并
-阻塞。Critic 应把 `fast` 档的风格建议写成 `minor`，`blocker_count` 与回给主会话的计数按
-当前质量档计算。QA 保留这些建议，但不会因此要求 Builder 反复改版。hierarchy、focal_point、composition、visual_interest、whitespace 和整套平均低分在三档都是 advisory。无法阅读的 critical 仍然阻断。rigorous 的风格 major 与视觉回归仍然阻断。
+阻塞。`standard` 同样不因结构性低分或风格 major 阻断。Critic 应把 `fast` / `standard` 的风格建议写成 `minor`，`blocker_count` 与回给主会话的计数按
+当前质量档计算。QA 保留这些建议，但不会因此要求 Builder 反复改版。hierarchy、focal_point、composition、visual_interest、whitespace 和整套平均低分在三档都是 advisory。无法阅读的 critical 仍然阻断。rigorous 的风格 major、视觉回归，以及 layout report 里连续三页相同的 `move`，仍然阻断。
 
 2026-09-17 live：critic 按自己的习惯回报"blocker 数：0（critical 0 / major 8 / minor 12）"，
 主会话据此判断"独立复核已判定可交付"，而质量门同一份报告算出 23 个 blocker。现在必须

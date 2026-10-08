@@ -382,6 +382,31 @@ class BuilderPacketTests(unittest.TestCase):
         self.assertIn("change move", packet["minimal_edit"]["scope"])
         self.assertNotIn("composition", [item["code"] for item in packet["deck_blockers"]])
 
+    def test_repeated_move_reading_blocks_only_on_rigorous(self) -> None:
+        self.prepare_qa()
+        spec_path = self.work / "slide-spec-compiled.yaml"
+        spec_path.write_text(
+            spec_path.read_text(encoding="utf-8").replace(
+                "meta:\n  citation_style: classroom\n",
+                "meta:\n  citation_style: classroom\n  quality_level: rigorous\n",
+                1,
+            ),
+            encoding="utf-8",
+        )
+        (self.work / "deck.pptx.layout-report.json").write_text(
+            json.dumps([
+                {"slide": 1, "move": "thesis"},
+                {"slide": 2, "move": "thesis"},
+                {"slide": 3, "move": "thesis"},
+            ]),
+            encoding="utf-8",
+        )
+        _, packet = self.packet.write_packet(self.work, "repair", [2], None, ["pipeline-qa.json"])
+        reading = " ".join(packet["reading"])
+        self.assertIn("repeat move thesis", reading)
+        self.assertIn("On rigorous this blocks delivery", reading)
+        self.assertIn("params.primaryShare", reading)
+
     def test_repair_blockers_coming_from_reports_beat_state_projections(self) -> None:
         """Without reports the packet falls back to deck state; with reports it uses
         them — the two sources must not be silently mixed."""

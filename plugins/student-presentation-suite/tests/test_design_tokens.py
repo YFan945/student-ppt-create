@@ -262,6 +262,34 @@ class DesignTokenTests(unittest.TestCase):
         # Languages must differentiate the styles: no two styles share one full language.
         self.assertEqual(len(STYLES), len(languages))
 
+    def test_cover_band_reaches_background_directives(self) -> None:
+        self.assertEqual(
+            "corner-block",
+            resolve_design_tokens("Academic Rigorous")["background_directives"]["cover"]["band"],
+        )
+        self.assertEqual(
+            "bottom-band",
+            resolve_design_tokens("Midnight Business")["background_directives"]["cover"]["band"],
+        )
+        self.assertEqual(
+            "side-band",
+            resolve_design_tokens("Ocean Tech")["background_directives"]["cover"]["band"],
+        )
+        self.assertEqual(
+            "none",
+            resolve_design_tokens("Modern Minimal")["background_directives"]["cover"]["band"],
+        )
+
+    def test_topic_accent_keeps_seed_lightness(self) -> None:
+        from shared.design_tokens import apply_topic_accent
+
+        seed = resolve_design_tokens("Modern Minimal")
+        shifted = apply_topic_accent(seed, "C4552A")
+        self.assertNotEqual(seed["palette"]["primary_accent"], shifted["palette"]["primary_accent"])
+        self.assertEqual(6, len(shifted["palette"]["primary_accent"]))
+        untouched = apply_topic_accent(seed, "not-a-color")
+        self.assertEqual(seed["palette"]["primary_accent"], untouched["palette"]["primary_accent"])
+
 
 if __name__ == "__main__":
     unittest.main()

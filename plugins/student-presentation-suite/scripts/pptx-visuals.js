@@ -653,8 +653,22 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
   // 非 stacked 用 outEnd 合法。
   const stacked = data.stacked === true;
   // 图表语法扩展：kind 支持 bar（默认）/line/doughnut；bar 方向用 orientation。
+  // 页面没写 kind 时，用该风格 visual_language.chart（columns / line / bars）。
   // 设计原则“无网格线”：valGridLine 默认关闭，data.gridlines === true 显式恢复。
-  const kind = ['bar', 'line', 'doughnut'].includes(data.kind) ? data.kind : 'bar';
+  const styleChart = String((tokens.visual_language && tokens.visual_language.chart) || '');
+  let kind = 'bar';
+  let barDir = 'col';
+  if (data.kind === 'line' || data.kind === 'doughnut' || data.kind === 'bar') {
+    kind = data.kind;
+    barDir = data.orientation === 'bar' ? 'bar' : 'col';
+  } else if (styleChart === 'line') {
+    kind = 'line';
+  } else if (styleChart === 'bars') {
+    kind = 'bar';
+    barDir = 'bar';
+  }
+  if (data.orientation === 'bar') barDir = 'bar';
+  if (data.orientation === 'col') barDir = 'col';
   const chartType = kind === 'line' ? CHART.line : kind === 'doughnut' ? CHART.doughnut : CHART.bar;
   // 单系列柱/条形图：pptxgenjs 只在 chartColors 长度 >1 时才写 <c:dPt>，
   // 每 series 一色会让所有柱子同色，色彩不承载任何分类信息。
@@ -723,7 +737,7 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
       data.gridlines === true ? { color: p.muted, size: 1 } : { style: 'none' };
     chartOptions.dataLabelPosition = stacked ? 'inEnd' : 'outEnd';
     if (kind === 'bar') {
-      chartOptions.barDir = data.orientation === 'bar' ? 'bar' : 'col';
+      chartOptions.barDir = barDir;
     }
   }
   slide.addChart(chartType, series, chartOptions);
@@ -1137,6 +1151,7 @@ module.exports = {
   addTimeline,
   renderVisual,
   renderVisualSpec,
+  coverImage,
 };
 
 if (require.main === module) {
