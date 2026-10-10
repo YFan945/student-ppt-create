@@ -279,7 +279,13 @@ def calibration_coverage(
 
 
 def preview_pair_slides(spec: dict[str, Any]) -> list[int]:
-    """Cover, then the first content page that carries a figure, metric, or proof."""
+    """Cover, then the first content page carrying a figure, metric or proof.
+
+    The declared signal is `move` or `visual.type`; `layout` counts too, because
+    `archetype_of` (the classifier the coverage sampler uses) already reads its
+    keywords, and a spec that declares only a layout must not be invisible to
+    the two-page look.
+    """
     slides = [item for item in spec.get("slides") or [] if isinstance(item, dict)]
     if not slides:
         return [1]
@@ -305,7 +311,11 @@ def preview_pair_slides(spec: dict[str, Any]) -> list[int]:
             if number == cover:
                 continue
             visual = slide.get("visual") if isinstance(slide.get("visual"), dict) else {}
-            declared = str(slide.get("move") or visual.get("type") or "").lower()
+            declared = " ".join(
+                str(value).lower()
+                for value in (slide.get("move"), visual.get("type"), slide.get("layout"))
+                if value
+            )
             if hint in declared:
                 content = number
                 break

@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""验证独立的 Claude Code 插件发布包结构。"""
+"""验证独立的 Claude Code 插件发布包结构，并跑一遍单元测试套件。"""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -113,6 +114,13 @@ _SEMVER_RE = re.compile(
     r"(?:-([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*))?"
     r"(?:\+([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)*))?$"
 )
+# The unit suite is a stage of this gate, not a separate manual step: v0.28.1
+# shipped with two red tests (1362 ran, 2 failed) because no release gate ran the
+# suite — it existed only as an AGENTS.md command the operator had to remember.
+# A gate that cannot fail on its own suite is not a release gate.
+TEST_SUITE_TIMEOUT_SECONDS = 900
+_TEST_RAN_RE = re.compile(r"^Ran (\d+) tests? in ", re.M)
+_TEST_VERDICT_RE = re.compile(r"^(OK|FAILED)(?: \((.*)\))?\s*$", re.M)
 
 
 def parse_args() -> argparse.Namespace:
@@ -324,6 +332,74 @@ def check_tracked_files(errors: list[str], *, allow_untracked: bool = False) -> 
             errors.append(f"不允许 UTF-8 BOM: {local}")
 
 
+def _last_match(pattern: re.Pattern[str], text: str) -> re.Match[str] | None:
+    """unittest prints its verdict last; earlier lookalikes belong to test output."""
+    found = None
+    for match in pattern.finditer(text):
+        found = match
+    return found
+
+
+def parse_test_summary(combined: str, returncode: int) -> dict[str, object]:
+    """Read unittest's own final verdict out of captured output.
+
+    Only the tail is inspected, and only its last verdict counts: tests print
+    their own stdout while the suite runs (pipeline narration, hook advisories),
+    so a bare "OK" appearing earlier in the log must not be mistaken for the
+    run's verdict.
+    """
+    tail = "\n".join(combined.strip().splitlines()[-15:])
+    ran = _last_match(_TEST_RAN_RE, tail)
+    verdict = _last_match(_TEST_VERDICT_RE, tail)
+    return {
+        "ok": returncode == 0,
+        "returncode": returncode,
+        "tests_run": int(ran.group(1)) if ran else None,
+        "summary": verdict.group(0).strip() if verdict else f"exit {returncode}",
+    }
+
+
+def test_suite_error(report: dict[str, object]) -> str | None:
+    """The message that fails the gate for a suite run, or None when it is green."""
+    if report.get("ok"):
+        return None
+    return f"单元测试套件未通过: {report.get('summary')}"
+
+
+def check_test_suite(errors: list[str]) -> dict[str, object]:
+    """Run the plugin's own unit suite and fail the gate when it is not green."""
+    env = dict(os.environ)
+    env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+    try:
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-B",
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                str(ROOT / "tests"),
+            ],
+            cwd=ROOT,
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=TEST_SUITE_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        errors.append(f"单元测试套件无法完成: {exc}")
+        return {"ok": False, "error": str(exc)}
+    report = parse_test_summary((proc.stdout or "") + (proc.stderr or ""), proc.returncode)
+    message = test_suite_error(report)
+    if message:
+        errors.append(message)
+    return report
+
+
 def main() -> None:
     args = parse_args()
     errors: list[str] = []
@@ -334,12 +410,15 @@ def main() -> None:
     check_runtime_contract(errors)
     check_embedded_runtime(errors)
     check_tracked_files(errors, allow_untracked=args.allow_untracked)
+    # Last, so a broken package fails in under a second instead of after the suite.
+    tests = check_test_suite(errors)
     result = {
         "ok": not errors,
         "error_count": len(errors),
         "errors": errors,
         "script_reference_graph": reference_graph,
         "allow_untracked": args.allow_untracked,
+        "tests": tests,
     }
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -349,6 +428,7 @@ def main() -> None:
             print(f"- {error}", file=sys.stderr)
     else:
         print("插件发布检查通过。")
+        print(f"单元测试套件: {tests['summary']}")
     if errors:
         raise SystemExit(1)
 

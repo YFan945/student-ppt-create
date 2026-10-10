@@ -151,6 +151,21 @@ class DefaultSelectionTests(unittest.TestCase):
         self.write_spec([slide(n, layout="text-heavy") for n in range(1, 10)])
         self.assertEqual([1, 2], ca.default_calibration_slides(self.work))
 
+    def test_preview_pair_reads_a_layout_only_spec(self) -> None:
+        """A pre-0.28 spec declares only `layout`. The two-page look must still
+        find the page carrying a visual grammar instead of the first content
+        page — the same convention `archetype_of` already uses."""
+        self.write_spec(
+            [
+                slide(1, kind="cover"),
+                slide(2, layout="text-heavy"),
+                slide(3, layout="text-heavy"),
+                slide(4, layout="data-chart"),
+                slide(5, layout="comparison"),
+            ]
+        )
+        self.assertEqual([1, 4], ca.default_calibration_slides(self.work))
+
     def test_spec_drives_coverage_and_leverage_fills(self) -> None:
         """Past the two-page line, a non-fast deck keeps the archetype sample."""
         self.write_spec(

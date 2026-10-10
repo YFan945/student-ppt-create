@@ -235,6 +235,8 @@ npx --prefix plugins/student-presentation-suite eslint --config plugins/student-
 npx --prefix plugins/student-presentation-suite prettier --check plugins/student-presentation-suite/scripts/*.js
 
 # Unit and integration tests
+# (check_plugin_release.py runs this same suite as its last stage — see Runtime
+# checks — so a red suite fails the release gate, not just this manual command)
 python -m unittest discover -s plugins/student-presentation-suite/tests
 
 # Runtime checks
@@ -267,7 +269,7 @@ dependencies are mode-specific; use `--mode create`, `edit_ooxml`, or
 3. Run `python plugins/student-presentation-suite/scripts/bump_version.py <version>`
    to synchronize all version fields.
 4. Update documentation and `CHANGELOG.md`.
-5. Run the full validation suite.
+5. Run the full validation suite (`check_plugin_release.py` runs the unit suite itself).
 6. Commit the release changes and **push directly to `main`**.
 7. Verify the pushed `main` SHA equals the locally validated commit, then create an
    **annotated** tag `v<version>` without waiting for CI. Lightweight tags are not used: every
