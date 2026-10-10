@@ -216,13 +216,16 @@ def complexity_by_slide(work_dir: Path) -> dict[int, int]:
 
 
 def default_calibration_slides(work_dir: Path, limit: int = 3) -> list[int]:
-    """Deterministic calibration default: maximum distinct archetypes (Batch 4.1).
+    """Deterministic calibration default for one work dir.
 
-    The sample is chosen to cover different visual grammars (cover / data /
-    comparison / process …) rather than the first three high-leverage positions;
-    high-leverage slides still win ties and fill the sample. The main session may
-    still pick its own set; `next --json` names the override command when it hands
-    over the packet.
+    Which sample a deck takes depends on its tier and length
+    (``shared.quality_tiers.uses_preview_pair``): fast decks and decks at or below
+    the two-page line look at the cover plus one content page before the rest is
+    written; longer standard/rigorous decks take the archetype sample — maximum
+    distinct visual grammars (cover / data / comparison / process …), where
+    high-leverage slides win ties and fill the sample. The main session may still
+    pick its own set; `next --json` names the override command when it hands over
+    the packet.
     """
     from calibration_archetypes import default_calibration_slides as coverage_default
 

@@ -100,7 +100,8 @@ class CoverageSelectionTests(unittest.TestCase):
 
 
 class DefaultSelectionTests(unittest.TestCase):
-    """The work-dir entry point: spec-based coverage, art-direction fallback."""
+    """The work-dir entry point: preview pair, spec-based coverage, art-direction
+    fallback — in that order of precedence."""
 
     def setUp(self) -> None:
         import tempfile
@@ -109,9 +110,17 @@ class DefaultSelectionTests(unittest.TestCase):
         self.work = Path(self._tmp.name)
         self.addCleanup(self._tmp.cleanup)
 
-    def write_spec(self, slides: list[dict[str, object]], name: str = "slide-spec.json") -> None:
+    def write_spec(
+        self,
+        slides: list[dict[str, object]],
+        name: str = "slide-spec.json",
+        quality_level: str | None = None,
+    ) -> None:
+        meta: dict[str, object] = {"slide_count": len(slides)}
+        if quality_level is not None:
+            meta["quality_level"] = quality_level
         (self.work / name).write_text(
-            json.dumps({"meta": {"slide_count": len(slides)}, "slides": slides}), encoding="utf-8"
+            json.dumps({"meta": meta, "slides": slides}), encoding="utf-8"
         )
 
     def test_no_spec_falls_back_to_high_leverage(self) -> None:
@@ -120,7 +129,30 @@ class DefaultSelectionTests(unittest.TestCase):
         )
         self.assertEqual([2, 7], ca.default_calibration_slides(self.work))
 
+    def test_short_or_fast_decks_take_the_preview_pair(self) -> None:
+        """v0.28.1: before the rest is written, every tier looks at the cover plus
+        one content page. Card length only buys the archetype sample off the fast
+        tier — a long fast deck still takes the pair."""
+        self.write_spec(
+            [
+                slide(1, kind="cover"),
+                slide(2, move="thesis"),
+                slide(3, move="metric"),
+                slide(4, move="proof"),
+            ]
+        )
+        (self.work / "art-direction.yaml").write_text(
+            "high_leverage_slides: [4]\n", encoding="utf-8"
+        )
+        # The hinted content page ("metric") takes the second slot, not the
+        # art direction's high-leverage page 4.
+        self.assertEqual([1, 3], ca.default_calibration_slides(self.work))
+
+        self.write_spec([slide(n, layout="text-heavy") for n in range(1, 10)])
+        self.assertEqual([1, 2], ca.default_calibration_slides(self.work))
+
     def test_spec_drives_coverage_and_leverage_fills(self) -> None:
+        """Past the two-page line, a non-fast deck keeps the archetype sample."""
         self.write_spec(
             [
                 slide(1, kind="cover"),
@@ -128,7 +160,12 @@ class DefaultSelectionTests(unittest.TestCase):
                 slide(3, layout="text-heavy"),
                 slide(4, layout="data-chart"),
                 slide(5, layout="comparison"),
-            ]
+                slide(6, layout="timeline"),
+                slide(7, layout="matrix-diagram"),
+                slide(8, layout="text-heavy"),
+                slide(9, layout="text-heavy"),
+            ],
+            quality_level="standard",
         )
         (self.work / "art-direction.yaml").write_text(
             "high_leverage_slides: [5]\n", encoding="utf-8"

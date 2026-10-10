@@ -2,6 +2,17 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.28.2 — 2026-10-11 · 修 0.28.1 遗留：校准默认的两处断言与文档
+
+0.28.1 把"先看两页"扩到所有档位时，两个测试仍断言旧的 archetype 样本默认值，
+那次发布带着红套件推出去了（1362 项里 2 红）。产品行为不动，补齐测试与已过期的文档。
+
+- `default_calibration_slides` 走 `builder_packet` 的那处断言改为新默认值（短 deck 与 fast 档取封面加一张内容页 `[1, 2]`），测试名同步改为 `test_calibration_defaults_to_the_preview_pair`。
+- `test_spec_drives_coverage_and_leverage_fills` 改用 9 页 `standard` spec，让 archetype 样本路径真正被走到——覆盖只在两页线之上、且离开 fast 档才生效，旧的 5 页 spec 在新默认下永远返回预览对。
+- 新增一项测试钉住预览对的两条边界：fast 档的长 deck 仍取对；命中提示（`figure`/`metric`/`proof`…）的内容页占第二个槽，而非 art-direction 的 high-leverage 页。
+- `builder_packet.default_calibration_slides` 的 docstring 与 `test_calibration_archetypes` 的类文档改为描述现状（改前仍写着"默认取最大 distinct archetype"，与 0.28.1 的行为矛盾）。
+- 测试 1363 全绿（新增 1 项）。
+
 ## 0.28.1 — 2026-10-09 · 封面色面，铺开前先看两页
 
 六个动作各自拉开剪影，封面不再是贴边细条。每一档在写其余页之前先看封面和一张内容页。

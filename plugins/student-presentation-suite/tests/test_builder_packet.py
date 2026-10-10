@@ -108,8 +108,14 @@ class BuilderPacketTests(unittest.TestCase):
 
     # --- calibration ---------------------------------------------------------
 
-    def test_calibration_defaults_to_high_leverage_slides(self) -> None:
-        self.assertEqual([1, 3, 4], self.packet.default_calibration_slides(self.work))
+    def test_calibration_defaults_to_the_preview_pair(self) -> None:
+        """v0.28.1: the default sample is the cover plus one content page.
+
+        The art direction's high-leverage list no longer picks the default
+        sample for a deck this short; the archetype sample is reserved for
+        longer standard/rigorous decks.
+        """
+        self.assertEqual([1, 2], self.packet.default_calibration_slides(self.work))
 
     def test_calibration_packet_projects_style_and_requirements(self) -> None:
         path, packet = self.packet.write_packet(self.work, "calibration", [1, 4])
