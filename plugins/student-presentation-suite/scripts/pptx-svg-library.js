@@ -82,6 +82,9 @@ function addCornerDecoration(slide, name, box, tokens, options = {}) {
     ...box,
     transparency: Number(options.transparency || 0),
     rotate: Number(options.rotate || 0),
+    // 角落组按右上朝向绘制，其余锚点靠镜像（motif_at 的落位由此生效）。
+    flipH: Boolean(options.flipH),
+    flipV: Boolean(options.flipV),
   });
 }
 

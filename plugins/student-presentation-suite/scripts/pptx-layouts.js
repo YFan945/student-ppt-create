@@ -699,6 +699,12 @@ function renderDeclaredPage(ctx, spec = {}) {
   } else {
     result = renderArchetype(pageCtx, request);
   }
+  // 样式声明的 rule 标记（0.28.4）：每页由引擎统一画，builder 无权跳过。
+  // 0.18 起这个字段就在 tokens 里，但一直没有渲染端——12 套风格因此共用同一骨架。
+  _sibling('pptx-composition').renderStyleRule(
+    pageCtx,
+    H.contentArea(pageCtx.tokens, pageCtx.pageKind),
+  );
   if (spec.notes) slide.addNotes(String(spec.notes));
   return result;
 }

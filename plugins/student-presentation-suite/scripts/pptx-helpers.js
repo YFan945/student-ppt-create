@@ -372,7 +372,13 @@ function renderBackground(slide, tokens, opts = {}) {
   renderCoverBand(slide, pageTokens, directive);
   if (directive.motif && opts.motif !== false) {
     const margin = safeArea(SLIDE_W_IN, SLIDE_H_IN, pageTokens, { reserveTitle: false });
-    addStyleMotif(slide, margin, pageTokens, directive.motif_intensity || 'standard');
+    addStyleMotif(
+      slide,
+      margin,
+      pageTokens,
+      directive.motif_intensity || 'standard',
+      directive.motif,
+    );
   }
   return slide;
 }
@@ -1167,14 +1173,45 @@ function addBackground(slide, tokens, dark) {
 }
 
 /**
+ * 母题落位：样式声明的 motif_at 决定角/边，形状由 svg_reference.name 决定。
+ * 角落组朝右上画，其余位靠翻转镜像，否则括号会开口朝错方向。
+ */
+const MOTIF_ANCHORS = {
+  'corner-tr': { at: 'tr', flipH: false, flipV: false },
+  'corner-tl': { at: 'tl', flipH: true, flipV: false },
+  'corner-br': { at: 'br', flipH: false, flipV: true },
+  'corner-bl': { at: 'bl', flipH: true, flipV: true },
+  'edge-right': { at: 'right', flipH: false, flipV: false },
+  'edge-left': { at: 'left', flipH: true, flipV: false },
+};
+
+function motifBox(area, anchor, w, h) {
+  const place =
+    MOTIF_ANCHORS[
+      String(anchor || '')
+        .trim()
+        .toLowerCase()
+    ] || MOTIF_ANCHORS['corner-tr'];
+  const onLeft = place.at === 'tl' || place.at === 'bl' || place.at === 'left';
+  let y = area.y;
+  if (place.at === 'br' || place.at === 'bl') y = area.y + area.h - h;
+  else if (place.at === 'right' || place.at === 'left') y = area.y + area.h * 0.5 - h / 2;
+  return {
+    box: { x: onLeft ? area.x : area.x + area.w - w, y, w, h },
+    flipH: place.flipH,
+    flipV: place.flipV,
+  };
+}
+
+/**
  * Explicit compatibility helper for the selected reference's optional SVG motif.
- * Nothing calls this automatically; callers must not place it over content.
  * @param {object} slide
  * @param {{x:number,y:number,w:number,h:number}} area
  * @param {object} tokens
  * @param {"restrained"|"standard"|"expressive"} [intensity]
+ * @param {"corner-tr"|"corner-tl"|"corner-br"|"corner-bl"|"edge-right"|"edge-left"} [anchor]
  */
-function addStyleMotif(slide, area, tokens, intensity = 'standard') {
+function addStyleMotif(slide, area, tokens, intensity = 'standard', anchor = 'corner-tr') {
   const name = tokens.svg_reference?.name;
   if (!name || String(name).toLowerCase() === 'none') return slide;
   let SVG;
@@ -1188,8 +1225,11 @@ function addStyleMotif(slide, area, tokens, intensity = 'standard') {
   const scale = intensity === 'expressive' ? 0.3 : intensity === 'restrained' ? 0.17 : 0.23;
   const w = area.w * scale;
   const h = Math.min(area.h * 0.42, w);
-  SVG.addCornerDecoration(slide, name, { x: area.x + area.w - w, y: area.y, w, h }, tokens, {
+  const placed = motifBox(area, anchor, w, h);
+  SVG.addCornerDecoration(slide, name, placed.box, tokens, {
     transparency: intensity === 'restrained' ? 28 : 10,
+    flipH: placed.flipH,
+    flipV: placed.flipV,
   });
   return slide;
 }

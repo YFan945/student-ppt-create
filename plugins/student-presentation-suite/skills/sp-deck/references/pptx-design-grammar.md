@@ -171,6 +171,8 @@ artifact readback、Slide Spec freeze 与 render-conditioned visual review 负�
 
 - **D1 ✔ 禁止标题正下方强调线。** 标题与正文之间用留白分隔；细长形状（min边≤0.09in
   且长宽比≥5）或横线出现在注册标题下方 0.45in 内、水平重叠 ≥40% 即构建失败。
+  样式系统自己的 `visual_language.rule` 标记登记为 `style_rule` + decorative，按角色放行：
+  D1 管的是 builder 随手加的线，不是风格契约（2026-10-11）。
 - **D2 ✔ 禁止装饰性细色条/单侧边框。** min边≤0.09in 的细条形状是 AI 模板签名；
   分隔用留白、hairline rule（登记为 line，≤1pt）或完整面板。registry 出 warning。
 - **D3 ✔ 连接器必须正交。** tokens `lines.connector_style: orthogonal`；斜向连接线

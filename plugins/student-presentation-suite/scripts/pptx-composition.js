@@ -150,37 +150,121 @@ function visualLanguage(ctx) {
   return language && typeof language === 'object' ? language : {};
 }
 
-function addRuleLine(ctx, x1, y1, x2, y2) {
-  const color = H.color(ctx.tokens, 'primary_accent');
+function addRuleLine(ctx, x1, y1, x2, y2, options = {}) {
+  const color = options.color || H.color(ctx.tokens, 'primary_accent');
+  const width = Number(options.width) || 1.25;
   ctx.slide.addShape('line', {
     x: Math.min(x1, x2),
     y: Math.min(y1, y2),
     w: Math.abs(x2 - x1),
     h: Math.abs(y2 - y1),
-    line: { color, width: 1.25 },
+    line: { color, width },
   });
-  register(ctx, { type: 'line', x1, y1, x2, y2 });
+  register(ctx, {
+    type: 'line',
+    x1,
+    y1,
+    x2,
+    y2,
+    ...(options.role ? { role: options.role, decorative: true, allowTextCrossing: true } : {}),
+  });
+}
+
+const STYLE_RULES = ['bracket', 'left-rail', 'underline-left', 'top-band', 'slash'];
+
+/**
+ * 样式声明的 rule 标记（0.28.4）。
+ *
+ * 此前 visual_language.rule 没有任何渲染器读它——12 套风格因此共用同一个骨架，
+ * 改这个字段不产生任何效果。画在每个内容页的左侧留白里：不进入正文盒子，
+ * 登记为 style_rule + decorative，重叠判定自动豁免，D1 也按角色放行。
+ */
+function renderStyleRule(ctx, area) {
+  const rule = String(visualLanguage(ctx).rule || '')
+    .trim()
+    .toLowerCase();
+  if (!rule || rule === 'none' || !STYLE_RULES.includes(rule)) return null;
+  const color = H.color(ctx.tokens, 'primary_accent');
+  const gx = Math.max(0.16, area.x - 0.22);
+  const top = Math.max(0.34, area.y - 0.3);
+  const line = (x1, y1, x2, y2, width) =>
+    addRuleLine(ctx, x1, y1, x2, y2, { color, width, role: 'style_rule' });
+  if (rule === 'left-rail') {
+    const h = Math.min(Math.max(1.2, area.h * 0.66), 2.2);
+    line(gx, area.y + 0.1, gx, area.y + 0.1 + h, 2.5);
+  } else if (rule === 'underline-left') {
+    line(gx, top, gx + 1.25, top, 2.5);
+  } else if (rule === 'bracket') {
+    line(gx, top, gx + 0.62, top, 2);
+    line(gx, top, gx, top + 0.5, 2);
+  } else if (rule === 'slash') {
+    line(gx, area.y + 0.36, gx + 0.36, Math.max(0.3, area.y - 0.3), 3);
+  } else if (rule === 'top-band') {
+    const band = { x: gx, y: Math.max(0.28, top - 0.06), w: 0.44, h: 0.13 };
+    ctx.slide.addShape('rect', {
+      ...band,
+      fill: { color },
+      line: { color, transparency: 100 },
+    });
+    register(ctx, {
+      type: 'shape',
+      role: 'style_rule',
+      decorative: true,
+      allowTextCrossing: true,
+      ...band,
+    });
+  }
+  return rule;
+}
+
+/** 计划文本的实际高度（估算器的行数 × 行距），用于把装饰面板收到文案大小。 */
+function plannedTextHeight(op) {
+  const fit = (op && op.fit) || {};
+  const lines = Math.max(1, Number(fit.lines) || 1);
+  const size = Math.max(8, Number(fit.fontSize) || 24);
+  return lines * (size / 72) * 1.24;
+}
+
+/**
+ * 焦点带里的紧致面板盒。
+ *
+ * 0.28.4：outlined 面板此前按整条焦点带（内容高度的 70–84%）画，短文案因此
+ * 在框内留下半幅空白——看起来像没写完的占位框。现在按文案的实际行数/行长收边
+ * 并在带内居中；soft-fill / edge-band 保持整带（那是"场"，不是"框"）。
+ */
+function tightFocalBox(focal, op) {
+  const padX = 0.28;
+  const padY = 0.24;
+  const text = String((op && op.text) || '');
+  const chars = [...text].length;
+  const lines = Math.max(1, Number(((op && op.fit) || {}).lines) || 1);
+  const size = Math.max(8, Number(((op && op.fit) || {}).fontSize) || 24);
+  const perLine = Math.max(1, Math.ceil(chars / lines));
+  const w = Math.max(1.6, Math.min(focal.w, perLine * (size / 72) * 1.02 + padX * 2));
+  const h = Math.max(0.6, Math.min(focal.h, plannedTextHeight(op) + padY * 2));
+  return { x: focal.x, y: focal.y + (focal.h - h) / 2, w, h };
 }
 
 /** 主区域的面板。flush 不加线。装饰层不参与文字重叠判定。 */
-function paintFocalSurface(ctx, focal) {
+function paintFocalSurface(ctx, focal, op) {
   if (!focal) return;
   const panel = String(visualLanguage(ctx).panel || 'flush');
   if (panel === 'flush' || panel === 'none') return;
   const radius = Math.max(0, Math.min(0.2, Number(visualLanguage(ctx).radius) || 0));
   const outlined = panel === 'outlined';
+  const box = outlined && op ? tightFocalBox(focal, op) : focal;
   ctx.slide.addShape(radius > 0.02 ? 'roundRect' : 'rect', {
-    x: focal.x,
-    y: focal.y,
-    w: focal.w,
-    h: focal.h,
+    x: box.x,
+    y: box.y,
+    w: box.w,
+    h: box.h,
     fill: { color: H.color(ctx.tokens, outlined ? 'canvas' : 'surface') },
     line: outlined
       ? { color: H.color(ctx.tokens, 'secondary_accent'), width: 1.25 }
       : { color: H.color(ctx.tokens, 'surface'), transparency: 100 },
     rectRadius: radius,
   });
-  register(ctx, { type: 'shape', role: 'surface', decorative: true, ...focal });
+  register(ctx, { type: 'shape', role: 'surface', decorative: true, ...box });
 }
 
 function drawEmphasisMarker(ctx, box, marker) {
@@ -245,6 +329,13 @@ function kicker(ctx, canvas, title, claim) {
 
 function renderThesis(ctx, request, canvas) {
   const slots = request.slots || {};
+  const undrawn = undrawnPayload(slots.visual);
+  if (undrawn) {
+    throw layoutFit(
+      `thesis draws text only; the declared ${undrawn} payload needs proof, figure, ` +
+        `or a layout that carries a visual zone`,
+    );
+  }
   const claim = String(slots.claim || '').trim();
   const title = String(slots.title || '').trim();
   const primary = claim || title;
@@ -276,15 +367,14 @@ function renderThesis(ctx, request, canvas) {
     ? Math.max(52, Math.round(sizes.body * 2.4))
     : Math.max(44, Math.round(sizes.body * 2.2));
   const planned = [...kick.planned];
-  planned.push(
-    planText(ctx, primary, primaryBox, 'stat', {
-      align: 'left',
-      min: minPrimary,
-      max: 60,
-      margin: 0,
-      label: 'thesis',
-    }),
-  );
+  const primaryOp = planText(ctx, primary, primaryBox, 'stat', {
+    align: 'left',
+    min: minPrimary,
+    max: 60,
+    margin: 0,
+    label: 'thesis',
+  });
+  planned.push(primaryOp);
   if (supportLine) {
     planned.push(
       planText(
@@ -306,7 +396,7 @@ function renderThesis(ctx, request, canvas) {
       ),
     );
   }
-  paintFocalSurface(ctx, primaryBox);
+  paintFocalSurface(ctx, primaryBox, primaryOp);
   paint(ctx, planned);
   return { focal: primaryBox };
 }
@@ -321,6 +411,40 @@ function emphasisIndex(params, count) {
   const index = Number(params && params.emphasis);
   if (!Number.isInteger(index) || index < 0 || index >= count) return 0;
   return index;
+}
+
+// visual.type 的别名 → pptx-visuals 的组件名。权威词汇表在那边（KNOWN_VISUAL_TYPES
+// = COMPONENTS 的全部键 + image/illustration/screenshot）；这里补齐其余组件名，
+// 否则 KPI/矩阵/对比这类载荷只有版式路径画得出来，proof/figure 一律拒绝。
+const VISUAL_TYPE_ALIASES = {
+  dashboard: 'dashboard',
+  chart: 'dashboard',
+  data: 'dashboard',
+  kpi: 'dashboard',
+  stat: 'dashboard',
+  table: 'table',
+  timeline: 'timeline',
+  process: 'process-path',
+  flow: 'process-path',
+  'process-path': 'process-path',
+  comparison: 'comparison',
+  matrix: 'matrix',
+  architecture: 'architecture',
+  quote: 'quote',
+  summary: 'summary',
+  reference: 'reference',
+  hero: 'hero',
+  image: 'visual-dominant',
+  illustration: 'visual-dominant',
+  screenshot: 'visual-dominant',
+  'visual-dominant': 'visual-dominant',
+};
+
+function visualPayloadKeys(flat) {
+  if (linesOf(flat.items).length || linesOf(flat.values).length) return true;
+  return [flat.series, flat.rows, flat.stages, flat.steps, flat.nodes].some(
+    (value) => Array.isArray(value) && value.length > 0,
+  );
 }
 
 function visualComponent(visual) {
@@ -341,6 +465,28 @@ function visualComponent(visual) {
   if (flat.asset || type === 'image' || type === 'illustration' || type === 'screenshot') {
     return 'visual-dominant';
   }
+  const alias = VISUAL_TYPE_ALIASES[type];
+  // 别名只在载荷真带内容时才成立：空的 dashboard 会画成一排空壳。
+  return alias && visualPayloadKeys(flat) ? alias : null;
+}
+
+/**
+ * 声明的载荷这条动作画不出来时的载荷名（画得出来则 null）。
+ *
+ * 0.28.4：thesis / weighted / metric / sequence 画的是文字构图，此前会静默丢掉
+ * 视觉载荷——绘制成功、内容却没上屏，只有 builder 事后自检才可能发现。现在直接
+ * 抛 layoutFit，让候选链换一个画得出来的动作（proof / figure 或版式路径）。
+ */
+function undrawnPayload(visual, allowedKeys = []) {
+  if (!visual || typeof visual !== 'object' || !Object.keys(visual).length) return null;
+  const flat = flatVisual(visual);
+  for (const key of allowedKeys) {
+    if (Array.isArray(flat[key]) ? flat[key].length : flat[key] !== undefined) return null;
+  }
+  const component = visualComponent(visual);
+  if (component) return component;
+  if (linesOf(flat.items).length) return 'items';
+  if (linesOf(flat.values).length) return 'values';
   return null;
 }
 
@@ -354,6 +500,13 @@ function flatVisual(visual) {
 
 function renderWeighted(ctx, request, canvas) {
   const slots = request.slots || {};
+  const undrawn = undrawnPayload(slots.visual);
+  if (undrawn) {
+    throw layoutFit(
+      `weighted draws text only; the declared ${undrawn} payload needs proof, figure, ` +
+        `or a layout that carries a visual zone`,
+    );
+  }
   const title = String(slots.title || '').trim();
   const claim = String(slots.claim || title).trim();
   const supports = linesOf(slots.body);
@@ -375,22 +528,20 @@ function renderWeighted(ctx, request, canvas) {
   const heightTotal = heights.reduce((sum, value) => sum + value, 0);
   const railGap = Math.min(0.12, rail.h / (supports.length * 12));
   const usable = rail.h - railGap * (supports.length - 1);
-  const planned = [
-    ...kick.planned,
-    planText(
-      ctx,
-      claim,
-      { x: primary.x, y: primary.y, w: primary.w, h: primary.h * 0.72 },
-      'stat',
-      {
-        align: 'left',
-        min: 36,
-        max: 54,
-        margin: 0,
-        label: 'weighted claim',
-      },
-    ),
-  ];
+  const claimOp = planText(
+    ctx,
+    claim,
+    { x: primary.x, y: primary.y, w: primary.w, h: primary.h * 0.72 },
+    'stat',
+    {
+      align: 'left',
+      min: 36,
+      max: 54,
+      margin: 0,
+      label: 'weighted claim',
+    },
+  );
+  const planned = [...kick.planned, claimOp];
   let supportY = rail.y;
   supports.forEach((line, index) => {
     const rowH = (usable * heights[index]) / heightTotal;
@@ -410,13 +561,21 @@ function renderWeighted(ctx, request, canvas) {
     );
     supportY += rowH + railGap;
   });
-  paintFocalSurface(ctx, primary);
+  paintFocalSurface(ctx, primary, claimOp);
   paint(ctx, planned);
   return { focal: primary };
 }
 
 function renderMetric(ctx, request, canvas) {
   const slots = request.slots || {};
+  // metric 是一页一个大数字：只有 visual.value（或 claim）是它画得出来的载荷。
+  const undrawn = undrawnPayload(slots.visual, ['value']);
+  if (undrawn) {
+    throw layoutFit(
+      `metric draws one figure only; the declared ${undrawn} payload needs proof, figure, ` +
+        `or a layout that carries a visual zone`,
+    );
+  }
   const visual = slots.visual && typeof slots.visual === 'object' ? slots.visual : {};
   const figure = String(visual.value || slots.claim || '').trim();
   if (!figure) throw layoutFit('metric needs a number in slots.claim or slots.visual.value');
@@ -427,16 +586,14 @@ function renderMetric(ctx, request, canvas) {
   const bandH = canvas.y + canvas.h - top;
   const statH = note ? bandH * 0.7 : bandH * 0.84;
   const statBox = { x: canvas.x, y: top, w: canvas.w, h: statH };
-  const planned = [
-    ...kick.planned,
-    planText(ctx, figure, statBox, 'stat', {
-      align: 'left',
-      min: 48,
-      max: 60,
-      margin: 0,
-      label: 'metric',
-    }),
-  ];
+  const statOp = planText(ctx, figure, statBox, 'stat', {
+    align: 'left',
+    min: 48,
+    max: 60,
+    margin: 0,
+    label: 'metric',
+  });
+  const planned = [...kick.planned, statOp];
   if (note) {
     const noteBox = {
       x: canvas.x,
@@ -453,7 +610,7 @@ function renderMetric(ctx, request, canvas) {
       }),
     );
   }
-  paintFocalSurface(ctx, statBox);
+  paintFocalSurface(ctx, statBox, statOp);
   paint(ctx, planned);
   return { focal: statBox };
 }
@@ -501,6 +658,14 @@ function renderProof(ctx, request, canvas) {
 
 function renderSequence(ctx, request, canvas) {
   const slots = request.slots || {};
+  // sequence 把 stages/steps 当自己的步骤用；其余载荷它画不出来。
+  const undrawn = undrawnPayload(slots.visual, ['stages', 'steps']);
+  if (undrawn) {
+    throw layoutFit(
+      `sequence draws steps only; the declared ${undrawn} payload needs proof, figure, ` +
+        `or a layout that carries a visual zone`,
+    );
+  }
   const visual = slots.visual && typeof slots.visual === 'object' ? slots.visual : {};
   const stages = linesOf(visual.stages || visual.steps);
   const steps = stages.length ? stages : linesOf(slots.body);
@@ -719,4 +884,4 @@ function renderMove(ctx, request = {}) {
   return { move, layout: move, family: 'composition', silhouette: move, focal: drawn.focal };
 }
 
-module.exports = { MOVES, renderMove, renderThesis, renderWeighted };
+module.exports = { MOVES, STYLE_RULES, renderMove, renderStyleRule, renderThesis, renderWeighted };

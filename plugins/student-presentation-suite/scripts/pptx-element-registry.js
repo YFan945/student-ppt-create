@@ -292,7 +292,7 @@ class SlideElementRegistry {
           });
         }
       }
-      for (const line of elements.filter((el) => el.type === 'line')) {
+      for (const line of elements.filter((el) => el.type === 'line' && el.role !== 'style_rule')) {
         const lx = Math.min(line.x1, line.x2);
         const rx = Math.max(line.x1, line.x2);
         const ltop = Math.min(line.y1, line.y2);

@@ -13,13 +13,19 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPTS = ROOT / "scripts"
 
 
-def resolved_tokens() -> dict:
+def resolved_tokens(style: str = "Modern Minimal") -> dict:
     import sys
 
     sys.path.insert(0, str(ROOT))
     from shared.design_tokens import resolve_design_tokens
 
-    return resolve_design_tokens("Modern Minimal")
+    return resolve_design_tokens(style)
+
+
+def shipped_styles() -> list[str]:
+    """Every style the catalog ships, by display name (no hand-kept list to drift)."""
+    catalog = json.loads((ROOT / "references" / "design-tokens.json").read_text(encoding="utf-8"))
+    return [record["name"] for record in catalog["styles"].values()]
 
 
 class CompositionMoveTests(unittest.TestCase):
@@ -30,7 +36,7 @@ class CompositionMoveTests(unittest.TestCase):
             raise unittest.SkipTest("node is unavailable")
         cls.tokens = resolved_tokens()
 
-    def run_node(self, body: str) -> dict:
+    def run_node(self, body: str, tokens: dict | None = None) -> dict:
         script = (
             "const path=require('node:path');"
             f"const SCRIPTS={json.dumps(str(SCRIPTS))};"
@@ -38,7 +44,7 @@ class CompositionMoveTests(unittest.TestCase):
             f"const C=require({json.dumps(str(SCRIPTS / 'pptx-composition.js'))});"
             f"const H=require({json.dumps(str(SCRIPTS / 'pptx-helpers.js'))});"
             f"const R=require({json.dumps(str(SCRIPTS / 'pptx-element-registry.js'))});"
-            f"const TOKENS={json.dumps(self.tokens)};"
+            f"const TOKENS={json.dumps(tokens or self.tokens)};"
             "function mock(){const calls=[];const rec=(k)=>(...a)=>{calls.push({k,a});return {};};"
             "return {calls,addText:rec('text'),addShape:rec('shape'),addImage:rec('image'),"
             "addChart:rec('chart'),addTable:rec('table'),addNotes:rec('notes')};}"
@@ -277,6 +283,124 @@ class CompositionMoveTests(unittest.TestCase):
             """
         )
         self.assertGreater(out["wide"], out["narrow"])
+
+    # --- 0.28.4: the style tokens that had no renderer ---------------------
+
+    def test_style_rule_is_drawn_for_every_shipped_style(self) -> None:
+        """`visual_language.rule` had no renderer at all: 12 styles, one skeleton.
+
+        The field was declared by every style and read by nobody, so changing it
+        had no effect on any page.
+        """
+        rows = {}
+        for style in shipped_styles():
+            rows[style] = self.run_node(
+                """
+                const registry = new R.SlideElementRegistry({ slideW: 10, slideH: 5.625 });
+                const slide = mock();
+                let safe = 'ok';
+                try {
+                  L.renderDeclaredPage(
+                    { slide, tokens: TOKENS, registry, slideNumber: 1, lang: 'chinese' },
+                    { kind: 'content', move: 'thesis',
+                      slots: { title: '课堂问题', claim: '干扰来自波动', body: ['而不是平均值'] } });
+                  registry.assertSafe();
+                } catch (error) { safe = String(error.message).slice(0, 90); }
+                const rules = registry._slide(1).filter((el) => el.role === 'style_rule');
+                console.log(JSON.stringify({
+                  rule: TOKENS.visual_language.rule,
+                  count: rules.length,
+                  vertical: rules.filter((el) => el.type === 'line' && el.x1 === el.x2).length,
+                  safe,
+                }));
+                """,
+                tokens=resolved_tokens(style),
+            )
+        for style, out in rows.items():
+            with self.subTest(style=style):
+                self.assertEqual("ok", out["safe"])
+                self.assertGreaterEqual(
+                    out["count"], 1, f"{style} declares rule {out['rule']!r} and drew nothing"
+                )
+        # The five kinds must stay five distinguishable marks, not one shape.
+        self.assertEqual(5, len({out["rule"] for out in rows.values()}))
+        rails = [out for out in rows.values() if out["rule"] == "left-rail"]
+        self.assertTrue(rails)
+        self.assertTrue(all(out["vertical"] >= 1 for out in rails), "left-rail must be vertical")
+
+    def test_motif_anchor_survives_token_resolution(self) -> None:
+        """Three styles declare `edge-right`; outside the enum the motif was dropped."""
+        import sys
+
+        sys.path.insert(0, str(ROOT))
+        from shared.design_tokens import resolve_design_tokens
+
+        for style in ("Data Driven", "Ocean Tech", "Coral Energy"):
+            with self.subTest(style=style):
+                tokens = resolve_design_tokens(style)
+                self.assertEqual(
+                    "edge-right", tokens["background_directives"]["content"]["motif"], style
+                )
+
+    def test_outlined_panel_hugs_its_copy(self) -> None:
+        """The focal panel was as tall as the band, so short copy left half of it blank."""
+        out = self.run_node(
+            """
+            const registry = new R.SlideElementRegistry({ slideW: 10, slideH: 5.625 });
+            const slide = mock();
+            L.renderDeclaredPage(
+              { slide, tokens: TOKENS, registry, slideNumber: 1, lang: 'chinese' },
+              { kind: 'content', move: 'thesis',
+                slots: { title: '问题', claim: '扰动', body: ['支撑'] } });
+            const surface = registry._slide(1).find((el) => el.role === 'surface');
+            console.log(JSON.stringify({
+              panel: TOKENS.visual_language.panel,
+              band: H.contentArea(TOKENS, 'content').h,
+              height: surface ? surface.h : null,
+            }));
+            """,
+            tokens=resolved_tokens("Academic Rigorous"),
+        )
+        self.assertEqual("outlined", out["panel"])
+        self.assertIsNotNone(out["height"])
+        # Was 84% of the band (~4.2in); a one-line claim must not carry that much box.
+        self.assertLess(out["height"], 2.0)
+        self.assertGreater(out["height"], 0.6)
+
+    def test_a_text_move_refuses_a_payload_it_cannot_draw(self) -> None:
+        """metric/weighted/thesis/sequence used to drop a declared KPI payload silently."""
+        out = self.run_node(
+            """
+            const payload = { type: 'dashboard', details: { items: ['31% 效率下降', '14 个采样夜'] } };
+            const withPayload = (() => {
+              const registry = new R.SlideElementRegistry({ slideW: 10, slideH: 5.625 });
+              const slide = mock();
+              const res = L.renderDeclaredPage(
+                { slide, tokens: TOKENS, registry, slideNumber: 1, lang: 'chinese' },
+                { kind: 'content', move: 'metric',
+                  slots: { title: '实测', claim: '波动组效率最低', body: ['平均 50 分贝'],
+                           visual: payload } });
+              return { move: res.move, fallback: res.fallbackFrom || null,
+                       visual: registry._slide(1).filter((el) => el.role === 'visual').length };
+            })();
+            const plainNumber = (() => {
+              const registry = new R.SlideElementRegistry({ slideW: 10, slideH: 5.625 });
+              const slide = mock();
+              const res = L.renderDeclaredPage(
+                { slide, tokens: TOKENS, registry, slideNumber: 1, lang: 'chinese' },
+                { kind: 'content', move: 'metric',
+                  slots: { title: '结果', visual: { type: 'stat', value: '31%' } } });
+              return { move: res.move, fallback: res.fallbackFrom || null };
+            })();
+            console.log(JSON.stringify({ withPayload, plainNumber }));
+            """
+        )
+        self.assertEqual("metric", out["withPayload"]["fallback"])
+        self.assertNotEqual("metric", out["withPayload"]["move"])
+        self.assertGreaterEqual(out["withPayload"]["visual"], 1)
+        # A one-figure metric page is still a metric page.
+        self.assertEqual("metric", out["plainNumber"]["move"])
+        self.assertIsNone(out["plainNumber"]["fallback"])
 
 
 if __name__ == "__main__":

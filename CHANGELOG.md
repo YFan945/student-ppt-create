@@ -2,6 +2,17 @@
 
 本文件记录 `YFan945/student-ppt-create` 的 `main` 发布线及 Claude Code 插件版本，按时间倒序排列。
 
+## 0.28.4 — 2026-10-11 · 让风格真正生效：rule 有渲染端、母题按锚点、面板收边、载荷不再静默丢
+
+用一份真实 spec 走生产渲染器实测（7 页、Academic Rigorous）后逐条修的四类问题。此前 12 套风格共用同一个骨架——同一套版式、换色、右上角一个图形。
+
+- **`visual_language.rule` 有渲染端了**（新增 `renderStyleRule`）：bracket / left-rail / underline-left / top-band / slash 现在真的画在每个内容页的左侧留白，登记为 `style_rule` + decorative。此前这个字段在 tokens 里躺了三个版本、没有任何消费者——改它对页面毫无影响，这正是"看起来像同一个模板"的主因。D1（标题正下方强调线）按角色放行系统标记，仍然管 builder 随手加的线；改 token 就能换或关掉（接受 `none`）。
+- **母题按 `motif_at` 落位**：此前落位写死在右上角、锚点被忽略，角落组现在按锚点镜像以免开口朝错。同时 `MOTIF_ANCHORS` 补上 `edge-right` / `edge-left`——三套风格（Data Driven / Ocean Tech / Coral Energy）声明 `edge-right` 而枚举里没有，`_clean_enum` 返回 None，**它们的母题此前一颗都不画**。
+- **焦点面板按文案收边**：`outlined` 面板此前按整条焦点带（内容高度的 70–84%）画，短文案在框内留下半幅空白，像没写完的占位框。现在按实际行数与行长收边、带内居中；soft-fill / edge-band 保持整带（那是"场"，不是"框"）。实测 Academic Rigorous 从 4.16in 收到 1.51in。
+- **声明的视觉载荷不再静默丢失**：`thesis` / `weighted` / `metric` / `sequence` 画的是文字构图，此前遇到 KPI / 表格 / 时间线载荷会"绘制成功、内容却不上屏"。现在直接抛 `layoutFit`，候选链换一个画得出来的动作（proof / figure 或版式路径）。实测 metric + KPI 载荷自动回退到 proof 并把三条数字画出来；`metric` 的一页一个大数字行为不变。配套：`visualComponent` 补齐其余组件名（dashboard / comparison / matrix / architecture / quote / summary / reference / hero），此前 KPI 载荷连 proof 都拒收。
+- **未修（本轮已取证，留作单独一轮）**：中文断行（`9 分贝` 被拆行、"的"孤字成行）与数字两侧偏大的间隙。实测确认 `addFittedText` 把整串文字作为**单个 run** 交给 pptxgenjs、不做任何显式换行——换行完全由查看器决定，引擎只做估算，因此禁则（避头尾）无法在内容层实现；零宽连接符是唯一的内容层手段，而 actual-content 门按字节比对文本 run，插字符会被直接判成缺失。数字间隙是渲染器的中英混排自动间距（把文案里所有空格删掉后依然存在）。真正的解法是让引擎自己量测并显式断行，属文本层的结构性改动。
+- 测试 1376 全绿（新增 4 项：12 套风格的 rule 落位与形状区分、`edge-right` 锚点存活、outlined 面板收边、文字动作拒收画不出的载荷）。
+
 ## 0.28.3 — 2026-10-11 · 发布门自己跑单测，预览对认 layout
 
 两处小修：一处堵住 0.28.1 暴露出来的流程漏洞，一处消掉校准选择里并存的两套约定。

@@ -234,7 +234,17 @@ DEFAULT_VISUAL_LANGUAGE: dict[str, Any] = {
 }
 
 PATTERN_KINDS = ("dots", "waves", "grid")
-MOTIF_ANCHORS = ("corner-tr", "corner-tl", "corner-br", "corner-bl")
+# edge-right / edge-left are declared by three shipped styles (Data Driven, Ocean
+# Tech, Coral Energy); without them here _clean_enum dropped the motif entirely,
+# so those styles drew no decoration at all.
+MOTIF_ANCHORS = (
+    "corner-tr",
+    "corner-tl",
+    "corner-br",
+    "corner-bl",
+    "edge-right",
+    "edge-left",
+)
 BAND_KINDS = ("none", "bottom-band", "side-band", "corner-block")
 
 
