@@ -609,6 +609,7 @@ def command_gate_all(args: argparse.Namespace) -> int:
             Namespace(
                 pptx=args.pptx,
                 tokens=args.tokens,
+                slide_spec=args.slide_spec,
                 output=output_dir / "rendered-check-report.json",
                 json=False,
                 strict=True,
@@ -699,6 +700,13 @@ def command_content_qa(args: argparse.Namespace) -> int:
         raise SystemExit(f"cannot perform content QA: {exc}") from exc
     expected = spec.get("slides") or []
     findings: list[dict[str, Any]] = []
+    if spec.get("schema_version") == "2.1":
+        gate_path = ROOT / "skills/sp-deck/scripts"
+        if str(gate_path) not in sys.path:
+            sys.path.insert(0, str(gate_path))
+        import pptx_actual_content_check as actual_check
+        report = actual_check.check(spec, actual_check.extract_pptx_text(pptx))
+        findings.extend({**item, "severity": "blocker" if item["severity"] in {"critical", "major"} else "minor"} for item in report["issues"])
     if len(extracted) != len(expected):
         findings.append({"severity": "blocker", "code": "slide-count", "detail": f"PPTX has {len(extracted)} slides; Slide Spec has {len(expected)}"})
     for index, (actual, planned) in enumerate(zip(extracted, expected, strict=False), 1):
@@ -708,7 +716,7 @@ def command_content_qa(args: argparse.Namespace) -> int:
         normalized_text = re.sub(r"\s+", "", text).casefold()
         if not text.strip():
             findings.append({"slide": index, "severity": "blocker", "code": "empty-slide", "detail": "slide has no extractable content"})
-        if title and normalized_title not in normalized_text:
+        if spec.get("schema_version") != "2.1" and title and normalized_title not in normalized_text:
             findings.append({"slide": index, "severity": "blocker", "code": "title-drift", "detail": "planned title is not present in the generated slide"})
         if PLACEHOLDER_PATTERN.search(text):
             findings.append({"slide": index, "severity": "blocker", "code": "placeholder", "detail": "placeholder text remains"})
@@ -757,6 +765,21 @@ def command_validate_asset_manifest(args: argparse.Namespace) -> int:
                 errors.append({"path": f"assets/{index}/path", "message": "asset file does not exist"})
             if path_value and (not asset.get("width") or not asset.get("height")):
                 errors.append({"path": f"assets/{index}", "message": "file assets require width and height"})
+            if path_value and Path(path_value).expanduser().is_file():
+                try:
+                    from PIL import Image
+                    with Image.open(Path(path_value).expanduser()) as image:
+                        if image.size != (asset.get("width"), asset.get("height")):
+                            errors.append({"path": f"assets/{index}", "message": "declared dimensions differ from actual image"})
+                except (OSError, ValueError):
+                    pass  # Vector sources retain their own viewBox/dimension contract.
+            protected = asset.get("preserve_region")
+            crop = asset.get("crop")
+            for name, region in [("preserve_region", protected), ("crop", crop)]:
+                if isinstance(region, dict) and all(key in region for key in ("x", "y", "w", "h")) and (region["x"] + region["w"] > 1 or region["y"] + region["h"] > 1 or region["w"] <= 0 or region["h"] <= 0):
+                    errors.append({"path": f"assets/{index}/{name}", "message": "normalized region must stay inside image"})
+            if protected and crop and all(key in crop for key in ("x", "y", "w", "h")) and not (crop["x"] <= protected["x"] and crop["y"] <= protected["y"] and crop["x"] + crop["w"] >= protected["x"] + protected["w"] and crop["y"] + crop["h"] >= protected["y"] + protected["h"]):
+                errors.append({"path": f"assets/{index}/crop", "message": "asset_crop_invalid: protected information would be cropped"})
     payload = {"ok": not errors, "report_type": "asset-manifest-validation-v1", "manifest": str(args.manifest), "manifest_sha256": _sha256(args.manifest), "errors": errors}
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

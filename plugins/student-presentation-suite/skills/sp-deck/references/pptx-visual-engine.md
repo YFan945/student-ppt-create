@@ -1,5 +1,14 @@
 # PPTX Visual Engine
 
+## New-task policy (2.1)
+
+For new tasks, [model-led-design.md](../../../references/model-led-design.md) owns design modes, frozen semantic
+requirements and measured text. Its policy overrides legacy template/scale/
+verbatim-copy guidance below. `auto` is the default; user brand/template/logo
+and actual readability remain binding. Treat fixed sizes, proportions and
+gallery treatments here as optional design suggestions for new tasks.
+
+
 本文件定义 suite-owned 的视觉生成与安全辅助。create/rebuild 的默认页面声明一个 `move`，由 `pptx-composition.js` 在绘制时计算字号、主区域和留白。模型提供主张和支撑，不手填分区矩形。
 
 ## Production order

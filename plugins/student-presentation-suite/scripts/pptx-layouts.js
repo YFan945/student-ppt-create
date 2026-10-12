@@ -651,13 +651,24 @@ function renderDeclaredPage(ctx, spec = {}) {
   }
   const request = {
     context: { ...derived, ...(spec.context || {}) },
-    layout: spec.layout ? { id: spec.layout } : undefined,
+    layout: spec.layout
+      ? typeof spec.layout === 'object'
+        ? spec.layout
+        : { id: spec.layout }
+      : undefined,
     slots,
     params: spec.params || {},
   };
   const pageCtx = { ...ctx, tokens: pageTokens, pageKind: String(spec.kind || 'content') };
   let result;
-  if (spec.move) {
+  if (tokens.model_led && spec.move) {
+    // Guided pages remain in the chosen mode until the budgeted scheduler
+    // records a downgrade. A hidden archetype fallback can discard payloads.
+    result = _sibling('pptx-composition').renderMove(pageCtx, {
+      ...request,
+      move: String(spec.move),
+    });
+  } else if (spec.move) {
     const C = _sibling('pptx-composition');
     const probeCtx = {
       ...pageCtx,
@@ -775,12 +786,19 @@ function _renderOnLayout(ctx, request, layoutId, area) {
   // 1. 标题：角色字号表 + role 写进 registry（启用 D1 强调线门）。
   if (slots.title && zones.title) {
     const box = { ...zones.title, h: Math.max(zones.title.h, (sizes.title * 1.4) / 72 / 0.8) };
-    const fit = H.fitText(String(slots.title), box, {
+    const titlePolicy = {
       min: sizes.title,
       max: sizes.titleMax,
       margin: 0,
       role: 'title',
-    });
+    };
+    const fit = H.fitText(
+      String(slots.title),
+      box,
+      tokens.model_led
+        ? H.rolePolicy(tokens, lang, 'title', { ...titlePolicy, bold: true })
+        : titlePolicy,
+    );
     if (!fit.fits) {
       throw _fitError(
         `slide ${n}: title does not fit archetype "${selection.id}" title zone at ${sizes.title}pt — shorten the title or pick an archetype with a wider title zone`,
@@ -864,13 +882,15 @@ function _renderOnLayout(ctx, request, layoutId, area) {
     const claimFit = H.fitText(
       String(slots.claim),
       { w: claimBox.w, h: zones.body.h },
-      {
-        min: claimRole === 'body' ? Math.max(20, sizes.body - 2) : sizes.subtitle,
-        max: sizes.bodyMax,
-        margin: 0,
-        role: claimRole,
-        balance: false,
-      },
+      tokens.model_led
+        ? H.rolePolicy(tokens, lang, claimRole, { margin: 0, balance: false })
+        : {
+            min: claimRole === 'body' ? Math.max(20, sizes.body - 2) : sizes.subtitle,
+            max: sizes.bodyMax,
+            margin: 0,
+            role: claimRole,
+            balance: false,
+          },
     );
     if (!claimFit.fits) {
       throw _fitError(

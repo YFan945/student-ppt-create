@@ -97,6 +97,16 @@ function paletteMode(tokens, mode) {
  */
 function fontSizeScale(tokens, lang) {
   const t = tokens.typography || {};
+  if (tokens.model_led)
+    return {
+      title: t.title_pt ?? t.slide_title_pt ?? t.title_min_pt ?? 36,
+      subtitle: t.subtitle_pt ?? t.key_statement_pt ?? t.subtitle_min_pt ?? 28,
+      body: t.body_pt ?? t.body_cjk_min_pt ?? 24,
+      titleMax: t.title_pt ?? t.slide_title_pt ?? t.title_max_pt ?? 36,
+      bodyMax: t.body_pt ?? t.body_max_pt ?? 24,
+      label: t.label_pt ?? t.label_min_pt ?? 18,
+      caption: t.caption_pt ?? t.caption_min_pt ?? 12,
+    };
   const isCJK = lang === 'chinese' || lang === 'bilingual';
   const body = isCJK ? t.body_cjk_min_pt || 22 : t.body_latin_min_pt || 20;
   // 官方规范：CJK 正文下限 22pt，页面标题必须 ≥32pt 才能满足 1.45× 层级门禁。
@@ -167,6 +177,13 @@ function fontFamily(tokens) {
   const t = tokens.typography || {};
   const pick = (value, candidates, fallback) =>
     candidates.includes(String(value || '')) ? String(value) : fallback;
+  if (tokens.model_led)
+    return {
+      title: t.title_font || 'Cambria',
+      body: t.body_font || 'Calibri',
+      cjkTitle: t.cjk_title_font || 'Microsoft YaHei',
+      cjkBody: t.cjk_body_font || 'Microsoft YaHei',
+    };
   return {
     title: pick(t.title_font, SAFE_TITLE_FONTS, 'Cambria'),
     body: pick(t.body_font, SAFE_BODY_FONTS, 'Calibri'),
@@ -192,6 +209,10 @@ function writeCjkMap(outputPath, tokens) {
   const map = {};
   if (fonts.title && fonts.cjkTitle) map[fonts.title] = fonts.cjkTitle;
   if (fonts.body && fonts.cjkBody) map[fonts.body] = fonts.cjkBody;
+  if (tokens?.model_led) {
+    map[fonts.cjkTitle] = fonts.cjkTitle;
+    map[fonts.cjkBody] = fonts.cjkBody;
+  }
   const entries = Object.entries(map).filter(([latin, cjk]) => latin && cjk);
   if (!entries.length) return null;
   const sidecar = `${outputPath}.cjk-map.json`;
@@ -352,6 +373,7 @@ function paletteOf(tokens) {
 function renderBackground(slide, tokens, opts = {}) {
   const pageTokens = opts.dark === true ? paletteMode(tokens, 'dark') : tokens;
   slide.background = { color: color(pageTokens, 'canvas') };
+  if (tokens.model_led && opts.decorations !== true) return slide;
   const kinds = ['cover', 'content', 'section', 'closing'];
   const kind = kinds.includes(opts.kind) ? opts.kind : 'content';
   const directive = (pageTokens.background_directives || {})[kind];
@@ -614,6 +636,24 @@ function rolePolicy(tokens, lang, role, options = {}) {
   };
   const basePolicy = table[normalized] || table.body;
   const policy = { ...basePolicy, ...options, role: normalized };
+  if (tokens.model_led) {
+    const chosen = Number(
+      options.fontSize ?? tokens.typography?.[`${normalized}_pt`] ?? options.max ?? basePolicy.max,
+    );
+    if (!Number.isFinite(chosen) || chosen <= 0)
+      throw new RangeError('fontSize must be a finite positive number');
+    const fonts = fontFamily(tokens);
+    return {
+      ...policy,
+      min: chosen,
+      max: chosen,
+      fontSize: chosen,
+      measured: true,
+      valign: options.valign || 'top',
+      fontFace: options.fontFace || (normalized === 'title' ? fonts.title : fonts.body),
+      cjkFontFace: options.cjkFontFace || (normalized === 'title' ? fonts.cjkTitle : fonts.cjkBody),
+    };
+  }
   // 角色字号地板不可被调用方压穿：min/fontSize 只能抬、不能压到地板下
   // （caption/source/label 的地板本就低，小字走角色字号表是合法通道）。
   if (Number.isFinite(Number(basePolicy.min))) {
@@ -633,6 +673,7 @@ function rolePolicy(tokens, lang, role, options = {}) {
 
 /** Choose the largest readable size that fits. Never shrinks below the role floor. */
 function fitText(text, box, policy = {}) {
+  if (policy.measured) return require('./pptx-text-layout.js').layoutText(text, box, policy);
   const min = Number(policy.min || policy.minFontSize || 10);
   const max = Math.max(min, Number(policy.max || policy.maxFontSize || min));
   const margin = policy.margin === undefined ? 8 : policy.margin;
@@ -721,6 +762,7 @@ function balancedBox(text, box, policy) {
  */
 function resolveTextPlacement(text, box, policy) {
   const fit = fitText(text, box, policy);
+  if (policy.measured) return { box, fit };
   if (!fit.fits) return { box, fit };
   const narrowed = balancedBox(text, box, policy);
   if (!narrowed) return { box, fit };
@@ -753,6 +795,21 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
     );
   }
   const shortReadingText = ['body', 'list'].includes(policy.role) && fit.fillRatio <= 0.45;
+  // Multiline mixed paragraphs are susceptible to viewer-added East Asian/Latin
+  // spacing. Place measured language spans so the viewer cannot rewrap the line.
+  const plain = plainText(text);
+  if (
+    policy.measured &&
+    options.positionMixedText !== false &&
+    /[\u3400-\u9fff\uff01-\uff60]/u.test(plain) &&
+    /[A-Za-z0-9]/.test(plain)
+  ) {
+    addPositionedText(slide, text, textBox, tokens, lang, role, {
+      ...options,
+      fontSize: fit.fontSize,
+    });
+    return slide;
+  }
   const fonts = fontFamily(tokens);
   const pptxOptions = { ...options };
   for (const key of [
@@ -767,6 +824,7 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
     'isCJK',
     'maxFillRatio',
     'balance',
+    'positionMixedText',
   ]) {
     delete pptxOptions[key];
   }
@@ -779,22 +837,112 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
     Number.isFinite(Number(pptxOptions.lineSpacing)) && Number(pptxOptions.lineSpacing) > 4
       ? Number(pptxOptions.lineSpacing)
       : Number((fit.fontSize * factor).toFixed(2));
-  return slide.addText(text, {
+  return slide.addText(policy.measured ? fit.richText : text, {
     ...pptxOptions,
     x: textBox.x,
     y: textBox.y,
     w: textBox.w,
     h: textBox.h,
     fontSize: fit.fontSize,
+    ...(policy.measured ? { _textLayout: { sourceText: plainText(text), ...fit } } : {}),
     fontFace: pptxOptions.fontFace || (policy.role === 'title' ? fonts.title : fonts.body),
     color: pptxOptions.color
       ? assertHexColor(pptxOptions.color, options.label || `${policy.role} 文本`)
       : color(tokens, options.colorRole || 'primary_text'),
     align: pptxOptions.align || policy.align,
-    valign: pptxOptions.valign || (shortReadingText ? 'mid' : policy.valign),
+    valign:
+      pptxOptions.valign || (policy.measured ? 'top' : shortReadingText ? 'mid' : policy.valign),
     margin: pptxOptions.margin === undefined ? (policy.margin ?? 8) : pptxOptions.margin,
     lineSpacing: lineSpacingPt,
   });
+}
+
+// Opt-in for viewers that add unwanted East Asian/Latin spacing. Each measured
+// fragment occupies an explicit position; logicalGroup retains its line owner.
+function addPositionedText(slide, text, box, tokens, lang, role, options = {}) {
+  const policy = rolePolicy({ ...tokens, model_led: true }, lang, role, options);
+  const fit = fitText(text, box, policy);
+  if (!fit.fits)
+    throw new RangeError(`text_overflow: ${fit.requiredH}in required in ${box.w}x${box.h}in`);
+  fit.lineGeometry.forEach((line, index) => {
+    let x = line.x;
+    line.fragments.forEach((fragment) => {
+      slide.addText(fragment.text, {
+        ...options,
+        color: options.color || color(tokens, options.colorRole || 'primary_text'),
+        ...fragment.options,
+        x,
+        y: line.y,
+        w: fragment.w + 0.01,
+        h: line.h,
+        fontFace: fragment.fontFace,
+        fontSize: fragment.fontSize,
+        margin: 0,
+        align: 'left',
+        valign: 'top',
+        breakLine: false,
+        logicalGroup: options.logicalGroup || `text:${box.x}:${box.y}:${index}`,
+        objectName: `sps-line:${options.logicalGroup || `text:${box.x}:${box.y}:${index}`}:${index}`,
+        logicalText: plainText(text),
+        logicalBox: { x: box.x, y: box.y, w: box.w, h: box.h },
+        _textLayout: {
+          sourceText: fragment.text,
+          lineGeometry: [{ ...line, x, w: fragment.w }],
+          substitutions: fit.substitutions,
+        },
+      });
+      x += fragment.w;
+    });
+  });
+  return fit;
+}
+
+function addPlannedImage(slide, asset, box, pptx) {
+  if (!asset.path || !(asset.width > 0 && asset.height > 0))
+    throw new RangeError('Image plan requires actual path and dimensions');
+  const crop = asset.crop;
+  const protectedRegion = asset.preserve_region;
+  if (
+    crop &&
+    protectedRegion &&
+    !(
+      crop.x <= protectedRegion.x &&
+      crop.y <= protectedRegion.y &&
+      crop.x + crop.w >= protectedRegion.x + protectedRegion.w &&
+      crop.y + crop.h >= protectedRegion.y + protectedRegion.h
+    )
+  )
+    throw new RangeError('asset_crop_invalid: crop excludes protected information');
+  if (protectedRegion || asset.crop_suggestion === 'contain' || !pptx) {
+    const scale = Math.min(box.w / asset.width, box.h / asset.height);
+    const w = asset.width * scale;
+    const h = asset.height * scale;
+    slide.addImage({
+      path: asset.path,
+      x: box.x + (box.w - w) / 2,
+      y: box.y + (box.h - h) / 2,
+      w,
+      h,
+      altText: asset.alt_text || asset.content_focus || '',
+    });
+  } else {
+    const sizing = pptx.imageSizingCrop(
+      asset.path,
+      box.x,
+      box.y,
+      box.w,
+      box.h,
+      crop?.x,
+      crop?.y,
+      crop?.w,
+      crop?.h,
+    );
+    slide.addImage({
+      path: asset.path,
+      ...sizing,
+      altText: asset.alt_text || asset.content_focus || '',
+    });
+  }
 }
 
 function plainText(text) {
@@ -1020,6 +1168,8 @@ function addBody(slide, text, area, tokens, lang, opts) {
  * 添加经过字号下限和溢出检查的通用文本框。
  */
 function addTextBox(slide, text, box, tokens, lang, opts) {
+  if (tokens?.model_led)
+    return addFittedText(slide, text, box, tokens, lang, opts?.role || 'body', opts || {});
   if (opts && opts.role) return addFittedText(slide, text, box, tokens, lang, opts.role, opts);
   const sizes = fontSizeScale(tokens, lang);
   const fonts = fontFamily(tokens);
@@ -1076,6 +1226,13 @@ function addFooter(slide, text, tokens, opts) {
   const slideW = (opts && opts.slideW) || SLIDE_W_IN;
   const slideH = (opts && opts.slideH) || SLIDE_H_IN;
   const box = footerArea(slideW, slideH, tokens);
+  if (tokens.model_led)
+    return addFittedText(slide, text, box, tokens, 'chinese', 'caption', {
+      ...opts,
+      fontSize: opts?.fontSize ?? 11,
+      color: opts?.color || color(tokens, 'secondary_text'),
+      align: opts?.align || 'right',
+    });
   const fontSize = Math.max((opts && opts.fontSize) || 11, 10);
   assertTextFits(plainText(text), box.w, box.h, fontSize, false, '页脚');
   return slide.addText(text, {
@@ -1106,7 +1263,7 @@ function addAccentCard(slide, text, box, tokens) {
   const isCJK = /[\u3400-\u9fff]/u.test(String(text || ''));
   // 走统一的字号层级，避免这里再抄一份 22/20 兜底常量导致两处漂移。
   const fontSize = fontSizeScale(tokens, isCJK ? 'chinese' : 'english').body;
-  assertTextFits(text, textWidth, textHeight, fontSize, isCJK, '卡片文本');
+  if (!tokens.model_led) assertTextFits(text, textWidth, textHeight, fontSize, isCJK, '卡片文本');
   const shape = slide.addShape(_shapeType.roundRect, {
     x: box.x,
     y: box.y,
@@ -1119,7 +1276,7 @@ function addAccentCard(slide, text, box, tokens) {
     },
     rectRadius: radius,
   });
-  const textObj = slide.addText(text, {
+  const textOptions = {
     x: box.x + padding,
     y: box.y + padding,
     w: textWidth,
@@ -1128,7 +1285,18 @@ function addAccentCard(slide, text, box, tokens) {
     fontFace: fontFamily(tokens).body,
     color: color(tokens, 'primary_text'),
     valign: 'mid',
-  });
+  };
+  const textObj = tokens.model_led
+    ? addFittedText(
+        slide,
+        text,
+        textOptions,
+        tokens,
+        isCJK ? 'chinese' : 'english',
+        'body',
+        textOptions,
+      )
+    : slide.addText(text, textOptions);
   return { shape, text: textObj };
 }
 
@@ -1304,8 +1472,11 @@ module.exports = {
   estimateTextFit,
   assertTextFits,
   fitText,
+  rolePolicy,
   preflightText,
   addFittedText,
+  addPositionedText,
+  addPlannedImage,
   plainText,
 
   // Box 创建

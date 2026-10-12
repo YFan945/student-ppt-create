@@ -117,6 +117,8 @@ def _current_critic_review(work_dir: Path, manifest: dict[str, Any]) -> bool:
             }
         ):
             return False
+        if _semantic_report_contract_invalid(manifest, review):
+            return False
         receipt = execution_receipt(
             work_dir, "critic", review_path, policy=work_id_receipt_policy(manifest)
         )
@@ -136,6 +138,37 @@ def _current_critic_review(work_dir: Path, manifest: dict[str, Any]) -> bool:
         return True
     except (OSError, ValueError, KeyError, TypeError, AttributeError, RefusedError):
         return False
+
+
+def _semantic_report_contract_invalid(manifest: dict[str, Any], review: dict[str, Any]) -> bool:
+    """Only report-contract defects require re-review; missing facts require edits."""
+    binding = (manifest.get("inputs") or {}).get("slide_spec") or {}
+    if not binding.get("path"):
+        return bool(manifest.get("model_led"))
+    import pptx_actual_content_check as content
+    import yaml
+
+    from shared.content_requirements import semantic_binding, semantic_review_issues
+
+    path = Path(binding["path"])
+    spec = yaml.safe_load(path.read_text(encoding="utf-8"))
+    from pptx_quality_gate_v071 import visual_finding_category_issues
+
+    from shared.design_policy import model_led
+
+    if model_led(spec) and visual_finding_category_issues(review):
+        return True
+    if spec.get("schema_version") != "2.1":
+        return False
+    built = pptx_path(manifest)
+    actual, notes = content.extract_pptx_text(built), content.extract_pptx_notes(built)
+    if review.get("semantic_binding") != semantic_binding(sha256_file(path), actual, notes):
+        return True
+    registry_path = Path(str(built) + ".registry-report.json")
+    registry = load_json(registry_path) if registry_path.is_file() else {}
+    elements = {item["slide"]: {str(element["id"]) for element in item.get("elements", [])} for item in registry.get("slides", [])}
+    errors = semantic_review_issues(spec, review, actual, notes, elements)
+    return any(item["code"] in {"semantic_review_incomplete", "semantic_excerpt_unbound"} for item in errors)
 
 
 def _implemented_calibration_slides(work_dir: Path) -> list[int]:
@@ -185,6 +218,23 @@ def _incremental_review_scope(work_dir: Path, manifest: dict[str, Any]) -> dict[
         prior_pages = prior.get("page_sha256") if isinstance(prior, dict) else None
         if not isinstance(prior_pages, dict) or not prior_pages:
             return None
+        spec_binding = (manifest.get("inputs") or {}).get("slide_spec") or {}
+        if spec_binding.get("path"):
+            spec = load_json(Path(spec_binding["path"])) if Path(spec_binding["path"]).suffix == ".json" else None
+            if spec is None:
+                import yaml
+
+                spec = yaml.safe_load(Path(spec_binding["path"]).read_text(encoding="utf-8"))
+            if spec.get("schema_version") == "2.1":
+                import pptx_actual_content_check as content
+
+                from shared.content_requirements import semantic_binding
+
+                built = (manifest.get("build") or {}).get("pptx") or {}
+                notes = content.extract_pptx_notes(Path(built["path"]))
+                binding = semantic_binding(sha256_file(Path(spec_binding["path"])), content.extract_pptx_text(Path(built["path"])), notes)
+                if prior.get("semantic_binding") != binding:
+                    return None
         pages = (manifest.get("render") or {}).get("pages") or []
         if not pages:
             return None
@@ -696,7 +746,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
                 # applies them itself — a builder instance for one-line data edits is the
                 # most expensive way to change a string. Mixed/creative findings still
                 # take the builder path below.
-                autofix_report = _try_autofix(work_dir)
+                autofix_report = None if manifest.get("model_led") else _try_autofix(work_dir)
                 if autofix_report:
                     payload["autofix"] = autofix_report
                     payload["next_command"] = f'{python} "{pipeline}" build --work-dir "{work_dir}"'
@@ -815,7 +865,7 @@ def build_next_payload(work_dir: Path) -> dict[str, Any]:
             elif qa.get("ok"):
                 payload["next_command"] = f'{python} "{pipeline}" complete --work-dir "{work_dir}"'
             elif render_is_current(manifest) and (work_dir / "pipeline-qa.json").is_file() and any(
-                item.get("code") == "visual_review_schema_invalid"
+                item.get("code") in {"visual_review_schema_invalid", "visual_finding_category_missing", "semantic_review_incomplete", "semantic_review_stale", "semantic_excerpt_unbound"}
                 for item in (load_json(work_dir / "pipeline-qa.json").get("problems") or [])
                 if isinstance(item, dict)
             ):

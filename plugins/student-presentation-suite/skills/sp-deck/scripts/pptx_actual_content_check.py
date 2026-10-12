@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from shared.content_requirements import exact_present, numbers, semantic_requirements  # noqa: E402
 from shared.hashing import file_sha256 as sha256_file  # noqa: E402
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -59,8 +60,9 @@ def extract_pptx_text(pptx: Path) -> list[str]:
             if not match:
                 continue
             root = ET.fromstring(zf.read(name))
-            pieces = [node.text or "" for node in root.iter(f"{{{A_NS}}}t")]
-            slides.append((int(match.group(1)), "\n".join(pieces)))
+            from shared.pptx_text_readback import slide_text
+
+            slides.append((int(match.group(1)), slide_text(root)))
     return [text for _, text in sorted(slides)]
 
 
@@ -146,15 +148,26 @@ def planned_requirements(planned: dict[str, Any]) -> dict[str, Any]:
     judged. Keep the number pattern in sync with `check()`, which is why it lives
     here rather than in either caller.
     """
+    semantic = semantic_requirements(planned)
+    if semantic is not None:
+        exact = list(semantic.get("must_show_exact", []))
+        numeric_facts = {number for requirement in semantic.get("must_convey", []) if requirement.get("placement", "slide") == "slide" for number in numbers(requirement["text"])}
+        exact.extend(sorted(numeric_facts - set(exact)))
+        return {
+            "title": "", "claim": "", "copy_fragments": [],
+            "numbers": sorted({n for text in exact for n in numbers(text)}),
+            "must_show_exact": exact, "must_convey": semantic.get("must_convey", []),
+            "copy_policy": "semantic",
+        }
     title = str(planned.get("title") or "").strip()
     claim = str(planned.get("claim") or planned.get("key_line") or "").strip()
     copy_fragments = compact_fragments(planned.get("slide_copy"))
-    numbers = sorted(set(NUMBER_RE.findall(" ".join([title, claim, *copy_fragments]))))
+    numeric_values = numbers(" ".join([title, claim, *copy_fragments]))
     return {
         "title": title,
         "claim": claim,
         "copy_fragments": copy_fragments,
-        "numbers": numbers,
+        "numbers": numeric_values,
     }
 
 
@@ -177,6 +190,9 @@ def check(spec: dict[str, Any], actual: list[str]) -> dict[str, Any]:
         slide_issues: list[dict[str, Any]] = []
 
         requirements = planned_requirements(planned)
+        for expected in requirements.get("must_show_exact", []):
+            if not exact_present(expected, actual_text):
+                slide_issues.append({"severity": "major", "code": "exact_content_missing", "expected": expected})
         title = requirements["title"]
         if title and normalize(title) not in actual_norm:
             slide_issues.append({"severity": "major", "code": "missing_title", "expected": title})
@@ -195,7 +211,7 @@ def check(spec: dict[str, Any], actual: list[str]) -> dict[str, Any]:
             })
 
         numeric_claims = requirements["numbers"]
-        missing_numbers = sorted({n for n in numeric_claims if normalize(n) not in actual_norm})
+        missing_numbers = sorted({n for n in numeric_claims if not exact_present(n, actual_text)})
         if missing_numbers:
             slide_issues.append({"severity": "major", "code": "planned_numbers_missing", "missing": missing_numbers})
 
@@ -228,7 +244,44 @@ def run(args: argparse.Namespace) -> int:
         raise SystemExit(f"Slide Spec does not exist: {args.slide_spec}")
 
     spec = load_structured(args.slide_spec)
-    report = check(spec, extract_pptx_text(args.pptx))
+    actual = extract_pptx_text(args.pptx)
+    report = check(spec, actual)
+    if spec.get("schema_version") == "2.1":
+        copy_path = args.pptx.parent / "presentation-copy.json"
+        if not copy_path.is_file():
+            copy_path = Path(str(args.pptx) + ".presentation-copy.json")
+        try:
+            copy = json.loads(copy_path.read_text(encoding="utf-8")) if copy_path.is_file() else {}
+        except (OSError, ValueError):
+            copy = {}
+        if not isinstance(copy, dict):
+            copy = {}
+        if copy.get("pptx_sha256") != sha256_file(args.pptx) or not isinstance(copy.get("slides"), list) or len(copy["slides"]) != len(spec["slides"]):
+            report["issues"].append({"severity": "major", "code": "presentation_copy_missing_or_stale"})
+            report["blocker_count"] += 1
+            report["issue_count"] += 1
+            report["ok"] = False
+        else:
+            actual_notes = extract_pptx_notes(args.pptx)
+            for index, entry in enumerate(copy["slides"], 1):
+                if not isinstance(entry, dict):
+                    entry = {}
+                notes_copy = str(entry.get("speaker_notes") or "")
+                metadata_valid = (
+                    entry.get("slide") == index
+                    and isinstance(entry.get("headline"), str)
+                    and bool(entry["headline"].strip())
+                    and isinstance(entry.get("visual_labels"), list)
+                )
+                text_valid = index <= len(actual) and all(exact_present(text, actual[index - 1]) for text in compact_fragments(entry.get("headline")) + compact_fragments(entry.get("visual_labels")))
+                notes_valid = isinstance(entry.get("speaker_notes"), str) and normalize(notes_copy) == normalize(actual_notes.get(index, ""))
+                runs = entry.get("text_runs")
+                runs_valid = isinstance(runs, list) and all(isinstance(text, str) for text in runs) and index <= len(actual) and normalize("".join(runs)) == normalize(actual[index - 1])
+                if not (metadata_valid and text_valid and notes_valid and runs_valid):
+                    report["issues"].append({"slide": index, "severity": "major", "code": "presentation_copy_unbound"})
+                    report["blocker_count"] += 1
+                    report["issue_count"] += 1
+                    report["ok"] = False
     report.update({
         "pptx": str(args.pptx.resolve()),
         "pptx_sha256": sha256_file(args.pptx),

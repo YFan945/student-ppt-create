@@ -83,8 +83,8 @@ CONFIRMATION = """我确认刚才的 Production Summary。请继续使用同一�
 def find_claude() -> str | None:
     for candidate in (
         os.environ.get("CLAUDE_BIN"),
-        shutil.which("claude"),
         Path.home() / "AppData/Roaming/npm/node_modules/@anthropic-ai/claude-code/bin/claude.exe",
+        shutil.which("claude"),
     ):
         if candidate and Path(str(candidate)).is_file():
             return str(candidate)
@@ -170,6 +170,9 @@ def run_turn(
             "CLAUDE_PROJECT_DIR": str(project_dir.resolve()),
             "PYTHONUTF8": "1",
             "PYTHONIOENCODING": "utf-8",
+            # Print-mode's default 10-minute background cutoff can kill a valid
+            # builder before the parent resumes. The harness waits for completion.
+            "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS": "0",
         }
     )
     started = time.time()

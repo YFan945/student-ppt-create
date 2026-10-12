@@ -14,23 +14,41 @@
       "type": "string",
       "description": "仅供 examples/golden-sample 这类 fixture 写作者注释；critic 报告不应包含。"
     },
-    "review_version": {"const": "2.0"},
-    "work_id": {"type": "string", "minLength": 1},
+    "review_version": {
+      "const": "2.0"
+    },
+    "work_id": {
+      "type": "string",
+      "minLength": 1
+    },
     "pptx_sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$",
       "description": "当前 deck PPTX 的 sha256；QA 门会拒绝绑定旧哈希的报告"
     },
-    "contact_sheet_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "contact_sheet_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
     "page_sha256": {
       "type": "object",
       "minProperties": 1,
-      "additionalProperties": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      },
       "description": "一基页码（字符串键）→ 当前渲染页 PNG sha256"
     },
-    "page_count": {"type": "integer", "minimum": 1},
+    "page_count": {
+      "type": "integer",
+      "minimum": 1
+    },
     "verdict": {
-      "enum": ["pass", "pass_with_issues", "needs_repair"],
+      "enum": [
+        "pass",
+        "pass_with_issues",
+        "needs_repair"
+      ],
       "description": "needs_repair 当且仅当按 quality_level 计算的 blocker_count > 0；basic 的主观风格意见可以 pass_with_issues"
     },
     "blocker_count": {
@@ -40,22 +58,51 @@
     },
     "severity_counts": {
       "type": "object",
-      "required": ["critical", "major", "minor"],
+      "required": [
+        "critical",
+        "major",
+        "minor"
+      ],
       "additionalProperties": false,
       "properties": {
-        "critical": {"type": "integer", "minimum": 0},
-        "major": {"type": "integer", "minimum": 0},
-        "minor": {"type": "integer", "minimum": 0}
+        "critical": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "major": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "minor": {
+          "type": "integer",
+          "minimum": 0
+        }
       }
     },
-    "overall_score": {"type": "number", "minimum": 0, "maximum": 10},
+    "overall_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10
+    },
     "art_direction_alignment": {
       "type": "object",
-      "required": ["overall", "lost_intent"],
+      "required": [
+        "overall",
+        "lost_intent"
+      ],
       "additionalProperties": false,
       "properties": {
-        "overall": {"type": "integer", "minimum": 0, "maximum": 10},
-        "lost_intent": {"type": "array", "items": {"type": "string"}}
+        "overall": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10
+        },
+        "lost_intent": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "slides": {
@@ -72,64 +119,227 @@
         ],
         "additionalProperties": false,
         "properties": {
-          "slide": {"type": "integer", "minimum": 1},
+          "slide": {
+            "type": "integer",
+            "minimum": 1
+          },
           "visual_structure": {
             "type": "string",
             "minLength": 1,
             "description": "稳定词汇：cover / statement / typography / split / editorial / image-led / chart / diagram / flow / timeline / comparison / matrix / table / dashboard / quote / reference / equal-cards / card-grid / three-column / numbered-list / plain-list / other；弱结构连续两页在 high-score 为 Major，在 basic 为 advisory"
           },
-          "reference_ids": {"type": "array", "items": {"type": "string"}},
-          "selected_candidate_id": {"type": "string"},
-          "scores": {
-            "type": "object",
-            "required": ["hierarchy", "focal_point", "composition", "visual_interest", "whitespace"],
-            "additionalProperties": false,
-            "properties": {
-              "hierarchy": {"type": "number", "minimum": 1, "maximum": 10},
-              "focal_point": {"type": "number", "minimum": 1, "maximum": 10},
-              "composition": {"type": "number", "minimum": 1, "maximum": 10},
-              "visual_interest": {"type": "number", "minimum": 1, "maximum": 10},
-              "whitespace": {"type": "number", "minimum": 1, "maximum": 10}
+          "reference_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
             }
           },
-          "art_direction_alignment": {"type": "integer", "minimum": 1, "maximum": 10},
-          "reference_intent_preserved": {"type": "boolean"},
+          "selected_candidate_id": {
+            "type": "string"
+          },
+          "scores": {
+            "type": "object",
+            "required": [
+              "hierarchy",
+              "focal_point",
+              "composition",
+              "visual_interest",
+              "whitespace"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "hierarchy": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 10
+              },
+              "focal_point": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 10
+              },
+              "composition": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 10
+              },
+              "visual_interest": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 10
+              },
+              "whitespace": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 10
+              }
+            }
+          },
+          "art_direction_alignment": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "reference_intent_preserved": {
+            "type": "boolean"
+          },
           "ai_template_feel": {
-            "enum": ["none", "minor", "major"],
+            "enum": [
+              "none",
+              "minor",
+              "major"
+            ],
             "description": "major 在 rigorous 阻断，在 fast/standard 为 advisory；不要用 mild/strong 等未定义取值。"
           },
-          "carried_over": {"type": "boolean", "description": "0.27.0 增量评审：本页渲染 PNG 哈希与上一轮评审一致，判定从上一轮评审逐字继承（含 issues 与分数）；变更页必须重新评审，不得携带 carried_over。"},
-        "issues": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+          "carried_over": {
+            "type": "boolean",
+            "description": "0.27.0 增量评审：本页渲染 PNG 哈希与上一轮评审一致，判定从上一轮评审逐字继承（含 issues 与分数）；变更页必须重新评审，不得携带 carried_over。"
+          },
+          "issues": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/finding"
+            }
+          },
+          "semantic_coverage": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "status",
+                "placement"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "status": {
+                  "enum": [
+                    "covered",
+                    "missing",
+                    "contradicted"
+                  ]
+                },
+                "placement": {
+                  "enum": [
+                    "slide",
+                    "notes"
+                  ]
+                },
+                "actual_excerpt": {
+                  "type": "string"
+                },
+                "explanation": {
+                  "type": "string"
+                },
+                "visual_elements": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "uniqueItems": true
+                }
+              }
+            }
+          }
         }
       }
     },
     "deck": {
       "type": "object",
-      "required": ["issues"],
+      "required": [
+        "issues"
+      ],
       "additionalProperties": false,
       "properties": {
-        "issues": {"type": "array", "items": {"$ref": "#/$defs/finding"}}
+        "issues": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/finding"
+          }
+        }
       }
     },
-    "overall_summary": {"type": "string", "minLength": 1},
+    "overall_summary": {
+      "type": "string",
+      "minLength": 1
+    },
     "deck_rhythm": {
       "type": "object",
-      "required": ["macro", "micro"],
+      "required": [
+        "macro",
+        "micro"
+      ],
       "additionalProperties": false,
       "properties": {
-        "macro": {"type": "string"},
-        "micro": {"type": "string"}
+        "macro": {
+          "type": "string"
+        },
+        "micro": {
+          "type": "string"
+        }
+      }
+    },
+    "semantic_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "slide_spec_sha256",
+        "notes_sha256",
+        "text_sha256"
+      ],
+      "properties": {
+        "slide_spec_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "notes_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "text_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
       }
     }
   },
   "$defs": {
     "finding": {
       "type": "object",
-      "required": ["code", "severity", "message"],
-      "allOf": [{
-        "if": {"properties": {"severity": {"enum": ["major", "critical"]}}, "required": ["severity"]},
-        "then": {"required": ["element", "fix", "repair_level"]}
-      }],
+      "required": [
+        "code",
+        "severity",
+        "message"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "severity": {
+                "enum": [
+                  "major",
+                  "critical"
+                ]
+              }
+            },
+            "required": [
+              "severity"
+            ]
+          },
+          "then": {
+            "required": [
+              "element",
+              "fix",
+              "repair_level"
+            ]
+          }
+        }
+      ],
       "properties": {
         "code": {
           "type": "string",
@@ -137,8 +347,21 @@
           "minLength": 2,
           "description": "小写英文标识符，短横线（title-claim-redundancy）或下划线（cluttered_rail）皆可——门自身的 code 用下划线风格，critic 用短横线描述问题；形式没有语义价值，强制其一只会制造摩擦。"
         },
-        "severity": {"enum": ["critical", "major", "minor"]},
-        "message": {"type": "string", "minLength": 1},
+        "severity": {
+          "enum": [
+            "critical",
+            "major",
+            "minor"
+          ]
+        },
+        "category": {
+          "enum": ["design_preference", "readability", "fact", "structure", "user_constraint"],
+          "description": "New model-led reviews distinguish aesthetic advice from concrete artifact or user-constraint defects; optional for legacy reports."
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
         "resolved": {
           "type": "boolean",
           "description": "声称已解决必须携带绑定当前 PPTX sha256 的证据，否则 QA 判 resolved_without_evidence"
@@ -154,15 +377,30 @@
           "description": "可执行修法：改什么、改成什么（如 '标题降到 28pt 并留出 0.3in 下边距'）。major/critical 必须携带"
         },
         "repair_level": {
-          "enum": ["art-direction", "reference", "composition", "asset", "implementation"],
+          "enum": [
+            "art-direction",
+            "reference",
+            "composition",
+            "asset",
+            "implementation"
+          ],
           "description": "修复入口层级：改视觉系统 / 换参考 / 换构图 / 换素材 / 改实现"
         },
         "resolved_evidence": {
           "type": "object",
-          "required": ["before_sha256", "after_sha256"],
+          "required": [
+            "before_sha256",
+            "after_sha256"
+          ],
           "properties": {
-            "before_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
-            "after_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+            "before_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            },
+            "after_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
           },
           "description": "resolved: true 的证据为修改前后整个 PPTX 文件的 SHA256；after_sha256 必须等于报告的 pptx_sha256。页面渲染哈希另由 page_sha256 绑定。"
         }

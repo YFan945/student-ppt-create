@@ -28,10 +28,13 @@ def handoff_errors(brief: Any, spec: Any) -> list[dict[str, str]]:
         "structure_mode": "structure_mode",
         "interaction_mode": "interaction_mode",
         "quality_level": "quality_level",
+        "design_freedom": "design_freedom",
         "visual_style": "visual_style",
         "image_source": "image_source",
         "output_prefix": "output_prefix",
     }
+    if spec.get("schema_version") == "2.1" or "design_freedom" in meta:
+        scalar_map.update({"brand": "brand", "logo": "logo", "template": "template"})
     for brief_key, meta_key in scalar_map.items():
         brief_value = brief.get(brief_key)
         meta_value = meta.get(meta_key)

@@ -5,7 +5,106 @@
   "type": "object",
   "additionalProperties": false,
   "$defs": {
-    "visualStyleCustom": {"type":"object","additionalProperties":false,"required":["style_character","palette","backgrounds","svg_reference"],"properties":{"style_character":{"type":"string","minLength":1},"palette":{"type":"object","additionalProperties":false,"required":["canvas","surface","primary_text","secondary_text","primary_accent","secondary_accent"],"properties":{"canvas":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"surface":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"primary_text":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"secondary_text":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"primary_accent":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"secondary_accent":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"}}},"backgrounds":{"type":"object","additionalProperties":false,"required":["cover","content","section","closing"],"properties":{"cover":{"type":"string","minLength":1},"content":{"type":"string","minLength":1},"section":{"type":"string","minLength":1},"closing":{"type":"string","minLength":1}}},"svg_reference":{"type":"object","additionalProperties":false,"required":["name","usage"],"properties":{"name":{"type":"string","minLength":1},"usage":{"type":"string","minLength":1}}}}}
+    "visualStyleCustom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "style_character",
+        "palette",
+        "backgrounds",
+        "svg_reference"
+      ],
+      "properties": {
+        "style_character": {
+          "type": "string",
+          "minLength": 1
+        },
+        "palette": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "canvas",
+            "surface",
+            "primary_text",
+            "secondary_text",
+            "primary_accent",
+            "secondary_accent"
+          ],
+          "properties": {
+            "canvas": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "surface": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "primary_text": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "secondary_text": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "primary_accent": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "secondary_accent": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            }
+          }
+        },
+        "backgrounds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cover",
+            "content",
+            "section",
+            "closing"
+          ],
+          "properties": {
+            "cover": {
+              "type": "string",
+              "minLength": 1
+            },
+            "content": {
+              "type": "string",
+              "minLength": 1
+            },
+            "section": {
+              "type": "string",
+              "minLength": 1
+            },
+            "closing": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "svg_reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "usage"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "usage": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
   },
   "required": [
     "brief_version",
@@ -21,45 +120,124 @@
     "deliverables"
   ],
   "properties": {
-    "brief_version": { "const": "1.0" },
-    "topic": { "type": "string", "minLength": 1 },
-    "course": { "type": "string" },
+    "brief_version": {
+      "const": "1.0"
+    },
+    "topic": {
+      "type": "string",
+      "minLength": 1
+    },
+    "course": {
+      "type": "string"
+    },
     "scenario": {
-      "enum": ["coursework", "defense", "competition", "club-showcase", "research"]
+      "enum": [
+        "coursework",
+        "defense",
+        "competition",
+        "club-showcase",
+        "research"
+      ]
     },
     "audience": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["type", "depth"],
+      "required": [
+        "type",
+        "depth"
+      ],
       "properties": {
         "type": {
-          "enum": ["teacher", "classmates", "teacher+classmates", "judges", "non-specialists", "mixed"]
+          "enum": [
+            "teacher",
+            "classmates",
+            "teacher+classmates",
+            "judges",
+            "non-specialists",
+            "mixed"
+          ]
         },
-        "depth": { "enum": ["introductory", "standard", "expert"] },
-        "knowledge_notes": { "type": "string" }
+        "depth": {
+          "enum": [
+            "introductory",
+            "standard",
+            "expert"
+          ]
+        },
+        "knowledge_notes": {
+          "type": "string"
+        }
       }
     },
-    "language": { "enum": ["Chinese", "English", "bilingual"] },
-    "duration_min": { "type": "number", "exclusiveMinimum": 0 },
-    "slide_count": { "type": "integer", "minimum": 1 },
-    "format": { "enum": ["individual", "group"] },
+    "language": {
+      "enum": [
+        "Chinese",
+        "English",
+        "bilingual"
+      ]
+    },
+    "duration_min": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "slide_count": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "format": {
+      "enum": [
+        "individual",
+        "group"
+      ]
+    },
     "members": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "uniqueItems": true
     },
     "structure_mode": {
-      "enum": ["problem-solution", "research", "timeline", "comparison", "case-study", "product"]
+      "enum": [
+        "problem-solution",
+        "research",
+        "timeline",
+        "comparison",
+        "case-study",
+        "product"
+      ]
     },
-    "interaction_mode": { "enum": ["beginner", "expert"] },
-    "quality_level": { "enum": ["fast", "standard", "rigorous", "basic", "high-score"] },
-    "rubric": { "type": "string" },
+    "interaction_mode": {
+      "enum": [
+        "beginner",
+        "expert"
+      ]
+    },
+    "quality_level": {
+      "enum": [
+        "fast",
+        "standard",
+        "rigorous",
+        "basic",
+        "high-score"
+      ]
+    },
+    "rubric": {
+      "type": "string"
+    },
     "source_material": {
       "oneOf": [
-        { "type": "string", "minLength": 1 },
+        {
+          "type": "string",
+          "minLength": 1
+        },
         {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 },
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
           "minItems": 1
         }
       ]
@@ -77,18 +255,60 @@
         "versioning"
       ],
       "properties": {
-        "max_words_per_slide": { "type": "integer", "minimum": 10, "maximum": 120 },
-        "max_chinese_chars_per_slide": { "type": "integer", "minimum": 20, "maximum": 240 },
-        "visual_text_ratio": { "enum": ["text-led", "balanced", "visual-led"] },
-        "speaker_notes": { "type": "boolean" },
-        "key_lines": { "type": "boolean" },
-        "citations": { "enum": ["none", "classroom", "GB-T-7714", "APA", "IEEE", "MLA"] },
-        "versioning": { "type": "boolean" }
+        "max_words_per_slide": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 120
+        },
+        "max_chinese_chars_per_slide": {
+          "type": "integer",
+          "minimum": 20,
+          "maximum": 240
+        },
+        "visual_text_ratio": {
+          "enum": [
+            "text-led",
+            "balanced",
+            "visual-led"
+          ]
+        },
+        "speaker_notes": {
+          "type": "boolean"
+        },
+        "key_lines": {
+          "type": "boolean"
+        },
+        "citations": {
+          "enum": [
+            "none",
+            "classroom",
+            "GB-T-7714",
+            "APA",
+            "IEEE",
+            "MLA"
+          ]
+        },
+        "versioning": {
+          "type": "boolean"
+        }
       }
     },
-    "template": { "type": "string" },
-    "visual_style": { "type": "string", "minLength": 1 },
-    "visual_style_custom": { "$ref": "#/$defs/visualStyleCustom" },
+    "template": {
+      "type": "string"
+    },
+    "brand": {
+      "type": "string"
+    },
+    "logo": {
+      "type": "string"
+    },
+    "visual_style": {
+      "type": "string",
+      "minLength": 1
+    },
+    "visual_style_custom": {
+      "$ref": "#/$defs/visualStyleCustom"
+    },
     "image_source": {
       "enum": [
         "user-assets",
@@ -105,21 +325,54 @@
       "minItems": 1,
       "uniqueItems": true,
       "items": {
-        "enum": ["outline", "slide-spec", "pptx", "pdf", "speaker-notes", "preview", "teleprompter", "training-cards", "references", "change-summary", "full-script", "contact-sheet", "quality-report", "revision-manifest"]
+        "enum": [
+          "outline",
+          "slide-spec",
+          "pptx",
+          "pdf",
+          "speaker-notes",
+          "preview",
+          "teleprompter",
+          "training-cards",
+          "references",
+          "change-summary",
+          "full-script",
+          "contact-sheet",
+          "quality-report",
+          "revision-manifest"
+        ]
       }
     },
     "output_prefix": {
       "type": "string",
       "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+    },
+    "design_freedom": {
+      "enum": [
+        "auto",
+        "guided",
+        "deterministic"
+      ],
+      "default": "auto"
     }
   },
   "allOf": [
     {
       "if": {
-        "properties": { "visual_style": { "const": "Other" } },
-        "required": ["visual_style"]
+        "properties": {
+          "visual_style": {
+            "const": "Other"
+          }
+        },
+        "required": [
+          "visual_style"
+        ]
       },
-      "then": { "required": ["visual_style_custom"] }
+      "then": {
+        "required": [
+          "visual_style_custom"
+        ]
+      }
     }
   ]
 }

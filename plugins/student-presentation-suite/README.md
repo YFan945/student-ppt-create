@@ -566,3 +566,22 @@ Delivery guarantee: every confirmed artifact is content-verified against the fro
 Slide Spec (PPTX/PDF page counts, per-page script sections) and hash-bound to its
 final path under `outputs/` before `complete`.
 <!-- pipeline-table:end -->
+
+## Model-led design (v0.29)
+
+New tasks default to `design_freedom: auto`: the model chooses composition,
+display copy and font sizes. `guided` retains six moves and `deterministic` uses
+the existing layout library, independently of `quality_level`. No mode imposes
+a font-size floor on new tasks. Readability is judged on actual rendered pages.
+
+Slide Spec 2.1 freezes information through `semantic_requirements`, while
+`presentation-copy.json` records actual copy. An independent critic checks every
+requirement against current pages, text, notes and evidence. Geometry, exact
+numbers, sources, branding and PPTX structure remain delivery gates. Repeated
+page fit/composition failures downgrade only the affected page within the
+existing repair budget. Old specs/work ids are compatible without migration.
+
+See [the canonical policy](references/model-led-design.md) and
+[reproducible benchmarks](examples/design-benchmarks/README.md).
+The opt-in [scripts/design_benchmark.py](scripts/design_benchmark.py) records
+runtime/render checks and bounded live comparisons outside this repository.

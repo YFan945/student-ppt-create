@@ -83,6 +83,15 @@ def publish_deliverables(work_dir: Path, manifest: dict[str, Any]) -> dict[str, 
         if target.exists() and bind(target)["sha256"] != bind(source)["sha256"]:
             raise RefusedError(f"output already exists with different content: {target}")
         destinations[name] = (source, target)
+    if spec_data.get("schema_version") == "2.1":
+        source = work_dir / "presentation-copy.json"
+        expected = (manifest.get("qa") or {}).get("presentation_copy") or {}
+        if not source.is_file() or bind(source).get("sha256") != expected.get("sha256"):
+            raise RefusedError("presentation copy differs from the QA-bound artifact")
+        target = Path(str(destinations["pptx"][1]) + ".presentation-copy.json")
+        if target.exists() and bind(target)["sha256"] != bind(source)["sha256"]:
+            raise RefusedError(f"output already exists with different content: {target}")
+        destinations["presentation-copy"] = (source, target)
     published: dict[str, dict[str, Any]] = {}
     for name, (source, target) in destinations.items():
         if not target.is_file():

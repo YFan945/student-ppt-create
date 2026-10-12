@@ -450,3 +450,20 @@ QA 门按契约顺序执行：`package` → `static_risk` → `rendered` → `ac
 交付保证：每个已确认产物在 `complete` 前按冻结 Slide Spec 核对内容与页数（PPTX/PDF 页数、
 逐页讲稿段数），并绑定最终路径与哈希到 `outputs/` 目录。
 <!-- pipeline-table:end -->
+
+## 模型自由设计（v0.29）
+
+新任务默认 `design_freedom: auto`，由模型决定构图、展示文案和字号。
+`guided` 保留六个 move，`deterministic` 使用现有布局库，独立于 `quality_level`。
+三种模式均不对新任务设置固定字号下限，实际渲染页的可读性仍需验收。
+
+Slide Spec 2.1 通过 `semantic_requirements` 冻结信息，
+`presentation-copy.json` 记录实际文案。独立 critic 逐项核对当前页面、文本、
+讲稿和证据；几何、精确数字、来源、品牌与 PPTX 结构仍是交付门。
+同页构图或适配失败重复出现时，在既有修复预算内只降级受影响页。
+旧 Spec 和旧 work-id 保持兼容，不自动迁移。
+
+详见[规范](references/model-led-design.md)和
+[可复现 benchmark](examples/design-benchmarks/README.md)。
+按需运行 [scripts/design_benchmark.py](scripts/design_benchmark.py)，在仓库外
+记录运行/渲染检查和有限轮数的真实对照。

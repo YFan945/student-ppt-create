@@ -54,6 +54,8 @@ from page_brief import (  # noqa: E402
     sources_by_id,
 )
 
+from shared.design_policy import design_mode, model_led  # noqa: E402
+
 PACKET_DIR_NAME = "builder-packets"
 ACTIVE_ROUND_NAME = "active-round.json"
 SCORE_HISTORY_NAME = "visual-score-history.json"
@@ -412,6 +414,15 @@ def packet_inputs(
         path = work_dir / name
         if path.is_file():
             candidates.append((name, path))
+    if spec_path is not None and model_led(load_structured(spec_path)):
+        candidates.append(("builder_packet_policy", Path(__file__)))
+        asset_manifest = next((path for path in [work_dir / "asset-manifest.json", work_dir.parents[2] / "asset-manifest.json"] if path.is_file()), None)
+        if asset_manifest:
+            candidates.append(("asset-manifest.json", asset_manifest))
+            for asset in measured_assets(work_dir):
+                path = Path(asset["path"])
+                if path.is_file():
+                    candidates.append((f"asset:{path}", path))
     for report in qa_reports or []:
         path = Path(report) if Path(report).is_absolute() else work_dir / str(report)
         if path.is_file():
@@ -434,6 +445,8 @@ def packet_inputs(
 def _inputs_match(packet: dict[str, Any]) -> bool:
     inputs = packet.get("inputs")
     if not isinstance(inputs, dict) or not inputs:
+        return False
+    if (any(isinstance(slide, dict) and slide.get("semantic_requirements") for slide in packet.get("slides", [])) or "design_freedom" in packet.get("meta", {})) and "builder_packet_policy" not in inputs:
         return False
     for binding in inputs.values():
         if not isinstance(binding, dict):
@@ -509,9 +522,11 @@ def visual_reading(work_dir: Path) -> list[str]:
                 run_end += 1
             if moves[run_start] and run_end - run_start >= 3:
                 tier = _work_tier(work_dir)
+                spec_path = find_spec(work_dir)
+                is_modelled = bool(spec_path and model_led(load_structured(spec_path)))
                 delivery = (
                     "On rigorous this blocks delivery."
-                    if tier == "rigorous"
+                    if tier == "rigorous" and not is_modelled
                     else "On this tier it is reading, not a delivery blocker."
                 )
                 first = int(ordered[run_start]["slide"])
@@ -523,6 +538,46 @@ def visual_reading(work_dir: Path) -> list[str]:
                 )
             run_start = run_end
     return notes
+
+
+def page_module_example(mode: str) -> dict[str, str]:
+    examples = {
+        "auto": "module.exports=function(ctx){ctx.H.addFittedText(ctx.slide,'展示标题',{x:.5,y:.5,w:9,h:1.2},ctx.tokens,'chinese','title',{fontSize:44});}; module.exports.presentation_copy={headline:'展示标题',visual_labels:[]}; module.exports.notes='补充解释';",
+        "guided": "module.exports={move:'weighted',slots:{title:'展示标题',claim:'核心信息',body:['补充说明']},typography:{stat_pt:32,body_pt:20},notes:'补充解释'};",
+        "deterministic": "module.exports={layout:'claim-evidence',slots:{title:'展示标题',claim:'核心信息',body:['补充说明']},typography:{title_pt:32,body_pt:20},notes:'补充解释'};",
+    }
+    return {"design_freedom": mode, "code": examples[mode]}
+
+
+def measured_assets(work_dir: Path) -> list[dict[str, Any]]:
+    """Project actual local asset dimensions and protected regions for composition."""
+    from PIL import Image
+
+    candidates = [work_dir / "asset-manifest.json", work_dir.parents[2] / "asset-manifest.json"]
+    manifest_path = next((path for path in candidates if path.is_file()), None)
+    if manifest_path is None:
+        return []
+    manifest = load_optional(manifest_path)
+    entries = manifest.get("assets", []) if isinstance(manifest, dict) else []
+    result = []
+    for entry in entries:
+        if not isinstance(entry, dict) or not entry.get("path"):
+            continue
+        path = Path(str(entry["path"]))
+        if not path.is_absolute():
+            path = manifest_path.parent / path
+        measured = {**entry, "path": str(path.resolve())}
+        if path.is_file():
+            try:
+                with Image.open(path) as image:
+                    measured.update(width=image.width, height=image.height)
+                measured["sha256"] = actual_check.sha256_file(path)
+            except (OSError, ValueError):
+                measured["measurement_unavailable"] = True
+        else:
+            measured["asset_missing"] = True
+        result.append(measured)
+    return result
 
 
 def build_packet(
@@ -543,6 +598,8 @@ def build_packet(
     spec = load_structured(spec_path)
     if not isinstance(spec, dict):
         raise SystemExit(f"Slide Spec root must be an object: {spec_path}")
+    manifest = load_optional(work_dir / "build-manifest.json") or {}
+    requested_design = manifest.get("design_freedom", design_mode(spec))
 
     if slides is None:
         if mode == "initial":
@@ -580,6 +637,8 @@ def build_packet(
     for path in report_paths:
         report = load_optional(work_dir / str(path)) if not Path(path).is_absolute() else load_optional(Path(path))
         if isinstance(report, dict):
+            if model_led(spec):
+                report = {"problems": [item for item in report_items(report) if not item.get("derived") and item.get("severity") in {"critical", "major"}]}
             loaded_reports.append(report)
             reports.append(str((work_dir / str(path)).resolve()))
 
@@ -596,6 +655,9 @@ def build_packet(
         entry["page_module"] = modules.get(number)
         entry["high_leverage"] = number in leverage
         entry["requirements"] = actual_check.planned_requirements(item)
+        entry["design_freedom"] = (manifest.get("design_state") or {}).get("page_modes", {}).get(str(number), requested_design)
+        if model_led(spec):
+            entry["page_module_example"] = page_module_example(entry["design_freedom"])
         entry["evidence"] = evidence_for_slide(spec, item, number)
         cited: list[dict[str, Any]] = []
         for evidence_entry in entry["evidence"]:
@@ -644,11 +706,12 @@ def build_packet(
             for key in (
                 "quality_level", "include_speaker_notes", "include_key_lines",
                 "max_words_per_slide", "max_chinese_chars_per_slide", "citation_style",
-                "topic",
+                "topic", "design_freedom", "brand", "logo", "template",
             )
             if key in spec_meta
         },
         "work_dir": str(work_dir),
+        "preserve": spec.get("preserve", []),
         "shard": shard,
         "assigned_slides": targets,
         "speaker_notes_target": notes_target,
@@ -661,6 +724,27 @@ def build_packet(
     }
     if warnings:
         packet["rhythm_warnings"] = warnings
+    packet["design_freedom"] = requested_design
+    if model_led(spec):
+        packet["assets"] = measured_assets(work_dir)
+        packet["move_inputs"] = {
+            "thesis": "slots.claim (or title); optional slots.body[0]; text only",
+            "weighted": "slots.claim and nonempty slots.body; text only, do not supply visual",
+            "metric": "slots.visual={value,label} or slots.claim; one focal figure; optional body",
+            "proof": "claim + structured visual; e.g. {component:'table',columns:['指标','值'],rows:[['规模','233']]}",
+            "sequence": "slots.body or visual.stages/steps: 2-5 text steps",
+            "figure": "structured visual or {asset:'absolute/path.png'}; claim/body as caption",
+        }
+        packet["visual_rules"] = [
+            "按每页 design_freedom 与 page_module_example 执行：auto 自由坐标函数页；guided 必须导出含六个 move 之一的声明式对象，禁止函数页；deterministic 使用 layout 声明式对象。",
+            "字号和构图由你决定，gallery、风格语法和重复 move 都是可选参考，没有固定字号下限。",
+            "保留用户指定的模板、品牌、logo 和 preserve；事实、精确项与来源不可改写。",
+            "2.1 按 must_convey 传达信息，按 must_show_exact 展示精确项；规划文案可压缩，核心信息不能只进讲稿。",
+            "auto 页函数附 presentation_copy={headline,visual_labels,speaker_notes} 和 notes；harness 管理背景、元素登记与讲稿。",
+            "直接绘制或使用 H.addFittedText 均需提供几何与有效字号；装不下就修改表达或构图，不绕过自检。",
+            "先查看 assets 中的真实图片，按实测尺寸与内容焦点构图；保留 preserve_region，证书、截图、论文图不能裁掉关键信息。",
+        ]
+        packet["page_module_example"] = page_module_example(requested_design)
     if mode == "calibration":
         packet["style_summary_schema"] = {
             "file": "calibration/style-summary.json",
@@ -721,6 +805,9 @@ def build_packet(
             "pages that already passed review must not drop 1.5+ points; the QA gate "
             "compares this round's per-slide scores against visual-score-history.json"
         )
+    if mode == "repair" and model_led(spec):
+        packet["minimal_edit"] = {"rule": "Repair only affected pages. A recorded design downgrade permits replacing that page module in the next mode; keep other pages unchanged.", "scope": "slides[].blockers and design_freedom"}
+        packet["must_not_regress_note"] = "Verify actual readability and semantic coverage after repair; score changes alone are advisory."
     if mode in {"initial", "repair"}:
         # Batch 4.2: the established visual system travels as one compact contract,
         # not as calibration page JS (which builders must not read) and not as a
@@ -738,6 +825,8 @@ def build_packet(
                 f"calibration review + Art Direction, see {STYLE_CONTRACT_NAME} derived_from): "
                 "follow it for every page; do NOT read calibration page modules to infer style"
             )
+            if model_led(spec):
+                packet["calibration_style_note"] = "Art Direction records the chosen visual language; treatment and repetition notes are advisory. Preserve user brand/template/logo constraints and verify actual consistency/readability. Do not read other shard modules."
         elif review.get("required"):
             packet["calibration_style_note"] = (
                 f"calibration exists but its review is not green ({review.get('reason')}); "
@@ -771,7 +860,7 @@ def build_packet(
             f'--work-dir "{work_dir}" --pages "{page_args}"'
         )
     # 0.26.0 冷启动单读：内联声明式页范例，builder 不必翻生产源码对照契约。
-    packet["example_page"] = DECLARATIVE_PAGE_EXAMPLE
+    packet["example_page"] = page_module_example(requested_design) if model_led(spec) else DECLARATIVE_PAGE_EXAMPLE
     previews = sorted((work_dir / "calibration" / "render").glob("calibration-*.png"))
     if previews and mode == "initial":
         packet["preview_images"] = [str(path.resolve()) for path in previews]

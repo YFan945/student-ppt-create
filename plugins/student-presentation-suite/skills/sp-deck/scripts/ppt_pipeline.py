@@ -143,6 +143,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     sub = parser.add_subparsers(dest="command", required=True)
     plan = sub.add_parser("plan", help="verify intake, preflight and freeze -> planned")
     plan.add_argument("--work-dir", type=Path, required=True)
+    plan.add_argument("--repair-limit", type=int, choices=range(MAX_REPAIRS + 1), help="optional stricter per-task repair cap (never increases the default budget)")
+    plan.add_argument("--design-freedom", choices=["auto", "guided", "deterministic"], help="assert an explicitly requested mode against the frozen Spec")
     plan.add_argument("--production-mode", choices=["create", "edit_ooxml", "rebuild_from_source"])
     plan.add_argument("--workflow-state", type=Path, help="confirmed work-dir/workflow-state.json")
     plan.add_argument("--slide-spec", type=Path, required=True)

@@ -1,0 +1,39 @@
+schema_version: '2.1'
+research_scope: C
+meta:
+  topic: 噪声实验课程演示
+  language: Chinese
+  visual_style: Academic Rigorous
+  quality_level: standard
+  design_freedom: auto
+  include_speaker_notes: true
+  citation_style: none
+  slide_count: 2
+  duration_min: 2
+slides:
+  - id: 1
+    title: 使用相同环境比较两组噪声实验结果
+    claim: 条件一致时，合成演示的噪声下降9 分贝
+    content: [以下数字是合成课程演示，不能当作真实实验结果]
+    timing_sec: 60
+    owner: speaker
+    semantic_requirements:
+      must_convey:
+        - id: demo-boundary
+          text: 本页数字来自合成演示，不能当作真实实验结果
+        - id: result
+          text: 在相同测量环境下噪声下降9 分贝
+      must_show_exact: [9 分贝, 合成演示]
+  - id: 2
+    title: 先确认比较口径，再复测变化是否稳定
+    content: [固定测量环境、设备与步骤，重复实验后报告误差]
+    timing_sec: 60
+    owner: speaker
+    semantic_requirements:
+      must_convey:
+        - id: method
+          text: 固定环境、设备和步骤后重复测量并报告误差
+        - id: notes-detail
+          text: 误差说明属于补充解释，实际实验仍未开展
+          placement: notes
+      must_show_exact: []

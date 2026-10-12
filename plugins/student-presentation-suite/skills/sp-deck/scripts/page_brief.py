@@ -246,7 +246,7 @@ def build_brief(
             "spec": spec_path.name,
             "deck": deck,
             "high_leverage_slides": leverage,
-            "on_screen_rule": ON_SCREEN_RULE,
+            "on_screen_rule": ("Convey must_convey in its assigned location; preserve must_show_exact. Planning copy may be rewritten." if spec.get("schema_version") == "2.1" else ON_SCREEN_RULE),
             "slides": [
                 {
                     "slide": item["slide"],
@@ -283,7 +283,7 @@ def build_brief(
                 "failed_stages": deck.get("failed_stages", []),
                 "blockers_by_gate": deck.get("blockers_by_gate", {}),
             },
-            "on_screen_rule": ON_SCREEN_RULE,
+            "on_screen_rule": ("Convey must_convey in its assigned location; preserve must_show_exact. Planning copy may be rewritten." if spec.get("schema_version") == "2.1" else ON_SCREEN_RULE),
             "slides": details,
         }
 
@@ -303,7 +303,7 @@ def build_brief(
             "derived_problems": deck.get("derived_problems", []),
         },
         "high_leverage": detail["high_leverage"],
-        "on_screen_rule": ON_SCREEN_RULE,
+        "on_screen_rule": ("Convey must_convey in its assigned location; preserve must_show_exact. Planning copy may be rewritten." if spec.get("schema_version") == "2.1" else ON_SCREEN_RULE),
         "on_screen": detail["on_screen"],
         "evidence": detail["evidence"],
         "sources": detail["sources"],

@@ -92,7 +92,7 @@ class TerminalHelpProbeTests(unittest.TestCase):
 class CalibrationPreviewGlueTests(unittest.TestCase):
     """The preview deck template must run declarative pages like production deck.js."""
 
-    def test_generated_deck_has_dual_branch(self):
+    def test_generated_deck_uses_shared_page_runtime(self):
         preview = load_module(ROOT / "skills" / "sp-deck" / "scripts" / "calibration_preview.py")
         node = shutil_which("node")
         with TemporaryDirectory() as tmp:
@@ -104,8 +104,8 @@ class CalibrationPreviewGlueTests(unittest.TestCase):
             if node:
                 check = subprocess.run([node, "--check", str(target)], capture_output=True, text=True)
                 self.assertEqual(0, check.returncode, check.stderr)
-        self.assertIn("typeof item.mod === 'function'", source)
-        self.assertIn("L.renderDeclaredPage(ctx, item.mod)", source)
+        self.assertIn("pptx-page-runtime.js", source)
+        self.assertIn("R.renderPage(ctx, item.mod)", source)
 
 
 class StallTurnaroundTests(unittest.TestCase):

@@ -1,7 +1,7 @@
 ---
 name: sp-review
 description: Use only for a clearly student-owned academic context when the user explicitly asks to review, audit, score, critique, compare, or diagnose an existing PPT/PPTX/PowerPoint deck or rendered export.
-version: 0.28.4
+version: 0.29.0
 ---
 
 # Student Presentation Review
@@ -10,7 +10,7 @@ version: 0.28.4
 
 ## 快速约束
 
-- 中文正文 ≥ 22pt / 英文正文 ≥ 20pt / 标题 ≥ 24pt
+- 新任务由 AI 根据构图决定字号，不设置固定字号下限；验证实际可读性、几何与对比度
 - 每页 ≤ 4 条要点，≤ 80 中文字 / 40 英文词（引用、图表标注不计）
 - 避免 AI 套话；检查重复句式、空泛过渡、夸大主张
 - 分级：Critical（阻断理解/评分/表达）、Major（应修复）、Minor（润色）

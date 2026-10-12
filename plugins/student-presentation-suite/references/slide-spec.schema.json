@@ -5,66 +5,302 @@
   "type": "object",
   "additionalProperties": false,
   "$defs": {
-    "visualStyleCustom": {"type":"object","additionalProperties":false,"required":["style_character","palette","backgrounds","svg_reference"],"properties":{"style_character":{"type":"string","minLength":1},"palette":{"type":"object","additionalProperties":false,"required":["canvas","surface","primary_text","secondary_text","primary_accent","secondary_accent"],"properties":{"canvas":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"surface":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"primary_text":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"secondary_text":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"primary_accent":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"},"secondary_accent":{"type":"string","pattern":"^[0-9A-Fa-f]{6}$"}}},"backgrounds":{"type":"object","additionalProperties":false,"required":["cover","content","section","closing"],"properties":{"cover":{"type":"string","minLength":1},"content":{"type":"string","minLength":1},"section":{"type":"string","minLength":1},"closing":{"type":"string","minLength":1}}},"svg_reference":{"type":"object","additionalProperties":false,"required":["name","usage"],"properties":{"name":{"type":"string","minLength":1},"usage":{"type":"string","minLength":1}}}}}
+    "visualStyleCustom": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "style_character",
+        "palette",
+        "backgrounds",
+        "svg_reference"
+      ],
+      "properties": {
+        "style_character": {
+          "type": "string",
+          "minLength": 1
+        },
+        "palette": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "canvas",
+            "surface",
+            "primary_text",
+            "secondary_text",
+            "primary_accent",
+            "secondary_accent"
+          ],
+          "properties": {
+            "canvas": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "surface": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "primary_text": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "secondary_text": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "primary_accent": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "secondary_accent": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            }
+          }
+        },
+        "backgrounds": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "cover",
+            "content",
+            "section",
+            "closing"
+          ],
+          "properties": {
+            "cover": {
+              "type": "string",
+              "minLength": 1
+            },
+            "content": {
+              "type": "string",
+              "minLength": 1
+            },
+            "section": {
+              "type": "string",
+              "minLength": 1
+            },
+            "closing": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "svg_reference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "usage"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "usage": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    }
   },
-  "required": ["slides"],
+  "required": [
+    "slides"
+  ],
   "properties": {
-    "schema_version": { "enum": ["1.0", "2.0"] },
+    "schema_version": {
+      "enum": [
+        "1.0",
+        "2.0",
+        "2.1"
+      ]
+    },
     "meta": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "topic": { "type": "string", "minLength": 1 },
-        "presentation_type": { "type": "string", "minLength": 1 },
+        "topic": {
+          "type": "string",
+          "minLength": 1
+        },
+        "presentation_type": {
+          "type": "string",
+          "minLength": 1
+        },
         "scenario": {
-          "enum": ["coursework", "defense", "competition", "club-showcase", "research"]
+          "enum": [
+            "coursework",
+            "defense",
+            "competition",
+            "club-showcase",
+            "research"
+          ]
         },
-        "audience": { "type": "string", "minLength": 1 },
+        "audience": {
+          "type": "string",
+          "minLength": 1
+        },
         "audience_type": {
-          "enum": ["teacher", "classmates", "teacher+classmates", "judges", "non-specialists", "mixed"]
+          "enum": [
+            "teacher",
+            "classmates",
+            "teacher+classmates",
+            "judges",
+            "non-specialists",
+            "mixed"
+          ]
         },
-        "audience_depth": { "enum": ["introductory", "standard", "expert"] },
-        "language": { "enum": ["Chinese", "English", "bilingual"] },
-        "duration_min": { "type": "number", "exclusiveMinimum": 0 },
-        "slide_count": { "type": "integer", "minimum": 1 },
-        "format": { "enum": ["individual", "group"] },
+        "audience_depth": {
+          "enum": [
+            "introductory",
+            "standard",
+            "expert"
+          ]
+        },
+        "language": {
+          "enum": [
+            "Chinese",
+            "English",
+            "bilingual"
+          ]
+        },
+        "duration_min": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "slide_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "format": {
+          "enum": [
+            "individual",
+            "group"
+          ]
+        },
         "members": {
           "type": "array",
-          "items": { "type": "string", "minLength": 1 }
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         },
-        "course": { "type": "string" },
-        "rubric": { "type": "string" },
+        "course": {
+          "type": "string"
+        },
+        "rubric": {
+          "type": "string"
+        },
         "structure_mode": {
-          "enum": ["problem-solution", "research", "timeline", "comparison", "case-study", "product"]
+          "enum": [
+            "problem-solution",
+            "research",
+            "timeline",
+            "comparison",
+            "case-study",
+            "product"
+          ]
         },
-        "interaction_mode": { "enum": ["beginner", "expert"] },
-        "quality_level": { "enum": ["fast", "standard", "rigorous", "basic", "high-score"] },
-        "max_words_per_slide": { "type": "integer", "minimum": 10, "maximum": 120 },
-        "max_chinese_chars_per_slide": { "type": "integer", "minimum": 20, "maximum": 240 },
-        "visual_text_ratio": { "enum": ["text-led", "balanced", "visual-led"] },
-        "include_speaker_notes": { "type": "boolean" },
-        "include_key_lines": { "type": "boolean" },
-        "citation_style": { "enum": ["none", "classroom", "GB-T-7714", "APA", "IEEE", "MLA"] },
+        "interaction_mode": {
+          "enum": [
+            "beginner",
+            "expert"
+          ]
+        },
+        "quality_level": {
+          "enum": [
+            "fast",
+            "standard",
+            "rigorous",
+            "basic",
+            "high-score"
+          ]
+        },
+        "max_words_per_slide": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 120
+        },
+        "max_chinese_chars_per_slide": {
+          "type": "integer",
+          "minimum": 20,
+          "maximum": 240
+        },
+        "visual_text_ratio": {
+          "enum": [
+            "text-led",
+            "balanced",
+            "visual-led"
+          ]
+        },
+        "include_speaker_notes": {
+          "type": "boolean"
+        },
+        "include_key_lines": {
+          "type": "boolean"
+        },
+        "citation_style": {
+          "enum": [
+            "none",
+            "classroom",
+            "GB-T-7714",
+            "APA",
+            "IEEE",
+            "MLA"
+          ]
+        },
         "export_formats": {
           "type": "array",
           "uniqueItems": true,
           "items": {
-            "enum": ["outline", "slide-spec", "pptx", "pdf", "speaker-notes", "preview", "teleprompter", "training-cards", "references", "change-summary", "full-script", "contact-sheet", "quality-report", "revision-manifest"]
+            "enum": [
+              "outline",
+              "slide-spec",
+              "pptx",
+              "pdf",
+              "speaker-notes",
+              "preview",
+              "teleprompter",
+              "training-cards",
+              "references",
+              "change-summary",
+              "full-script",
+              "contact-sheet",
+              "quality-report",
+              "revision-manifest"
+            ]
           }
         },
-        "versioning": { "type": "boolean" },
+        "versioning": {
+          "type": "boolean"
+        },
         "source_material": {
           "oneOf": [
-            { "type": "string", "minLength": 1 },
+            {
+              "type": "string",
+              "minLength": 1
+            },
             {
               "type": "array",
-              "items": { "type": "string", "minLength": 1 },
+              "items": {
+                "type": "string",
+                "minLength": 1
+              },
               "minItems": 1
             }
           ]
         },
-        "template": { "type": "string" },
-        "logo": { "type": "string" },
+        "template": {
+          "type": "string"
+        },
+        "logo": {
+          "type": "string"
+        },
+        "brand": {
+          "type": "string"
+        },
         "image_source": {
           "enum": [
             "user-assets",
@@ -76,12 +312,32 @@
             "ask-before-web-search"
           ]
         },
-        "visual_style": { "type": "string", "minLength": 1 },
-        "visual_style_custom": { "$ref": "#/$defs/visualStyleCustom" },
+        "visual_style": {
+          "type": "string",
+          "minLength": 1
+        },
+        "visual_style_custom": {
+          "$ref": "#/$defs/visualStyleCustom"
+        },
         "deliverables": {
           "type": "array",
           "items": {
-            "enum": ["outline", "slide-spec", "pptx", "pdf", "speaker-notes", "preview", "teleprompter", "training-cards", "references", "change-summary", "full-script", "contact-sheet", "quality-report", "revision-manifest"]
+            "enum": [
+              "outline",
+              "slide-spec",
+              "pptx",
+              "pdf",
+              "speaker-notes",
+              "preview",
+              "teleprompter",
+              "training-cards",
+              "references",
+              "change-summary",
+              "full-script",
+              "contact-sheet",
+              "quality-report",
+              "revision-manifest"
+            ]
           },
           "minItems": 1,
           "uniqueItems": true
@@ -89,26 +345,56 @@
         "output_prefix": {
           "type": "string",
           "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "design_freedom": {
+          "enum": [
+            "auto",
+            "guided",
+            "deterministic"
+          ]
         }
       },
       "allOf": [
         {
           "if": {
-            "properties": { "visual_style": { "const": "Other" } },
-            "required": ["visual_style"]
+            "properties": {
+              "visual_style": {
+                "const": "Other"
+              }
+            },
+            "required": [
+              "visual_style"
+            ]
           },
-          "then": { "required": ["visual_style_custom"] }
+          "then": {
+            "required": [
+              "visual_style_custom"
+            ]
+          }
         }
       ]
     },
-    "research_scope": {"enum": ["A", "B", "C", "D"]},
+    "research_scope": {
+      "enum": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ]
+    },
     "source_deck": {
       "type": "string",
       "minLength": 1,
       "description": "Path or label of the existing deck when this spec is used for an improvement workflow."
     },
     "edit_intent": {
-      "enum": ["review-fix", "content-rewrite", "visual-redesign", "template-adapt", "rebuild-clean-copy"]
+      "enum": [
+        "review-fix",
+        "content-rewrite",
+        "visual-redesign",
+        "template-adapt",
+        "rebuild-clean-copy"
+      ]
     },
     "review_findings": {
       "type": "array",
@@ -116,18 +402,41 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["severity", "target", "problem", "fix"],
+        "required": [
+          "severity",
+          "target",
+          "problem",
+          "fix"
+        ],
         "properties": {
-          "severity": { "enum": ["Critical", "Major", "Minor"] },
-          "target": { "type": "string", "minLength": 1 },
-          "problem": { "type": "string", "minLength": 1 },
-          "fix": { "type": "string", "minLength": 1 }
+          "severity": {
+            "enum": [
+              "Critical",
+              "Major",
+              "Minor"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "minLength": 1
+          },
+          "problem": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fix": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
     "preserve": {
       "type": "array",
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
       "description": "Deck elements that must be preserved, such as template, logo, footer, source citations, or approved content."
     },
     "change_summary_required": {
@@ -139,17 +448,47 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "title", "source_type", "locator", "confidence", "used_on_slides"],
+        "required": [
+          "id",
+          "title",
+          "source_type",
+          "locator",
+          "confidence",
+          "used_on_slides"
+        ],
         "properties": {
-          "id": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$" },
-          "title": { "type": "string", "minLength": 1 },
-          "source_type": {
-            "enum": ["user-file", "paper", "book", "website", "dataset", "survey", "experiment", "interview", "case", "other"]
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
           },
-          "locator": { "type": "string", "minLength": 1 },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source_type": {
+            "enum": [
+              "user-file",
+              "paper",
+              "book",
+              "website",
+              "dataset",
+              "survey",
+              "experiment",
+              "interview",
+              "case",
+              "other"
+            ]
+          },
+          "locator": {
+            "type": "string",
+            "minLength": 1
+          },
           "source_ids": {
             "type": "array",
-            "items": { "type": "string", "pattern": "^S[0-9]{2,}$" },
+            "items": {
+              "type": "string",
+              "pattern": "^S[0-9]{2,}$"
+            },
             "uniqueItems": true,
             "description": "All Research Pack sources backing this evidence entry."
           },
@@ -158,15 +497,31 @@
             "pattern": "^S[0-9]{2,}$",
             "description": "Strongest source used for the short citation/locator; the full source_ids set remains available for bibliography and audit."
           },
-          "author": { "type": "string" },
-          "date": { "type": "string" },
-          "confidence": { "enum": ["high", "medium", "low", "unverified"] },
+          "author": {
+            "type": "string"
+          },
+          "date": {
+            "type": "string"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "unverified"
+            ]
+          },
           "used_on_slides": {
             "type": "array",
-            "items": { "type": "integer", "minimum": 1 },
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            },
             "uniqueItems": true
           },
-          "limitation": { "type": "string" }
+          "limitation": {
+            "type": "string"
+          }
         }
       }
     },
@@ -176,36 +531,81 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["id", "title"],
+        "required": [
+          "id",
+          "title"
+        ],
         "properties": {
-          "id": { "type": "string", "pattern": "^S[0-9]{2,}$" },
-          "title": { "type": "string", "minLength": 1 },
-          "publisher": { "type": "string" },
-          "year": { "type": "integer" },
-          "url": { "type": "string" },
-          "tier": { "enum": ["S", "A", "B", "C", "D"] }
+          "id": {
+            "type": "string",
+            "pattern": "^S[0-9]{2,}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "publisher": {
+            "type": "string"
+          },
+          "year": {
+            "type": "integer"
+          },
+          "url": {
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "S",
+              "A",
+              "B",
+              "C",
+              "D"
+            ]
+          }
         }
       }
     },
     "revision": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["revision_id"],
+      "required": [
+        "revision_id"
+      ],
       "properties": {
-        "revision_id": { "type": "string", "minLength": 1 },
-        "parent_revision": { "type": "string" },
-        "reason": { "type": "string" }
+        "revision_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parent_revision": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
       }
     },
     "revision_operation": {
-      "enum": ["rewrite-slide", "rewrite-section", "change-style", "compress", "expand", "add-evidence"]
+      "enum": [
+        "rewrite-slide",
+        "rewrite-section",
+        "change-style",
+        "compress",
+        "expand",
+        "add-evidence"
+      ]
     },
     "target_slides": {
       "type": "array",
-      "items": { "type": "integer", "minimum": 1 },
+      "items": {
+        "type": "integer",
+        "minimum": 1
+      },
       "uniqueItems": true
     },
-    "target_section": { "type": "string", "minLength": 1 },
+    "target_section": {
+      "type": "string",
+      "minLength": 1
+    },
     "slides": {
       "type": "array",
       "minItems": 1,
@@ -215,15 +615,23 @@
         "required": [
           "id",
           "title",
-          "layout",
           "content",
           "timing_sec",
           "owner"
         ],
         "properties": {
-          "id": { "type": "integer", "minimum": 1 },
-          "title": { "type": "string", "minLength": 1 },
-          "layout": { "type": "string", "minLength": 1 },
+          "id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "layout": {
+            "type": "string",
+            "minLength": 1
+          },
           "layout_lock": {
             "type": "boolean",
             "default": false,
@@ -259,42 +667,84 @@
           },
           "content": {
             "oneOf": [
-              { "type": "object" },
-              { "type": "array" },
-              { "type": "string", "minLength": 1 }
+              {
+                "type": "object"
+              },
+              {
+                "type": "array"
+              },
+              {
+                "type": "string",
+                "minLength": 1
+              }
             ]
           },
-          "claim": { "type": "string", "minLength": 1 },
+          "claim": {
+            "type": "string",
+            "minLength": 1
+          },
           "supporting_points": {
             "type": "array",
-            "items": { "type": "string", "minLength": 1 },
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
             "maxItems": 6
           },
           "slide_copy": {
             "oneOf": [
-              { "type": "string", "minLength": 1 },
+              {
+                "type": "string",
+                "minLength": 1
+              },
               {
                 "type": "array",
-                "items": { "type": "string", "minLength": 1 }
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             ]
           },
-          "speaker_notes": { "type": "string", "minLength": 1 },
-          "key_line": { "type": "string", "minLength": 1 },
+          "speaker_notes": {
+            "type": "string",
+            "minLength": 1
+          },
+          "key_line": {
+            "type": "string",
+            "minLength": 1
+          },
           "evidence_refs": {
             "type": "array",
-            "items": { "type": "string", "minLength": 1 },
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
             "uniqueItems": true
           },
-          "locked": { "type": "boolean" },
-          "lock_reason": { "type": "string", "minLength": 1 },
+          "locked": {
+            "type": "boolean"
+          },
+          "lock_reason": {
+            "type": "string",
+            "minLength": 1
+          },
           "visual": {
             "type": "object",
-            "required": ["type", "purpose"],
+            "required": [
+              "type",
+              "purpose"
+            ],
             "additionalProperties": false,
             "properties": {
-              "type": { "type": "string", "minLength": 1 },
-              "purpose": { "type": "string", "minLength": 1 },
+              "type": {
+                "type": "string",
+                "minLength": 1
+              },
+              "purpose": {
+                "type": "string",
+                "minLength": 1
+              },
               "layout_family": {
                 "enum": [
                   "hero",
@@ -310,24 +760,150 @@
                   "reference"
                 ]
               },
-              "emphasis": { "enum": ["visual", "balanced", "text"] },
-              "asset": { "type": "string", "minLength": 1 },
-              "alt_text": { "type": "string", "minLength": 1 },
+              "emphasis": {
+                "enum": [
+                  "visual",
+                  "balanced",
+                  "text"
+                ]
+              },
+              "asset": {
+                "type": "string",
+                "minLength": 1
+              },
+              "alt_text": {
+                "type": "string",
+                "minLength": 1
+              },
               "details": {
                 "oneOf": [
-                  { "type": "object" },
-                  { "type": "array" },
-                  { "type": "string" }
+                  {
+                    "type": "object"
+                  },
+                  {
+                    "type": "array"
+                  },
+                  {
+                    "type": "string"
+                  }
                 ]
               }
             }
           },
-          "note_goal": { "type": "string", "minLength": 1 },
-          "transition": { "type": "string", "minLength": 1 },
-          "timing_sec": { "type": "integer", "minimum": 1 },
-          "owner": { "type": "string", "minLength": 1 }
+          "note_goal": {
+            "type": "string",
+            "minLength": 1
+          },
+          "transition": {
+            "type": "string",
+            "minLength": 1
+          },
+          "timing_sec": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "owner": {
+            "type": "string",
+            "minLength": 1
+          },
+          "semantic_requirements": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "must_convey",
+              "must_show_exact"
+            ],
+            "properties": {
+              "must_convey": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "text"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+                    },
+                    "text": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "placement": {
+                      "enum": [
+                        "slide",
+                        "notes"
+                      ],
+                      "default": "slide"
+                    },
+                    "evidence_refs": {
+                      "type": "array",
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  }
+                }
+              },
+              "must_show_exact": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "not": {
+                "required": [
+                  "semantic_requirements"
+                ]
+              }
+            },
+            "then": {
+              "required": [
+                "layout"
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema_version": {
+            "const": "2.1"
+          }
+        },
+        "required": [
+          "schema_version"
+        ]
+      },
+      "then": {
+        "properties": {
+          "slides": {
+            "items": {
+              "required": [
+                "semantic_requirements"
+              ]
+            }
+          }
         }
       }
     }
-  }
+  ]
 }

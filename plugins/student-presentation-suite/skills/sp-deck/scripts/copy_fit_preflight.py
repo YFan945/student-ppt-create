@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Check planned on-slide copy fits before any generator is authored.
 
+For model-led tasks, planned wording and its estimated regions are advisory:
+the Builder may rewrite presentation copy and choose positive font sizes.
+Measured geometry and actual artifact checks own final fit. The historical
+literal-copy and character-width rules below remain for legacy 1.0/2.0 work.
+
 Run 2 of the v0.8 pipeline lost roughly a third of its budget to one cascade:
 the Slide Spec carried planning-sentence claims (60-90 chars) while the confirmed
 density cap was <=80 chars per slide. `pptx_actual_content_check.py` demands
@@ -46,6 +51,10 @@ import re
 import sys
 from pathlib import Path
 from typing import Any
+
+PLUGIN_ROOT = Path(__file__).resolve().parents[3]
+if str(PLUGIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(PLUGIN_ROOT))
 
 # Standard 10 x 5.625in student-wide grid (see pptx-helpers.js SLIDE_W_IN/SLIDE_H_IN).
 DEFAULT_SLIDE_W = 10.0
@@ -358,6 +367,15 @@ def preflight(
         )
         for slide in slides
     ]
+    from shared.design_policy import model_led
+
+    if model_led(spec):
+        # Planned prose has no fixed region or font size in the model-led contract.
+        # The actual text layout and artifact readback own fit and exact content.
+        for result in results:
+            for problem in result["problems"]:
+                if problem.get("field") in {"title", "claim", "slide_copy", "claim_duplicates_title"}:
+                    problem["severity"] = "minor"
 
     majors = [
         {"slide": index, **problem}

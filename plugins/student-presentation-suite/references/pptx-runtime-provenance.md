@@ -29,3 +29,10 @@ deletion. The entire directory tree has been removed.
 The upstream cache path is retained here only as historical audit provenance. Runtime consumers
 must use `scripts/pptx_tool.py`; they must not import an installed external plugin, reference the
 original cache path, or recreate the deleted embedded snapshot.
+
+The suite-owned `scripts/pptx-text-layout.js` uses MIT-licensed `fontkit` 2.0.4
+for TTF/OTF/TTC glyph layout and advance measurement. It is an npm runtime
+dependency pinned in the plugin lockfile; fonts are resolved from the host and
+are not redistributed. Measurement and substitutions are recorded alongside
+element geometry. Final rendering remains necessary because viewer shaping
+and font substitution can differ from measured layout.

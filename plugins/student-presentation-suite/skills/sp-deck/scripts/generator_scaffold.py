@@ -55,6 +55,7 @@ const HELPERS_DIR =
   process.env.PPTX_HELPERS_DIR || path.join(process.env.CLAUDE_PLUGIN_ROOT || '', 'scripts');
 const H = require(path.join(HELPERS_DIR, 'pptx-helpers.js'));
 const L = require(path.join(HELPERS_DIR, 'pptx-layouts.js'));
+const R = require(path.join(HELPERS_DIR, 'pptx-page-runtime.js'));
 const {{ SlideElementRegistry }} = require(path.join(HELPERS_DIR, 'pptx-element-registry.js'));
 const pptxgen = require('pptxgenjs');
 
@@ -77,19 +78,17 @@ function main() {{
   }});
   // 每页 renderArchetype 把选中的 archetype 记进来，build 后写 sidecar 留档。
   const layoutReport = [];
+  const presentationCopy = [];
+  const manifestFile = path.join(__dirname, 'build-manifest.json');
+  const manifest = require('node:fs').existsSync(manifestFile) ? JSON.parse(require('node:fs').readFileSync(manifestFile, 'utf8')) : {{}};
   PAGES.forEach((mod, index) => {{
     const n = index + 1;
     const slide = pptx.addSlide();
-    const ctx = {{ pptx, slide, n, H, registry, tokens: TOKENS, slideNumber: n, layoutReport }};
-    if (typeof mod === 'function') {{
-      // 函数式页面（自定义坐标的 D9 转义口）：glue 由页面自己执行。
-      mod(ctx);
-    }} else {{
-      // 声明式页面：只填槽位，glue 由 renderDeclaredPage 统一执行。
-      L.renderDeclaredPage(ctx, mod);
-    }}
+    const ctx = {{ pptx, slide, n, H, registry, tokens: TOKENS, slideNumber: n, layoutReport, presentationCopy, designMode: manifest.design_state?.page_modes?.[String(n)] || TOKENS.design_freedom }};
+    R.renderPage(ctx, mod);
   }});
   registry.assertSafe();
+  if (TOKENS.model_led) require('node:fs').writeFileSync(path.join(__dirname, 'presentation-copy.json'), JSON.stringify({{ slides: presentationCopy }}, null, 2));
   // 完整几何分析（含 warning）写 sidecar，供确定性 QA 带进 repair packet。
   registry.writeReport(out);
   require('node:fs').writeFileSync(
@@ -231,6 +230,10 @@ def _on_screen_block(planned: dict[str, Any]) -> str:
     judges with, so the stub and the gate cannot disagree.
     """
     required = actual_check.planned_requirements(planned)
+    if required.get("copy_policy") == "semantic":
+        return ("/* Frozen semantic requirements; planning prose may be rewritten.\n"
+                "   Exact items need actual text carriers; independent critic checks meaning.\n"
+                f"   {_comment_safe(json.dumps(required, ensure_ascii=False))}\n*/")
     lines = [
         "/* ON-SCREEN REQUIRED — the actual-content gate matches PPTX text runs byte-exact",
         "   and reports missing_title / missing_key_claim / planned_numbers_missing.",
@@ -438,6 +441,19 @@ def inline_tokens_json(spec: dict[str, Any], art_direction: Path | None) -> str:
         tokens = apply_topic_accent(tokens, ad.get("topic_accent") if isinstance(ad, dict) else None)
     except (OSError, ValueError, KeyError, TypeError):
         tokens = {"palette": {"canvas": "FFFFFF"}}
+    from shared.design_policy import design_mode, model_led
+
+    if model_led(spec):
+        tokens["model_led"] = True
+        tokens["design_freedom"] = design_mode(spec)
+        typography = ad.get("typography") or {}
+        for source, target in (("slide_title_pt", "title_min_pt"), ("body_pt", "body_cjk_min_pt"), ("body_pt", "body_latin_min_pt"), ("caption_pt", "caption_min_pt")):
+            value = typography.get(source)
+            if isinstance(value, (float, int)) and value > 0:
+                tokens["typography"][target] = value
+        # Model values are suggestions, not readability floors.
+        tokens["typography"]["title_max_pt"] = tokens["typography"]["title_min_pt"]
+        tokens["typography"]["body_max_pt"] = tokens["typography"]["body_cjk_min_pt"]
     return json.dumps(tokens, ensure_ascii=False, indent=2)
 
 
@@ -507,6 +523,20 @@ def scaffold_generator(
             visual_js=_visual_payload(slide),
             move_js=json.dumps(_suggested_move(slide), ensure_ascii=False),
         )
+        from shared.design_policy import design_mode, model_led
+
+        if model_led(spec):
+            stub = stub.replace("/* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */", "/* COPY is presentation input; preserve frozen information, not planning prose. */")
+            if design_mode(spec) == "auto":
+                exact = json.dumps(actual_check.planned_requirements(slide), ensure_ascii=False)
+                stub = (f"'use strict';\n/* {SCAFFOLD_MARKER} */\n"
+                        f"/* Frozen information: {_comment_safe(exact)} */\n"
+                        "module.exports = function (ctx) {\n"
+                        "  // Compose freely with ctx.H and ctx.slide; the harness captures geometry.\n"
+                        "};\nmodule.exports.presentation_copy = { headline: '', visual_labels: [] };\n"
+                        "module.exports.notes = '';\n")
+            elif design_mode(spec) == "deterministic":
+                stub = stub.replace(f"  move: {json.dumps(_suggested_move(slide))},", "  move: undefined,")
         target = pages_dir / name
         if write_if_scaffoldable(target, stub):
             written_pages += 1

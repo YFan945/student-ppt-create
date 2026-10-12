@@ -34,6 +34,7 @@ from pipeline.core import (  # noqa: E402
     work_id_receipt_policy,
     write_stage_summary,
 )
+from shared.design_policy import design_mode, model_led  # noqa: E402
 from shared.quality_tiers import normalize as normalize_quality_level  # noqa: E402
 
 
@@ -186,6 +187,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "work_id": work_dir.name,
         "work_dir": str(work_dir),
         "mode": mode,
+        "design_freedom": design_mode(spec_data),
         "quality_level": normalize_quality_level((spec_data.get("meta") or {}).get("quality_level")),
         "quality_level_raw": str((spec_data.get("meta") or {}).get("quality_level") or ""),
         # Policy is work-id state, not research state: a scope-C deck with no
@@ -204,6 +206,15 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "render": {}, "qa": {}, "history": [],
     }
     scope = spec_data.get("research_scope", "C")
+    repair_limit = getattr(args, "repair_limit", None)
+    fresh["model_led"] = model_led(spec_data)
+    requested_design = getattr(args, "design_freedom", None)
+    if requested_design and requested_design != design_mode(spec_data):
+        raise RefusedError("requested design_freedom differs from Spec meta; correct the plan before production")
+    if repair_limit is not None:
+        fresh["build"]["repair_limit"] = repair_limit
+    elif manifest and "repair_limit" in (manifest.get("build") or {}):
+        fresh["build"]["repair_limit"] = manifest["build"]["repair_limit"]
     external = any(item.get("source_type") not in {"user-file", "experiment", "interview", "survey"} for item in spec_data.get("evidence_ledger", []))
     pack_on_disk = args.research_pack or work_dir / "research-pack.json"
     if args.research_pack or scope in {"A", "B", "D"} or external or Path(pack_on_disk).is_file():
@@ -227,10 +238,12 @@ def cmd_plan(args: argparse.Namespace) -> int:
             fresh["research"]["receipt_policy"] = "allow-missing"
     if manifest and args.force:
         fresh["build"]["repair_count"] = int((manifest.get("build") or {}).get("repair_count") or 0)
+        if fresh["model_led"] and manifest.get("design_state"):
+            fresh["design_state"] = manifest["design_state"]
         fresh["history"] = list(manifest.get("history") or [])
 
     ad_report = work_dir / "art-direction-check.json"
-    ad_check = core._runner([
+    ad_argv = [
         sys.executable, str(HERE / "art_direction_check.py"), str(art),
         # The checker's CLI default is high-score; plan must judge the Art
         # Direction under the deck's own tier, or every fast/standard deck's
@@ -238,7 +251,10 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "--quality", str(fresh["quality_level"]),
         "--work-dir", str(work_dir),
         "--output", str(ad_report), "--json",
-    ])
+    ]
+    if model_led(spec_data):
+        ad_argv.append("--model-led")
+    ad_check = core._runner(ad_argv)
     if ad_report.is_file():
         fresh["inputs"]["art_direction_check"] = bind(ad_report)
     if ad_check.returncode != 0:

@@ -1,5 +1,14 @@
 # Presentation Brief
 
+## New-task policy (2.1)
+
+For new tasks, [model-led-design.md](model-led-design.md) owns design modes, frozen semantic
+requirements and measured text. Its policy overrides legacy template/scale/
+verbatim-copy guidance below. `auto` is the default; user brand/template/logo
+and actual readability remain binding. Treat fixed sizes, proportions and
+gallery treatments here as optional design suggestions for new tasks.
+
+
 The Presentation Brief is the confirmed global control plane. It answers what
 the presentation is for and how it should be produced. Slide Spec answers what
 each slide contains.

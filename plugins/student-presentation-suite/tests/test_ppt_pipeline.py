@@ -1385,6 +1385,35 @@ class QaDagTests(PipelineTestCase):
         self.assertEqual(len(runner.calls), first_calls)
         self.assertEqual(history, json.loads(history_path.read_text(encoding="utf-8")))
 
+    def test_qa_refresh_keeps_pending_repair_and_does_not_spend_a_second_round(self) -> None:
+        self.producing_manifest()
+        manifest = self.manifest()
+        manifest["build"].update(pending_repair=True, repair_count=1, repair_limit=1)
+        pp.save_manifest(self.work, manifest)
+        pp._core._runner = FakeRunner(self.work)
+        self.assertEqual(pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])]), 0)
+        refreshed = self.manifest()
+        self.assertEqual(refreshed["state"], "producing")
+        self.assertTrue(refreshed["build"]["pending_repair"])
+        self.assertEqual(refreshed["build"]["repair_count"], 1)
+
+    def test_modelled_qa_recovers_incomplete_and_materializes_missing_generation_evidence(self) -> None:
+        self.producing_manifest()
+        manifest = self.manifest()
+        manifest.update(model_led=True, state="incomplete")
+        manifest["inputs"].pop("visual_generation_report", None)
+        manifest.pop("generation_evidence", None)
+        (self.work / "visual-generation-report.json").unlink()
+        pp.save_manifest(self.work, manifest)
+        pp._core.mirror_workflow_state(manifest, "incomplete")
+        pp._core._runner = FakeRunner(self.work)
+        with patch("pptx_visual_generation_gate_v08.validate_visual_generation", return_value={"ok": True, "issues": []}):
+            self.assertEqual(pp.main(["qa", "--work-dir", str(self.work), "--visual-review", str(self.files["visual_review"])]), 0)
+        refreshed = self.manifest()
+        self.assertEqual(refreshed["state"], "qa")
+        self.assertIn("delivery", refreshed["qa"]["stages"])
+        self.assertTrue(pp.binding_is_current(refreshed["generation_evidence"]["visual_generation_report"]))
+
     def test_qa_round_number_continues_after_history_window_is_full(self) -> None:
         self.producing_manifest()
         history_path = self.work / "gate-history.json"

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
@@ -165,6 +166,7 @@ def validate_art_direction(
     *,
     high_score: bool = True,
     image_sources: dict[str, Any] | None = None,
+    model_led: bool = False,
 ) -> dict[str, Any]:
     """Validate Art Direction. `image_sources` is the resolved capability (None = not asked)."""
     issues: list[dict[str, str]] = []
@@ -306,6 +308,14 @@ def validate_art_direction(
                     issues.append(issue("minor", "high_leverage_reason_missing", "Each high-leverage slide should say why it matters. A short reason does not block delivery."))
                     break
 
+    if model_led:
+        preferences = {"dominance_missing", "dominance_out_of_range", "type_scale_missing", "background_rhythm_flat", "asset_mix_too_thin", "asset_mix_total_too_low", "high_leverage_count_invalid"}
+        for finding in issues:
+            if finding["code"] in preferences:
+                finding["severity"] = "minor"
+        for name, value in typography.items():
+            if name.endswith("_pt") and (not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or value <= 0):
+                issues.append(issue("major", "invalid_font_size", f"{name} must be a positive numeric size."))
     blockers = [item for item in issues if item["severity"] in BLOCKING]
     return {
         "ok": not blockers,
@@ -339,6 +349,7 @@ def main() -> int:
         help="work directory; enables the asset_plan <-> image capability check",
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--model-led", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict", action="store_true", help="deprecated no-op alias; gates are fail-closed by default")
     parser.add_argument(
@@ -352,6 +363,7 @@ def main() -> int:
         load_structured(args.art_direction),
         high_score=tier_policy(args.quality)["strict_v08"],
         image_sources=resolve_capability(args.work_dir),
+        model_led=args.model_led,
     )
     payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:

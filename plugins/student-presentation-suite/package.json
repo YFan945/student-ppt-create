@@ -1,12 +1,13 @@
 {
   "name": "student-presentation-suite",
   "private": true,
-  "version": "0.28.4",
+  "version": "0.29.0",
   "description": "Development and local fallback dependencies for the Claude Code student presentation plugin.",
   "scripts": {
     "smoke": "node scripts/run_with_pptxgenjs.js --probe"
   },
   "dependencies": {
+    "fontkit": "2.0.4",
     "image-size": "^2.0.4",
     "pptxgenjs": "^4.0.1"
   },

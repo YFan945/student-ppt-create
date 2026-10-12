@@ -16,6 +16,9 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from page_brief import load_structured  # noqa: E402
+
+from shared.design_policy import model_led  # noqa: E402
 from shared.hashing import file_sha256 as sha256_file  # noqa: E402
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -50,12 +53,13 @@ def validate_visual_generation_report(path: Path, slide_spec: Path, art_directio
         # D2 consistency: fast tiers treat wireframes as advisory exploration, so
         # the report legitimately carries no wireframe_sha256 for its slides;
         # demanding it here would make every wireframe-less fast deck undeliverable.
-        require_wireframe = data.get("quality") != "fast"
+        discretionary = model_led(load_structured(slide_spec)) if slide_spec.is_file() else False
+        require_wireframe = data.get("quality") != "fast" and not discretionary
         for item in evidence:
             if not isinstance(item, dict):
                 errors.append("Visual-generation evidence entry is invalid.")
                 continue
-            keys = ["reference_selection_sha256", "composition_candidates_sha256"]
+            keys = [] if discretionary else ["reference_selection_sha256", "composition_candidates_sha256"]
             if require_wireframe:
                 keys.append("wireframe_sha256")
             for key in keys:
@@ -257,6 +261,11 @@ def main() -> None:
         result["ok"] = False
         delivery["ok"] = False
         delivery["status"] = "incomplete"
+        delivery["issues"] = [
+            {"severity": "major", "code": f"{gate}_report_invalid", "message": message}
+            for gate, validation in (("actual_content", actual), ("quality", quality), ("visual_generation", visual_generation))
+            for message in validation["errors"]
+        ]
     # Per-name deliverable verification is the last word: confirming a deliverable
     # and then not producing its file must block completion, not just appear as a
     # warning line in the report. `required_deliverables` already limits `owed` to

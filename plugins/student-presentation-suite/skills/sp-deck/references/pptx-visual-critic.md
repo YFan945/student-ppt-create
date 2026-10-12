@@ -1,5 +1,14 @@
 # Structured Render Visual Critic
 
+## New-task policy (2.1)
+
+For new tasks, [model-led-design.md](../../../references/model-led-design.md) owns design modes, frozen semantic
+requirements and measured text. Its policy overrides legacy template/scale/
+verbatim-copy guidance below. `auto` is the default; user brand/template/logo
+and actual readability remain binding. Treat fixed sizes, proportions and
+gallery treatments here as optional design suggestions for new tasks.
+
+
 v0.7.1 把视觉复核从“有没有溢出/重叠”升级为真实页面设计审查；v0.8 进一步要求 critic 判断**最终 render 是否兑现了 Art Direction、reference/candidate 的设计意图，以及生成阶段是否因为过度保守而丢掉视觉张力**。本文件定义查看真实 render 后必须写出的 `visual-review.json`。
 
 ## 核心原则

@@ -101,6 +101,48 @@ function mockSlide() {
   return { slide, calls };
 }
 
+function logicalRenderedText(calls) {
+  const pieces = [];
+  let previous = null;
+  for (const call of calls) {
+    if (call.kind !== 'text') {
+      previous = null;
+      continue;
+    }
+    const options = call.args[1] || {};
+    const text = require('./pptx-helpers.js').plainText(call.args[0]);
+    const group = String(options.objectName || '');
+    const positioned = group.startsWith('sps-line:');
+    if (
+      positioned &&
+      previous &&
+      previous.group === group &&
+      previous.y === options.y &&
+      Math.abs(previous.right - options.x) <= 0.02
+    ) {
+      pieces[pieces.length - 1] += text;
+    } else pieces.push(text);
+    previous = positioned ? { group, y: options.y, right: options.x + options.w } : null;
+  }
+  return pieces.join('\n');
+}
+
+function displayedFragmentPresent(expected, actual) {
+  const compact = expected.replace(/\s+/gu, '');
+  const number =
+    /(?<![\d.+-])[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?[%％]?(?!\d|\.\d|,\d|[%％])/gu;
+  const escape = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const parts = [];
+  let offset = 0;
+  for (const token of compact.matchAll(number)) {
+    parts.push(...Array.from(compact.slice(offset, token.index), escape));
+    parts.push(`(?<![\\d.+-])(?<!\\d,)${escape(token[0])}(?!\\d|\\.\\d|,\\d|[%％])`);
+    offset = token.index + token[0].length;
+  }
+  parts.push(...Array.from(compact.slice(offset), escape));
+  return new RegExp(parts.join('\\s*'), 'u').test(actual);
+}
+
 function collectColors(calls) {
   const found = [];
   for (const call of calls) {
@@ -270,12 +312,12 @@ for (const rel of pages) {
       slideNumber: n,
       layoutReport,
     };
-    if (typeof mod === 'function') {
-      mod(ctx);
-    } else {
-      // 声明式页面：glue 与 deck.js 同一入口。
-      require(path.join(SCRIPTS_DIR, 'pptx-layouts.js')).renderDeclaredPage(ctx, mod);
-    }
+    const manifestFile = path.join(WORK_DIR, 'build-manifest.json');
+    const manifest = fs.existsSync(manifestFile)
+      ? JSON.parse(fs.readFileSync(manifestFile, 'utf8'))
+      : {};
+    ctx.designMode = manifest.design_state?.page_modes?.[String(n)] || tokens.design_freedom;
+    require(path.join(SCRIPTS_DIR, 'pptx-page-runtime.js')).renderPage(ctx, mod);
   } catch (error) {
     const finding = {
       page: rel,
@@ -290,7 +332,7 @@ for (const rel of pages) {
     continue;
   }
   const functionPage = /module\.exports\s*=\s*function/.test(source);
-  if (functionPage && !/custom|自定义/i.test(source)) {
+  if (!tokens.model_led && functionPage && !/custom|自定义/i.test(source)) {
     findings.push({
       page: rel,
       kind: 'escape-hatch',
@@ -319,9 +361,21 @@ for (const rel of pages) {
         if (typeof item === 'string' && item.trim()) declared.push(item);
       }
     }
-    const renderedBlob = calls.map((c) => JSON.stringify(c.args)).join('\n');
+    const renderedBlob = tokens.model_led
+      ? logicalRenderedText(calls)
+      : calls
+          .map((c) =>
+            c.kind === 'text'
+              ? require('./pptx-helpers.js').plainText(c.args[0])
+              : JSON.stringify(c.args),
+          )
+          .join('\n');
     const missing = declared.filter(
-      (text) => text.trim().length >= 4 && !renderedBlob.includes(text),
+      (text) =>
+        text.trim().length >= 4 &&
+        !(tokens.model_led
+          ? displayedFragmentPresent(text, renderedBlob)
+          : renderedBlob.includes(text)),
     );
     if (missing.length) {
       findings.push({
@@ -340,7 +394,8 @@ for (const rel of pages) {
     if (mod.kind === 'cover' && s.title && s.claim && s.claim === s.title) {
       findings.push({
         page: rel,
-        kind: 'cover-claim-duplicates-title',
+        kind: tokens.model_led ? 'warning' : 'cover-claim-duplicates-title',
+        code: 'cover-claim-duplicates-title',
         message: '封面的 claim 与标题逐字相同——信息量为零，等于没有副标题（run-14 live 封面实况）',
         remedy: ['claim 改为补充视角：时间窗、场景、承诺或差异点，不要复述标题'],
       });
@@ -349,7 +404,8 @@ for (const rel of pages) {
       // run-15 live：D11 收尾带把 claim 原文再渲染一遍，同一页同一段话出现两次。
       findings.push({
         page: rel,
-        kind: 'key-line-duplicates-claim',
+        kind: tokens.model_led ? 'warning' : 'key-line-duplicates-claim',
+        code: 'key-line-duplicates-claim',
         message: 'key_line 与 claim 逐字相同——D11 收尾带把 claim 又画了一遍，同页同文出现两次',
         remedy: ['key_line 改为一句话结论/行动含义，或置空让收尾带不渲染'],
       });
@@ -367,7 +423,7 @@ for (const rel of pages) {
       });
     }
   }
-  if (!functionPage) {
+  if (!tokens.model_led && !functionPage) {
     // COPY 双源防线：slots 的字符串字面量必须引用 COPY.*（逐字节文案门的前提）；
     // visual 槽允许字面量（数据载荷）。按花括号配平截取 slots 块，避免误伤块外字段。
     const slotsAt = source.search(/slots:\s*\{/);
@@ -430,7 +486,7 @@ for (const rel of pages) {
       .join('；');
     findings.push({
       page: rel,
-      kind: 'off-palette',
+      kind: tokens.model_led ? 'warning' : 'off-palette',
       message: `疑似非调色板色值：${[...new Set(offPalette)].join(', ')}（颜色一律走 tokens 角色色，D13）`,
       remedy: [mapping],
     });

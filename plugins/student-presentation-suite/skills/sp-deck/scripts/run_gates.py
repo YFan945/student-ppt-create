@@ -292,7 +292,7 @@ def collect_qa(args: argparse.Namespace, gates: dict[str, Any], problems: list[d
     _qa_gate(
         "rendered",
         "pptx_rendered_check.py",
-        ["--pptx", pptx, "--output", str(workdir / "qa-rendered.json")],
+        ["--pptx", pptx, "--output", str(workdir / "qa-rendered.json"), *(["--slide-spec", spec] if spec else [])],
         gates,
         problems,
         workdir / "qa-rendered.json",

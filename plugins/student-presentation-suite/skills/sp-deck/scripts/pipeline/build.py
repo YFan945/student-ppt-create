@@ -43,6 +43,25 @@ from pipeline.scheduler import (  # noqa: E402
 from shared.quality_tiers import calibration_enabled, tier_policy, uses_preview_pair  # noqa: E402
 
 
+def record_construction_failure(work_dir: Path, manifest: dict, entry: Path, fingerprint: str, detail: str) -> None:
+    """Bind failed new-mode geometry to the existing repair state, without a PPTX."""
+    if not manifest.get("model_led"):
+        return
+    findings = [{"slide": int(number), "code": code, "severity": "major", "message": detail[:600]} for number, code in re.findall(r"[Ss]lide (\d+): (text_overlap|text_overflow|out_of_canvas|invalid_bbox|non_positive_size|layout_fit|construction_failure)", detail)]
+    if not findings:
+        page = re.search(r"pages[\\/]+p(\d+)", detail)
+        code = "layout_fit" if re.search(r"cannot fit|does not fit|layoutFit|text_overflow", detail) else "construction_failure"
+        findings = [{"slide": int(page[1]) if page else None, "code": code, "severity": "major", "message": detail[:600]}]
+    path = work_dir / "pre-qa-build.json"
+    path.write_text(json.dumps({"ok": False, "generator_fingerprint": fingerprint, "issues": findings}, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    manifest.setdefault("build", {}).update(entry=str(entry), generator_fingerprint=fingerprint, construction_failure=fingerprint, pending_repair=False)
+    manifest["pre_qa"] = {"ok": False, "generator_fingerprint": fingerprint, "blockers": len(findings), "rounds": core.MAX_PRE_QA_REBUILDS, "max_rounds": core.MAX_PRE_QA_REBUILDS, "problems": findings, "reports": {"build": bind(path)}}
+    manifest["state"] = "producing"
+    record(manifest, "build-failed", "producing", "producing", generator_fingerprint=fingerprint)
+    save_manifest(work_dir, manifest)
+    mirror_workflow_state(manifest, "producing")
+
+
 def enforce_page_copy_fidelity(work_dir: Path, spec: Path) -> None:
     """Refuse a build whose page modules paraphrase the Slide Spec copy.
 
@@ -62,7 +81,7 @@ def enforce_page_copy_fidelity(work_dir: Path, spec: Path) -> None:
     if proc.returncode != 0:
         detail = (proc.stderr or proc.stdout or "").strip()
         raise RefusedError(
-            f"page copy fidelity blocked build; restore the planned copy verbatim: {detail[:600]}"
+            f"page copy fidelity blocked build; restore the required frozen content: {detail[:600]}"
         )
 
 
@@ -186,6 +205,7 @@ def cmd_build(args: argparse.Namespace) -> int:
         # re-run just to find the file.
         page_frame = re.search(r"pages[\\/](p[\w.-]+\.js:\d+)", detail)
         location = f"failing page module pages/{page_frame.group(1)} — " if page_frame else ""
+        record_construction_failure(work_dir, manifest, entry, fingerprint, detail)
         raise RefusedError(
             f"build failed (exit {built.returncode}): {location}{detail[:600]}"
         )
@@ -215,6 +235,8 @@ def cmd_build(args: argparse.Namespace) -> int:
     # Parallel builders each own a slice of the deck, so none of them can write the single
     # readable notes file without dropping the others' text. Assemble it here instead.
     note_fragments = merge_speaker_note_shards(work_dir)
+    build_info.pop("construction_failure", None)
+    (work_dir / "pre-qa-build.json").unlink(missing_ok=True)
 
     declared_round_now = bool(build_info.get("pending_repair")) or pre_qa_fix
     carried_fingerprint = str(build_info.get("generator_fingerprint") or "")

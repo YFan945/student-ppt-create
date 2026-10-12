@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from shared.design_policy import design_mode, model_led
 from shared.design_tokens import resolve_design_tokens
 from shared.handoff_validation import handoff_errors
 from shared.runtime_paths import output_root
@@ -339,6 +340,7 @@ def build_brief(
             f"- Structure mode: {meta_value(meta, 'structure_mode')}",
             f"- Interaction mode: {meta_value(meta, 'interaction_mode')}",
             f"- Quality level: {meta_value(meta, 'quality_level')}",
+            f"- Design freedom: {design_mode(data)} (independent of quality tier)",
             f"- Maximum slide words: {meta_value(meta, 'max_words_per_slide')}",
             f"- Maximum Chinese slide characters: {meta_value(meta, 'max_chinese_chars_per_slide')}",
             f"- Visual/text ratio: {meta_value(meta, 'visual_text_ratio')}",
@@ -347,6 +349,7 @@ def build_brief(
             text_block(meta.get("source_material") or ["not specified"], "  "),
             f"- Template: {meta_value(meta, 'template')}",
             f"- Logo: {meta_value(meta, 'logo')}",
+            f"- Brand: {meta_value(meta, 'brand')}",
             f"- Image source policy: {meta_value(meta, 'image_source')}",
             f"- Visual style: {meta_value(meta, 'visual_style')}",
             f"- Custom visual reference: {json.dumps(meta.get('visual_style_custom'), ensure_ascii=False) if meta.get('visual_style_custom') else 'not applicable'}",
@@ -463,6 +466,8 @@ def build_brief(
                 "**edit action**: inspect the mapped source slide, change only confirmed targets, "
                 "and preserve unrelated OOXML parts and relationships"
             )
+        elif model_led(data):
+            code_hint = "**production action**: convey semantic requirements and preserve exact items; choose composition, expression and any finite positive font size."
         elif slide_copy and len(slide_copy) > 80:
             code_hint = (
                 "**production action**: text-fit risk; split or shorten content instead of "
@@ -479,7 +484,8 @@ def build_brief(
                 "",
                 f"### Slide {slide['id']}: {slide['title']}",
                 f"- Slide kind: {kind}",
-                f"- Layout intent: {slide['layout']}",
+                f"- Layout intent: {slide.get('layout', 'free composition')}",
+                f"- Frozen semantic requirements: {json.dumps(slide.get('semantic_requirements'), ensure_ascii=False)}",
                 f"- Layout behavior: {'locked exact composition' if slide.get('layout_lock') else 'adaptive hint; proportions, shapes, zones, and composition may change'}",
                 f"- Story role: {slide.get('role', 'not specified')}",
                 f"- Claim: {claim or 'not specified'}",

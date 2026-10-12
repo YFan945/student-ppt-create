@@ -40,6 +40,7 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from shared.design_policy import model_led  # noqa: E402
 from shared.hashing import file_sha256_or_none as _sha256  # noqa: E402
 
 STYLE_CONTRACT_NAME = "calibration-style-contract.json"
@@ -107,12 +108,14 @@ def build_style_contract(work_dir: Path, review: dict[str, Any] | None = None) -
 
     archetypes: dict[int, str] = {}
     spec_path = find_spec(work_dir)
+    advisory = False
     if spec_path is not None:
         try:
             spec = load_structured(spec_path)
         except Exception:
             spec = None
         if isinstance(spec, dict):
+            advisory = model_led(spec)
             for index, item in enumerate(spec.get("slides") or []):
                 if isinstance(item, dict):
                     number = int(item.get("id") or index + 1)
@@ -120,7 +123,7 @@ def build_style_contract(work_dir: Path, review: dict[str, Any] | None = None) -
                         archetypes[number] = archetype_of(item)
 
     treatment = style_summary(work_dir)
-    anti_repetition = list(ANTI_REPETITION_SEED)
+    anti_repetition = [] if advisory else list(ANTI_REPETITION_SEED)
     anti_repetition += [str(item) for item in art.get("avoid") or [] if str(item).strip()]
     if treatment:
         anti_repetition += treatment["do_not_repeat"]
@@ -128,6 +131,7 @@ def build_style_contract(work_dir: Path, review: dict[str, Any] | None = None) -
     return {
         "schema_version": "1.0",
         "status": "green",
+        "design_preferences_advisory": advisory,
         "calibration_slides": list(verdict.get("slides") or []),
         "calibrated_archetypes": archetypes,
         "style": style,

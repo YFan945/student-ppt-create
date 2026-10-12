@@ -1,5 +1,17 @@
 # PptxGenJS Helper API（`scripts/pptx-helpers.js`）
 
+For new tasks follow [model-led design](../../../references/model-led-design.md).
+Fixed font floors and ratios below describe legacy work only. New `fitText` uses
+fontkit through the measured role policy. `addPositionedText` controls mixed
+language spacing, and `addPlannedImage` protects image regions. Gallery, motif
+and cover band use is optional.
+
+For model-led pages, `module.typography` and `module.visual_language` record
+page-specific choices. The harness captures direct drawing calls. Direct
+`addTable` requires explicit cell dimensions (`colW`/`rowH` or `w`/`h`) and is
+drawn as editable, measured cells; express merged cells with explicit shapes
+and text. Free-page notes go in `module.notes` so the harness writes them once.
+
 ## 为什么有这份文档
 
 一次 13 页 deck 的生成中，为了摸清 helper 有哪些可用函数，执行了 **25 条** `python -c` /

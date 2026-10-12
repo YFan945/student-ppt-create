@@ -127,6 +127,7 @@ const H = require(path.join(HELPERS_DIR, 'pptx-helpers.js'));
 const {{ SlideElementRegistry }} = require(path.join(HELPERS_DIR, 'pptx-element-registry.js'));
 const pptxgen = require('pptxgenjs');
 const L = require(path.join(HELPERS_DIR, 'pptx-layouts.js'));
+const R = require(path.join(HELPERS_DIR, 'pptx-page-runtime.js'));
 // 与生产 deck.js 同一 ctx 契约（generator_scaffold.DECK_TEMPLATE）：页面从
 // ctx.tokens 取调色板，缺了会在 paletteMode 崩。
 const TOKENS = {tokens_json};
@@ -144,13 +145,7 @@ async function main() {{
     const slide = pptx.addSlide();
     slide.background = {{ color: H.color({{ palette: {{ canvas: 'FFFFFF' }} }}, 'canvas') }};
     const ctx = {{ pptx, slide, n: item.n, H, registry, tokens: TOKENS, slideNumber: item.n, layoutReport }};
-    if (typeof item.mod === 'function') {{
-      // 函数式页面（D9 自定义坐标转义口）：glue 由页面自己执行。
-      item.mod(ctx);
-    }} else {{
-      // 声明式页面（v0.22.0 契约形态）：与生产 deck.js 同一 renderDeclaredPage 分支。
-      L.renderDeclaredPage(ctx, item.mod);
-    }}
+    R.renderPage(ctx, item.mod);
   }}
   registry.assertSafe();
   await pptx.writeFile({{ fileName: out }});
@@ -244,6 +239,15 @@ def build_preview(work_dir: Path, slides: list[int]) -> dict[str, Any]:
         raise RuntimeError(f"calibration render produced {len(images)} images for {len(slides)} slides")
     palette_report = target / "palette-report.json"
     palette = pptx_palette_check.check_pptx(pptx, work_dir / "art-direction.yaml")
+    if spec_path is not None:
+        from generator_scaffold import load_spec
+
+        from shared.design_policy import model_led
+        if model_led(load_spec(spec_path)):
+            for finding in palette["issues"]:
+                if finding.get("code") in {"off-palette-color", "accent-element-dominance"}:
+                    finding["severity"] = "minor"
+            palette["ok"] = not any(item.get("severity") in {"critical", "major", "blocker"} for item in palette["issues"])
     palette_report.write_text(
         json.dumps(palette, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

@@ -66,6 +66,17 @@ def cmd_qa(args: argparse.Namespace) -> int:
         raise RefusedError("no built PPTX in manifest")
     visual_review = args.visual_review.resolve() if args.visual_review else None
     vgr = work_dir / "visual-generation-report.json"
+    if manifest.get("model_led") and not vgr.is_file():
+        from pptx_visual_generation_gate_v08 import validate_visual_generation
+
+        inputs = manifest["inputs"]
+        generated = validate_visual_generation(
+            slide_spec=Path(inputs["slide_spec"]["path"]),
+            art_direction=Path(inputs["art_direction"]["path"]),
+            evidence_dir=work_dir,
+            quality=manifest.get("quality_level", "standard"),
+        )
+        vgr.write_text(json.dumps(generated, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if vgr.is_file():
         # This report is regenerated after every repair round. Keep it outside
         # frozen plan inputs and refresh the binding under pipeline control.
@@ -133,6 +144,8 @@ def cmd_qa(args: argparse.Namespace) -> int:
             if receipt.get("reads", {}).get(item["path"]) != item["sha256"]:
                 raise RefusedError("independent critic did not read every current render image")
     fingerprint = qa_input_fingerprint(pptx, visual_review, notes, previews)
+    copy_path = work_dir / "presentation-copy.json"
+    copy_binding = bind(copy_path) if copy_path.is_file() else None
     receipt_binding = None if degraded_receipt else bind(work_dir / "critic-execution.json")
     # Generation evidence is repair-round state, not a frozen plan input, but
     # it is still a QA input. Without this binding a regenerated VGR could hit
@@ -143,6 +156,7 @@ def cmd_qa(args: argparse.Namespace) -> int:
     )
     fingerprint = stable_hash([
         fingerprint,
+        ("presentation_copy", copy_binding),
         ("qa_order", QA_ORDER),
         ("history_format", 2),
         manifest.get("inputs"),
@@ -151,9 +165,14 @@ def cmd_qa(args: argparse.Namespace) -> int:
         receipt_binding,
         args.allow_missing_preview,
     ])
+    if manifest.get("model_led"):
+        policy_files = [Path(__file__), HERE / "pptx_quality_gate_v071.py", HERE / "pptx_actual_content_check.py", HERE / "pptx_delivery_check_v08.py", HERE / "pptx_rendered_check.py", HERE.parents[2] / "shared" / "content_requirements.py"]
+        fingerprint = stable_hash([fingerprint, {path.name: sha256_file(path) for path in policy_files}])
     old_qa = manifest.get("qa") or {}
     old_report = Path(str((old_qa.get("report") or {}).get("path") or ""))
     cached_bindings = [old_qa.get("report") or {}, *(old_qa.get("stages") or {}).values()]
+    if old_qa.get("presentation_copy") is not None:
+        cached_bindings.append(old_qa["presentation_copy"])
     if old_qa.get("visual_generation_report") is not None:
         cached_bindings.append(old_qa["visual_generation_report"])
     cached_bindings.extend(deliverable_bindings(old_qa.get("deliverables")))
@@ -185,6 +204,9 @@ def cmd_qa(args: argparse.Namespace) -> int:
         if not ok and stage.name in QA_HARD_STOP_STAGES:
             break
     regressions, gate_history = gate_regressions(work_dir, reports)
+    if manifest.get("model_led"):
+        for item in regressions:
+            item["derived"] = True  # The concrete failed gate already owns the repair target.
     problems.extend(regressions)
     problems = dedupe(problems)
     if set(reports) != set(QA_ORDER):
@@ -257,6 +279,7 @@ def cmd_qa(args: argparse.Namespace) -> int:
     before = str(manifest.get("state"))
     manifest["qa"] = {
         "ok": qa_report["ok"], "blockers": blockers, "input_fingerprint": fingerprint,
+        "presentation_copy": copy_binding,
         "report": bind(qa_report_path), "stages": reports,
         "registry_report": bind(Path(str(pptx) + ".registry-report.json")) if Path(str(pptx) + ".registry-report.json").is_file() else None,
         "visual_review": bind(visual_review) if visual_review and visual_review.is_file() else None,
@@ -269,10 +292,11 @@ def cmd_qa(args: argparse.Namespace) -> int:
         "receipt_policy": receipt_policy,
         "stage_cost_ms": {name: data["duration_ms"] for name, data in reports.items() if "duration_ms" in data},
     }
-    manifest["state"] = "qa"
-    record(manifest, "qa", before, "qa", input_fingerprint=fingerprint)
+    after = "producing" if (manifest.get("build") or {}).get("pending_repair") else "qa"
+    manifest["state"] = after
+    record(manifest, "qa", before, after, input_fingerprint=fingerprint)
     save_manifest(work_dir, manifest)
-    mirror_workflow_state(manifest, "qa")
+    mirror_workflow_state(manifest, after)
     names = ", ".join(name for name, data in reports.items() if data.get("checked")) or "none"
     line = (
         f"ppt_pipeline: {'ok' if qa_report['ok'] else 'blocked'} — blockers {blockers} "

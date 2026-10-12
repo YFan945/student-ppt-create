@@ -2,31 +2,176 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://student-presentation-suite.local/asset-manifest.schema.json",
   "type": "object",
-  "required": ["deck", "assets"],
+  "required": [
+    "deck",
+    "assets"
+  ],
   "properties": {
-    "deck": {"type": "string", "minLength": 1},
+    "deck": {
+      "type": "string",
+      "minLength": 1
+    },
     "assets": {
       "type": "array",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["slide", "purpose", "source", "permission", "alt_text", "fallback"],
+        "required": [
+          "slide",
+          "purpose",
+          "source",
+          "permission",
+          "alt_text",
+          "fallback"
+        ],
         "properties": {
-          "slide": {"type": "integer", "minimum": 1},
-          "purpose": {"type": "string", "minLength": 1},
-          "path": {"type": ["string", "null"]},
-          "source": {"type": "string", "minLength": 1},
-          "permission": {"enum": ["user-provided", "licensed", "public-domain", "generated", "suite-original"]},
-          "width": {"type": ["integer", "null"], "minimum": 1},
-          "height": {"type": ["integer", "null"], "minimum": 1},
-          "crop": {"type": ["object", "null"]},
-          "alt_text": {"type": "string", "minLength": 1},
-          "fallback": {"type": "string", "minLength": 1},
-          "provider_id": {"type": ["string", "null"]},
-          "source_url": {"type": ["string", "null"]},
-          "license": {"type": ["string", "null"]},
-          "retrieved_at": {"type": ["string", "null"]},
-          "prompt": {"type": ["string", "null"]}
+          "slide": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "purpose": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "permission": {
+            "enum": [
+              "user-provided",
+              "licensed",
+              "public-domain",
+              "generated",
+              "suite-original"
+            ]
+          },
+          "width": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "height": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          },
+          "crop": {
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "alt_text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fallback": {
+            "type": "string",
+            "minLength": 1
+          },
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "license": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "retrieved_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "prompt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "content_focus": {
+            "type": "string"
+          },
+          "focal_point": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          },
+          "preserve_region": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "x",
+              "y",
+              "w",
+              "h"
+            ],
+            "properties": {
+              "x": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "y": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "w": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "h": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            }
+          },
+          "crop_suggestion": {
+            "enum": [
+              "contain",
+              "cover",
+              "region"
+            ]
+          }
         }
       }
     }

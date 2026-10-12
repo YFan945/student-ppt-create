@@ -316,6 +316,14 @@ def registry_sidecar_findings(pptx: Path) -> list[dict[str, Any]]:
 def run(args: argparse.Namespace) -> int:
     """Run the rendered-artifact gate with pre-parsed arguments (shared by gate-all)."""
     report = check_pptx(args.pptx, _load_tokens(args.tokens))
+    if getattr(args, "slide_spec", None):
+        from pptx_actual_content_check import load_structured
+
+        from shared.design_policy import model_led
+
+        if model_led(load_structured(args.slide_spec)):
+            report["issues"] = [item for item in report["issues"] if item.get("code") not in {"font-below-floor", "title-body-ratio"}]
+            report["ok"] = not any(item.get("severity") in {"critical", "major", "blocker"} for item in report["issues"])
     sidecar = registry_sidecar_findings(args.pptx)
     if sidecar:
         report["registry_geometry"] = {
@@ -328,6 +336,10 @@ def run(args: argparse.Namespace) -> int:
         import pptx_palette_check
 
         palette = pptx_palette_check.check_pptx(args.pptx, args.art_direction)
+        if getattr(args, "slide_spec", None) and model_led(load_structured(args.slide_spec)):
+            for item in palette["issues"]:
+                if item.get("code") in {"off-palette-color", "accent-element-dominance"}:
+                    item["severity"] = "minor"
         report["palette"] = palette
         report["issues"].extend(palette["issues"])
         # Advisory issues (borderline contrast, sub-50%-alpha off-palette washes)
@@ -351,6 +363,7 @@ def main() -> int:
     parser.add_argument("--pptx", type=Path, required=True)
     parser.add_argument("--tokens", type=Path, default=DEFAULT_TOKENS)
     parser.add_argument("--art-direction", type=Path)
+    parser.add_argument("--slide-spec", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--strict", action="store_true", help="deprecated no-op alias; gates are fail-closed by default")

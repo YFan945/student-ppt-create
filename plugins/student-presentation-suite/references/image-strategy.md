@@ -1,5 +1,14 @@
 # Image And Visual Strategy
 
+## New-task policy (2.1)
+
+For new tasks, [model-led-design.md](model-led-design.md) owns design modes, frozen semantic
+requirements and measured text. Its policy overrides legacy template/scale/
+verbatim-copy guidance below. `auto` is the default; user brand/template/logo
+and actual readability remain binding. Treat fixed sizes, proportions and
+gallery treatments here as optional design suggestions for new tasks.
+
+
 Use this shared strategy across planning, Art Direction, PPTX production, and review. v0.8 treats visual richness as an **asset-planning problem**, not something to patch at the end after a text-heavy deck already exists.
 
 ## Source Choice
@@ -60,7 +69,7 @@ provider 且用户未拒绝时，才可为封面、背景或抽象概念制作�
 
 - 适用：cover/closing hero、抽象概念、氛围性但内容相关的主视觉。
 - 不适用：图表、流程图、架构、需要准确文字/数字的 evidence visual。
-- prompt 必须为幻灯片文字留出明确空间，并遵循 `art-direction.yaml` 的 palette、crop language 和 treatment。
+- prompt 为幻灯片文字留出明确空间；新任务参考 `art-direction.yaml` 中模型选定的 palette、crop language 和 treatment，用户指定的品牌与保留项必须遵守。旧任务继续遵循其冻结的视觉要求。
 - 生成后逐图检查构图、错字、裁切和事实暗示，不把生成画面当事实证据。
 
 ## Sourced Web Images

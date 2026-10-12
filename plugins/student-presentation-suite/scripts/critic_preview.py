@@ -234,6 +234,33 @@ def materialize(
         "quality": quality,
         "entries": entries,
     }
+    spec_binding = (manifest.get("inputs") or {}).get("slide_spec") or {}
+    pptx_binding = (manifest.get("build") or {}).get("pptx") or {}
+    if evidence["scope"] == "production" and spec_binding.get("path") and pptx_binding.get("path"):
+        sys.path.insert(0, str(ROOT / "skills" / "sp-deck" / "scripts"))
+        import pptx_actual_content_check as content
+
+        from shared.content_requirements import semantic_binding
+        from shared.design_policy import model_led
+
+        spec = content.load_structured(Path(spec_binding["path"]))
+        if model_led(spec):
+            payload["preserve"] = spec.get("preserve", [])
+            payload["user_constraints"] = {key: spec.get("meta", {})[key] for key in ("brand", "logo", "template") if key in spec.get("meta", {})}
+            payload["design_freedom"] = manifest.get("design_freedom", "auto")
+        if spec.get("schema_version") == "2.1":
+            pptx = Path(pptx_binding["path"])
+            notes = content.extract_pptx_notes(pptx)
+            actual = content.extract_pptx_text(pptx)
+            registry_path = Path(str(pptx) + ".registry-report.json")
+            registry = json.loads(registry_path.read_text(encoding="utf-8")) if registry_path.is_file() else {}
+            payload["registered_pages"] = registry.get("slides", [])
+            payload["semantic_binding"] = semantic_binding(digest(Path(spec_binding["path"])), actual, notes)
+            payload["semantic_pages"] = [{
+                "slide": index, "requirements": slide["semantic_requirements"],
+                "actual_text": actual[index - 1], "notes": notes.get(index, ""),
+            } for index, slide in enumerate(spec["slides"], 1)]
+            payload["evidence_ledger"] = spec.get("evidence_ledger", [])
     if payload != previous:
         (work_dir / MAP_NAME).write_text(
             json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"

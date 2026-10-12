@@ -64,6 +64,8 @@ def cmd_complete(args: argparse.Namespace) -> int:
         *(qa.get("previews") or []),
         *(qa.get("stages") or {}).values(),
     ]
+    if qa.get("presentation_copy") is not None:
+        evidence.append(qa["presentation_copy"])
     registry = Path(str(pptx_path(manifest)) + ".registry-report.json")
     if registry.is_file() or qa.get("registry_report") is not None:
         evidence.append(qa.get("registry_report"))

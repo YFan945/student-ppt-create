@@ -34,9 +34,12 @@ class BuilderAgentContractTests(unittest.TestCase):
         self.assertIn("proof", text)
         self.assertIn("sequence", text)
         self.assertIn("figure", text)
-        self.assertIn("流畅不是证据", text)
+        self.assertIn("presentation_copy", text)
+        self.assertIn("semantic_requirements", text)
         self.assertNotIn("leave undefined to let the", text)
-        self.assertIn("Do not start from a layout id", text)
+        self.assertIn("auto", text)
+        self.assertIn("guided", text)
+        self.assertIn("deterministic", text)
 
     def test_machine_contract_routes_generation_and_repair_to_builder(self) -> None:
         contract = json.loads(self.read("references/pipeline-contract.json"))

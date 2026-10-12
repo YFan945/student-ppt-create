@@ -230,6 +230,23 @@ def compile_slide_spec(
                     used.append(slide_no)
         if "evidence_refs" in slide or converted:
             slide["evidence_refs"] = converted
+        for requirement in (slide.get("semantic_requirements") or {}).get("must_convey", []):
+            refs = []
+            for ref in requirement.get("evidence_refs", []):
+                key = str(ref)
+                resolved = key if key in by_evidence else ref_map.get(key)
+                if resolved is None:
+                    unresolved.append(f"slide {slide_no}: semantic evidence_ref {key!r} does not resolve")
+                    continue
+                if resolved not in refs:
+                    refs.append(resolved)
+                if resolved not in converted:
+                    converted.append(resolved)
+                if isinstance(slide_no, int) and slide_no not in by_evidence[resolved]["used_on_slides"]:
+                    by_evidence[resolved]["used_on_slides"].append(slide_no)
+            requirement["evidence_refs"] = refs
+        if converted:
+            slide["evidence_refs"] = converted
 
     for entry in ledger:
         entry["used_on_slides"] = sorted(entry["used_on_slides"])

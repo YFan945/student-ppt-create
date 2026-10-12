@@ -33,49 +33,23 @@ For `calibration` mode:
 - before returning, write `calibration/style-summary.json` recording what you actually established: `{"established": {"title_treatment": "…", "body_treatment": "…", "surface_language": "…", "image_language": "…", "chart_language": "…", "rhythm": "…"}, "do_not_repeat": ["…"]}` — one line per key, facts only; the pipeline assembles later builders' style contract from these bytes;
 - return the changed slide ids; do not implement the rest of the deck.
 
-## Write the page the audience sees first
+## Design freedom and frozen information
 
-Each page is a declarative module. Choose the move from what the audience should see first, then fill the slots. `L.renderDeclaredPage` draws the type scale, the primary mass, and the whitespace.
+Guided moves remain `thesis`, `weighted`, `metric`, `proof`, `sequence`, `figure`.
 
-- `thesis`: one sentence is the page. Put it in `claim`. A shorter support, if any, goes in `body`.
-- `weighted`: one judgment is wider than the supports. Put the judgment in `claim` and the supports in `body`.
-- `metric`: one number is the page. Put it in `claim` or `slots.visual.value`. The note is shorter and sits beside it.
-- `proof`: a claim on one side, a chart or figure on the other. The visual is the larger region.
-- `sequence`: real steps or years. The first step is the largest; later steps get quieter.
-- `figure`: one image or native chart owns the page. Text is a caption.
+Follow each assigned slide's `design_freedom` from the packet, independently of quality_level:
 
-`COPY` holds the verbatim title, claim, key line, and body. The fidelity check reads those literals byte for byte from this file. Colors use token roles. `slots.key_line` is drawn by the engine; do not draw a second closing band.
+- `auto` (new intake default): export `module.exports = function(ctx) { ... }` and compose freely with `ctx.H` and `ctx.slide`. No move, gallery, fixed typography scale, cover band or panel is mandatory. Use available assets and the audience's first impression to choose composition. The harness captures every actual draw call, paints the base surface and adds notes.
+- `guided`: export engine data with the appropriate `move` and slots.
+- `deterministic`: export engine data with a `layout` and slots; no move.
 
-`layout` is the fallback the engine uses only after the chosen move and a fit at the role's minimum size both fail. Do not start from a layout id. Vary a repeated move with `params.primaryShare` (0.52–0.74) or `params.emphasis` (which step is largest). If `reading` names a slide, change that page's `move` or those params. Write `module.exports = function (ctx) {…}` only when none of the six moves can say the page, and comment why.
+In every mode, choose positive font sizes for the actual page. There is no product font floor or required title/body ratio for model-led work. Respect geometry, contrast and the independent critic's actual readability findings. A fit failure carries the text and region: change size, composition or expression instead of suppressing it.
 
-```js
-'use strict';
-/** Slide 3 — 模型优化的是像 */
-/* ON-SCREEN REQUIRED — 逐字渲染 title/claim（actual-content 门字节级匹配） */
-const COPY = {
-  title: '模型优化的是像',
-  claim: '流畅不是证据',
-  keyLine: '先写出能核对的一句',
-  slideCopy: ['其余解释都退到这句话后面'],
-};
-/* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */
-module.exports = {
-  dark: false,
-  kind: 'content',
-  move: 'thesis',
-  context: { slideId: 3, slideKind: 'content', role: 'claim' },
-  slots: {
-    title: COPY.title,
-    claim: COPY.claim,
-    key_line: COPY.keyLine,
-    body: COPY.slideCopy,
-  },
-  params: {},
-  notes: '先停在「流畅不是证据」，再用后面那句解释为什么。',
-};
-```
+For schema 2.1 the frozen contract is `semantic_requirements`: convey every `must_convey` item at its stated location (default slide), show every `must_show_exact` string and key number, and keep evidence/source identity unchanged. Rewrite titles and long planning prose into concise visible copy; supplementary explanation can go into notes, but core information cannot silently move there. Legacy 1.0/2.0 requirements without a semantic contract still require the planned visible copy.
 
-The harness runs background, palette, the move, and notes. Do not hand-write that glue.
+For auto pages attach `module.exports.presentation_copy = {headline, visual_labels, speaker_notes}` and `module.exports.notes = '...'`. These describe what is actually shown; the harness assembles `presentation-copy.json` and the artifact readback checks it. Do not call addNotes yourself in auto. Decoratively overlapping shapes may explicitly use `decorative: true`; content text must not be marked decorative to avoid geometry checks.
+
+The Art Direction and gallery are suggestions for a coherent visual language, not aesthetic ceilings. User-specified brand/template/logo/preserve constraints remain binding. Prefer palette roles; font family substitutions are recorded and verified on the render. Do not invent source data, evidence imagery or unavailable assets.
 
 ## Self-check before returning (all modes)
 
@@ -93,7 +67,7 @@ For `initial` mode:
 - implement every remaining scaffolded `pages/pNN-*.js` page module for `create` / `rebuild_from_source`;
 - when the caller gives you a shard, implement **only those slide ids** and never read, write, or edit another page module: shards are computed by the pipeline to be mutually exclusive, and a concurrent builder owns the pages outside yours. Write your notes to the packet's `speaker_notes_target` (`speaker-notes-shard-<N>.md` when sharded; the pipeline concatenates the fragments into `speaker-notes.md` at build) unless you are the only builder;
 - remove the scaffold marker only after that page is actually implemented;
-- speaker notes are delivered **in the PPTX notes pane** (`slide.addNotes(text)`, one call per
+- speaker notes are delivered **in the PPTX notes pane** (the harness calls `slide.addNotes(text)`, one call per
   slide, plain text) plus the `speaker-notes.md` copy when the frozen spec requires notes — the
   quality gate reads the notes pane of the built artifact, not the spec field (2026-09-17:
   10 ghost `speaker_notes_missing` blockers on a deck whose notes pane was verified intact);
@@ -109,9 +83,10 @@ For `repair` mode:
   repair round; never work from a blocker list transcribed in the spawn prompt;
 - edit only the blocker pages plus any directly shared helper/page module that must change to fix them;
 - do not opportunistically redesign unrelated pages;
-- **never make an accepted page worse.** `rigorous` blocks a per-slide visual
-  regression of 1.5 or more; `fast` and `standard` record it as advisory. Do not redesign
-  passing pages to chase a subjective score;
+- **never make an accepted page worse.** For model-led tasks, subjective score
+  regressions are advisory in every tier; actual readability and content defects
+  remain blockers. Legacy contracts retain their existing rigorous regression
+  threshold. Do not redesign passing pages to chase a subjective score;
 - never claim a blocker is fixed without changing the relevant generator artifact.
 
 ## Hard boundaries

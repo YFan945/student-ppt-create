@@ -58,15 +58,15 @@ S07 来源标题手打产生字符级失真（6 项 final-reference blocker）�
   轮转、天然互斥，越界改页会覆盖并发 builder 的成果且无法回滚。
 - 讲稿写到 packet 的 `speaker_notes_target`（并行时为 speaker-notes-shard-<N>.md）；
   PPTX 备注区仍由你每页 `slide.addNotes` 写一次、纯文本。
-- 上屏硬要求：本页 title、claim 与每个 planned number 必须以可见文本出现（actual-content 门读
-  文本 run；chart 数据标签不算）。**每个 planned number 只由一个文本载体陈述**：不要再用柱上
-  数值标签、居中大数字或第二条要点重复同一值（triple-encoding / dual-value-per-bar 是缺陷）；
-  已由文本载体承担的数值可省图表直标。一根柱旁不要并排两个数值。
-- 调色板：<style seed> 的 light/dark 两套角色色之外任何十六进制色值即缺陷；中文正文 ≥22pt。
-  图表轴/图例/标题颜色用 helper 的默认绑定（已接调色板），不要逐图手补。
+- 设计模式按 packet 每页的 design_freedom：auto 自由坐标；guided 选 move；deterministic 用 layout。
+  不强制参考 gallery、固定字号或标题正文比例。实际几何、关键内容可读性和用户保留要求必须通过。
+- 2.1 的信息要求按 must_convey / must_show_exact：展示文案可改写，核心信息必须在指定位置。
+  Legacy 1.0/2.0 没有 semantic_requirements 时继续按原文覆盖契约。
+- auto 函数页附 presentation_copy 与 notes，harness 管理背景、元素登记及每页一次备注。
+  guided/deterministic 填 slots 与 notes，避免重复手工 glue。
 - 末页来源区逐字渲染 packet 的 `slides[].sources`（= COPY.sources），禁止改写/翻译/缩写。
 - **已通过评审的页不得降分**（packet `must_not_regress`；QA 对比逐页视觉分数，下降 ≥1.5 分即
-  visual_regression）。保留 scaffold COPY 字面量；不得引入 spec 之外的新数字。
+  visual_regression）。旧契约保留 COPY 字面量；2.1 保留精确项与事实，不得引入 spec 之外的新数字。
 - **不要跑 build / render / calibration_preview.py / soffice / ppt_pipeline.py /
   run_with_pptxgenjs.js**（packet `forbidden_actions`；hook 会拒绝）。要反馈就回报 BUILDER_DONE，
   主会话渲染后把报告路径给你。
@@ -155,3 +155,18 @@ summary）后，独立评审收敛为生产边界的一次。历史教训仍然�
 
 - 不传 `name`；不从子代理内再 spawn 任何 Agent。
 - 主会话不把页面源码、检索轨迹或报告全文拉回主上下文，只接收紧凑信封。
+
+## 2.1 critic projection
+
+When `critic-preview-map.json` contains semantic_pages, copy semantic_binding
+and emit semantic_coverage for every stable requirement id. Inspect its assigned
+location using actual_text, notes, evidence_ledger and current render. Quote
+actual_excerpt or identify inspected registered visual_elements. Missing core
+information/changed facts block all tiers. Model-led subjective scores alone
+are advisory; no gallery imitation, fixed font floor or repeated-move blocker.
+Never use Builder self-reported coverage as acceptance evidence.
+Quotes must be contiguous actual text, without invented separators. For new
+model-led reports use finding category `design_preference` for treatment and
+aesthetic alternatives, and `readability`/`fact`/`structure`/`user_constraint`
+for concrete defects. The latter retain their reported blocking severity in
+every tier; style suggestions do not replace actual information checks.

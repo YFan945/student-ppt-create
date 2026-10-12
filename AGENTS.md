@@ -106,6 +106,8 @@ sp-research → sp-outline → sp-deck → sp-review
 
 Canonical ownership:
 
+- `references/model-led-design.md`: new-task design freedom, Slide Spec 2.1 semantic requirements, measured typography and page-local downgrade policy. New tasks default to auto; old work ids/specs are not migrated. No fixed font-size floor or mandated gallery treatment for new tasks.
+
 - `references/presentation-intake.md`: clarification gate and workflow states.
 - `references/shared-standards.md`: routing and presentation quality standards.
 - `references/slide-spec.md` plus schema: structured planning and review-to-edit handoff.
@@ -121,6 +123,9 @@ Canonical ownership:
 - `references/visual-review.schema.json`: canonical shape of the critic's `visual-review.json`;
   QA validates against it before consuming. `required` is deliberately the minimal set the gate
   reads (`pptx_sha256`, `slides`) — fields nobody consumes must not become blocking requirements.
+- `shared/content_requirements.py` and `shared/pptx_text_readback.py`: exact numeric
+  tokens, independent semantic coverage, text/notes input binding, and logical
+  positioned-span readback. Never join unrelated text boxes to pass a fact check.
 - `references/spawn-templates.md`: the fixed spawn prompts for the isolated agents
   (researcher / builder / critic). Fixed constraint blocks are copied verbatim and data slots carry
   paths only; byte-exact content (claims, source titles, numbers) is never transcribed into a prompt.

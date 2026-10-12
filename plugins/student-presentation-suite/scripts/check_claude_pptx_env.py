@@ -88,7 +88,7 @@ def npm_global_root(npm: str | None) -> Path | None:
     return Path(output.splitlines()[-1].strip()).expanduser().resolve()
 
 
-def resolve_pptxgenjs(project: Path) -> dict[str, Any]:
+def resolve_pptxgenjs(project: Path, module: str = "pptxgenjs") -> dict[str, Any]:
     node = command_path("node")
     npm = command_path("npm")
     if not node:
@@ -117,6 +117,7 @@ def resolve_pptxgenjs(project: Path) -> dict[str, Any]:
         "console.log(JSON.stringify({path:modulePath,version:pkg.version}));"
     )
     attempts: list[dict[str, str]] = []
+    probe = probe.replace("pptxgenjs", module)
     for source, base in candidates:
         ok, output = run_probe([node, "-e", probe, str(base)])
         if ok:
@@ -184,6 +185,7 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
         "node": {"ok": command_path("node") is not None, "path": command_path("node")},
         "npm": {"ok": command_path("npm") is not None, "path": command_path("npm")},
         "pptxgenjs": resolve_pptxgenjs(active_project),
+        "fontkit": resolve_pptxgenjs(active_project, "fontkit"),
         "markitdown": {"ok": python_module("markitdown"), "module": "markitdown"},
         "Pillow": {"ok": python_module("PIL"), "module": "PIL"},
         "defusedxml": {"ok": python_module("defusedxml"), "module": "defusedxml"},
@@ -236,7 +238,7 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
         "Open XML schema validator",
         "PPTX runtime",
     ]
-    create_required = ["node", "pptxgenjs", *common_required]
+    create_required = ["node", "pptxgenjs", "fontkit", *common_required]
     edit_required = list(common_required)
     outline_required = ["jsonschema", "PyYAML"]
     review_required = ["PPTX runtime", "defusedxml"]

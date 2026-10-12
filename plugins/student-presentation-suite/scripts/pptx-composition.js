@@ -74,9 +74,25 @@ function planText(ctx, text, box, role, options = {}) {
       balance: false,
       isCJK: lang === 'chinese' || lang === 'bilingual' ? true : undefined,
     });
-  let fit = measure(requested);
-  if (!fit.fits && requested > floor) fit = measure(floor);
+  let fit = ctx.tokens.model_led
+    ? H.fitText(
+        String(text),
+        box,
+        H.rolePolicy(ctx.tokens, lang, role, {
+          ...options,
+          margin: options.margin ?? 0,
+          balance: options.balance !== false,
+        }),
+      )
+    : measure(requested);
+  if (!ctx.tokens.model_led && !fit.fits && requested > floor) fit = measure(floor);
   if (!fit.fits) {
+    if (ctx.tokens.model_led)
+      throw layoutFit(
+        `${options.label || role} cannot fit in ${box.w.toFixed(2)}x${box.h.toFixed(2)}in ` +
+          `at ${fit.fontSize}pt: required height ${fit.requiredH.toFixed(3)}in, ` +
+          `maximum line width ${Math.max(...fit.lineGeometry.map((line) => line.w)).toFixed(3)}in`,
+      );
     throw layoutFit(
       `${options.label || role} cannot fit in ${box.w.toFixed(2)}x${box.h.toFixed(2)}in ` +
         `at ${options.min || 'role'}pt`,
@@ -100,7 +116,7 @@ function paint(ctx, planned) {
       ...op.options,
       fontSize: op.fit.fontSize,
       margin: op.options.margin ?? 0,
-      balance: false,
+      balance: ctx.tokens.model_led ? op.options.balance !== false : false,
       label: op.options.label,
     });
     register(ctx, {
@@ -125,7 +141,14 @@ function paintKeyLine(ctx, frame) {
     H.addDivider(ctx.slide, band.x, ruleY, band.w, ctx.tokens, 'hairline');
     register(ctx, { type: 'line', x1: band.x, y1: ruleY, x2: band.x + band.w, y2: ruleY });
     const textBox = { x: band.x, y: band.y + 0.06, w: band.w, h: band.h - 0.12 };
-    const fit = H.fitText(frame.key, textBox, { min: 14, max: 22, margin: 0, role: 'body' });
+    const keyPolicy = ctx.tokens.model_led
+      ? H.rolePolicy(ctx.tokens, lang, 'body', {
+          fontSize: ctx.tokens.typography?.key_statement_pt ?? 22,
+          margin: 0,
+          bold: true,
+        })
+      : { min: 14, max: 22, margin: 0, role: 'body' };
+    const fit = H.fitText(frame.key, textBox, keyPolicy);
     if (!fit.fits) return;
     H.addFittedText(ctx.slide, frame.key, textBox, ctx.tokens, lang, 'body', {
       bold: true,
@@ -220,6 +243,7 @@ function renderStyleRule(ctx, area) {
 /** 计划文本的实际高度（估算器的行数 × 行距），用于把装饰面板收到文案大小。 */
 function plannedTextHeight(op) {
   const fit = (op && op.fit) || {};
+  if (fit.lineGeometry) return fit.requiredH;
   const lines = Math.max(1, Number(fit.lines) || 1);
   const size = Math.max(8, Number(fit.fontSize) || 24);
   return lines * (size / 72) * 1.24;
@@ -235,6 +259,21 @@ function plannedTextHeight(op) {
 function tightFocalBox(focal, op) {
   const padX = 0.28;
   const padY = 0.24;
+  if (op?.fit?.lineGeometry) {
+    const lines = op.fit.lineGeometry;
+    const left = Math.min(...lines.map((line) => line.x));
+    const top = Math.min(...lines.map((line) => line.y));
+    const right = Math.max(...lines.map((line) => line.x + line.w));
+    const bottom = Math.max(...lines.map((line) => line.y + line.h));
+    const x = Math.max(0, left - padX),
+      y = Math.max(0, top - padY);
+    return {
+      x,
+      y,
+      w: Math.min(H.SLIDE_W_IN - x, right - left + padX * 2),
+      h: Math.min(H.SLIDE_H_IN - y, bottom - top + padY * 2),
+    };
+  }
   const text = String((op && op.text) || '');
   const chars = [...text].length;
   const lines = Math.max(1, Number(((op && op.fit) || {}).lines) || 1);
@@ -827,11 +866,40 @@ function renderFigure(ctx, request, canvas) {
   if (!family) throw layoutFit('figure visual needs an image or a native chart');
   const asset = flatVisual(visual).asset;
   if (asset) {
-    ctx.slide.addImage({
-      path: asset,
-      ...V.coverImage(asset, visualBox),
-      altText: String(flatVisual(visual).alt_text || claim || 'Presentation visual'),
-    });
+    const data = flatVisual(visual);
+    if (ctx.tokens.model_led) {
+      const size = V.probeImageSize(asset);
+      const preserveRegion =
+        data.preserve_region ||
+        (data.preserve_region_w > 0 && data.preserve_region_h > 0
+          ? {
+              x: data.preserve_region_x || 0,
+              y: data.preserve_region_y || 0,
+              w: data.preserve_region_w,
+              h: data.preserve_region_h,
+            }
+          : undefined);
+      H.addPlannedImage(
+        ctx.slide,
+        {
+          ...data,
+          path: asset,
+          width: size.width,
+          height: size.height,
+          preserve_region: preserveRegion,
+          crop_suggestion: data.crop_suggestion || data.fit || 'contain',
+          alt_text: String(data.alt_text || claim || 'Presentation visual'),
+        },
+        visualBox,
+        ctx.pptx,
+      );
+    } else {
+      ctx.slide.addImage({
+        path: asset,
+        ...V.coverImage(asset, visualBox),
+        altText: String(data.alt_text || claim || 'Presentation visual'),
+      });
+    }
   } else
     V.renderVisual(
       ctx.slide,

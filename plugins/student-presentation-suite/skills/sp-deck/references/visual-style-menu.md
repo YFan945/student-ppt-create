@@ -1,5 +1,14 @@
 # Visual Style Menu
 
+## New-task policy (2.1)
+
+For new tasks, [model-led-design.md](../../../references/model-led-design.md) owns design modes, frozen semantic
+requirements and measured text. Its policy overrides legacy template/scale/
+verbatim-copy guidance below. `auto` is the default; user brand/template/logo
+and actual readability remain binding. Treat fixed sizes, proportions and
+gallery treatments here as optional design suggestions for new tasks.
+
+
 Visual styles are **user-facing style seeds**, not templates or layout engines. Each seed keeps the intake simple by describing character, a light six-role palette, its dark companion for cover/section/closing pages, background treatment and one optional SVG motif. After the user confirms the seed, v0.8 **must expand it through `pptx-art-direction.md`** into concrete typography scale, image treatment/crop language, icon language, chart grammar, component behavior, motif use, background rhythm and asset mix before final composition.
 
 This separation is intentional: users choose a comprehensible visual mood; the model then acts as art director instead of asking the user to configure dozens of design details. Apply priorities in this order: approved school/user template → readability/source safety/truthful representation → slide narrative task → confirmed style seed → generated Art Direction.
@@ -108,11 +117,9 @@ chart grammar (`columns`, `line`, `bars`) and its decoration density
 (`restrained`, `balanced`, `expressive`). This is what makes the same layout
 read differently across styles while staying one system.
 
-**Rendered exemplars:** `examples/visual-template-gallery/` renders 9 template
-pages per style (108 pages total) from the layout library and these tokens.
-Before composing a deck, consult the rendered pages of the selected style as
-the visual ceiling reference; copy the *treatment* (type scale, rule placement,
-panel handling, motif use), never the sample copy.
+**Rendered exemplars:** `examples/visual-template-gallery/` is an optional
+reference and deterministic fallback. Use it for ideas or failure recovery;
+there is no visual ceiling or required imitation of its treatment.
 
 ## Template Inheritance
 

@@ -1,5 +1,14 @@
 # PPTX Production
 
+## New-task policy (2.1)
+
+For new tasks, [model-led-design.md](../../../references/model-led-design.md) owns design modes, frozen semantic
+requirements and measured text. Its policy overrides legacy template/scale/
+verbatim-copy guidance below. `auto` is the default; user brand/template/logo
+and actual readability remain binding. Treat fixed sizes, proportions and
+gallery treatments here as optional design suggestions for new tasks.
+
+
 本文件只负责生产阶段编排。Intake、内容、证据、图片和视觉标准由共享 canonical references 负责；低层命令见 `pptx-runtime.md`，PptxGenJS 安全规则见 `pptxgenjs-safety.md`。
 
 生产前必须具备：已确认的 Production Summary、验证并冻结的 Presentation Brief / Slide Spec、明确 output prefix、selected visual style seed，以及唯一 production mode。create/rebuild 的页面声明 `move`，由引擎绘制；不能从 Slide Spec 直接跳到手工坐标。reference、线框和 `adaptive-freeform` 是遗留探索，不是 build 前置。

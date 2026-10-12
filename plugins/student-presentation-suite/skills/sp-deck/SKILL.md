@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.28.4
+version: 0.29.0
 ---
 
 # Student Presentation PPT
@@ -85,6 +85,10 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" status --w
 ```
 
 生产段 `planned → producing → qa → complete`；`qa → producing` 只能经 `ppt_pipeline.py repair`，repair 上限由 `pipeline-contract.json` 强制。**Calibration preview 不改变生产状态，也不写 `manifest.build/render`**；它只是正式 build 前的临时视觉证据。正式重复 build 仍必须先 repair 且 generator hash 必须变化；相同 PPTX/visual-review/previews 的 QA 自动复用上次结果。
+
+## Model-led design
+
+新任务 Brief 默认 design_freedom: auto，生成 schema_version: "2.1" 的 Slide Spec。信息与证据冻结，展示文案和构图可自由改写。guided/deterministic 为可选模式与预算内兜底，独立于 quality_level。字号无固定地板；实际渲染可读性、精确事实、来源、几何和结构仍必须通过。规则以 ../../references/model-led-design.md 为准，旧 work-id 不迁移。
 
 ## Workflow
 

@@ -74,6 +74,15 @@ function takeawayLayout(text, area, tokens, lang) {
   const w = area.w * ratio;
   const x = area.x + area.w - w;
   const fontSize = H.fontSizeScale(tokens, lang).label;
+  if (tokens.model_led) {
+    const fit = H.fitText(
+      plain,
+      { x, y: area.y, w, h: area.h },
+      H.rolePolicy(tokens, lang, 'label', { margin: 6 }),
+    );
+    const h = Math.min(area.h, fit.requiredH + 0.3);
+    return { box: { x, y: area.y + (area.h - h) / 2, w, h }, chartRatio: 1 - ratio - 0.05 };
+  }
   // 与 H.estimateTextFit 同一套估算：字宽(cm) = 字号 × 0.035(CJK)/0.021(拉丁)。
   const charWidthIn = (fontSize * (isCJK ? 0.035 : 0.021)) / 2.54;
   const charsPerLine = Math.max(4, Math.floor((w - 0.36) / charWidthIn));
@@ -441,6 +450,14 @@ function addMetricDashboard(slide, data, area, tokens, lang) {
       const sizes = H.fontSizeScale(tokens, lang);
       const isValue = role === 'kpi';
       const budgetH = Math.max(0.2, cells[index].h * (isValue ? 0.55 : 0.36) - cellInset.y * 2);
+      if (tokens.model_led) {
+        const fit = H.fitText(
+          plain,
+          { w: cells[index].w - cellInset.x * 2, h: budgetH },
+          H.rolePolicy(tokens, lang, role, { margin: 6, bold: isValue }),
+        );
+        return fit.requiredH + 12 / 72 + cellInset.y * 2;
+      }
       const fit = H.fitText(
         plain,
         { w: cells[index].w - cellInset.x * 2, h: budgetH },
@@ -519,7 +536,14 @@ function addStyledTable(slide, data, area, tokens, lang) {
       color: readableOn(p.accent, p),
       bold: true,
       fontFace: H.fontFamily(tokens).body,
-      fontSize: Math.max(11, H.fontSizeScale(tokens, lang).caption + 1),
+      fontSize: tokens.model_led
+        ? Number(
+            data.header_font_size ??
+              data.font_size ??
+              tokens.typography?.caption_pt ??
+              H.fontSizeScale(tokens, lang).caption,
+          )
+        : Math.max(11, H.fontSizeScale(tokens, lang).caption + 1),
       align: 'left',
       valign: 'middle',
     },
@@ -536,7 +560,13 @@ function addStyledTable(slide, data, area, tokens, lang) {
         color: emphasized ? readableOn(baseFill, p) : p.text,
         bold: emphasized,
         fontFace: H.fontFamily(tokens).body,
-        fontSize: Math.max(11, H.fontSizeScale(tokens, lang).caption),
+        fontSize: tokens.model_led
+          ? Number(
+              data.font_size ??
+                tokens.typography?.caption_pt ??
+                H.fontSizeScale(tokens, lang).caption,
+            )
+          : Math.max(11, H.fontSizeScale(tokens, lang).caption),
         align: 'left',
         valign: 'middle',
       },
@@ -865,7 +895,7 @@ function addAnnotatedVisual(slide, data, area, tokens, lang) {
   const imageBox = { x: area.x, y: area.y, w: area.w * 0.56, h: area.h };
   if (data.asset) {
     addPanel(slide, imageBox, tokens, { shape: 'rect', fill: p.surface, line: p.muted });
-    const useCover = data.fit === 'cover';
+    const useCover = data.fit === 'cover' && !(tokens.model_led && data.preserve_region);
     slide.addImage({
       path: data.asset,
       ...(useCover
@@ -933,6 +963,14 @@ function addAnnotatedVisual(slide, data, area, tokens, lang) {
     const plain = H.plainText(textOf(text));
     if (!plain) return gap * 2;
     const isCJK = /[぀-ヿ㐀-鿿豈-﫿]/u.test(plain);
+    if (tokens.model_led) {
+      const fit = H.fitText(
+        plain,
+        { w: annotationArea.w, h: annotationArea.h },
+        H.rolePolicy(tokens, lang, 'body', { fontSize: labelPt, margin: 16 }),
+      );
+      return fit.requiredH + marginIn * 2 + 0.16;
+    }
     const fit = H.estimateTextFit(plain, annotationArea.w - marginIn * 2, 999, labelPt, isCJK);
     return (fit.lines * (labelPt * 1.18)) / 72 + marginIn * 2 + 0.16;
   };
@@ -1151,6 +1189,7 @@ module.exports = {
   addTimeline,
   renderVisual,
   renderVisualSpec,
+  probeImageSize,
   coverImage,
 };
 

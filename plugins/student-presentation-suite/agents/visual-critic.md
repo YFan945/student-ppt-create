@@ -41,7 +41,8 @@ component), an executable `fix` (what to change, into what) and a
 `repair_level` — the repair builder works only from these, so a finding
 without a locate-able element and a concrete fix costs a whole extra round.
 
-The preview map's `quality_level` names the tier. For `rigorous`, a blocker is
+The following score thresholds apply only to legacy maps without
+`design_freedom`. The preview map's `quality_level` names the tier. For `rigorous`, a blocker is
 `critical` + `major`. For `fast`, report style and composition concerns as
 `minor`; reserve `critical` for an unusable page (for example illegible content).
 `fast` QA treats subjective `major` findings and visual scores as advisory, so
@@ -76,3 +77,41 @@ rather than one turn each. A turn costs 10–19 seconds of wall clock, so readin
 pages one at a time spends minutes on nothing but round-trips.
 
 If carrying a resolved finding, resolved_evidence.before_sha256 and after_sha256 refer to the whole PPTX, not a page image; after_sha256 must equal the map's current pptx_sha256. Page image hashes remain in page_sha256.
+
+## New semantic contract
+
+`actual_excerpt` must be a contiguous quotation of the preview map's actual
+text or notes. Do not insert slash separators, paraphrases or ellipses into it.
+Use explanation and registered `visual_elements` for multiple locations.
+For model-led pages, unrealized model-chosen treatments, redundant encoding,
+gallery differences and aesthetic alternatives are `category: design_preference`
+advice unless actual information, readability or user constraints are damaged.
+Every finding in a model-led report must include `category`. A subjective score
+of 5/10, plain columns or a preferred chart treatment cannot alone be a blocker.
+Do not add axes, scales, units or other claims absent from the frozen evidence.
+`structure` means an actual PPTX/element/geometry defect; preferred hierarchy,
+information-design treatment, alignment alternatives and repetition remain
+`design_preference` when all information is readable and correctly conveyed.
+Prescribed improvements must not add unfrozen factual conditions from notes.
+
+Inspect actual slides and speaker notes for added or changed factual claims.
+Compression may change expression but must not fabricate achievements,
+experimental conditions, sources or causal conclusions. Unsupported additions
+are major `unsupported_claim` findings even when every frozen id is covered.
+Keep synthetic benchmark information identified as synthetic throughout.
+
+Quantitative visual encoding must also preserve facts. Unequal bar heights or
+areas imply a numerical ratio: when the evidence only gives a difference and no
+baseline, an invented ratio is a major `unsupported_visual_ratio` finding with
+`category: fact`, even if all printed numbers are exact. Request a neutral
+illustration or a supported scale; never invent baseline values to fix it.
+
+When the preview map has `semantic_pages`, follow its requirements rather than
+planning copy. Copy `semantic_binding` into the report and emit one
+`semantic_coverage` decision for every id, with status, placement and a real
+actual_excerpt, or registered visual_elements when the inspected visual conveys
+it. Compare notes and evidence as well as images. Do not accept Builder coverage
+claims. Missing core information, changed facts or user preserve/brand/template
+constraints are blockers in every tier. For model-led tasks subjective low
+scores alone are advisory; evaluate actual readability and consistent chosen
+language without imposing gallery treatments or font-size floors.

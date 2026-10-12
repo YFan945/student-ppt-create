@@ -34,6 +34,8 @@ if str(ROOT) not in sys.path:
 import pptx_actual_content_check as actual_check  # noqa: E402
 import slide_spec_guard as spec_guard  # noqa: E402
 
+from shared.content_requirements import semantic_binding, semantic_review_issues  # noqa: E402
+from shared.design_policy import model_led  # noqa: E402
 from shared.hashing import file_sha256 as sha256_file  # noqa: E402
 from shared.quality_tiers import tier_policy  # noqa: E402
 
@@ -204,6 +206,15 @@ def visual_review_schema_issues(report: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+def visual_finding_category_issues(report: dict[str, Any]) -> list[dict[str, Any]]:
+    """New reports must distinguish design advice from artifact failures."""
+    entries = [*(report.get("slides") or []), report.get("deck") or {}]
+    return [issue("major", "visual_finding_category_missing", "Model-led critic findings require a category.", slide=entry.get("slide"))
+            for entry in entries if isinstance(entry, dict)
+            for finding in entry.get("issues") or [] if isinstance(finding, dict)
+            if finding.get("category") not in {"design_preference", "readability", "fact", "structure", "user_constraint"}]
+
+
 def validate_visual_report(
     report_path: Path,
     pptx: Path,
@@ -212,6 +223,7 @@ def validate_visual_report(
     high_score: bool = False,
     policy: dict[str, Any] | None = None,
     rhythm_plan: dict[str, Any] | None = None,
+    modelled: bool = False,
 ) -> dict[str, Any]:
     """Judge a visual review under one tier's policy (shared/quality_tiers.py).
 
@@ -225,6 +237,8 @@ def validate_visual_report(
         policy = tier_policy("rigorous" if high_score else "fast")
     report = load_json(report_path)
     issues: list[dict[str, Any]] = visual_review_schema_issues(report)
+    if modelled:
+        issues.extend(visual_finding_category_issues(report))
     style_severity = "major" if policy["block_style_major"] else ADVISORY_SEVERITY
     structural_severity = "major" if policy["block_structural"] else ADVISORY_SEVERITY
     pptx_digest = sha256_file(pptx)
@@ -284,7 +298,7 @@ def validate_visual_report(
             if not isinstance(finding, dict):
                 continue
             sev = normalized_severity(finding.get("severity"))
-            if sev not in BLOCKING_SEVERITIES:
+            if sev not in BLOCKING_SEVERITIES and not modelled:
                 continue
             if has_resolution_evidence(finding, pptx_digest):
                 continue
@@ -299,7 +313,7 @@ def validate_visual_report(
                 )
             effective = style_severity if sev == "major" else sev
             issues.append(issue(effective, str(finding.get("code") or "visual_finding"), str(finding.get("message") or "Unresolved visual finding."), slide=slide_no,
-                                **{key: finding[key] for key in ("element", "fix", "repair_level") if key in finding}))
+                                critic_severity=sev, **{key: finding[key] for key in ("element", "fix", "repair_level", "category") if key in finding}))
 
     expected = set(range(1, slide_count + 1))
     missing = sorted(expected - set(by_slide))
@@ -371,7 +385,7 @@ def validate_visual_report(
             if not isinstance(finding, dict):
                 continue
             sev = normalized_severity(finding.get("severity"))
-            if sev not in BLOCKING_SEVERITIES:
+            if sev not in BLOCKING_SEVERITIES and not modelled:
                 continue
             if has_resolution_evidence(finding, pptx_digest):
                 continue
@@ -385,7 +399,7 @@ def validate_visual_report(
                 )
             effective = style_severity if sev == "major" else sev
             issues.append(issue(effective, str(finding.get("code") or "deck_visual_finding"), str(finding.get("message") or "Unresolved deck-level visual finding."),
-                                **{key: finding[key] for key in ("element", "fix", "repair_level") if key in finding}))
+                                critic_severity=sev, **{key: finding[key] for key in ("element", "fix", "repair_level", "category") if key in finding}))
 
     average_score = sum(score_values) / len(score_values) if score_values else 0.0
     target_average = 7.0 if policy["block_style_major"] else 6.0
@@ -790,6 +804,19 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def apply_modelled_findings(findings: list[dict[str, Any]]) -> None:
+    """Separate discretionary design advice from concrete artifact failures."""
+    for finding in findings:
+        if finding.get("code") in {"visual_score_low", "visual_score_regression", "planned_realized_divergence", "ai_template_feel", "no-information-design"}:
+            finding["severity"] = ADVISORY_SEVERITY
+        elif finding.get("code") in {"brand_constraint_changed", "template_constraint_changed", "logo_missing", "preserve_violation", "unreadable", "unsupported_claim", "factual_error", "source_mismatch", "semantic_contradiction", "bar-height-implies-unstated-ratio", "unsupported_visual_ratio"} or finding.get("category") in {"fact", "user_constraint"}:
+            finding["severity"] = "major"
+        elif finding.get("category") == "design_preference":
+            finding["severity"] = ADVISORY_SEVERITY
+        elif finding.get("category") in {"fact", "readability", "structure", "user_constraint"} and finding.get("critic_severity") in BLOCKING_SEVERITIES:
+            finding["severity"] = finding["critic_severity"]
+
+
 def run(args: argparse.Namespace) -> int:
     """Run the quality gate with pre-parsed arguments (shared by gate-all)."""
     if not args.pptx.is_file():
@@ -814,6 +841,7 @@ def run(args: argparse.Namespace) -> int:
     if visual_only:
         visual = validate_visual_report(
             args.visual_report, args.pptx, len(actual_text), policy=policy, rhythm_plan=rhythm_plan,
+            modelled=model_led(spec),
         )
     else:
         visual = {
@@ -835,7 +863,28 @@ def run(args: argparse.Namespace) -> int:
         regression, merged_scores = [], None
     lock_issues = [] if spec_lock["ok"] else [issue("critical", "slide_spec_lock_invalid", message) for message in spec_lock["errors"]]
     move_issues = repeated_move_issues(Path(str(args.pptx) + ".layout-report.json"), policy)
+    if model_led(spec):
+        for finding in move_issues:
+            finding["severity"] = ADVISORY_SEVERITY
+    semantic_issues = []
+    if visual_only and spec.get("schema_version") == "2.1":
+        review = load_json(args.visual_report)
+        notes_data = actual_check.extract_pptx_notes(args.pptx)
+        binding = semantic_binding(sha256_file(args.slide_spec), actual_text, notes_data)
+        if review.get("semantic_binding") != binding:
+            semantic_issues.append(issue("major", "semantic_review_stale", "Semantic review must bind the frozen Spec and actual PPTX notes."))
+        registry_path = Path(str(args.pptx) + ".registry-report.json")
+        registry_data = load_json(registry_path) if registry_path.is_file() else {}
+        elements = {item["slide"]: {str(element["id"]) for element in item.get("elements", [])} for item in registry_data.get("slides", [])}
+        semantic_issues.extend(semantic_review_issues(spec, review, actual_text, notes_data, elements))
     all_issues = lock_issues + visual["issues"] + evidence["issues"] + timing["issues"] + regression + move_issues
+    all_issues += semantic_issues
+    if model_led(spec):
+        # A subjective score alone cannot replace a concrete readability finding.
+        apply_modelled_findings(all_issues)
+        visual["blocker_count"] = sum(item["severity"] in BLOCKING_SEVERITIES for item in visual["issues"])
+        visual["advisory_count"] = sum(item["severity"] == ADVISORY_SEVERITY for item in visual["issues"])
+        visual["ok"] = visual["blocker_count"] == 0
     blockers = [item for item in all_issues if item["severity"] in BLOCKING_SEVERITIES]
 
     result = {

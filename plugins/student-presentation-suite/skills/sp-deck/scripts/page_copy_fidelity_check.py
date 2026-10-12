@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Refuse a build whose pages/ no longer carry the Slide Spec copy verbatim.
+"""Check exact frozen requirements for 2.1; retain legacy verbatim-copy coverage.
 
-Why this exists: `pptx_actual_content_check.py` demands `title` / `claim` /
+Historical 1.0/2.0 behavior: `pptx_actual_content_check.py` demands `title` / `claim` /
 `slide_copy` appear **verbatim** on the rendered slide, but it can only run
 *after* the deck has been built and rendered. When a page module paraphrases the
 Spec, the failure surfaces at QA — after build, render and the first QA stage
@@ -39,8 +39,11 @@ from pptx_actual_content_check import (  # noqa: E402
     compact_fragments,
     load_structured,
     normalize,
+    planned_requirements,
     sha256_file,
 )
+
+from shared.content_requirements import exact_present  # noqa: E402
 
 PAGE_RE = re.compile(r"^p(\d+)-", re.IGNORECASE)
 MIN_FRAGMENT_CHARS = 6
@@ -56,6 +59,7 @@ def source_text(path: Path) -> str:
     """
     raw = path.read_text(encoding="utf-8", errors="replace")
     joined = re.sub(r"['\"`]\s*\+\s*['\"`]", "", raw)
+    joined = re.sub(r"(['\"`])\s*,\s*(['\"`])", r"\1 \2", joined)
     joined = joined.replace("\\n", " ").replace("\\t", " ")
     # Quotes/backticks are JavaScript syntax, but commas are content.  Removing
     # commas here made the source side disagree with ``missing_fragments`` and
@@ -74,6 +78,12 @@ def page_for(pages: list[Path], index: int) -> Path | None:
 def missing_fragments(slide: dict[str, Any], page_norm: str) -> list[dict[str, Any]]:
     """Planned strings absent from one page module, mirroring the QA codes."""
     missing: list[dict[str, Any]] = []
+    requirements = planned_requirements(slide)
+    if requirements.get("copy_policy") == "semantic":
+        return [
+            {"field": "must_show_exact", "code": "exact_content_missing", "text": text}
+            for text in requirements["must_show_exact"] if not exact_present(text, page_norm)
+        ]
     candidates: list[tuple[str, str, str]] = []
     title = str(slide.get("title") or "").strip()
     if title:

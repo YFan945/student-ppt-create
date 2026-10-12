@@ -81,7 +81,7 @@ while the failed build remains blocked from render and QA until rebuilt green.
 
 - Output directory: `${CLAUDE_PROJECT_DIR}/outputs` (never plugin install dir)
 - Source decks are read-only; never overwritten
-- Chinese body ≥ 22pt, English body ≥ 20pt, titles ≥ 24pt
+- Model-led tasks have no fixed font floor; inspect actual readability, geometry and contrast. Legacy work keeps its frozen policy.
 - ≤ 4 bullets per slide, ≤ 80 Chinese chars or 40 English words (excluding citations, captions, and chart labels)
 - Avoid AI boilerplate wording patterns
 

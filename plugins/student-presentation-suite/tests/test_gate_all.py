@@ -56,10 +56,10 @@ def _load(name: str, path: Path):
 
 
 class GateAllTests(unittest.TestCase):
-    def _make_fixture(self, root: Path) -> dict[str, Path]:
+    def _make_fixture(self, root: Path, *, title_pt: int = 33) -> dict[str, Path]:
         deck = root / "gate-all-deck.pptx"
         script = root / "make-deck.js"
-        script.write_text(NODE_SCRIPT, encoding="utf-8")
+        script.write_text(NODE_SCRIPT.replace('fontSize: 33', f'fontSize: {title_pt}'), encoding="utf-8")
         subprocess.run(
             ["node", str(script), str(ROOT), str(deck)],
             cwd=str(ROOT),
@@ -159,6 +159,24 @@ class GateAllTests(unittest.TestCase):
             # 同一代码本地 98s 全绿。放宽到 420s 只影响挂钟上限，不改变判定。
             timeout=420,
         )
+
+    def test_gate_all_forwards_modelled_spec_without_enforcing_legacy_font_ratio(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            fixture = self._make_fixture(root, title_pt=24)
+            self._run_gate_all(root, fixture)
+            legacy = json.loads((root / 'gate-all-report.json').read_text(encoding='utf-8'))
+            self.assertFalse(legacy['steps']['rendered']['ok'])
+            spec = fixture['spec']
+            spec.write_text(spec.read_text(encoding='utf-8').replace('meta:\n', 'meta:\n  design_freedom: auto\n'), encoding='utf-8')
+            report = root / 'slide-spec-report.json'
+            report.write_text(json.dumps({'valid': True, 'slide_spec_sha256': hashlib.sha256(spec.read_bytes()).hexdigest()}), encoding='utf-8')
+            guard = _load('gate_all_modelled_guard', SKILL_SCRIPTS / 'slide_spec_guard.py')
+            guard.write_lock(fixture['lock'], guard.make_lock(spec, report, revision=1, reason='modelled fixture'))
+            result = self._run_gate_all(root, fixture)
+            current = json.loads((root / 'gate-all-report.json').read_text(encoding='utf-8'))
+            self.assertTrue(current['steps']['rendered']['ok'], result.stdout + result.stderr)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_gate_all_passes_a_clean_deck_and_writes_all_reports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

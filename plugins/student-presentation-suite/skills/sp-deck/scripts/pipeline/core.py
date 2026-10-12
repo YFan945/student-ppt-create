@@ -88,7 +88,7 @@ QA_HARD_STOP_STAGES = ("package", "rendered")
 QA_DERIVED_AFTER_UPSTREAM_FAILURE = ("delivery",)
 GATE_HISTORY_NAME = "gate-history.json"
 BUILD_FROM = {"planned", "producing"}
-QA_FROM = {"producing", "qa"}
+QA_FROM = {"producing", "qa", "incomplete"}
 # A builder that looks at the rendered artifact after building will always find one more
 # adjustment. Refusing the rebuild strands it: 2026-09-18 live, an entire repair round existed
 # only to carry two pages' tweaks into the pptx ("第 3 轮：把 p6/p8 排版微调带入产物"), because
@@ -528,6 +528,8 @@ def _gate_stage(
             "pptx_rendered_check.py", "--pptx", pptx,
             "--art-direction", art, "--output", str(report),
         )
+        if spec:
+            argv += ["--slide-spec", spec]
     elif name == "actual_content":
         argv = gate("pptx_actual_content_check.py", pptx, spec, "--output", str(report))
     elif name == "structural_contract":
@@ -709,6 +711,9 @@ def pre_qa_failed_current(manifest: dict[str, Any]) -> bool:
     entry (from an earlier deck) can never unlock a rebuild by itself.
     """
     pre_qa = manifest.get("pre_qa") or {}
+    failed_generator = (manifest.get("build") or {}).get("construction_failure")
+    if failed_generator and pre_qa.get("generator_fingerprint") == failed_generator:
+        return pre_qa.get("ok") is False
     build_sha = str(((manifest.get("build") or {}).get("pptx") or {}).get("sha256") or "")
     if not build_sha or pre_qa.get("pptx_sha256") != build_sha:
         return False

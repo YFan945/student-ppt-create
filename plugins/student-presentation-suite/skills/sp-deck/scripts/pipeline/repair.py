@@ -28,6 +28,7 @@ from pipeline.core import (  # noqa: E402
     validate_manifest_authorization,
 )
 from pipeline.scheduler import slides_named_in_reports  # noqa: E402
+from shared.design_policy import advance_design  # noqa: E402
 
 
 def _cancel_pending_repair(
@@ -210,9 +211,23 @@ def cmd_repair(args: argparse.Namespace) -> int:
         )
     budget = repair_budget(manifest)
     if repairs >= budget["effective"]:
+        if manifest.get("model_led"):
+            before = manifest["state"]
+            manifest["state"] = "incomplete"
+            record(manifest, "repair-budget-exhausted", before, "incomplete", repairs=repairs)
+            save_manifest(work_dir, manifest)
+            mirror_workflow_state(manifest, "incomplete")
         raise RefusedError(
             f"repair budget exhausted ({repairs}/{budget['effective']}); mark the task incomplete"
         )
+    findings = []
+    reports = [work_dir / "pipeline-qa.json"] if not pre_qa_repair else [work_dir / "pre-qa-build.json"] if build_info.get("construction_failure") else sorted(work_dir.glob("pre-qa-*.json"))
+    for path in reports:
+        if not path.is_file():
+            continue
+        report = json.loads(path.read_text(encoding="utf-8"))
+        findings.extend(item for item in report.get("problems", report.get("issues", [])) if item.get("severity") in {"critical", "major", "blocker"} and not item.get("derived"))
+    advance_design(manifest, findings)
     build_info["repair_count"] = repairs + 1
     build_info["pending_repair"] = True
     if pre_qa_repair:

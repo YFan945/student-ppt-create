@@ -213,8 +213,32 @@ try {
     }
     fs.copyFileSync(normalized, finalOutput);
   }
+  const presentationCopy = require('node:path').join(
+    require('node:path').dirname(script),
+    'presentation-copy.json',
+  );
+  if (fs.existsSync(presentationCopy)) {
+    const copy = JSON.parse(fs.readFileSync(presentationCopy, 'utf8'));
+    copy.pptx_sha256 = require('node:crypto')
+      .createHash('sha256')
+      .update(fs.readFileSync(finalOutput))
+      .digest('hex');
+    fs.writeFileSync(presentationCopy, `${JSON.stringify(copy, null, 2)}\n`);
+  }
+  // Sidecars were written for the temporary raw output. Carry them to the
+  // normalized artifact so pipeline/build can hash-bind the actual geometry.
+  for (const suffix of ['.registry-report.json', '.layout-report.json']) {
+    if (fs.existsSync(`${generated}${suffix}`))
+      fs.renameSync(`${generated}${suffix}`, `${finalOutput}${suffix}`);
+  }
 } finally {
-  for (const temporary of [generated, normalized, `${generated}.cjk-map.json`]) {
+  for (const temporary of [
+    generated,
+    normalized,
+    `${generated}.cjk-map.json`,
+    `${generated}.registry-report.json`,
+    `${generated}.layout-report.json`,
+  ]) {
     try {
       fs.rmSync(temporary, { force: true });
     } catch (_) {

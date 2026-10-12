@@ -1,5 +1,14 @@
 # Image Sourcing Contract — v0.8
 
+## New-task policy (2.1)
+
+For new tasks, [model-led-design.md](model-led-design.md) owns design modes, frozen semantic
+requirements and measured text. Its policy overrides legacy template/scale/
+verbatim-copy guidance below. `auto` is the default; user brand/template/logo
+and actual readability remain binding. Treat fixed sizes, proportions and
+gallery treatments here as optional design suggestions for new tasks.
+
+
 本文件把"搜图/生图"从隐式假设变成**显式能力**。`image-strategy.md` 说明该不该用图和用什么图；本文件说明**当前会话到底有没有这个能力、怎么声明、怎么留痕、拿不到时怎么办**。
 
 插件不内置、不承诺任何图片服务。能力是否存在由会话声明决定；未声明时一律按"不可用"处理，不得假装有图。

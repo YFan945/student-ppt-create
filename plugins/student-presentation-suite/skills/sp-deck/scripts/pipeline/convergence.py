@@ -29,10 +29,11 @@ def repair_budget(manifest: dict[str, Any] | None) -> dict[str, Any]:
         if isinstance(entry, dict):
             grants.append(entry)
     granted = sum(int(entry.get("rounds") or 0) for entry in grants)
+    limit = ((manifest or {}).get("build") or {}).get("repair_limit")
     return {
         "base": MAX_REPAIRS,
         "granted": granted,
-        "effective": MAX_REPAIRS + granted,
+        "effective": min(MAX_REPAIRS + granted, int(limit)) if limit is not None else MAX_REPAIRS + granted,
         "hard_cap": MAX_REPAIRS_HARD_CAP,
         "grants": grants,
     }

@@ -75,6 +75,15 @@ function estimateTextFit(el) {
   const fontSize = finite(el.fontSize) ? el.fontSize : 18;
   const box = bboxOf(el);
   if (!box || !text) return { ok: true, estimatedLines: 0, capacity: Infinity };
+  if (Array.isArray(el.lineGeometry)) {
+    const requiredH = el.lineGeometry.reduce((sum, line) => sum + line.h, 0);
+    return {
+      ok: requiredH <= box.h * 1.03 && el.lineGeometry.every((line) => line.w <= box.w),
+      estimatedLines: el.lineGeometry.length,
+      requiredH,
+      boxH: box.h,
+    };
+  }
 
   const cjk = (text.match(/[\u3400-\u9fff\uf900-\ufaff]/g) || []).length;
   const latin = Math.max(0, text.length - cjk);
@@ -125,6 +134,33 @@ class SlideElementRegistry {
 
   register(slideIndex, element) {
     if (!Number.isInteger(slideIndex) || slideIndex < 1) throw new Error('slideIndex must be >= 1');
+    if (this.options.capture && element.type === 'text')
+      element = { ...element, decorative: false, allowOverlap: false };
+    if (this.options.capture) {
+      const logical = this._slide(slideIndex).find(
+        (item) =>
+          item.type === element.type &&
+          item.logicalText === element.text &&
+          item.logicalBox &&
+          ['x', 'y', 'w', 'h'].every((key) => Math.abs(item.logicalBox[key] - element[key]) < 1e-6),
+      );
+      if (logical) {
+        if (element.role) logical.role = element.role;
+        return logical; // A manual parent registration refers to captured spans.
+      }
+      const prior = this._slide(slideIndex).find(
+        (item) =>
+          item.type === element.type &&
+          item.text === element.text &&
+          ['x', 'y', 'w', 'h'].every(
+            (key) => Math.abs((bboxOf(item)?.[key] ?? 0) - (bboxOf(element)?.[key] ?? 0)) < 1e-6,
+          ),
+      );
+      if (prior) {
+        Object.assign(prior, element);
+        return prior;
+      }
+    }
     const normalized = {
       id: element.id || `s${slideIndex}-e${this._slide(slideIndex).length + 1}`,
       type: element.type || 'shape',
@@ -249,13 +285,19 @@ class SlideElementRegistry {
     const textBoxes = boxes.filter((x) => x.el.type === 'text');
     for (const line of elements.filter((el) => el.type === 'line' && !el.allowTextCrossing)) {
       for (const text of textBoxes) {
-        if (lineIntersectsBox(line, text.box)) {
+        const regions =
+          this.options.capture && text.el.lineGeometry?.length
+            ? text.el.lineGeometry.map((geometry) => bboxOf(geometry)).filter(Boolean)
+            : [text.box];
+        if (regions.some((region) => lineIntersectsBox(line, region))) {
           warnings.push({ code: 'line_crosses_text', line: line.id, text: text.el.id });
         }
       }
     }
 
-    this._checkDesignGrammar(elements, boxes, errors, warnings);
+    if (this.options.designPreferencesAdvisory)
+      this._checkDesignGrammar(elements, boxes, warnings, warnings);
+    else this._checkDesignGrammar(elements, boxes, errors, warnings);
     this._checkAlignment(boxes, errors);
     this._checkDeadZone(boxes, warnings);
 
@@ -348,7 +390,17 @@ class SlideElementRegistry {
       outer.r >= inner.r - alignmentTolerance &&
       outer.y <= inner.y + alignmentTolerance &&
       outer.b >= inner.b - alignmentTolerance;
-    const content = boxes.filter((x) => !isDecorative(x.el));
+    const logical = new Map();
+    const content = boxes
+      .filter((x) => !isDecorative(x.el))
+      .map((item) => {
+        if (!item.el.logicalBox) return item;
+        const key = JSON.stringify(item.el.logicalBox);
+        if (logical.has(key)) return null;
+        logical.set(key, true);
+        return { el: item.el, box: bboxOf(item.el.logicalBox) };
+      })
+      .filter(Boolean);
     for (let i = 0; i < content.length; i += 1) {
       for (let j = i + 1; j < content.length; j += 1) {
         const a = content[i];
@@ -428,10 +480,42 @@ class SlideElementRegistry {
       warning_count: report.warnings.length,
       errors: report.errors,
       warnings: report.warnings,
+      font_substitutions: [
+        ...new Map(
+          [...this.slides.values()]
+            .flatMap((elements) =>
+              elements.flatMap((element) => element._textLayout?.substitutions || []),
+            )
+            .map((item) => [item.requested, item]),
+        ).values(),
+      ],
       slides: report.slides.map((slide) => ({
         slide: slide.slideIndex,
         element_count: slide.elementCount,
         warnings: slide.warnings,
+        elements: this._slide(slide.slideIndex).map((element) =>
+          Object.fromEntries(
+            [
+              'id',
+              'type',
+              'role',
+              'text',
+              'logicalGroup',
+              'logicalText',
+              'logicalBox',
+              'x',
+              'y',
+              'w',
+              'h',
+              'fontSize',
+              'fontFace',
+              'lineGeometry',
+              'decorative',
+            ]
+              .filter((key) => element[key] !== undefined)
+              .map((key) => [key, element[key]]),
+          ),
+        ),
       })),
     };
     nodeFs.writeFileSync(

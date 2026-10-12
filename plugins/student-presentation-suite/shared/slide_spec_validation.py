@@ -229,6 +229,23 @@ def semantic_errors(data: Any) -> list[dict[str, str]]:
             if slide.get("lock_reason") and not slide.get("locked"):
                 errors.append({"path": f".slides.{index}.lock_reason", "message": "lock_reason requires locked=true"})
 
+    for index, slide in enumerate(slides):
+        semantic = slide.get("semantic_requirements")
+        if not isinstance(semantic, dict):
+            continue
+        if data.get("schema_version") != "2.1":
+            errors.append({"path": f".slides.{index}.semantic_requirements", "message": "semantic_requirements requires schema_version 2.1"})
+        requirements = semantic.get("must_convey", [])
+        ids = [item["id"] for item in requirements]
+        if len(ids) != len(set(ids)):
+            errors.append({"path": f".slides.{index}.semantic_requirements", "message": "requirement ids must be unique per page"})
+        known = {item["id"] for item in data.get("evidence_ledger", [])}
+        for item in requirements:
+            if set(item.get("evidence_refs", [])) - known:
+                errors.append({"path": f".slides.{index}.semantic_requirements", "message": "unknown semantic evidence refs"})
+            if item.get("placement") == "notes" and meta.get("include_speaker_notes") is False:
+                errors.append({"path": f".slides.{index}.semantic_requirements", "message": "notes requirements require speaker notes"})
+
     improvement_fields = ("edit_intent", "review_findings", "preserve", "change_summary_required")
     present_improvement_fields = [field for field in improvement_fields if data.get(field) not in (None, False, [], "")]
     if present_improvement_fields and not data.get("source_deck"):
