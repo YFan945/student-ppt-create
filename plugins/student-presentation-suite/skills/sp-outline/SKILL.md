@@ -1,7 +1,7 @@
 ---
 name: sp-outline
 description: Use only for a clearly student-owned academic context when the user explicitly requests a PPT or slide outline, not an editable deck. Do not use for generic presentations, standalone scripts, Q&A-only work, or non-student tasks.
-version: 0.30.0
+version: 0.30.1
 ---
 
 # Student Presentation
@@ -11,7 +11,7 @@ version: 0.30.0
 ## 快速约束
 
 - 新任务由 AI 根据构图决定字号，不设置固定字号下限；验证实际可读性、几何与对比度
-- 每页一条核心信息，≤ 4 条要点，≤ 80 中文字 / 40 英文词（引用、图表标注不计）
+- 每页有清晰的核心信息与充分支撑；新任务按内容和实际渲染决定密度，不默认冻结要点数、字数或字号，明确确认的限制与旧任务控制继续有效
 - 避免 AI 套话（"在当今快速发展..."、"具有重要意义..."）
 - 使用具体课程/项目背景，直接主张，承认局限
 - 按目录→逐页主张→PPT文案→演讲版→Slide Spec 分层生成

@@ -298,7 +298,9 @@ class SlideElementRegistry {
     if (this.options.designPreferencesAdvisory)
       this._checkDesignGrammar(elements, boxes, warnings, warnings);
     else this._checkDesignGrammar(elements, boxes, errors, warnings);
-    this._checkAlignment(boxes, errors);
+    // Indentation and differing column edges are composition choices in
+    // model-led pages; actual overlap and overflow remain errors above.
+    this._checkAlignment(boxes, this.options.designPreferencesAdvisory ? warnings : errors);
     this._checkDeadZone(boxes, warnings);
 
     return { slideIndex, ok: errors.length === 0, errors, warnings, elementCount: elements.length };

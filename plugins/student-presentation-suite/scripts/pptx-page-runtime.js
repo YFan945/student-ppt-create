@@ -109,6 +109,12 @@ function captureSlide(ctx) {
             options.h >= H.SLIDE_H_IN),
         ),
       };
+      // Native image sizing writes the viewport extent to OOXML, not the
+      // scaled source extent. Register the same visible bounds as the viewer.
+      if (method === 'addImage' && options.sizing) {
+        element.w = options.sizing.w ?? options.w;
+        element.h = options.sizing.h ?? options.h;
+      }
       if (isLine)
         Object.assign(element, {
           x1: options.x,

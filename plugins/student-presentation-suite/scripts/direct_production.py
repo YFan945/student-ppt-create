@@ -31,6 +31,14 @@ from shared.slide_spec_contract import validate_slide_spec  # noqa: E402
 
 EXECUTION_MODE = "main-session"
 MANIFEST_VERSION = "3.0"
+RENDER_SETTINGS = {"dpi": 144, "format": "png", "pipeline": "libreoffice-poppler-v1"}
+VISUAL_REVIEW_TASKS = [
+    "Read every full-size slide: wrapping, clipping, unintended overlap, connectors, labels and page markers.",
+    "Use the contact sheet for deck rhythm; check information density, hierarchy, color grouping and visual variety on individual slides.",
+    "Compare supplied reference/template pages with the output, including fonts, imagery and richness requested by the user.",
+    "Check the actual text and notes against must_convey, evidence and asset provenance; automatic checks do not prove meaning or visual quality.",
+    "Repair affected pages, run again, inspect the current renders and scan the whole deck before complete.",
+]
 
 
 class ProductionError(ValueError):
@@ -268,10 +276,25 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
     notes = content.extract_pptx_notes(pptx)
     missing_notes = [index for index in range(1, len(spec["slides"]) + 1)
                      if (spec.get("meta") or {}).get("include_speaker_notes") and not notes.get(index, "").strip()]
+    geometry_path = Path(str(pptx) + ".registry-report.json")
+    geometry = {"performed": False, "ok": True, "errors": [], "warnings": [],
+                "limitation": "No authoring geometry report; inspect rendered pages for layout defects."}
+    if geometry_path.is_file():
+        authored_geometry = load(geometry_path)
+        if authored_geometry.get("pptx_sha256") != file_sha256(pptx):
+            raise ProductionError("geometry report does not belong to the current PPTX")
+        geometry = {key: authored_geometry.get(key, [] if key in {"errors", "warnings", "font_substitutions"} else 0)
+                    for key in ("ok", "errors", "warnings", "error_count", "warning_count", "font_substitutions")}
+        geometry.update(performed=True, report=bind(geometry_path))
     report = {
-        "ok": package["ok"] and content_report["ok"] and not missing_notes,
+        "ok": package["ok"] and content_report["ok"] and not missing_notes and geometry["ok"],
         "pptx": bind(pptx), "slide_spec": manifest["slide_spec"],
         "package": package, "content": content_report, "missing_notes": missing_notes,
+        "geometry": geometry,
+        "check_scope": {"kind": "technical-checks", "visual_quality_verified": False,
+                        "semantic_verification": "author-self-check-required",
+                        "limitation": "ok covers the listed technical checks, not aesthetic approval or completed visual review."},
+        "review_required": VISUAL_REVIEW_TASKS,
         "semantic_verification": "main-session-self-check",
         "must_convey": [{"slide": index, "requirements": slide.get("semantic_requirements", {}).get("must_convey", [])}
                         for index, slide in enumerate(spec["slides"], 1)],
@@ -286,9 +309,10 @@ def render(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str, Any]:
     from shared.pptx_runtime.render import render_pptx
 
     previous = manifest.get("render") or {}
-    if previous.get("pptx_sha256") == file_sha256(pptx) and all(current(item) for item in [
+    if (previous.get("settings") == RENDER_SETTINGS and previous.get("pages")
+            and previous.get("pptx_sha256") == file_sha256(pptx) and all(current(item) for item in [
         previous.get("pdf"), previous.get("contact_sheet"), *previous.get("pages", []),
-    ]):
+    ])):
         return previous
     # A fresh directory avoids mixing old pages with the current deck.
     with tempfile.TemporaryDirectory(prefix="render-", dir=work) as directory:
@@ -300,6 +324,10 @@ def render(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str, Any]:
             final = target / f"slide-{index}.png"
             shutil.copy2(page, final)
             final_pages.append(final)
+        # A shorter repaired deck must not leave old pages in the preview directory.
+        for stale in target.glob("slide-*.png"):
+            if stale not in final_pages:
+                stale.unlink()
         final_pdf = target / "deck.pdf"
         shutil.copy2(pdf, final_pdf)
     width, height, columns = 480, 300, min(3, len(final_pages))
@@ -313,7 +341,8 @@ def render(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str, Any]:
             draw.text((x, y - 18), str(index + 1), fill="black")
     contact = work / "preview.png"
     sheet.save(contact)
-    return {"pptx_sha256": file_sha256(pptx), "pages": [bind(page) for page in final_pages],
+    return {"pptx_sha256": file_sha256(pptx), "settings": RENDER_SETTINGS,
+            "pages": [bind(page) for page in final_pages],
             "pdf": bind(final_pdf), "contact_sheet": bind(contact)}
 
 
@@ -370,6 +399,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         save(work, manifest, "qa")
         return {"ok": checked["ok"], "action": "inspect_and_fix" if not checked["ok"] else "inspect_previews",
                 "previews": manifest["render"], "check_report": manifest["check"]["report"],
+                "technical_checks": checked["check_scope"], "geometry": checked["geometry"],
+                "review_required": checked["review_required"],
                 "must_convey": checked["must_convey"], "semantic_verification": "main-session-self-check",
                 "repairs_remaining": 1 + manifest["repair_limit"] - manifest["attempts"]}
     except (ProductionError, OSError, ValueError) as exc:
@@ -397,6 +428,11 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
     pptx = Path(manifest["build"]["pptx"]["path"])
     if rendered.get("pptx_sha256") != file_sha256(pptx):
         raise ProductionError("previews do not belong to the current PPTX")
+    report = load(Path(checked["report"]["path"]))
+    if len(rendered.get("pages", [])) != report["content"]["actual_slide_count"]:
+        raise ProductionError("current build needs one rendered preview per slide")
+    if (report.get("geometry") or {}).get("performed") and not current(report["geometry"].get("report")):
+        raise ProductionError("current geometry report is required before delivery")
     spec = load_slide_spec(Path(manifest["slide_spec"]["path"]))
     meta = spec.get("meta") or {}
     selected = set(meta.get("deliverables") or meta.get("export_formats") or ["pptx"])

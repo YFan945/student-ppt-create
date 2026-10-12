@@ -29,6 +29,10 @@ The tools batch build, font processing, exact-content readback, package validati
 
 ## Assets, typography and editing
 
+New student decks aim for substantive content, varied visual expression and layered color. Typography, density and compositions follow the content and full-size renders; word/character caps apply only when explicitly confirmed. With no external images, editable diagrams, tables, charts and semantic icons remain available. See the [runnable visual examples](skills/sp-deck/references/main-session-visual-examples.md).
+
+Before delivery, inspect every full-size rendered page and compare supplied references, repair and render again, then scan the whole deck. `run` reports technical checks, geometry risks and pending author review tasks; `ok` does not certify aesthetics or completion of visual/semantic self-check. The commands remain `plan → run → complete`.
+
 - Use real supplied assets first. Preserve their aspect ratios and evidence regions, record sources and permissions, and do not invent comparison data.
 - Shared fontkit measurement supports Chinese line breaking and rich-text emphasis. Final rendering still determines actual readability.
 - Page modules use shared helpers or native pptxgenjs objects; the harness records geometry, backgrounds, notes and actual copy.

@@ -61,6 +61,8 @@ boundary — do not restate it here.
 
 ## Visual Style Reference
 
+New student work aims for content-rich, varied visual expression and layered color, with free composition. A restrained palette is a starting reference, not a limit on semantic category colors. Word/character controls are optional: record them only when the user confirms a cap, and preserve supplied constraints. See `model-led-design.md` for the canonical new-task policy.
+
 Choose one of the 12 formal lightweight references in `visual-style-menu.md`, or set
 `visual_style: Other`. A formal reference supplies only style character, six palette roles,
 cover/content/section/closing background references, and one optional SVG reference. It does not

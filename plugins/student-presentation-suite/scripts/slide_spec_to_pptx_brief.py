@@ -411,10 +411,15 @@ def build_brief(
             "",
             "## Student Presentation Requirements",
             "- Keep one clear message per content slide; use claim-style titles for argumentative and evidence slides.",
-            "- Chinese normal body text must be >= 22pt; English normal body text must be >= 20pt.",
-            "- Primary slide titles should normally be >= 24pt; visually verify smaller secondary labels.",
-            "- Text must fit its container at minimum font sizes. If content is too long: split slides or "
-            "move explanation to speaker notes. Never shrink below minimums to make text fit.",
+            *([
+                "- Choose readable typography and information density from the content and actual renders; no global font floor or title/body ratio.",
+                "- Preserve required evidence on the slide. Use multicolor grouping, relevant images, semantic icons, diagrams and editable tables/charts where they explain the content.",
+                "- Word/character caps apply only when explicitly supplied. Reword or rearrange crowded content and inspect full-size renders.",
+            ] if model_led(data) else [
+                "- Chinese normal body text must be >= 22pt; English normal body text must be >= 20pt.",
+                "- Primary slide titles should normally be >= 24pt; visually verify smaller secondary labels.",
+                "- Text must fit its container at minimum font sizes. If content is too long: split slides or move explanation to speaker notes. Never shrink below minimums to make text fit.",
+            ]),
             "- Use functional visual structures when they clarify content; do not force decoration onto covers, dividers, references, appendix, or Q&A slides.",
             "- Avoid generic AI-sounding filler; prefer course/project-specific examples and modest claims.",
             "- Include speaker notes or a separate notes file with note goals and transitions.",
@@ -422,7 +427,7 @@ def build_brief(
     )
 
     # 文字适配预警
-    overflow_warnings = _estimate_slide_text_fit(slides, meta)
+    overflow_warnings = [] if model_led(data) else _estimate_slide_text_fit(slides, meta)
     if overflow_warnings:
         lines.extend(
             [
@@ -468,7 +473,7 @@ def build_brief(
             )
         elif model_led(data):
             code_hint = "**production action**: convey semantic requirements and preserve exact items; choose composition, expression and any finite positive font size."
-        elif slide_copy and len(slide_copy) > 80:
+        elif not model_led(data) and slide_copy and len(slide_copy) > 80:
             code_hint = (
                 "**production action**: text-fit risk; split or shorten content instead of "
                 "shrinking below the confirmed minimum font size"

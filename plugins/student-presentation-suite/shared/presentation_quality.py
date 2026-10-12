@@ -101,10 +101,13 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
     findings: list[dict[str, str]] = []
     slide_findings: dict[int, list[dict[str, str]]] = {}
 
+    from shared.design_policy import model_led
+
+    flexible = model_led(data)
     raw_words = meta.get("max_words_per_slide")
-    max_words = int(raw_words) if raw_words is not None else 40
+    max_words = int(raw_words) if raw_words is not None else (None if flexible else 40)
     raw_chars = meta.get("max_chinese_chars_per_slide")
-    max_chars = int(raw_chars) if raw_chars is not None else 80
+    max_chars = int(raw_chars) if raw_chars is not None else (None if flexible else 80)
     include_notes = bool(meta.get("include_speaker_notes", True))
 
     # 场景故事角色完整性检查（仅提示，不阻断：避免逼页数膨胀/凑角色）
@@ -155,7 +158,7 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
                     "Add one concise claim and make the title express it.",
                 )
             )
-        if len(re.findall(r"[\u4e00-\u9fff]", copy_text)) > max_chars:
+        if max_chars is not None and len(re.findall(r"[\u4e00-\u9fff]", copy_text)) > max_chars:
             current.append(
                 finding(
                     "Major",
@@ -166,7 +169,7 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
                     "Keep the claim and evidence on slide; move explanation to notes.",
                 )
             )
-        if len(re.findall(r"\b[\w'-]+\b", copy_text)) > max_words:
+        if max_words is not None and len(re.findall(r"\b[\w'-]+\b", copy_text)) > max_words:
             current.append(
                 finding(
                     "Major",

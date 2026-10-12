@@ -242,7 +242,7 @@ def check_slide(
     content_w: float,
     title_pt: float,
     body_pt: float,
-    max_chars: int,
+    max_chars: int | None,
     width_factor: float = 1.0,
 ) -> dict[str, Any]:
     title = str(slide.get("title") or "").strip()
@@ -320,7 +320,7 @@ def check_slide(
     # would overstate density and push a legal cover/divider page over the cap.
     on_slide = "".join([title, "" if duplicated else claim, *body_pieces])
     chars = cjk_char_count(on_slide) or len(on_slide)
-    if chars > max_chars:
+    if max_chars is not None and chars > max_chars:
         problems.append(
             {
                 "field": "density",
@@ -347,8 +347,15 @@ def preflight(
     *,
     content_w: float,
     regions: dict[str, Any],
-    max_chars: int,
+    max_chars: int | None,
 ) -> dict[str, Any]:
+    from shared.design_policy import model_led
+
+    flexible = model_led(spec)
+    if max_chars is None:
+        max_chars = (spec.get("meta") or {}).get("max_chinese_chars_per_slide")
+        if max_chars is None and not flexible:
+            max_chars = 80
     typo = (art_direction or {}).get("typography") or {}
     title_pt = float(typo.get("slide_title_pt") or 32)
     body_pt = float(typo.get("body_pt") or 22)
@@ -367,14 +374,14 @@ def preflight(
         )
         for slide in slides
     ]
-    from shared.design_policy import model_led
-
-    if model_led(spec):
+    if flexible:
         # Planned prose has no fixed region or font size in the model-led contract.
         # The actual text layout and artifact readback own fit and exact content.
         for result in results:
+            result["problems"] = [problem for problem in result["problems"]
+                                  if problem.get("field") not in {"title", "claim", "slide_copy"}]
             for problem in result["problems"]:
-                if problem.get("field") in {"title", "claim", "slide_copy", "claim_duplicates_title"}:
+                if problem.get("field") in {"claim_duplicates_title", "visual_details"}:
                     problem["severity"] = "minor"
 
     majors = [
@@ -443,7 +450,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--verbose", action="store_true", help="also list minor density findings")
     parser.add_argument("--max-items", type=int, default=12)
-    parser.add_argument("--max-chars", type=int, default=80, help="per-slide Chinese character cap")
+    parser.add_argument("--max-chars", type=int, help="explicit Chinese character cap; otherwise use confirmed meta, or legacy 80")
     parser.add_argument("--slide-w", type=float, default=DEFAULT_SLIDE_W)
     parser.add_argument("--margin", type=float, default=DEFAULT_MARGIN)
     parser.add_argument("--title-h", type=float, default=DEFAULT_REGIONS["title_h"])

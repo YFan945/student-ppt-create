@@ -49,12 +49,12 @@ Confirm every item before production:
 | Template/branding | No required template, logo, or brand | Controls layout constraints |
 | Source deck (新建/改进) | No existing deck → create new | Decides `production_mode`: an editable `.pptx`/`.potx` source → `edit_ooxml`; a corrupt source or non-PPTX (PDF/preview) → `rebuild_from_source`; otherwise `create` |
 | Edit intent | None (new deck) | For improvements: `incremental` / `rebuild-clean-copy` / `fix-specific`; `rebuild-clean-copy` overrides the edit_ooxml default |
-| Image strategy | `hybrid-adaptive`：生成能力可用且获准时制作关键插图，否则采用确定性图表/形状 | Controls sourcing and production |
+| Image strategy | `hybrid-adaptive`：先核对真实用户素材、可用能力与已获授权；无外部图片时选可编辑关系图、流程、图表、表格及语义图标 | Controls sourcing and production |
 | Visual style | Recommend three topic-fit styles; choose one only after confirmation | Controls visual direction |
 | Deliverables | PPTX only; speaker notes, preview, contact sheet, PDF, and full script appear only when the user selects them; add change summary for edits | Controls completion criteria |
 | Interaction/quality mode | Beginner + fast | Controls guidance, evidence, and rehearsal depth |
 | Structure mode | Scenario default | Controls the narrative spine |
-| Content controls | 40 English words / 80 Chinese characters (excluding citations, captions, and chart labels), balanced visual/text, notes on | Controls density and output layers |
+| Content controls | 按内容与完整渲染决定可读的信息密度、图文关系与字号；字数限制仅记录用户明确要求，notes on | Controls density and output layers |
 | Citation/export/versioning | Classroom citations; requested local exports; versioning on for edits | Controls traceability and rollback |
 
 `quality_level` records the desired care. Canonical tiers are
@@ -265,8 +265,8 @@ After confirmation, map supported values into Slide Spec `meta`:
 
 - `topic`, `presentation_type`, `audience`, `language`, `duration_min`, `slide_count`
 - `scenario`, `audience_type`, `audience_depth`, `structure_mode`
-- `interaction_mode`, `quality_level`, `max_words_per_slide`,
-  `max_chinese_chars_per_slide`, `visual_text_ratio`
+- `interaction_mode`, `quality_level`, `visual_text_ratio`；仅确认有字数限制时写入
+  `max_words_per_slide` / `max_chinese_chars_per_slide`，否则省略，不能自动填历史默认值
 - `include_speaker_notes`, `include_key_lines`, `citation_style`,
   `export_formats`, `versioning`
 - `format`, `members`, `course`, `rubric`

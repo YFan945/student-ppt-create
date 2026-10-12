@@ -1,7 +1,7 @@
 ---
 name: sp-review
 description: Use only for a clearly student-owned academic context when the user explicitly asks to review, audit, score, critique, compare, or diagnose an existing PPT/PPTX/PowerPoint deck or rendered export.
-version: 0.30.0
+version: 0.30.1
 ---
 
 # Student Presentation Review
@@ -40,7 +40,7 @@ version: 0.30.0
 4. 检查渲染预览、PDF 页面、截图或 contact sheet。只有 PPTX 而无预览时，调用
    `python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" render <deck.pptx> --output-dir <work-render-dir> --prefix <topic>`；
    渲染不可用则结论必须为 `incomplete`。渲染证据决定裁剪和可读性结论。
-5. 每次发现分级为 Critical / Major / Minor，记录 `target`（目标页面/页码）、`problem`（问题+影响）、`fix`（具体修复建议），与 `review_findings` schema 一致。
+5. 总览只判断整套节奏；逐页完整查看断行、裁切、意外重叠、连接线、标签归属、图文关系、信息密度与颜色层级。有用户参考件时并排比较。技术检查通过不等于视觉合格。每次发现分级为 Critical / Major / Minor，记录 `target`（目标页面/页码）、`problem`（问题+影响）、`fix`（具体修复建议），与 `review_findings` schema 一致。
 6. 检查来源缺口、故事顺序、重复页面、结论支撑、时间、转场、开篇/收尾、可能的问题。有 Slide Spec 时运行 `analyze_presentation_spec.py`。
 7. 编辑请求时，写 `outputs/<topic>-slide-spec.yaml`（含 `source_deck`、`edit_intent`、`review_findings`（`severity`/`target`/`problem`/`fix`）、`preserve`、`change_summary_required`，按 `../../references/slide-spec.schema.json` 校验），再进入 `sp-deck`。
 

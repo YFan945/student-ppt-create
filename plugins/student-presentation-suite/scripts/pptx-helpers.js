@@ -909,6 +909,19 @@ function addPlannedImage(slide, asset, box, pptx) {
   const protectedRegion = asset.preserve_region;
   if (
     crop &&
+    (!['x', 'y', 'w', 'h'].every((key) => Number.isFinite(crop[key])) ||
+      crop.x < 0 ||
+      crop.y < 0 ||
+      crop.w <= 0 ||
+      crop.h <= 0 ||
+      crop.x + crop.w > 1 ||
+      crop.y + crop.h > 1)
+  )
+    throw new RangeError(
+      'asset_crop_invalid: crop must be a positive region inside the source image',
+    );
+  if (
+    crop &&
     protectedRegion &&
     !(
       crop.x <= protectedRegion.x &&
@@ -918,7 +931,7 @@ function addPlannedImage(slide, asset, box, pptx) {
     )
   )
     throw new RangeError('asset_crop_invalid: crop excludes protected information');
-  if (protectedRegion || asset.crop_suggestion === 'contain' || !pptx) {
+  if (protectedRegion || (!crop && asset.crop_suggestion !== 'cover') || !pptx) {
     const scale = Math.min(box.w / asset.width, box.h / asset.height);
     const w = asset.width * scale;
     const h = asset.height * scale;
@@ -931,20 +944,25 @@ function addPlannedImage(slide, asset, box, pptx) {
       altText: asset.alt_text || asset.content_focus || '',
     });
   } else {
-    const sizing = pptx.imageSizingCrop(
-      asset.path,
-      box.x,
-      box.y,
-      box.w,
-      box.h,
-      crop?.x,
-      crop?.y,
-      crop?.w,
-      crop?.h,
-    );
+    // pptxgenjs 4 uses native sizing options, not instance imageSizingCrop().
+    // Scale the real source ratio, then crop a viewport inside that image.
+    const region = crop || { x: 0, y: 0, w: 1, h: 1 };
+    const scale = Math.max(box.w / (asset.width * region.w), box.h / (asset.height * region.h));
+    const w = asset.width * scale;
+    const h = asset.height * scale;
     slide.addImage({
       path: asset.path,
-      ...sizing,
+      x: box.x,
+      y: box.y,
+      w,
+      h,
+      sizing: {
+        type: 'crop',
+        w: box.w,
+        h: box.h,
+        x: w * region.x + (w * region.w - box.w) / 2,
+        y: h * region.y + (h * region.h - box.h) / 2,
+      },
       altText: asset.alt_text || asset.content_focus || '',
     });
   }

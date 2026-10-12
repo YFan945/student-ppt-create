@@ -16,11 +16,15 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete -
 
 `plan` 自动验证 Spec 并生成源码；`--art-direction` 可选，仅用于已有设计配置。研究任务可提供 `--research-pack`，工具批量编译证据。无需先调用多个验证或状态推进命令。
 
-`run` 执行一轮完整构建、字体处理、事实精确项与结构检查和渲染，返回所有问题及当前页面路径。默认首次生成加 3 轮修复；任务明确更低预算时用该预算。相同 PPTX 的渲染可复用。无需先登记 repair 或创建 Packet。
+`run` 执行构建、字体处理、事实精确项、包与作者几何报告检查和全页渲染，返回 `technical_checks`、`geometry`、`review_required` 及当前页面路径。`ok` 只表示列出的技术检查通过，不代表审美、核心语义或逐页看图已经验收。几何 warning 和字体替换供作者对照完整渲染判断；合理的装饰覆盖不按数量阻断。默认首次生成加 3 轮修复；任务明确更低预算时用该预算。当前文件与预览绑定一致时可复用渲染。
 
 `complete` 绑定当前产物并生成已确认的辅助文件。主会话在调用前完成看图和核心语义自检；工具不假装替作者做独立视觉评审。`status` 可以读取历史 manifest，旧管线任务须保留原件后以新 work-id 继续。
 
+交付前必须渲染所有最终页面，总览看节奏，再逐页完整查看断行、裁切、意外重叠、连接线、标签归属、页码、信息密度、颜色层级和图文关系。有参考文件时对照真实页面，而不是只对照默认设计 token。修复后再次 `run`，查看变化页并扫描全套；最后确认内容、素材来源和用户要求。自动报告不证明美观、事实语义正确或已在 PowerPoint 中实测。
+
 ## Authoring
+
+学生内容页优先实现充分的证据、丰富的视觉表达与有层次的颜色；按需使用 [可运行视觉示例](main-session-visual-examples.md)。下面的短代码只说明接口，不能作为整套学生 PPT 的视觉质量范本。
 
 `deck.js` 负责装配、登记、背景与讲稿。`auto` 页面导出函数，可直接使用 pptxgenjs 和共享工具；不必先选择 move 或固定模板。标题、文字和视觉元素均可编辑。函数的 `presentation_copy` 写实际标题与标签，`notes` 写真实讲稿。
 
@@ -47,6 +51,8 @@ module.exports.notes = '先输入查询，再检索证据，最后基于证据�
 ```
 
 图片按真实长宽比与关键保留区域构图：
+
+`addPlannedImage` 默认等比例显示完整图片。仅明确 `crop_suggestion: 'cover'` 或合法 `crop` 区域时裁切；`preserve_region` 保留证据区域。原生 sizing 的可见范围会与几何登记保持一致。
 
 ```javascript
 H.addPlannedImage(slide, {

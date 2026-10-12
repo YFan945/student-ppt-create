@@ -84,7 +84,7 @@ while the failed build remains blocked from render and QA until rebuilt green.
 - Output directory: `${CLAUDE_PROJECT_DIR}/outputs` (never plugin install dir)
 - Source decks are read-only; never overwritten
 - Model-led tasks have no fixed font floor; inspect actual readability, geometry and contrast. Legacy work keeps its frozen policy.
-- ≤ 4 bullets per slide, ≤ 80 Chinese chars or 40 English words (excluding citations, captions, and chart labels)
+- New tasks choose readable density from content and actual renders; word/character caps apply only when explicitly confirmed. Legacy tasks retain their stored controls.
 - Avoid AI boilerplate wording patterns
 
 ## Development

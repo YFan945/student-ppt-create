@@ -246,8 +246,6 @@
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "max_words_per_slide",
-        "max_chinese_chars_per_slide",
         "visual_text_ratio",
         "speaker_notes",
         "key_lines",
@@ -256,11 +254,13 @@
       ],
       "properties": {
         "max_words_per_slide": {
+          "description": "Optional user-confirmed limit; omit when no word cap was requested.",
           "type": "integer",
           "minimum": 10,
           "maximum": 120
         },
         "max_chinese_chars_per_slide": {
+          "description": "Optional user-confirmed limit; omit when no character cap was requested.",
           "type": "integer",
           "minimum": 20,
           "maximum": 240

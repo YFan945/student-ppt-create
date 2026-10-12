@@ -57,7 +57,7 @@ gallery treatments here as optional design suggestions for new tasks.
 
 ```text
 env check → 读取 image-sources.json，确认 search/generation/user-assets 哪些 ready
-→ Art Direction 的 asset_plan 标注每页期望的 asset 类型
+→ 主会话按真实可用素材选择各页表达（Art Direction 的 asset_plan 可选）
 → 对每个外部 asset：选 provider → 校验 permission → 获取
 → 记录 provenance（来源 URL / 生成 prompt / 授权）
 → 写入 asset-manifest.json 并运行 validate-asset-manifest
@@ -66,12 +66,11 @@ env check → 读取 image-sources.json，确认 search/generation/user-assets �
 
 保持"先解析能力，再规划构图"的顺序：不要先画好版式再发现拿不到图。
 
-`art_direction_check.py` 在 plan 阶段校验这条顺序：`asset_plan` 的
+使用可选 Art Direction 时，`art_direction_check.py` 可校验 `asset_plan` 的
 `hero_visuals` / `evidence_visuals` 计数 > 0 而本会话**没有任何 image-sources.json** 时直接
 拒绝（`asset_plan_visuals_unavailable`，undeclared = unavailable）；已声明但 provider 都不
 ready 时只给一条 minor（`asset_plan_visuals_not_ready`）——这几页由 deterministic visual
-stack 交付是合法的，只需在冻结前确认。冻结之后再发现声明兑现不了，critic 每轮都会报
-`hero-visual-missing`，而修复预算内没有任何办法补图（2026-09-17 live）。
+stack 交付是合法的，只需在构图前确认。素材不可用时主会话应先调整表达；不能在修复轮次中反复保留无法兑现的图片计划，也不能把占位符交付给用户。
 
 **检索一律委派给子代理**（`cost-discipline.md` CD-5）：图片检索由子代理执行，主流程只
 接收结构化结果（`slide` / `purpose` / `provider_id` / `source_url` / `license` /
@@ -79,7 +78,7 @@ stack 交付是合法的，只需在冻结前确认。冻结之后再发现声�
 落盘到 `outputs/.pptx-work/<work-id>/research/`。
 
 委派**不豁免**第 3 节的硬规则：子代理同样必须先确认 provider 就绪、权限为显式 `true`，
-并遵守"生图不得作为事实证据"与"无法记录来源的图片不得进入 composition"。
+并遵守"生图不得作为事实证据"与"无法记录来源的图片不得进入 composition"。主会话保留素材构图和视觉检查责任，不委派页面设计。
 
 ## 5. Provenance recording
 

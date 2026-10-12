@@ -64,6 +64,8 @@ When the target remains genuinely ambiguous, ask one routing question: research/
 
 ## Classroom Readability
 
+For new model-led tasks, sizes follow actual projection readability and content hierarchy, without a global floor or ratio. The following sizes are historical guidance for legacy tasks; do not freeze them into a new Production Summary unless requested.
+
 - Chinese normal body text should be 22pt or larger.
 - English normal body text should be 20pt or larger.
 - **Bilingual slides** (中英混排): use 22pt as the minimum for mixed content to ensure Chinese readability; English at 22pt remains comfortably readable. When Chinese and English appear in separate text blocks on the same slide, Chinese blocks follow the 22pt rule and English blocks follow the 20pt rule.
@@ -73,6 +75,8 @@ When the target remains genuinely ambiguous, ask one routing question: research/
 - Prefer high contrast and simple classroom projection-friendly layouts.
 
 ## Slide Density
+
+For new model-led tasks, density and typography follow `model-led-design.md`: choose readable sizes and enough on-slide evidence from the content and actual renders. Use color grouping, images, semantic icons, diagrams, tables or charts as appropriate; retain supporting detail rather than compressing every page to a slogan. Word/character caps and bullet counts are not default requirements. The historical guidance below applies to legacy tasks, or an explicitly confirmed constraint.
 
 - One slide should carry one core message.
 - Normal slides should use no more than 4 bullets.

@@ -9,7 +9,7 @@ and actual readability remain binding. Treat fixed sizes, proportions and
 gallery treatments here as optional design suggestions for new tasks.
 
 
-Use this shared strategy across planning, Art Direction, PPTX production, and review. v0.8 treats visual richness as an **asset-planning problem**, not something to patch at the end after a text-heavy deck already exists.
+Use this strategy across planning, optional Art Direction, production, and review. Choose available assets and information-bearing graphics before composition; visual richness includes grouping, semantic icons and editable diagrams as well as photographs.
 
 ## Source Choice
 
@@ -18,17 +18,17 @@ Use this shared strategy across planning, Art Direction, PPTX production, and re
 - For abstract concepts, process explanations, cover mood images, and conceptual scenes, generated visuals may be used when the current environment provides approved generation and the user does not forbid it.
 - If the user says no network, no generated images, or user-assets only, respect that constraint and use diagrams, native charts, custom SVG, built-in semantic icons, or typography-led layouts.
 
-## v0.8 Asset Plan
+## Visual mix
 
-After Slide Spec freeze, `art-direction.yaml` must decide the deck's visual mix before final composition. For a typical 8–10 slide high-score deck, a useful starting mix may be:
+Before writing pages, choose the expression that each page needs. Art Direction remains optional. Useful choices include:
 
-- 1–2 hero/concept visuals for cover, hook or closing;
-- 2–3 evidence visuals such as screenshots, research figures, real photos or sourced diagrams;
-- 1–2 native charts when quantitative evidence exists;
-- 1–2 editable diagrams/process/architecture visuals;
-- 1 intentionally typography-led slide when content supports a strong thesis.
+- Relevant images for cover, opening or closing;
+- Evidence visuals such as screenshots, research figures, photos or annotated diagrams;
+- Native charts when quantitative evidence supports a comparison;
+- Editable diagrams, process paths, timelines, tables and category groups;
+- Typography-led pages when a clear statement genuinely carries the page.
 
-These are not quotas. The requirement is **deliberate diversity of information-bearing visuals** so the generator does not fall back to rectangles and text on every slide.
+Use deliberate diversity of information-bearing visuals. Do not impose asset quotas. `diagram-only` permits detailed multicolor diagrams, native charts/tables and semantic icons; it does not mean plain text plus a few lines. No external provider configuration means external acquisition is unavailable, not that user files or native drawing tools are unavailable.
 
 For each slide, classify the desired asset before layout:
 
