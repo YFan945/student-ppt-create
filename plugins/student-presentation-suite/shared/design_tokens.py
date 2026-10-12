@@ -132,6 +132,9 @@ def _palette_errors(palette: dict[str, Any], prefix: str) -> list[str]:
     for role in PALETTE_ROLES:
         if not HEX_COLOR.fullmatch(str(palette.get(role, ""))):
             errors.append(f"{prefix}.{role} must be a 6-digit hex color")
+    for role, value in palette.items():
+        if role not in PALETTE_ROLES and not HEX_COLOR.fullmatch(str(value)):
+            errors.append(f"{prefix}.{role} must be a 6-digit hex color")
     if errors:
         return errors
     for text_role in ("primary_text", "secondary_text"):
@@ -153,7 +156,7 @@ def _palette_errors(palette: dict[str, Any], prefix: str) -> list[str]:
 
 
 def validate_custom_style(custom: dict[str, Any] | None) -> list[str]:
-    """Return actionable validation errors for the four-field Other contract."""
+    """Validate core colors and any optional background or SVG choices."""
     if not isinstance(custom, dict):
         return ["visual_style_custom is required when visual_style is Other"]
     errors: list[str] = []
@@ -167,12 +170,6 @@ def validate_custom_style(custom: dict[str, Any] | None) -> list[str]:
     if not isinstance(palette, dict):
         errors.append("visual_style_custom.palette is required")
     else:
-        extra_palette = sorted(set(palette) - set(PALETTE_ROLES))
-        if extra_palette:
-            errors.append(
-                "visual_style_custom.palette contains unsupported roles: "
-                + ", ".join(extra_palette)
-            )
         errors.extend(_palette_errors(palette, "visual_style_custom.palette"))
     # The dark companion is optional: it is derived from `palette` when omitted,
     # but when supplied it must clear the same contrast floors.
@@ -181,30 +178,24 @@ def validate_custom_style(custom: dict[str, Any] | None) -> list[str]:
         if not isinstance(dark_palette, dict):
             errors.append("visual_style_custom.dark_palette must be an object")
         else:
-            extra_dark = sorted(set(dark_palette) - set(PALETTE_ROLES))
-            if extra_dark:
-                errors.append(
-                    "visual_style_custom.dark_palette contains unsupported roles: "
-                    + ", ".join(extra_dark)
-                )
             errors.extend(_palette_errors(dark_palette, "visual_style_custom.dark_palette"))
     backgrounds = custom.get("backgrounds")
-    if not isinstance(backgrounds, dict):
-        errors.append("visual_style_custom.backgrounds is required")
-    else:
+    if backgrounds is not None and not isinstance(backgrounds, dict):
+        errors.append("visual_style_custom.backgrounds must be an object")
+    elif isinstance(backgrounds, dict):
         extra_backgrounds = sorted(set(backgrounds) - set(BACKGROUND_ROLES))
         if extra_backgrounds:
             errors.append(
                 "visual_style_custom.backgrounds contains unsupported roles: "
                 + ", ".join(extra_backgrounds)
             )
-        for role in BACKGROUND_ROLES:
-            if not isinstance(backgrounds.get(role), str) or not backgrounds[role].strip():
-                errors.append(f"visual_style_custom.backgrounds.{role} is required")
+        for role, value in backgrounds.items():
+            if not isinstance(value, str) or not value.strip():
+                errors.append(f"visual_style_custom.backgrounds.{role} must be non-empty text")
     svg_reference = custom.get("svg_reference")
-    if not isinstance(svg_reference, dict):
-        errors.append("visual_style_custom.svg_reference is required")
-    else:
+    if svg_reference is not None and not isinstance(svg_reference, dict):
+        errors.append("visual_style_custom.svg_reference must be an object")
+    elif isinstance(svg_reference, dict):
         extra_svg = sorted(set(svg_reference) - {"name", "usage"})
         if extra_svg:
             errors.append(
@@ -363,8 +354,15 @@ def resolve_design_tokens(
     # Guarantee a dark companion so cover/section/closing pages stay in the same
     # colour family as the content pages, even for custom or legacy styles.
     dark = tokens.get("dark_palette")
-    if not isinstance(dark, dict) or set(dark) != set(PALETTE_ROLES):
+    if not isinstance(dark, dict) or not set(PALETTE_ROLES).issubset(dark):
         tokens["dark_palette"] = derive_dark_palette(tokens["palette"])
+    # Keep semantic category colors available on dark pages as well. Explicit
+    # dark overrides win; otherwise adapt each additional light color.
+    for role, value in tokens["palette"].items():
+        if role not in tokens["dark_palette"]:
+            hue, _, saturation = _to_hls(value)
+            tokens["dark_palette"][role] = _lightness_for_contrast(
+                hue, saturation, tokens["dark_palette"]["surface"], 3.6)
 
     # Executable background layer: derived once here so the scaffold, the builder
     # and any future consumer share one definition (same argument as TOKENS).

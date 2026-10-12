@@ -68,10 +68,11 @@ Choose one of the 12 formal lightweight references in `visual-style-menu.md`, or
 cover/content/section/closing background references, and one optional SVG reference. It does not
 control layout, shapes, images, charts, components, or page rhythm.
 
-`Other` requires `visual_style_custom` with `style_character`, all six `palette` roles, all four
-`backgrounds`, and `svg_reference.name` plus `svg_reference.usage`. The AI may complete missing
-values from the topic and user direction, but all four sections must appear in the Production
-Summary and be confirmed before planning.
+`Other` requires `visual_style_custom` with `style_character` and the six base `palette` roles.
+Additional semantic colors are allowed. `backgrounds` is optional and may describe only used
+page kinds; `svg_reference` is optional, with `name` and `usage` required when supplied. A dark
+palette may be supplied or derived. Confirm the actual visual direction, without inventing
+unused backgrounds or motifs. Word/character caps accept any positive integer when requested.
 
 ## Quality Levels
 

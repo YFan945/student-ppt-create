@@ -173,10 +173,9 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
 
 **Round 3 — 视觉与素材**:
 
-进入本轮**之前必须先读 `../../references/design-tokens.json`**：样式选项只能引用其中
-实际存在的 token 名，且在用户确认样式前**禁止任何 6 角色位之外的配色承诺**（如"光伏配
-暖色琥珀当第二主角"）——2026-09-17 live：先承诺后读 token，被迫中途换风格并重绑确认哈希。
-后续页面涉及颜色语义的描述（双主角辨识、强调色用途）都必须能落到 token 角色位上。
+引用内置风格名时先核对 `../../references/design-tokens.json`。六个角色提供基础配色，
+不是颜色数量上限；可按内容增加一致的语义分类色，用户品牌和真实渲染可读性优先。
+用户已经给出视觉方向时复用它，不要求再选择预设；自由设计可用 `Other` 描述方向。
 
 - `Visual style` → **两步选择**:
   - **Step A — 风格类别**：根据 topic 将最匹配的类别放在第一个选项并标注
@@ -188,9 +187,9 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
   - **Step B — 具体样式**：仅当用户选择前三类时，一次显示该类全部 4 种，
     根据 topic 标注一个最佳推荐。不要再提供“显示全部”、跨类别或分轮入口。
   - 用户选择“其他”时不进入 Step B。根据主题和用户描述补齐
-    `visual_style_custom` 的四项结构：`style_character`、六角色 `palette`、
-    `backgrounds`（cover/content/section/closing）和 `svg_reference`（name/usage）。
-    Production Summary 必须完整展示这四项；未展示并确认前不得进入 `planned`。
+    `visual_style_custom` 的核心内容：`style_character` 与基础 `palette`；可在 palette
+    中增加语义分类色。`backgrounds` 只填写需要的页型，`svg_reference` 仅在采用 SVG
+    母题时填写。Production Summary 展示实际设计意图，不为未使用的元素编写配置。
 - `Image strategy` → options:
   - `自适应混合（推荐）` → 生成能力可用且获准时制作关键插图；否则自动采用图表、原生形状或文字构图，不因缺少外部生图工具阻断生产
   - `内置生图 skill 生成插图` → 全部插图（含封面/背景/概念图）由 imagegen 生成

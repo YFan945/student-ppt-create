@@ -43,7 +43,7 @@ def _validate_scenario_roles(meta: dict[str, Any], slides: list[Any]) -> list[di
     return errors
 
 
-def _validate_visual_semantics(meta: dict[str, Any], slides: list[Any]) -> list[dict[str, str]]:
+def _validate_visual_semantics(meta: dict[str, Any], slides: list[Any], *, flexible: bool = False) -> list[dict[str, str]]:
     errors: list[dict[str, str]] = []
     exempt_kinds = {"cover", "section-divider", "quotation", "references", "appendix", "qa", "closing"}
     typography_types = {"text", "text-only", "typography"}
@@ -88,17 +88,19 @@ def _validate_visual_semantics(meta: dict[str, Any], slides: list[Any]) -> list[
         if not isinstance(details, dict):
             errors.append({"path": f".slides.{index}.visual.details", "message": f"visual type {visual_type} requires structured details"})
             continue
+        minimum_stages = 1 if flexible else 3
+        minimum_items = 1 if flexible else 2
         if visual_type == "timeline" and not isinstance(details.get("stages"), list):
-            errors.append({"path": f".slides.{index}.visual.details.stages", "message": "timeline requires an ordered stages list with at least 3 stages"})
-        elif visual_type == "timeline" and len(details["stages"]) < 3:
-            errors.append({"path": f".slides.{index}.visual.details.stages", "message": "timeline requires at least 3 stages"})
+            errors.append({"path": f".slides.{index}.visual.details.stages", "message": f"timeline requires an ordered stages list with at least {minimum_stages} stages"})
+        elif visual_type == "timeline" and len(details["stages"]) < minimum_stages:
+            errors.append({"path": f".slides.{index}.visual.details.stages", "message": f"timeline requires at least {minimum_stages} stages"})
         if visual_type == "comparison":
-            if not isinstance(details.get("items"), list) or len(details["items"]) < 2:
-                errors.append({"path": f".slides.{index}.visual.details.items", "message": "comparison requires at least 2 items"})
+            if not isinstance(details.get("items"), list) or len(details["items"]) < minimum_items:
+                errors.append({"path": f".slides.{index}.visual.details.items", "message": f"comparison requires at least {minimum_items} items"})
             if not isinstance(details.get("dimensions"), list) or not details["dimensions"]:
                 errors.append({"path": f".slides.{index}.visual.details.dimensions", "message": "comparison requires comparison dimensions"})
-        if visual_type == "process" and (not isinstance(details.get("steps"), list) or len(details["steps"]) < 2):
-            errors.append({"path": f".slides.{index}.visual.details.steps", "message": "process requires at least 2 steps"})
+        if visual_type == "process" and (not isinstance(details.get("steps"), list) or len(details["steps"]) < minimum_items):
+            errors.append({"path": f".slides.{index}.visual.details.steps", "message": f"process requires at least {minimum_items} steps"})
         if visual_type == "chart":
             required = ("measure", "unit", "scope", "source", "takeaway")
             missing = [field for field in required if not details.get(field)]
@@ -115,28 +117,28 @@ def _validate_visual_semantics(meta: dict[str, Any], slides: list[Any]) -> list[
                         continue
                     labels = item.get("labels")
                     values = item.get("values")
-                    if not isinstance(labels, list) or len(labels) < 2:
-                        errors.append({"path": f"{target}.labels", "message": "chart series requires at least 2 labels"})
-                    if not isinstance(values, list) or len(values) < 2:
-                        errors.append({"path": f"{target}.values", "message": "chart series requires at least 2 numeric values"})
+                    if not isinstance(labels, list) or len(labels) < minimum_items:
+                        errors.append({"path": f"{target}.labels", "message": f"chart series requires at least {minimum_items} labels"})
+                    if not isinstance(values, list) or len(values) < minimum_items:
+                        errors.append({"path": f"{target}.values", "message": f"chart series requires at least {minimum_items} numeric values"})
                     elif any(value is not None and not isinstance(value, (int, float)) for value in values):
                         errors.append({"path": f"{target}.values", "message": "chart values must be numeric or null"})
                     if isinstance(labels, list) and isinstance(values, list) and len(labels) != len(values):
                         errors.append({"path": target, "message": "chart labels and values must have equal length"})
         if visual_type in {"architecture", "swimlane"} and (
-            not isinstance(details.get("nodes"), list) or len(details["nodes"]) < 2
+            not isinstance(details.get("nodes"), list) or len(details["nodes"]) < minimum_items
         ):
-            errors.append({"path": f".slides.{index}.visual.details.nodes", "message": f"{visual_type} requires at least 2 nodes"})
+            errors.append({"path": f".slides.{index}.visual.details.nodes", "message": f"{visual_type} requires at least {minimum_items} nodes"})
         if visual_type == "matrix" and (
-            not isinstance(details.get("items"), list) or len(details["items"]) < 2
+            not isinstance(details.get("items"), list) or len(details["items"]) < minimum_items
         ):
-            errors.append({"path": f".slides.{index}.visual.details.items", "message": "matrix requires at least 2 items"})
-        elif visual_type == "matrix" and len(details["items"]) > 4:
+            errors.append({"path": f".slides.{index}.visual.details.items", "message": f"matrix requires at least {minimum_items} items"})
+        elif not flexible and visual_type == "matrix" and len(details["items"]) > 4:
             errors.append({"path": f".slides.{index}.visual.details.items", "message": "matrix supports at most 4 clearly labeled items"})
         if visual_type == "cycle" and (
-            not isinstance(details.get("steps"), list) or len(details["steps"]) < 3
+            not isinstance(details.get("steps"), list) or len(details["steps"]) < minimum_stages
         ):
-            errors.append({"path": f".slides.{index}.visual.details.steps", "message": "cycle requires at least 3 steps"})
+            errors.append({"path": f".slides.{index}.visual.details.steps", "message": f"cycle requires at least {minimum_stages} steps"})
         if visual_type in {"image", "photo", "illustration", "annotated-image"} and not visual.get("asset"):
             errors.append({"path": f".slides.{index}.visual.asset", "message": f"{visual_type} requires an asset path"})
     return errors
@@ -201,7 +203,9 @@ def semantic_errors(data: Any) -> list[dict[str, str]]:
 
     # 场景故事角色完整性不再作为硬错误阻断（避免 defense/research 逼页数膨胀）；
     # 由 `analyze_presentation_spec.py` 作为 Minor 提示。仅保留结构性语义校验。
-    errors.extend(_validate_visual_semantics(meta, slides))
+    from shared.design_policy import model_led
+
+    errors.extend(_validate_visual_semantics(meta, slides, flexible=model_led(data)))
 
     revision_operation = data.get("revision_operation")
     if revision_operation in {"rewrite-slide", "compress", "expand", "add-evidence"}:

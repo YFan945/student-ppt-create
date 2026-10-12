@@ -44,6 +44,20 @@ function overlapArea(a, b, tolerance = DEFAULTS.overlapTolerance) {
   return x * y;
 }
 
+function occupiedRegions(el, fallback) {
+  if (el.type !== 'text') return [fallback];
+  if (!Array.isArray(el.lineGeometry) || !el.lineGeometry.length) return null;
+  const regions = [];
+  for (const line of el.lineGeometry) {
+    const box = bboxOf(line);
+    if (!box || box.w < 0 || box.h <= 0) return null;
+    if (box.w === 0 && (typeof line.text !== 'string' || line.text.trim())) return null;
+    // Empty lines have height but no ink and must not cause overlap errors.
+    if (box.w > 0) regions.push(box);
+  }
+  return regions;
+}
+
 function isDecorative(el) {
   return Boolean(el.decorative || el.allowOverlap || el.type === 'background');
 }
@@ -266,10 +280,21 @@ class SlideElementRegistry {
         const a = boxes[i];
         const b = boxes[j];
         if (isDecorative(a.el) || isDecorative(b.el)) continue;
-        const area = overlapArea(a.box, b.box, this.options.overlapTolerance);
-        if (area <= 0) continue;
-        const minArea = Math.min(a.box.w * a.box.h, b.box.w * b.box.h);
-        const ratio = minArea > 0 ? area / minArea : 0;
+        // Measured text occupies its rendered lines, not all empty space in
+        // its authoring box. Keep conservative box checks when unmeasured.
+        const aInk = occupiedRegions(a.el, a.box);
+        const bInk = occupiedRegions(b.el, b.box);
+        const aRegions = aInk && bInk ? aInk : [a.box];
+        const bRegions = aInk && bInk ? bInk : [b.box];
+        let ratio = 0;
+        for (const ar of aRegions) {
+          for (const br of bRegions) {
+            const area = overlapArea(ar, br, this.options.overlapTolerance);
+            const minArea = Math.min(ar.w * ar.h, br.w * br.h);
+            if (minArea > 0) ratio = Math.max(ratio, area / minArea);
+          }
+        }
+        if (ratio <= 0) continue;
         const involvesText = a.el.type === 'text' || b.el.type === 'text';
         const issue = {
           code: involvesText ? 'text_overlap' : 'element_overlap',

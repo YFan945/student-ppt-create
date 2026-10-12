@@ -61,13 +61,15 @@ Meta field rules:
 - `format`: `"individual" | "group"`
 - `duration_min`: number of minutes
 - `slide_count`: integer target slide count
-- `max_words_per_slide` / `max_chinese_chars_per_slide`: optional confirmed limits; omit for new tasks with no user cap. Explicit values remain binding; legacy defaults remain supported.
+- `max_words_per_slide` / `max_chinese_chars_per_slide`: optional confirmed positive-integer limits, without arbitrary upper bounds; omit for new tasks with no user cap. Explicit values remain binding; legacy defaults remain supported.
 - `image_source`: `"user-assets" | "web-search" | "generated" | "hybrid-adaptive" | "diagram-only" | "text-only" | "ask-before-web-search"`
 - `source_material`: a short evidence-boundary description or a list of supplied sources
 - `visual_style`: one of the 12 formal style names, `Other`, or a legacy style name
-- `visual_style_custom`: required when `visual_style: Other`; carries the confirmed
-  `style_character`, six-role `palette`, four `backgrounds`, and `svg_reference`
-- `quality_level: rigorous` (legacy `high-score`) and `visual_text_ratio: balanced|visual-led` require a
+- `visual_style_custom`: required when `visual_style: Other`; carries confirmed
+  `style_character` and a base `palette` with optional semantic category colors.
+  `backgrounds`, `dark_palette` and `svg_reference` are optional; only declare used choices.
+- New 2.1/model-led tasks require non-empty diagram data when declaring a structured visual, without stage/item quotas; chart metadata, numeric values and matching labels remain checked. `supporting_points` has no count cap. The following component-count guidance applies to legacy specs.
+- Legacy `quality_level: rigorous` (legacy `high-score`) and `visual_text_ratio: balanced|visual-led` require a
   meaningful structured `visual` for every content slide. `timeline` needs 3+ stages;
   `comparison` needs 2+ items plus dimensions; `process` needs 2+ steps; `chart` needs
   measure, unit, scope, source, and takeaway. Architecture/swimlane needs 2+ nodes,

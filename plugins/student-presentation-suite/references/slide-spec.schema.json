@@ -10,9 +10,7 @@
       "additionalProperties": false,
       "required": [
         "style_character",
-        "palette",
-        "backgrounds",
-        "svg_reference"
+        "palette"
       ],
       "properties": {
         "style_character": {
@@ -21,7 +19,10 @@
         },
         "palette": {
           "type": "object",
-          "additionalProperties": false,
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9A-Fa-f]{6}$"
+          },
           "required": [
             "canvas",
             "surface",
@@ -60,12 +61,6 @@
         "backgrounds": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "cover",
-            "content",
-            "section",
-            "closing"
-          ],
           "properties": {
             "cover": {
               "type": "string",
@@ -100,6 +95,47 @@
             "usage": {
               "type": "string",
               "minLength": 1
+            }
+          }
+        },
+        "dark_palette": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9A-Fa-f]{6}$"
+          },
+          "required": [
+            "canvas",
+            "surface",
+            "primary_text",
+            "secondary_text",
+            "primary_accent",
+            "secondary_accent"
+          ],
+          "properties": {
+            "canvas": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "surface": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "primary_text": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "secondary_text": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "primary_accent": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
+            },
+            "secondary_accent": {
+              "type": "string",
+              "pattern": "^[0-9A-Fa-f]{6}$"
             }
           }
         }
@@ -220,13 +256,11 @@
         },
         "max_words_per_slide": {
           "type": "integer",
-          "minimum": 10,
-          "maximum": 120
+          "minimum": 1
         },
         "max_chinese_chars_per_slide": {
           "type": "integer",
-          "minimum": 20,
-          "maximum": 240
+          "minimum": 1
         },
         "visual_text_ratio": {
           "enum": [
@@ -688,8 +722,7 @@
             "items": {
               "type": "string",
               "minLength": 1
-            },
-            "maxItems": 6
+            }
           },
           "slide_copy": {
             "oneOf": [

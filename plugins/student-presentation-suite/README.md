@@ -33,6 +33,8 @@ New student decks aim for substantive content, varied visual expression and laye
 
 Before delivery, inspect every full-size rendered page and compare supplied references, repair and render again, then scan the whole deck. `run` reports technical checks, geometry risks and pending author review tasks; `ok` does not certify aesthetics or completion of visual/semantic self-check. The commands remain `plan → run → complete`.
 
+New tasks do not impose diagram item quotas or a supporting-point cap. Explicit word/character limits accept positive integers. Custom styles may add semantic category colors and omit unused backgrounds/SVG motifs. Text overlap uses measured line regions when available, with conservative box checks for unmeasured content.
+
 - Use real supplied assets first. Preserve their aspect ratios and evidence regions, record sources and permissions, and do not invent comparison data.
 - Shared fontkit measurement supports Chinese line breaking and rich-text emphasis. Final rendering still determines actual readability.
 - Page modules use shared helpers or native pptxgenjs objects; the harness records geometry, backgrounds, notes and actual copy.

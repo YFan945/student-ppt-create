@@ -9,7 +9,7 @@ and actual readability remain binding. Treat fixed sizes, proportions and
 gallery treatments here as optional design suggestions for new tasks.
 
 
-Visual styles are **user-facing style seeds**, not templates or layout engines. Each seed keeps the intake simple by describing character, a light six-role palette, its dark companion for cover/section/closing pages, background treatment and one optional SVG motif. After the user confirms the seed, v0.8 **must expand it through `pptx-art-direction.md`** into concrete typography scale, image treatment/crop language, icon language, chart grammar, component behavior, motif use, background rhythm and asset mix before final composition.
+Visual styles are **user-facing style seeds**, not templates or layout engines. Each seed keeps the intake simple by describing character, a light six-role palette, its dark companion for cover/section/closing pages, background treatment and one optional SVG motif. For new tasks, the main session chooses typography, image treatment, icons, charts and page rhythm from the content and actual renders. Art Direction is optional; historical v0.8 expansion guidance applies only to legacy work.
 
 This separation is intentional: users choose a comprehensible visual mood; the model then acts as art director instead of asking the user to configure dozens of design details. Apply priorities in this order: approved school/user template → readability/source safety/truthful representation → slide narrative task → confirmed style seed → generated Art Direction.
 
@@ -35,7 +35,7 @@ Each file under `visual-styles/` retains exactly these lightweight intake fields
 3. `Background reference`
 4. `SVG reference`
 
-Palette roles are `canvas`, `surface`, `primary_text`, `secondary_text`, `primary_accent`, and `secondary_accent`. These files intentionally stay compact. **They are no longer the final design specification.** After confirmation, `art-direction.yaml` owns the concrete positive design decisions that previously had no home.
+Palette roles are `canvas`, `surface`, `primary_text`, `secondary_text`, `primary_accent`, and `secondary_accent`. These files intentionally stay compact. **They are no longer the final design specification.** In new tasks, concrete design decisions live in authored pages; an optional `art-direction.yaml` may record reusable preferences.
 
 ### Light and dark are one scheme, not two
 
@@ -90,7 +90,7 @@ visual_style_custom:
     usage: "建议使用位置和强度"
 ```
 
-The Production Summary must show all four seed sections before confirmation. After confirmation, custom styles follow the same Art Direction expansion as formal seeds; do not ask a second long style questionnaire.
+The example includes optional background and SVG choices. Only style character and the base palette are required; additional semantic colors are allowed. Omit unused backgrounds and SVG motifs. Show the actual visual direction in the Production Summary. Art Direction is optional in new main-session tasks; do not require another style questionnaire.
 
 ## Compatibility
 

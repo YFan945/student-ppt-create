@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.30.1
+version: 0.30.2
 ---
 
 # Student Presentation PPT
@@ -14,7 +14,7 @@ version: 0.30.1
 2. 汇总冻结事实、精确文字、数字、来源和用户品牌要求。新 Slide Spec 用 2.1，展示文案可压缩或视觉化；旧 1.0/2.0 保留文案匹配契约。外部事实检索按 `sp-research` 使用研究员，不把图片构图委派出去。
 3. **先读素材再构图**：批量查看真实图片及其尺寸、焦点和保留区域。新学生任务追求内容充实、视觉表达丰富、色彩有层次，按需阅读 `references/main-session-visual-examples.md`。为每页选择能解释关系的图片、语义图标、分组、图表、表格或结构图；无外部图片时仍做信息图解。封面或转场可简洁，不为作图编造数据。字数上限只记录明确要求。
 4. 阅读 `references/main-session-production.md`，调用 `ppt_pipeline.py plan` 创建薄装配文件和逐页源码。Art Direction 可选；不创建校准、Packet、分片或评分文件。
-5. **主会话直接读写 `pages/`**。新任务默认 `auto`：自由坐标调用共享绘图工具。`guided`/`deterministic` 是用户或作者选择的工具，不是每页必须经过的步骤。实际字号由作者决定，无统一下限和比例。按需读取 `references/pptxgenjs-helper-api.md` 和 `references/pptxgenjs-safety.md`。
+5. **主会话直接读写 `pages/`**。新任务默认 `auto`：自由坐标调用共享绘图工具，不用固定图解条目数或配色数量限制；自定义背景和 SVG 按需配置。`guided`/`deterministic` 是可选工具，各组件能力边界不扩展成全局设计规则。实际字号由作者决定，无统一下限和比例。按需读取 `references/pptxgenjs-helper-api.md` 和 `references/pptxgenjs-safety.md`。
 6. 调用一次 `ppt_pipeline.py run`，工具批量构建、处理中文字体、检查精确事实和包结构并渲染。它返回当前页面图、具体问题和待自检的核心信息，不派发代理。
 7. **主会话查看所有当前渲染页并直接修复**。总览只看节奏，每页完整查看断行、可读性、图文关系、裁切、意外重叠、连接线与页码；有参考件时并排比较要求的视觉丰富程度。对照实际文本和讲稿核对核心信息。技术检查 `ok` 不代表视觉合格；自检不称为独立评审。按原预算修改后再次 `run`，查看更新页并扫描全套。
 8. 看图和内容自检完成后调用 `ppt_pipeline.py complete`，只导出已确认类型。它核验当前产物与检查/预览的绑定，生成的讲稿来自最终 PPTX 备注。预算耗尽如实交付 `incomplete`。
