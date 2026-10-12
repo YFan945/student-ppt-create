@@ -59,7 +59,6 @@ python examples/visual-template-gallery/build.py --skip-render
 
 ## 用法约定
 
-- 生成正式 deck 前，可查阅对应风格的渲染页作为"上限参考"，但**不要复制页面内容**——
-  样张的主题（AI 幻觉课程汇报）只是占位文案。
-- 样张页通过全部文本适配守卫与打包校验；若自己的页面达不到同等的留白与层级，
-  按 `pptx-visual-critic.md` 的返修路径处理，而不是放宽守卫。
+Gallery 是可选构图参考和失败兜底，不是视觉上限或必须模仿的 treatment。
+样张主题只是演示内容；正式页面依据真实事实和素材设计。主会话查看自己
+当前的渲染并直接修复，生产方式见 ../../skills/sp-deck/references/main-session-production.md。

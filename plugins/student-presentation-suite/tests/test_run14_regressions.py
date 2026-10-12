@@ -23,10 +23,9 @@ from test_helpers import load_module
 ROOT = test_helpers.ROOT if hasattr(test_helpers, "ROOT") else Path(__file__).resolve().parents[1]
 if not (ROOT / "scripts" / "hook_events.py").is_file():
     ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
 
 hook_events = load_module(ROOT / "scripts" / "hook_events.py")
-entry_guard = load_module(ROOT / "scripts" / "production_entry_guard.py")
-cost_guard = load_module(ROOT / "scripts" / "cost_guard.py")
 controller = load_module(ROOT / "scripts" / "research_control.py")
 fetch_text = load_module(ROOT / "shared" / "pptx_runtime" / "fetch_text.py")
 
@@ -65,47 +64,8 @@ class HookEventUtf8Tests(unittest.TestCase):
             sys.stdin = stdin_backup
 
 
-class TerminalHelpProbeTests(unittest.TestCase):
-    """`script --help` is a read-only usage print, not a production invocation."""
-
-    def test_probe_regex_matches_only_terminal_help(self):
-        self.assertTrue(hook_events.terminal_help_probe('python "C:/x/copy_fit_preflight.py" --help'))
-        self.assertTrue(hook_events.terminal_help_probe('python "C:/x/ppt_pipeline.py" -h'))
-        self.assertFalse(hook_events.terminal_help_probe('python "C:/x/copy_fit_preflight.py"'))
-        self.assertFalse(hook_events.terminal_help_probe('python "C:/x/build.py" --work-dir w'))
-
-    def test_production_entry_guard_allows_pure_help_probe(self):
-        cmd = 'python "C:/cache/student-presentation-suite/0.25.2/skills/sp-deck/scripts/copy_fit_preflight.py" --help'
-        self.assertIsNone(entry_guard.check_bash(cmd))
-        bare = 'python "C:/cache/student-presentation-suite/0.25.2/skills/sp-deck/scripts/copy_fit_preflight.py"'
-        self.assertIsNotNone(entry_guard.check_bash(bare))
-
-    def test_production_entry_guard_allows_ppt_pipeline_help(self):
-        cmd = 'python "C:/cache/student-presentation-suite/0.25.2/skills/sp-deck/scripts/ppt_pipeline.py" --help'
-        self.assertIsNone(entry_guard.check_bash(cmd))
-
-    def test_cost_guard_allows_terminal_help_for_builder(self):
-        cmd = 'python "C:/cache/student-presentation-suite/0.25.2/skills/sp-deck/scripts/check_page_module.js" --help'
-        self.assertIsNone(cost_guard.check_bash(cmd, builder=True))
 
 
-class CalibrationPreviewGlueTests(unittest.TestCase):
-    """The preview deck template must run declarative pages like production deck.js."""
-
-    def test_generated_deck_uses_shared_page_runtime(self):
-        preview = load_module(ROOT / "skills" / "sp-deck" / "scripts" / "calibration_preview.py")
-        node = shutil_which("node")
-        with TemporaryDirectory() as tmp:
-            page = Path(tmp) / "p01-cover.js"
-            page.write_text("module.exports = { dark: false, kind: 'content', layout: 'text-two-column', slots: {}, params: {}, notes: '' };", encoding="utf-8")
-            target = Path(tmp) / "calibration-deck.js"
-            preview.write_calibration_deck(target, [(1, page)], "{}")
-            source = target.read_text(encoding="utf-8")
-            if node:
-                check = subprocess.run([node, "--check", str(target)], capture_output=True, text=True)
-                self.assertEqual(0, check.returncode, check.stderr)
-        self.assertIn("pptx-page-runtime.js", source)
-        self.assertIn("R.renderPage(ctx, item.mod)", source)
 
 
 class StallTurnaroundTests(unittest.TestCase):

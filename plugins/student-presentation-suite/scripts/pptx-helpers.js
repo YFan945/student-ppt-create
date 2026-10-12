@@ -606,6 +606,7 @@ function rolePolicy(tokens, lang, role, options = {}) {
     // 大数字结论（stat callout）：官方 design ideas 的 60-72pt 档在 CJK 语境下
     // 收敛为 36-60pt——字号仍必须显著高于 title，才配得上"唯一焦点"。
     stat: { min: 36, max: 60, align: options.align || 'center', valign: 'mid' },
+    statement: { min: sizes.title, max: sizes.title, align: 'left', valign: 'top' },
     subtitle: { min: sizes.subtitle, max: sizes.bodyMax, align: 'left', valign: 'top' },
     body: { min: sizes.body, max: sizes.bodyMax, align: 'left', valign: 'top' },
     list: { min: sizes.body, max: sizes.bodyMax, align: 'left', valign: 'top' },
@@ -638,7 +639,11 @@ function rolePolicy(tokens, lang, role, options = {}) {
   const policy = { ...basePolicy, ...options, role: normalized };
   if (tokens.model_led) {
     const chosen = Number(
-      options.fontSize ?? tokens.typography?.[`${normalized}_pt`] ?? options.max ?? basePolicy.max,
+      options.fontSize ??
+        tokens.typography?.[`${normalized}_pt`] ??
+        (normalized === 'statement' ? tokens.typography?.key_statement_pt : undefined) ??
+        options.max ??
+        basePolicy.max,
     );
     if (!Number.isFinite(chosen) || chosen <= 0)
       throw new RangeError('fontSize must be a finite positive number');

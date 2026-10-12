@@ -57,13 +57,11 @@ Confirm every item before production:
 | Content controls | 40 English words / 80 Chinese characters (excluding citations, captions, and chart labels), balanced visual/text, notes on | Controls density and output layers |
 | Citation/export/versioning | Classroom citations; requested local exports; versioning on for edits | Controls traceability and rollback |
 
-`quality_level` freezes the production path at plan. Canonical tiers are
+`quality_level` records the desired care. Canonical tiers are
 `fast` / `standard` / `rigorous` (`Basic` and `High-score` are legacy aliases
-for `fast` and `rigorous`). `fast` (the default) uses
-one Builder, deterministic pre-QA and one final independent visual review;
-`standard` adds one calibration sample with an independent review (skipped for
-decks at or below the 8-page calibration line); `rigorous`
-adds full calibration rounds and blocking style scores. Do not silently change this choice after confirmation.
+for `fast` and `rigorous`). All tiers use main-session authoring and self-check;
+they do not add calibration, page agents or visual scoring stages. Rigorous work
+spends more care on evidence and audience questions. Preserve the confirmed choice.
 
 ### Deliverables vs. pipeline evidence
 
@@ -71,8 +69,8 @@ adds full calibration rounds and blocking style scores. Do not silently change t
 routinely confused with it and must stay separate:
 
 - **Pipeline evidence** — rendered pages, the contact sheet, and the
-  package/readback/quality/delivery reports. The pipeline always writes these
-  into the work directory because the visual critic and the QA gates read them.
+  package/readback reports. Tools write these into the work directory so the
+  main author can inspect concrete artifact problems.
   They are **not** implied deliverables: never list them in the Production
   Summary as "will be delivered" unless the user actually selected `preview`,
   `contact-sheet`, or `quality-report`.
@@ -311,7 +309,8 @@ For PPTX work, `scripts/workflow_guard.py` persists intake only (`init` /
 After `ppt_pipeline.py plan`, `build-manifest.json` is the production
 authority; the pipeline mirrors `workflow-state.json` automatically. Do not
 call `workflow_guard.py transition` to advance `producing` or `complete`.
-Dispatch with `ppt_pipeline.py next`; deliver with `ppt_pipeline.py complete`.
+Build/check/render with `ppt_pipeline.py run`; after main-session inspection,
+deliver with `ppt_pipeline.py complete`. Commands belong to main-session-production.md.
 
 ## Work isolation
 

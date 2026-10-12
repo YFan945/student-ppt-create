@@ -65,7 +65,7 @@ REQUIRED_FILES = [
     "scripts/build_support_outputs.py",
     "scripts/workflow_guard.py",
     "hooks/hooks.json",
-    "scripts/cost_guard.py",
+    "scripts/direct_production.py",
     "scripts/assert_research_envelope.py",
     "skills/sp-deck/scripts/ppt_pipeline.py",
     "skills/sp-deck/scripts/generator_scaffold.py",
@@ -209,7 +209,7 @@ def check_script_reference_graph(errors: list[str]) -> dict[str, list[str]]:
         "check_plugin_release.py": "local release validation invokes this package release gate",
     }
     searchable = []
-    for root_name in ("skills", "commands", "tests", "references", "scripts"):
+    for root_name in ("skills", "commands", "tests", "references", "scripts", "hooks"):
         root = ROOT / root_name
         if not root.exists():
             continue

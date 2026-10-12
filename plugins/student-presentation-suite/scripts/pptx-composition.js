@@ -406,13 +406,19 @@ function renderThesis(ctx, request, canvas) {
     ? Math.max(52, Math.round(sizes.body * 2.4))
     : Math.max(44, Math.round(sizes.body * 2.2));
   const planned = [...kick.planned];
-  const primaryOp = planText(ctx, primary, primaryBox, 'stat', {
-    align: 'left',
-    min: minPrimary,
-    max: 60,
-    margin: 0,
-    label: 'thesis',
-  });
+  const primaryOp = planText(
+    ctx,
+    primary,
+    primaryBox,
+    ctx.tokens.model_led ? 'statement' : 'stat',
+    {
+      align: 'left',
+      min: minPrimary,
+      max: ctx.tokens.model_led ? undefined : 60,
+      margin: 0,
+      label: 'thesis',
+    },
+  );
   planned.push(primaryOp);
   if (supportLine) {
     planned.push(
@@ -571,11 +577,11 @@ function renderWeighted(ctx, request, canvas) {
     ctx,
     claim,
     { x: primary.x, y: primary.y, w: primary.w, h: primary.h * 0.72 },
-    'stat',
+    ctx.tokens.model_led ? 'statement' : 'stat',
     {
       align: 'left',
       min: 36,
-      max: 54,
+      max: ctx.tokens.model_led ? undefined : 54,
       margin: 0,
       label: 'weighted claim',
     },

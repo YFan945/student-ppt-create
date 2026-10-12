@@ -13,6 +13,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(ROOT / "skills" / "sp-deck" / "scripts"))
 
 import pptx_actual_content_check as content
@@ -105,15 +106,8 @@ class SemanticTests(unittest.TestCase):
             apply_modelled_findings(projected)
             self.assertEqual(next(item['severity'] for item in projected if item['code'] == 'unsupported_visual_ratio'), 'major')
 
-    def test_builder_examples_match_all_three_modes(self):
-        from builder_packet import page_module_example
-
-        self.assertIn('module.exports=function', page_module_example('auto')['code'])
-        self.assertIn("move:'weighted'", page_module_example('guided')['code'])
-        self.assertNotIn('function', page_module_example('guided')['code'])
-        self.assertIn("layout:'claim-evidence'", page_module_example('deterministic')['code'])
     def test_asset_projection_uses_actual_dimensions_and_keeps_protected_region(self):
-        from builder_packet import measured_assets
+        from direct_production import measured_assets
         from PIL import Image
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -126,27 +120,6 @@ class SemanticTests(unittest.TestCase):
             self.assertEqual(projected['preserve_region'], region)
             self.assertEqual(len(projected['sha256']), 64)
 
-    def test_report_format_defects_return_to_critic_but_missing_facts_need_edits(self):
-        from pipeline.dispatch import _semantic_report_contract_invalid
-
-        with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp)
-            path = directory / 'spec.json'
-            path.write_text(json.dumps({'schema_version':'2.1','slides':[slide()]}),encoding='utf-8')
-            manifest = {'inputs':{'slide_spec':{'path':str(path)}},'build':{'pptx':{'path':str(directory/'deck.pptx')}}}
-            actual = ['科研机会抵达低年级']
-            report = {'semantic_binding':semantic_binding(content.sha256_file(path),actual,{}),'slides':[{'slide':1,'semantic_coverage':[{'id':'research','status':'covered','placement':'slide','actual_excerpt':actual[0]}]}]}
-            with patch.object(content,'extract_pptx_text',return_value=actual),patch.object(content,'extract_pptx_notes',return_value={}):
-                self.assertFalse(_semantic_report_contract_invalid(manifest,report))
-                report['slides'][0]['semantic_coverage'][0]['actual_excerpt']='科研机会 / 低年级'
-                self.assertTrue(_semantic_report_contract_invalid(manifest,report))
-                report['slides'][0]['semantic_coverage'][0]['status']='missing'
-                self.assertFalse(_semantic_report_contract_invalid(manifest,report))
-                report['slides'][0]['issues'] = [{'code': 'unknown', 'severity': 'major'}]
-                self.assertTrue(_semantic_report_contract_invalid(manifest,report))
-                report['slides'][0]['issues'] = []
-                report['slides'][0]['semantic_coverage']=[]
-                self.assertTrue(_semantic_report_contract_invalid(manifest,report))
 
     def test_subjective_advice_does_not_override_brand_or_actual_readability(self):
         from pptx_quality_gate_v071 import apply_modelled_findings
@@ -235,24 +208,6 @@ class DesignTests(unittest.TestCase):
         advance_design(manifest, fact)
         self.assertNotIn("3", manifest["design_state"]["page_modes"])
 
-    def test_failed_free_build_enters_budgeted_repair_without_a_pptx(self):
-        from pipeline.build import record_construction_failure
-        from pipeline.core import pre_qa_failed_current
-
-        with tempfile.TemporaryDirectory() as tmp:
-            directory = Path(tmp)
-            state = directory / "workflow-state.json"
-            state.write_text(json.dumps({"work_id": "demo", "state": "planned"}), encoding="utf-8")
-            manifest = {"model_led": True, "design_freedom": "auto", "state": "planned", "work_id": "demo", "work_dir": str(directory), "workflow": {"state_file": str(state)}, "build": {"repair_count": 0}}
-            record_construction_failure(directory, manifest, directory / "deck.js", "a" * 64, "slide 2: text_overlap (s2-e1/s2-e2)")
-            self.assertEqual(manifest["state"], "producing")
-            self.assertTrue(pre_qa_failed_current(manifest))
-            self.assertFalse((directory / "deck.pptx").exists())
-            findings = json.loads((directory / "pre-qa-build.json").read_text(encoding="utf-8"))["issues"]
-            advance_design(manifest, findings)
-            self.assertEqual(manifest["design_state"]["page_modes"], {})
-            advance_design(manifest, findings)
-            self.assertEqual(manifest["design_state"]["page_modes"], {"2": "guided"})
 
     def test_defaults_and_independent_mode(self):
         self.assertEqual(design_mode({"schema_version": "2.1"}), "auto")

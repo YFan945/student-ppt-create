@@ -231,7 +231,7 @@ When `sp-review` receives Slide Spec YAML plus a deck:
 ## Pipeline research classification
 
 Set top-level `research_scope: A|B|C|D`. A/B/D require a validated Research Pack,
-evidence map and runtime-generated researcher receipt at plan. External-source
+evidence map. The research skill maintains its own runtime-generated researcher receipt. External-source
 ledger entries also trigger this requirement even if scope was omitted. C is only
 for decks that need no external facts. Source-deck mode is derived from source_deck
 and edit_intent; a PDF/image source is rebuilt, never silently treated as create.

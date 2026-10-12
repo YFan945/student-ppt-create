@@ -153,7 +153,7 @@ module.exports.notes={json.dumps(page['fact'], ensure_ascii=False)};
         if process.returncode:
             break
     save(directory / "runtime-log.json", logs)
-    result = {"case": case["id"], "mode": mode, "ok": all(item["returncode"] == 0 for item in logs), "semantic_acceptance": "independent critic required; deterministic runtime fixture does not certify meaning"}
+    result = {"case": case["id"], "mode": mode, "ok": all(item["returncode"] == 0 for item in logs), "semantic_acceptance": "main-session self-check required; deterministic fixture does not certify meaning"}
     if result["ok"]:
         actual = content.extract_pptx_text(output)
         report = content.check(content.load_structured(spec_path), actual)
@@ -169,61 +169,16 @@ module.exports.notes={json.dumps(page['fact'], ensure_ascii=False)};
 
 
 def continue_live(directory: Path, work: Path, config: Path, claude: str) -> list[dict]:
-    """Continue frozen work at agent boundaries without replaying main history."""
-    turns = []
-    env = {**os.environ, "CLAUDE_PROJECT_DIR": str(directory), "CLAUDE_PLUGIN_ROOT": str(ROOT)}
-    interrupted = None
-    outputs = sorted(directory.glob("stage-*.stdout.json"), key=lambda path: int(path.name.split('-')[1].split('.')[0]))
-    if outputs:
-        previous = live.parse_result(outputs[-1].read_text(encoding="utf-8"))
-        previous_dispatch = outputs[-1].with_name(outputs[-1].name.replace('.stdout.json', '.dispatch.json'))
-        if (previous.get("is_error") or previous.get("stage_incomplete")) and previous_dispatch.is_file():
-            if previous.get("terminal_reason") == "operator_interrupted_gate_defect":
-                previous_dispatch = previous_dispatch.with_name(previous_dispatch.name.replace('.dispatch.json', '-refreshed.dispatch.json'))
-            interrupted = json.loads(previous_dispatch.read_text(encoding="utf-8"))
-            import builder_packet
-
-            renewed = []
-            for packet in interrupted.get("packets", []):
-                path, fresh = builder_packet.write_packet(work, interrupted.get("mode", "initial"), packet.get("slides"), packet.get("shard"), interrupted.get("dispatch", {}).get("pre_qa", {}).get("reports", []))
-                renewed.append({"packet": str(path), "slides": fresh["assigned_slides"], "shard": fresh.get("shard"), "speaker_notes_target": fresh["speaker_notes_target"]})
-            if renewed:
-                builder_packet.record_active_round(work, interrupted.get("mode", "initial"), renewed)
-                interrupted["packets"] = renewed
-                interrupted["dispatch"]["builder_packets"] = renewed
-    for _ in range(8):
-        index = len(list(directory.glob("stage-*.stdout.json"))) + 1
-        dispatch_file = directory / f"stage-{index}.dispatch.json"
-        if interrupted:
-            dispatch = interrupted
-            interrupted = None
-            save(dispatch_file, dispatch)
-        else:
-            process = subprocess.run([sys.executable, str(SCRIPTS / "ppt_pipeline.py"), "advance", "--work-dir", str(work), "--json"], env=env, capture_output=True, text=True, encoding="utf-8", errors="replace")
-            dispatch_file.write_text(process.stdout, encoding="utf-8")
-            try:
-                dispatch = json.loads(process.stdout)
-            except json.JSONDecodeError:
-                break
-        if dispatch.get("status") != "needs_agent":
-            manifest = json.loads((work / 'build-manifest.json').read_text(encoding='utf-8'))
-            pre_qa = manifest.get('pre_qa') or {}
-            build = manifest.get('build') or {}
-            if dispatch.get('status') == 'refused' and str(dispatch.get('error', '')).startswith('build failed') and manifest.get('state') == 'producing' and pre_qa.get('ok') is False and not build.get('pending_repair') and int(build.get('repair_count') or 0) < int(build.get('repair_limit', 2)):
-                save(directory / f"stage-{index}-build-refused-{len(list(directory.glob('stage-*-build-refused-*.json'))) + 1}.json", dispatch)
-                continue  # Construction failure was recorded; the next boundary registers its budgeted repair.
-            break
-        prompt = f"""继续已确认的同一任务，不重建、不重置预算。当前 work-dir={work}，派发结果={dispatch_file}。
-只读取该派发 JSON，按其 agent/mode/packets 字段调用对应的插件 Agent；不得指定 name，必须 run_in_background=false，等待返回后结束本回合。不要运行其他管线阶段，不要读取冻结 Spec 或 Art Direction；Builder 只读 packet，critic 只读 critic-preview-map 及其指定文件。原修复上限仍为1，禁止加轮次、重置工作目录或伪造验收。页数6，事实为合成演示；不得新增未支持的事实。"""
-        command = live.build_command(claude, ROOT, prompt, 4.0 if "builder" in str(dispatch.get("agent")) else 2.0, scope="C")
-        _, payload = live.run_turn(command, project_dir=directory, config_dir=config, stdout_path=directory / f"stage-{index}.stdout.json", stderr_path=directory / f"stage-{index}.stderr.txt")
-        if "BUILDER_BLOCKED" in str(payload.get("result") or ""):
-            payload["stage_incomplete"] = True
-            save(directory / f"stage-{index}.stdout.json", payload)
-        turns.append(payload)
-        if payload.get("terminal_reason") == "budget_exhausted" or payload.get("is_error") or payload.get("stage_incomplete"):
-            break
-    return turns
+    """Continue one main-session authoring turn; never dispatch page agents."""
+    manifest = json.loads((work / 'build-manifest.json').read_text(encoding='utf-8'))
+    if manifest.get('execution_mode') != 'main-session':
+        raise ValueError('Historical agent manifests are read-only; use a new comparison directory')
+    index = len(list(directory.glob('stage-*.stdout.json'))) + 1
+    prompt = f"继续已确认任务，work-dir={work}。主会话直接改页面、run、看图、自检和complete；不派发页面或评审子代理。沿用原事实和最多一轮修复预算，不重置状态或增加轮次。"
+    command = live.build_command(claude, ROOT, prompt, 6.0, scope='C')
+    _, payload = live.run_turn(command, project_dir=directory, config_dir=config,
+        stdout_path=directory / f'stage-{index}.stdout.json', stderr_path=directory / f'stage-{index}.stderr.txt')
+    return [payload]
 
 
 def live_case(case: dict, directory: Path, mode: str, resume_existing: bool = False, stage_only: bool = False) -> dict:
@@ -241,7 +196,7 @@ def live_case(case: dict, directory: Path, mode: str, resume_existing: bool = Fa
     prompt = f"""/student-presentation-suite:sp-deck
 请制作6页中文课程展示，work-id={work_id}，研究范围C，只使用本地case.json与figure.png（若有）。所有成果和论文数字均是合成演示，不得声称是真实发表或真实个人成果。
 听众为本科教师与同学，6分钟，16:9，quality_level=standard，design_freedom={mode}，新Slide Spec必须为2.1并逐页保留case.json中的核心信息和精确项。模型可压缩标题与表达。要求PPTX、讲稿、逐页预览。
-将本地slide-spec.json复制到work-dir，原样保留semantic_requirements与meta.design_freedom；只可补充缺少的meta。图片来源已在image-sources.json声明（若有）；图片需完整保留流程。art-direction由你根据实际内容制定。plan时传--repair-limit 1 --design-freedom {mode}，不扩充修复预算。每条路径最多一轮修复，失败则记录incomplete；不得伪造critic结论或屏蔽门禁。
+将本地slide-spec.json复制到work-dir，原样保留semantic_requirements与meta.design_freedom；只可补充缺少的meta。图片来源已在image-sources.json声明（若有）；图片需完整保留流程。Art Direction可选。主会话直接创作、看图和修改，不派发页面或评审子代理。plan时传--repair-limit 1，不扩充修复预算。每条路径最多一轮修复，失败则记录incomplete；不得把自检称为独立语义核验。
 本回合只准备完整Production Summary和intake文件，然后停止；不要提前生成或渲染。路径：{directory}。请自行选择可合理默认的细节。
 """
     (directory / "prompt.md").write_text(prompt, encoding="utf-8")
@@ -313,7 +268,7 @@ def main() -> int:
     parser.add_argument("--render", action="store_true")
     parser.add_argument("--live-claude", action="store_true")
     parser.add_argument("--resume-live", action="store_true", help="resume infrastructure-interrupted intakes, preserving saved evidence")
-    parser.add_argument("--continue-stages", action="store_true", help="continue an existing live manifest at bounded agent boundaries; retains repair counts")
+    parser.add_argument("--continue-stages", action="store_true", help="continue an existing live manifest at main-session production; retains repair counts")
     parser.add_argument("--typography-stress", action="store_true", help="render six narrow measured rich-text cases (auto runtime only)")
     parser.add_argument("--live-mode", choices=["auto", "guided"], help="continue only one existing live path")
     args = parser.parse_args()

@@ -48,63 +48,10 @@ class QualityTierTableTests(unittest.TestCase):
         self.assertEqual(DEFAULT_TIER, normalize("unspecified"))
         self.assertEqual(DEFAULT_TIER, normalize("turbo"))
 
-    def test_fast_spends_nothing_beyond_one_shot(self) -> None:
-        policy = tier_policy("fast")
-        self.assertTrue(policy["calibration"])
-        self.assertEqual(0, policy["calibration_max_rounds"])
-        self.assertEqual(1, policy["shard_cap"])
-        self.assertFalse(policy["block_structural"])
-        self.assertFalse(policy["block_style_major"])
-        self.assertFalse(policy["block_regression"])
-
-    def test_standard_calibrates_once_and_blocks_structural_lows(self) -> None:
-        policy = tier_policy("standard")
-        self.assertTrue(policy["calibration"])
-        self.assertEqual(1, policy["calibration_max_rounds"])
-        self.assertEqual(2, policy["shard_cap"])
-        self.assertFalse(policy["block_structural"])
-        self.assertFalse(policy["block_aesthetic_low"])
-        self.assertFalse(policy["block_style_major"])
-        self.assertFalse(policy["block_regression"])
-
-    def test_rigorous_keeps_the_full_high_score_contract(self) -> None:
-        policy = tier_policy("high-score")  # legacy value resolves here
-        self.assertEqual("rigorous", policy["tier"])
-        self.assertTrue(policy["calibration"])
-        self.assertEqual(2, policy["calibration_max_rounds"])
-        self.assertEqual(3, policy["shard_cap"])
-        self.assertFalse(policy["block_structural"])
-        self.assertFalse(policy["block_aesthetic_low"])
-        self.assertTrue(policy["block_style_major"])
-        self.assertTrue(policy["block_regression"])
-        self.assertTrue(policy["strict_v08"])
 
 
-class CalibrationLineTests(unittest.TestCase):
-    """Every tier looks before the rest of the deck. Short decks use a two-page pair."""
 
-    def test_standard_skips_calibration_at_or_below_the_page_line(self) -> None:
-        self.assertTrue(calibration_enabled("standard", 8))
-        self.assertTrue(calibration_enabled("standard", 3))
-        self.assertTrue(calibration_enabled("standard", 9))
-        self.assertTrue(calibration_enabled("standard", 30))
-        self.assertTrue(uses_preview_pair("standard", 8))
-        self.assertFalse(uses_preview_pair("standard", 9))
 
-    def test_unknown_page_count_keeps_the_table_rule(self) -> None:
-        # 页数不可知时按 tier 表行事：standard 仍校准（宁可多付一轮，不静默降级）。
-        self.assertTrue(calibration_enabled("standard", None))
-
-    def test_fast_never_and_rigorous_always_calibrate(self) -> None:
-        self.assertTrue(calibration_enabled("fast", 3))
-        self.assertTrue(calibration_enabled("basic", 30))
-        self.assertTrue(uses_preview_pair("fast", 30))
-        self.assertTrue(calibration_enabled("rigorous", 3))
-        self.assertTrue(calibration_enabled("high-score", 3))
-        self.assertTrue(uses_preview_pair("rigorous", 3))
-        self.assertTrue(calibration_enabled("rigorous", 9))
-        self.assertTrue(calibration_enabled("high-score", 9))
-        self.assertFalse(uses_preview_pair("rigorous", 9))
 
 
 class TierGateMatrixTests(unittest.TestCase):
@@ -197,29 +144,11 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class EffectiveShardCapTests(unittest.TestCase):
-    """D1: fast stays single-builder below the page line and shards to 2 above it."""
 
-    def test_fast_below_the_line_stays_single(self) -> None:
-        self.assertEqual(1, effective_shard_cap("fast", 8))
-        self.assertEqual(1, effective_shard_cap("fast", 3))
-
-    def test_fast_above_the_line_shards_to_two(self) -> None:
-        self.assertEqual(2, effective_shard_cap("fast", 9))
-        self.assertEqual(2, effective_shard_cap("fast", 14))
-
-    def test_fast_above_the_second_line_shards_to_three(self) -> None:
-        self.assertEqual(3, effective_shard_cap("fast", 15))
-        self.assertEqual(3, effective_shard_cap("fast", 30))
-
-    def test_fast_without_a_page_count_stays_single(self) -> None:
-        self.assertEqual(1, effective_shard_cap("fast"))
-
-    def test_standard_and_rigorous_ignore_the_page_line(self) -> None:
-        self.assertEqual(2, effective_shard_cap("standard", 3))
-        self.assertEqual(2, effective_shard_cap("standard", 30))
-        self.assertEqual(3, effective_shard_cap("rigorous", 30))
-
-    def test_legacy_aliases_normalize_first(self) -> None:
-        self.assertEqual(1, effective_shard_cap("basic", 4))
-        self.assertEqual(3, effective_shard_cap("high-score", 30))
+class MainSessionTierTests(unittest.TestCase):
+    def test_quality_does_not_add_calibration_or_agents(self):
+        for level in ('fast','standard','rigorous','basic','high-score'):
+            for pages in (None, 2, 9, 40):
+                self.assertFalse(calibration_enabled(level,pages))
+                self.assertFalse(uses_preview_pair(level,pages))
+                self.assertEqual(effective_shard_cap(level,pages),1)

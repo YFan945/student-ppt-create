@@ -1,5 +1,5 @@
 {
-  "description": "Cost-discipline and execution-integrity guards for the student presentation pipeline.",
+  "description": "Research isolation and provenance only; PPTX authoring runs in the main session.",
   "hooks": {
     "PreToolUse": [
       {
@@ -14,7 +14,7 @@
     ],
     "SubagentStart": [
       {
-        "matcher": "student-presentation-suite:.*",
+        "matcher": "student-presentation-suite:presentation-researcher",
         "hooks": [
           {
             "type": "command",
@@ -25,7 +25,7 @@
     ],
     "SubagentStop": [
       {
-        "matcher": "student-presentation-suite:.*",
+        "matcher": "student-presentation-suite:presentation-researcher",
         "hooks": [
           {
             "type": "command",

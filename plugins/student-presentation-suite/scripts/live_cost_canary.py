@@ -77,7 +77,7 @@ SCENARIOS: dict[str, dict[str, Any]] = {
     },
 }
 
-CONFIRMATION = """我确认刚才的 Production Summary。请继续使用同一个 work-id，按插件的生产管线完成整套 PPTX，直到 build-manifest.json 的 state=complete。必须经过隔离 presentation-builder、calibration preview、正式 build/render、隔离 visual-critic、QA 和 complete；不要绕过门禁，不要再次询问可自行决定的默认项。若某一步被机械门禁拒绝，按照 ppt_pipeline.py next 给出的合法动作修正后继续。"""
+CONFIRMATION = """我确认刚才的 Production Summary。请继续同一个 work-id，由主会话直接编写页面、调用 plan/run、查看预览并在原预算内修改，最后 complete。不要派发 Builder/critic，不需要校准、Packet、分片或评审回执。保留冻结事实与源文件，只导出已确认类型。"""
 
 
 def find_claude() -> str | None:

@@ -148,8 +148,37 @@ function renderPage(ctx, mod) {
     return;
   }
   const mode = ctx.designMode || ctx.tokens.design_freedom || 'auto';
-  if (mod.typography)
-    ctx.tokens = { ...ctx.tokens, typography: { ...ctx.tokens.typography, ...mod.typography } };
+  if (mod.typography) {
+    const allowed = new Set([
+      'title_pt',
+      'cover_title_pt',
+      'slide_title_pt',
+      'statement_pt',
+      'key_statement_pt',
+      'stat_pt',
+      'body_pt',
+      'subtitle_pt',
+      'caption_pt',
+      'source_pt',
+      'reference_pt',
+      'label_pt',
+      'node_pt',
+      'kpi_pt',
+      'quote_pt',
+      'list_pt',
+    ]);
+    for (const [key, value] of Object.entries(mod.typography)) {
+      if (!allowed.has(key)) throw new Error(`unknown page typography key: ${key}`);
+      if (!Number.isFinite(value) || value <= 0)
+        throw new Error(`page typography ${key} must be a finite positive number`);
+    }
+    const typography = { ...mod.typography };
+    const title = mod.kind === 'cover' ? typography.cover_title_pt : typography.slide_title_pt;
+    if (typography.title_pt === undefined && title !== undefined) typography.title_pt = title;
+    if (typography.statement_pt === undefined && typography.key_statement_pt !== undefined)
+      typography.statement_pt = typography.key_statement_pt;
+    ctx.tokens = { ...ctx.tokens, typography: { ...ctx.tokens.typography, ...typography } };
+  }
   if (mod.visual_language)
     ctx.tokens = {
       ...ctx.tokens,

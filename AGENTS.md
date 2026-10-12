@@ -57,9 +57,11 @@ Inside the plugin package:
 - `references/`: shared intake, standards, cost discipline, image policy, and Slide Spec contracts.
 - `scripts/`: environment checks, schema bridge, validation, session cost review, Research Pack
   validation, and PPTX smoke tooling.
-- `skills/sp-deck/scripts/run_gates.py`: single-run orchestrator for the v0.8 visual gates; a passing
-  run prints one line, and the full detail lands in `gates-report.json`. `run_gates.sh` only locates
-  an interpreter — call the python form, which also works where `sh` resolves to WSL.
+- `scripts/direct_production.py`: main-session production tools; the existing
+  `skills/sp-deck/scripts/ppt_pipeline.py` path exposes plan, run, complete and status.
+  No page/critic agents, calibration, packets, sharding or production receipts.
+- `scripts/hook_dispatcher.py`: research-only hook routing from hooks/hooks.json;
+  page authoring and preview inspection have no Builder/cost/production-entry guards.
 - `commands/sp-cost-report.md`: `/sp-cost-report` entrypoint for `scripts/session_cost.py`.
 - `shared/`: reusable Python implementation.
 - `tests/`: behavioral, schema, runtime, and delivery contracts.
@@ -106,7 +108,8 @@ sp-research → sp-outline → sp-deck → sp-review
 
 Canonical ownership:
 
-- `references/model-led-design.md`: new-task design freedom, Slide Spec 2.1 semantic requirements, measured typography and page-local downgrade policy. New tasks default to auto; old work ids/specs are not migrated. No fixed font-size floor or mandated gallery treatment for new tasks.
+- `references/model-led-design.md`: main-session design freedom, Slide Spec 2.1 semantics and measured typography. New tasks default to auto; old records are readable without migration. No fixed font floor or mandated gallery treatment.
+- `skills/sp-deck/references/main-session-production.md`: production commands and editable page authoring. The main session writes pages, views renders and repairs directly.
 
 - `references/presentation-intake.md`: clarification gate and workflow states.
 - `references/shared-standards.md`: routing and presentation quality standards.
@@ -120,15 +123,13 @@ Canonical ownership:
   classification, source tiers, cross-validation, budget bands, and the Research Pack contract.
 - `references/cost-discipline.md`: how the work is carried out — batched tool calls,
   in-place edits, write-once artifacts, per-stage summaries, delegated search, single-run gating.
-- `references/visual-review.schema.json`: canonical shape of the critic's `visual-review.json`;
-  QA validates against it before consuming. `required` is deliberately the minimal set the gate
-  reads (`pptx_sha256`, `slides`) — fields nobody consumes must not become blocking requirements.
+- `references/visual-review.schema.json`: optional standalone historical review format;
+  main-session production does not require visual scores, review JSON or critic receipts.
 - `shared/content_requirements.py` and `shared/pptx_text_readback.py`: exact numeric
-  tokens, independent semantic coverage, text/notes input binding, and logical
+  tokens, text/notes input binding, and logical
   positioned-span readback. Never join unrelated text boxes to pass a fact check.
-- `references/spawn-templates.md`: the fixed spawn prompts for the isolated agents
-  (researcher / builder / critic). Fixed constraint blocks are copied verbatim and data slots carry
-  paths only; byte-exact content (claims, source titles, numbers) is never transcribed into a prompt.
+- `references/spawn-templates.md`: the researcher's prompt only. PPTX design and
+  semantic/visual self-check remain in the main session; do not describe them as independent review.
 - `shared/pptx_runtime/cjk_fonts.py` + `pptx_tool.py cjk-fonts`: post-process generated decks
   to add `<a:ea>` East Asian typefaces (CJK typography pairing lives in design-tokens.json);
   normalize also repairs pptxgenjs rich-text (stray per-run `<a:pPr>`), so multi-run

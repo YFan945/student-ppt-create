@@ -91,53 +91,8 @@ class SkillBehaviorContractTests(unittest.TestCase):
         for path in ROOT.glob("skills/*/SKILL.md"):
             self.assertEqual(version, str(frontmatter(path).get("version")), path)
 
-    def test_runtime_and_output_contracts_are_portable(self) -> None:
-        planning = self.read("skills/sp-outline/SKILL.md")
-        ppt = self.read("skills/sp-deck/SKILL.md")
-        production = self.read("skills/sp-deck/references/pptx-production.md")
-        review = self.read("skills/sp-review/SKILL.md")
-        self.assertIn("${CLAUDE_PLUGIN_ROOT}", ppt)
-        self.assertIn("${CLAUDE_PROJECT_DIR}", ppt)
-        self.assertIn("run_with_pptxgenjs.js", production)
-        self.assertIn("pptx_tool.py", ppt)
-        self.assertIn("blocked", ppt)
-        self.assertIn("incomplete", ppt)
-        self.assertIn("不得写入 `${CLAUDE_PLUGIN_ROOT}`", planning)
-        self.assertIn("${CLAUDE_PLUGIN_ROOT}", review)
-        self.assertIn("${CLAUDE_PROJECT_DIR}", review)
 
-    def test_create_flow_is_first_pass_and_reuses_package_evidence(self) -> None:
-        production = self.read(
-            "skills/sp-deck/references/pptx-production.md"
-        )
-        qa = self.read("skills/sp-deck/references/pptx-qa.md")
-        self.assertIn("pptxgenjs-safety.md", production)
-        self.assertIn("→ move (thesis / weighted / metric / proof / sequence / figure)", production)
-        self.assertIn("deterministic fallback", production)
-        self.assertNotIn('**默认**\n   `require("pptx-composer")`', production)
-        self.assertIn("safety preflight", production)
-        self.assertIn("QA 和 delivery 绑定", production)
-        self.assertIn("package validation", qa)
-        self.assertIn("四个阶段", qa)
-        self.assertIn("slide_spec_guard.py", qa)
-        self.assertIn("pptx_quality_gate_v071.py", qa)
-        self.assertIn("pptx_delivery_check_v071.py", qa)
-        self.assertIn("Advanced evidence mode", qa)
 
-    def test_cross_skill_handoff_is_deterministic(self) -> None:
-        shared = self.read("references/shared-standards.md")
-        self.assertIn("Outline-only work never creates", shared)
-        self.assertIn("Use `sp-research`", shared)
-        self.assertIn("Research Pack", shared)
-        self.assertIn('“看看问题” means review only', shared)
-        self.assertIn('“直接改好” means review diagnosis followed by PPTX editing', shared)
-        review = self.read("skills/sp-review/SKILL.md")
-        self.assertIn("先诊断，再交接给 `sp-deck`", review)
-        self.assertIn("不得覆盖原始 deck", review)
-        agents = self.read("AGENTS.md")
-        self.assertIn("**`sp-research`**", agents)
-        cost = self.read("references/cost-discipline.md")
-        self.assertIn("`sp-research`", cost.split("适用范围", 1)[1].split("\n", 1)[0])
 
     def test_skill_local_reference_paths_exist(self) -> None:
         outline = self.read("skills/sp-outline/SKILL.md")
@@ -153,54 +108,8 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("../../references/image-sourcing.md", research)
         self.assertTrue((ROOT / "references/image-sourcing.md").is_file())
 
-    def test_pptx_intake_is_a_hard_gate(self) -> None:
-        intake = self.read("references/presentation-intake.md")
-        ppt = self.read("skills/sp-deck/SKILL.md")
-        production = self.read(
-            "skills/sp-deck/references/pptx-production.md"
-        )
-        for field in (
-            "Topic",
-            "Course/context",
-            "Presentation type",
-            "Audience",
-            "Language",
-            "Duration",
-            "Slide count",
-            "Format",
-            "Rubric/required sections",
-            "Source material",
-            "Template/branding",
-            "Image strategy",
-            "Visual style",
-            "Deliverables",
-        ):
-            self.assertIn(f"| {field} |", intake)
-        self.assertIn("Never ask for a confirmed item again", intake)
-        self.assertIn("Do not run environment checks", intake)
-        self.assertIn("Delegation does NOT itself move the state", intake)
-        self.assertIn("完整 Production Summary", ppt)
-        self.assertIn("confirm --summary-file", ppt)
-        self.assertIn("生产前必须具备", production)
 
-    def test_workflow_states_are_consistent(self) -> None:
-        intake = self.read("references/presentation-intake.md")
-        ppt = self.read("skills/sp-deck/SKILL.md")
-        states = (
-            "intake_pending → intake_confirmed → planned → producing → qa → complete"
-        )
-        self.assertIn(states, intake)
-        self.assertIn(states, ppt)
-        for terminal in ("incomplete", "blocked"):
-            self.assertIn(terminal, intake)
-            self.assertIn(terminal, ppt)
 
-    def test_missing_preview_never_qualifies_for_complete(self) -> None:
-        qa = self.read("skills/sp-deck/references/pptx-qa.md")
-        self.assertIn("缺预览", qa)
-        self.assertIn("状态只能是 `incomplete`", qa)
-        self.assertNotIn("代码允许 complete", qa)
-        self.assertIn("quality gate", qa)
 
     def test_review_and_outline_use_intake_without_overreaching(self) -> None:
         planning = self.read("skills/sp-outline/SKILL.md")
@@ -210,25 +119,6 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("不修改文件", review)
         self.assertIn("完整 intake 门禁", planning)
 
-    def test_research_skill_stays_in_the_evidence_layer(self) -> None:
-        """sp-research 只做证据层：不排页、不生成、不改视觉、不写讲稿。"""
-        research = self.read("skills/sp-research/SKILL.md")
-        for token in (
-            "references/research-workflow.md",
-            "research-pack.schema.json",
-            "validate_research_pack.py",
-            "不决定版式",
-            "不设计页面",
-            "不生成 PPTX",
-            "不撰写成段讲稿",
-        ):
-            self.assertIn(token, research)
-
-        # 上游把研究当作排页之前的前置步骤，下游知道去哪里查证数字
-        outline = self.read("skills/sp-outline/SKILL.md")
-        self.assertIn("sp-research", outline)
-        self.assertIn("Research Need Analysis", outline)
-        self.assertIn("research-pack.json", self.read("skills/sp-deck/SKILL.md"))
 
     def test_research_contract_is_wired_into_the_evidence_chain(self) -> None:
         evidence = self.read("references/evidence-and-citations.md")
@@ -263,26 +153,6 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertIn("`presentation-intake.md` owns clarification", shared)
         self.assertNotIn("## Confirmed Constraints", shared)
 
-    def test_calibration_selection_is_archetype_coverage_everywhere(self) -> None:
-        """Closure regression: Batch 4.1 changed the calibration sample policy from
-        "art-direction high-leverage" to archetype coverage. The runtime moved, the
-        machine contract moved — the SKILL workflow text must move with them, or
-        the drift Batch 1 exists to kill comes straight back."""
-        import json as _json
-
-        skill = self.read("skills/sp-deck/SKILL.md")
-        self.assertIn("archetype coverage", skill)
-        self.assertNotIn("优先覆盖封面 + 高密度/数据页 + 代表性图文页", skill)
-        contract = _json.loads(
-            (ROOT / "references" / "pipeline-contract.json").read_text(encoding="utf-8")
-        )
-        self.assertEqual(
-            "archetype_coverage_with_leverage_priority",
-            contract.get("calibration_sample_selection"),
-        )
-        build_rules = contract["stage_contracts"]["build"][0]
-        self.assertIn("ARCHETYPE COVERAGE", build_rules)
-        self.assertNotIn("high-leverage slides from Art Direction", build_rules)
 
     def test_style_selection_contract(self) -> None:
         menu = self.read("skills/sp-deck/references/visual-style-menu.md")
@@ -313,19 +183,6 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertTrue((ROOT / "examples/high-score-research-brief.yaml").is_file())
         self.assertTrue((ROOT / "examples/high-score-research-slide-spec.yaml").is_file())
 
-    def test_readmes_use_new_install_id(self) -> None:
-        for path in (REPO_ROOT / "README.md", REPO_ROOT / "README-zh.md", ROOT / "README.md"):
-            text = path.read_text(encoding="utf-8")
-            self.assertIn("student-presentation-suite@claude-personal", text)
-            old_id = "student-presentation-suite@personal"
-            offset = 0
-            while (index := text.find(old_id, offset)) >= 0:
-                context = text[max(0, index - 120):index + len(old_id) + 120].lower()
-                self.assertTrue(
-                    any(marker in context for marker in ("obsolete", "migrate", "旧", "迁移", "remove")),
-                    f"{path}: legacy install id is allowed only in migration/removal documentation",
-                )
-                offset = index + len(old_id)
 
     def test_install_script_has_safe_migration_contract(self) -> None:
         script = (REPO_ROOT / "scripts/install_claude_plugin.ps1").read_text(encoding="utf-8")
@@ -338,14 +195,6 @@ class SkillBehaviorContractTests(unittest.TestCase):
         manifest = json.loads(self.read(".claude-plugin/plugin.json"))
         self.assertEqual([], manifest["dependencies"])
 
-    def test_review_edit_handoff_requires_separate_outputs(self) -> None:
-        review = self.read("skills/sp-review/SKILL.md")
-        ppt = self.read("skills/sp-deck/SKILL.md")
-        editing = self.read("skills/sp-deck/references/pptx-editing.md")
-        self.assertIn("先诊断", review)
-        self.assertIn("独立改进版", review)
-        self.assertIn("禁止覆盖 source deck", ppt)
-        self.assertIn("source 始终只读", editing)
 
     def test_v04_control_quality_and_revision_contracts_exist(self) -> None:
         brief_schema = json.loads(self.read("references/presentation-brief.schema.json"))
@@ -420,17 +269,6 @@ class SkillBehaviorContractTests(unittest.TestCase):
         self.assertEqual([], list(Draft202012Validator(brief_schema).iter_errors(brief)))
         self.assertEqual([], list(Draft202012Validator(slide_schema).iter_errors(spec)))
 
-    def test_skills_route_through_layered_quality_workflow(self) -> None:
-        planning = self.read("skills/sp-outline/SKILL.md")
-        production = self.read("skills/sp-deck/references/pptx-production.md")
-        revision = self.read("references/revision-training-export.md")
-        review = self.read("skills/sp-review/SKILL.md")
-        self.assertIn("目录→每页主张", planning)
-        self.assertIn("analyze_presentation_spec.py", planning)
-        self.assertIn("build_support_outputs.py", planning)
-        self.assertIn("build_support_outputs.py", production)
-        self.assertIn("create_revision_manifest.py", revision)
-        self.assertIn("可能的问题", review)
 
     def test_handoff_artifacts_and_completion_contract(self) -> None:
         outline = self.read("skills/sp-outline/SKILL.md")

@@ -50,6 +50,19 @@ def parse_time(value: Any) -> datetime | None:
 
 
 def collect(manifest: dict[str, Any], work_dir: Path | None = None) -> dict[str, Any]:
+    if manifest.get("execution_mode") == "main-session":
+        attempts = int(manifest.get("attempts") or 0)
+        rendered = manifest.get("render") or {}
+        return {
+            "work_id": manifest.get("work_id"), "manifest_version": manifest.get("manifest_version"),
+            "state": manifest.get("state"), "builds": attempts, "repairs": max(0, attempts - 1),
+            "rendered_pages": len(rendered.get("pages", [])), "render_events": int(bool(rendered)),
+            "qa_events": int(bool(manifest.get("check"))), "qa_reused": 0, "render_reused": 0,
+            "stale_evidence_moved": 0, "packet_fallbacks": 0, "advance_calls": 0,
+            "advance_actions": 0, "advance_collapsed": 0, "advance_agent_boundaries": 0,
+            "advance_user_boundaries": 0, "advance_refusals": 0, "advance_step_cap_hits": 0,
+            "deck_rhythm_failed": False, "minutes": None,
+        }
     build = manifest.get("build") or {}
     render = manifest.get("render") or {}
     qa = manifest.get("qa") or {}

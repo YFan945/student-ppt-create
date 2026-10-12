@@ -14,9 +14,9 @@ for entry in (str(ROOT / "scripts"), str(ROOT / "skills" / "sp-deck" / "scripts"
     if entry not in sys.path:
         sys.path.insert(0, entry)
 
+import direct_production as core  # noqa: E402
 import import_user_materials as importer  # noqa: E402
 import validate_research_pack as validator  # noqa: E402
-from pipeline import core  # noqa: E402
 
 
 def base_pack(**over) -> dict:
@@ -171,7 +171,7 @@ class ImportReceiptTests(unittest.TestCase):
                 "files": [{"path": str(material), "sha256": pack["sources"][0]["sha256"]}],
                 "pack": core.bind(pack_path),
             }), encoding="utf-8")
-            receipt = core.execution_receipt(work, "research", pack_path)
+            receipt = core.research_receipt(work, pack_path)
             self.assertTrue(receipt["imported"])
             self.assertEqual(work.name, receipt["work_id"])
 
@@ -192,8 +192,8 @@ class ImportReceiptTests(unittest.TestCase):
                 "pack": core.bind(pack_path),
             }), encoding="utf-8")
             material.write_text("# edited after import\n", encoding="utf-8")
-            with self.assertRaisesRegex(core.RefusedError, "material changed after import"):
-                core.execution_receipt(work, "research", pack_path)
+            with self.assertRaisesRegex(core.ProductionError, "material changed after import"):
+                core.research_receipt(work, pack_path)
 
     def test_without_an_import_receipt_the_researcher_rule_stays(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -201,8 +201,8 @@ class ImportReceiptTests(unittest.TestCase):
             work.mkdir(parents=True)
             pack_path = work / "research-pack.json"
             pack_path.write_text("{}", encoding="utf-8")
-            with self.assertRaises(core.RefusedError):
-                core.execution_receipt(work, "research", pack_path)
+            with self.assertRaises(core.ProductionError):
+                core.research_receipt(work, pack_path)
 
 
 if __name__ == "__main__":

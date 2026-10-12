@@ -52,7 +52,7 @@ RESEARCH_ACTIVE_TTL_SECONDS = 6 * 3600
 # (cost_guard lacked `doctor`).
 PIPELINE_ACTIONS = frozenset(
     {
-        "plan", "build", "render", "qa", "repair", "complete",
+        "plan", "run", "build", "render", "qa", "repair", "complete",
         "status", "next", "advance", "doctor",
     }
 )

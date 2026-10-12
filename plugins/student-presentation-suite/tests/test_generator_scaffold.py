@@ -93,7 +93,6 @@ class ScaffoldContractTests(unittest.TestCase):
             self.assertIn("slots: {", stub)
             self.assertIn("COPY.title", stub)
             self.assertIn('notes: ""', stub)
-            self.assertIn("D11", stub)
             self.assertNotIn("slide.addText(COPY.title", stub)
             self.assertNotIn("H.renderBackground(slide, tokens,", stub)
             self.assertNotIn("H.addFittedText(slide, COPY.title", stub)
@@ -124,7 +123,6 @@ class ScaffoldContractTests(unittest.TestCase):
             stub = next((work / "pages").glob("p*.js")).read_text(encoding="utf-8")
             self.assertIn('keyLine: "风光不是二选一"', stub)
             self.assertIn("key_line: COPY.keyLine", stub)
-            self.assertIn("D11", stub)
 
     def test_page_stub_carries_the_on_screen_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

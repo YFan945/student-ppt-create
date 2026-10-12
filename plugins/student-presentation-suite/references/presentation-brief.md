@@ -77,7 +77,7 @@ Canonical tiers (`fast` / `standard` / `rigorous`) live in `quality_tiers.py`;
 `basic` and `high-score` are accepted legacy aliases.
 
 - `fast` (legacy `basic`): complete, readable, correctly timed, and easy to present.
-- `standard`: one calibration sample on longer decks; structural lows block.
+- `standard`: main-session authoring with careful evidence and visual self-check; no extra agent stages.
 - `rigorous` (legacy `high-score`): additionally optimize rubric alignment, evidence chain,
   distinctive opening, limitations, teacher/judge questions, and rehearsal.
 

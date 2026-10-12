@@ -15,28 +15,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-
-def _enforce_pipeline_hook_health() -> None:
-    """Run before ppt_pipeline plan does any production work.
-
-    ppt_pipeline imports this module before command dispatch. Keeping the small
-    bootstrap here lets the verifier fail before intake/research/preflight while
-    avoiding a second copy of hook-health logic in the large pipeline module.
-    """
-    plugin_root = Path(
-        os.environ.get("CLAUDE_PLUGIN_ROOT")
-        or Path(__file__).resolve().parent.parents[2]
-    ).resolve()
-    scripts = plugin_root / "scripts"
-    if str(scripts) not in sys.path:
-        sys.path.insert(0, str(scripts))
-    from hook_health import enforce_pipeline_plan_bootstrap
-
-    enforce_pipeline_plan_bootstrap()
-
-
-_enforce_pipeline_hook_health()
-
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
@@ -60,7 +38,7 @@ const {{ SlideElementRegistry }} = require(path.join(HELPERS_DIR, 'pptx-element-
 const pptxgen = require('pptxgenjs');
 
 // 解析好的设计 token 由 scaffold 内联（同源：shared/design_tokens.resolve_design_tokens）。
-// 页模块只用这些角色色与字体，不要手写十六进制色值。
+// 这些是起始设计建议。主会话可按内容修改配色与字体，保留用户品牌约束。
 const TOKENS = {tokens_json};
 
 const PAGES = [
@@ -118,11 +96,8 @@ const COPY = {{
 }};
 /* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */
 
-/* 声明式页面：选 move、填 slots。glue 由 deck.js 的 L.renderDeclaredPage 执行。
-   例：move: "thesis"，claim 是页面上最大的那句话。
-   或 move: "weighted", params: {{ weights: [2.4, 1, 0.7] }}（三列起权重必须不等）。
-   move 装不下时才退回 layout。自定义坐标才改函数式页面并注释 custom。
-   slots.key_line 非空时 D11 收尾带自动渲染，不要手画第二条。 */
+/* guided 使用 move；deterministic 使用 layout；auto 使用自由函数页面。
+   typography 可直接指定各角色字号。按信息关系组织页面，slots 仅为工具输入。 */
 module.exports = {{
   dark: {dark_js},
   kind: {kind_js},
@@ -232,7 +207,7 @@ def _on_screen_block(planned: dict[str, Any]) -> str:
     required = actual_check.planned_requirements(planned)
     if required.get("copy_policy") == "semantic":
         return ("/* Frozen semantic requirements; planning prose may be rewritten.\n"
-                "   Exact items need actual text carriers; independent critic checks meaning.\n"
+                "   Exact items need actual text carriers; the main author checks meaning against previews.\n"
                 f"   {_comment_safe(json.dumps(required, ensure_ascii=False))}\n*/")
     lines = [
         "/* ON-SCREEN REQUIRED — the actual-content gate matches PPTX text runs byte-exact",

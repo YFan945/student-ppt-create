@@ -71,6 +71,11 @@ def load_optional(path: Path) -> Any:
 
 
 def find_spec(work_dir: Path) -> Path | None:
+    manifest = load_optional(work_dir / "build-manifest.json")
+    if isinstance(manifest, dict) and isinstance(manifest.get("slide_spec"), dict):
+        path = Path(str(manifest["slide_spec"].get("path") or ""))
+        if path.is_file():
+            return path
     for name in SPEC_CANDIDATES:
         candidate = work_dir / name
         if candidate.is_file():

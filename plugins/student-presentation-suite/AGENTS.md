@@ -69,13 +69,15 @@ while the failed build remains blocked from render and QA until rebuilt green.
 `incomplete → qa` is the recovery edge.
 ```
 
-- `scripts/workflow_guard.py` owns intake only (`init` / `confirm`). `blocked`
-  recovers with `unblock`.
-- After `ppt_pipeline.py plan`, `build-manifest.json` is the production
-  authority; the pipeline mirrors `workflow-state.json`. Do not call
-  `workflow_guard.py transition` to advance `producing` or `complete`.
-- Rework: `skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>`.
-  Delivery: `ppt_pipeline.py complete --work-dir <wd>`. Dispatch with `next`.
+- `scripts/workflow_guard.py` owns intake (`init` / `confirm`).
+- Main-session production uses `ppt_pipeline.py plan`, `run` and `complete`;
+  the tools maintain manifest and workflow status. The main author implements
+  pages, views current renders and fixes them in the same conversation.
+- No Builder/critic agents, packets, calibration, sharding or production receipts.
+- `scripts/hook_dispatcher.py` routes only research isolation/provenance hooks;
+  direct page authoring has no Builder or production-entry guard.
+- Historical manifests are readable through `status`; continue old artifacts
+  as new edit tasks, preserving their source. Do not silently migrate records.
 
 ## Key Constraints
 

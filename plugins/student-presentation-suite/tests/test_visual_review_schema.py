@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
-import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,7 +12,7 @@ import jsonschema
 
 ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = ROOT / "references" / "visual-review.schema.json"
-CRITIC_REFERENCE = ROOT / "skills" / "sp-deck" / "references" / "pptx-visual-critic.md"
+CRITIC_REFERENCE = ROOT / "tests" / "fixtures" / "visual-review-example.json"
 QUALITY = ROOT / "skills" / "sp-deck" / "scripts" / "pptx_quality_gate_v071.py"
 
 
@@ -27,11 +26,8 @@ def load_module(name: str, path: Path):
 
 
 def example_from_reference() -> dict[str, Any]:
-    """The critic reference must keep a JSON example under `## visual-review.json`."""
-    text = CRITIC_REFERENCE.read_text(encoding="utf-8")
-    match = re.search(r"## visual-review\.json.*?```json\n(.*?)```", text, re.S)
-    assert match, "pptx-visual-critic.md lost its json example"
-    return json.loads(match.group(1))
+    """Validate the historical standalone format without a production actor."""
+    return json.loads(CRITIC_REFERENCE.read_text(encoding="utf-8"))
 
 
 def concretize(value: Any, key: str | None = None) -> Any:
