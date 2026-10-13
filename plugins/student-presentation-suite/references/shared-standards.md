@@ -61,10 +61,7 @@ Follow `model-led-design.md`. Choose typography, density, colors, imagery and la
 
 ## Layered Generation
 
-Generate in this order: directory, slide claim/supporting points, concise PPT
-copy, speaker version, then Slide Spec/PPTX. Use `content-workflow.md` for
-structure modes, story checks, and compression rules. Do not present speaker
-notes as slide body text.
+Read the material and preserve the explanations, examples and evidence needed by the audience. Plan pages and notes from that content; do not turn substantial material into keywords or transfer necessary explanation exclusively into notes. See `content-workflow.md`.
 
 ## Audience-facing Content — Required
 

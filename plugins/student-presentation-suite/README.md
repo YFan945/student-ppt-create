@@ -6,7 +6,7 @@ Install, update, migration and uninstall instructions belong to the [marketplace
 
 Design references are optional tools. Typography, chart/icon counts, color usage, background rhythm and composition follow the content and rendered pages; no legacy numeric design rules are included in current authoring guidance.
 
-Built-in styles include optional categorical colors and editable information/evidence examples. Style selection is independent of design mode; component defaults remain overridable and all supporting items must be retained.
+New page source receives colors, font families and author-provided typography. The scaffold injects no layout rules, font floors, column limits, title/footer zones or background recipes. Every design_freedom value permits free page functions; the runtime never selects a layout or paints a background automatically. Useful explanations and evidence remain on slides.
 
 Audience-facing language follows the required shared standards; tables use editable themed headers, banding and meaningful emphasis.
 

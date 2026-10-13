@@ -126,7 +126,7 @@ class StackContractTests(unittest.TestCase):
         import pptx_rendered_check  # noqa: PLC0415
 
         tokens = json.loads(
-            (ROOT / "references" / "design-tokens.json").read_text(encoding="utf-8")
+            (ROOT / "shared" / "legacy_design_tokens.json").read_text(encoding="utf-8")
         )
         typo = tokens.get("defaults", tokens)["typography"]
         ratio = typo["title_min_pt"] / typo["body_cjk_min_pt"]

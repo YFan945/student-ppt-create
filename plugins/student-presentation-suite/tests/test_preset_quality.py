@@ -23,6 +23,56 @@ class PresetQualityTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         return json.loads(result.stdout)
 
+    def test_new_source_contains_no_legacy_layout_or_size_inputs(self):
+        import importlib.util
+
+        from shared.design_tokens import authoring_tokens
+        module_path=ROOT/'skills/sp-deck/scripts/generator_scaffold.py'
+        loader=importlib.util.spec_from_file_location('unrestricted_scaffold',module_path)
+        module=importlib.util.module_from_spec(loader)
+        loader.loader.exec_module(module)
+        for mode in ('auto','guided','deterministic'):
+            tokens=json.loads(module.inline_tokens_json({'schema_version':'2.1','meta':{'visual_style':'Academic Rigorous','design_freedom':mode}},None))
+            for key in ('geometry','lines','effects','backgrounds','background_directives','visual_language','svg_reference'):
+                self.assertNotIn(key,tokens)
+            self.assertTrue(all(key.endswith('_font') for key in tokens['typography']))
+            import tempfile
+
+            with tempfile.TemporaryDirectory() as temp:
+                work=Path(temp)
+                spec={'schema_version':'2.1','meta':{'visual_style':'Academic Rigorous','design_freedom':mode},
+                      'slides':[{'id':1,'title':'Topic','slide_copy':['Supporting detail preserved'],
+                                 'speaker_notes':'Explanation preserved'}]}
+                source=work/'spec.json'
+                source.write_text(json.dumps(spec),encoding='utf-8')
+                module.scaffold_generator(work,source)
+                page=next((work/'pages').glob('*.js')).read_text(encoding='utf-8')
+                self.assertIn('module.exports = function',page)
+                self.assertIn('Supporting detail preserved',page)
+                self.assertIn('Explanation preserved',page)
+                self.assertNotIn('move:',page)
+        from unittest.mock import patch
+
+        with patch('shared.design_tokens.LEGACY_TOKEN_FILE',ROOT/'missing-legacy.json'):
+            resolve_design_tokens('Academic Rigorous',authoring=True)
+        clean=authoring_tokens(resolve_design_tokens('Academic Rigorous'),{'body_pt':13})
+        self.assertEqual(clean['typography']['body_pt'],13)
+        catalog=json.loads((ROOT/'references/design-tokens.json').read_text(encoding='utf-8'))
+        self.assertNotIn('defaults',catalog)
+
+    def test_all_modes_accept_free_functions_without_automatic_paint_or_zones(self):
+        out=self.node("const R=require('./scripts/pptx-page-runtime.js'),Registry=require('./scripts/pptx-element-registry.js').SlideElementRegistry;slide.addNotes=()=>{};const results=[];for(const mode of ['auto','guided','deterministic']){calls.length=0;const mod=()=>{};mod.kind='cover';mod.presentation_copy={headline:'Authored'};const registry=new Registry();R.renderPage({slide,tokens,registry,n:1,presentationCopy:[],designMode:mode},mod);results.push(calls.length);}console.log(JSON.stringify([results,H.contentArea(tokens,'cover'),H.safeArea(10,5.625,tokens,{reserveTitle:true})]));")
+        self.assertEqual(out[0],[0,0,0])
+        self.assertEqual(out[1],{'x':0,'y':0,'w':10,'h':5.625})
+        self.assertEqual(out[2],out[1])
+
+    def test_captured_background_order_and_removal_of_design_grammar(self):
+        out=self.node("const Registry=require('./scripts/pptx-element-registry.js').SlideElementRegistry;function check(front){const r=new Registry({capture:true,designPreferencesAdvisory:true});const rect={type:'shape',x:.1,y:.1,w:4,h:2,fill:{color:'FFFFFF'}};const text={type:'text',text:'Visible',x:.2,y:.2,w:2,h:.5,fontSize:14};r.register(1,front?text:rect);r.register(1,front?rect:text);return r.analyzeDeck();}console.log(JSON.stringify([check(false),check(true)]));")
+        self.assertTrue(out[0]['ok'])
+        self.assertFalse(out[1]['ok'])
+        self.assertIn('text_overlap',[x['code'] for x in out[1]['errors']])
+        self.assertFalse(any(x['code'] in ('near_miss_alignment','decorative_stripe','dead_zone') for x in out[0]['warnings']))
+
     def test_presets_have_available_group_colors_and_overridable_type(self):
         styles = json.loads((ROOT / "references/design-tokens.json").read_text())["styles"]
         for style in styles.values():

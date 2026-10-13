@@ -97,16 +97,19 @@ function paletteMode(tokens, mode) {
  */
 function fontSizeScale(tokens, lang) {
   const t = tokens.typography || {};
-  if (tokens.model_led)
+  if (tokens.model_led) {
+    const body = t.body_pt ?? 18;
+    const title = t.title_pt ?? t.slide_title_pt ?? body;
     return {
-      title: t.title_pt ?? t.slide_title_pt ?? t.title_min_pt ?? 36,
-      subtitle: t.subtitle_pt ?? t.key_statement_pt ?? t.subtitle_min_pt ?? 28,
-      body: t.body_pt ?? t.body_cjk_min_pt ?? 24,
-      titleMax: t.title_pt ?? t.slide_title_pt ?? t.title_max_pt ?? 36,
-      bodyMax: t.body_pt ?? t.body_max_pt ?? 24,
-      label: t.label_pt ?? t.label_min_pt ?? 18,
-      caption: t.caption_pt ?? t.caption_min_pt ?? 12,
+      title,
+      subtitle: t.subtitle_pt ?? body,
+      body,
+      titleMax: title,
+      bodyMax: body,
+      label: t.label_pt ?? body,
+      caption: t.caption_pt ?? body,
     };
+  }
   const isCJK = lang === 'chinese' || lang === 'bilingual';
   const body = isCJK ? t.body_cjk_min_pt || 22 : t.body_latin_min_pt || 20;
   // 官方规范：CJK 正文下限 22pt，页面标题必须 ≥32pt 才能满足 1.45× 层级门禁。
@@ -326,6 +329,7 @@ function bandFor(tokens, kind) {
  * @param {string} kind
  */
 function contentArea(tokens, kind) {
+  if (tokens.model_led) return { x: 0, y: 0, w: SLIDE_W_IN, h: SLIDE_H_IN };
   const base = safeArea(SLIDE_W_IN, SLIDE_H_IN, tokens, { reserveTitle: false });
   const pageKind = ['cover', 'section', 'closing'].includes(kind) ? kind : 'content';
   const field = coverFieldBox(bandFor(tokens, pageKind));
@@ -487,6 +491,7 @@ function softShadow(tokens, overrides = {}) {
  * @returns {{ x: number, y: number, w: number, h: number }}
  */
 function safeArea(slideW, slideH, tokens, opts) {
+  if (tokens.model_led) return { x: 0, y: 0, w: slideW, h: slideH };
   const g = tokens.geometry || {};
   const marginPct = (g.safe_margin_pct || 6) / 100;
   const marginX = slideW * marginPct;
@@ -691,17 +696,22 @@ function rolePolicy(tokens, lang, role, options = {}) {
         tokens.typography?.[`${normalized}_pt`] ??
         (normalized === 'statement' ? tokens.typography?.key_statement_pt : undefined) ??
         options.max ??
-        basePolicy.max,
+        tokens.typography?.body_pt ??
+        18,
     );
     if (!Number.isFinite(chosen) || chosen <= 0)
       throw new RangeError('fontSize must be a finite positive number');
     const fonts = fontFamily(tokens);
     return {
-      ...policy,
+      ...options,
+      role: normalized,
+      margin: options.margin ?? 0,
+      align: options.align ?? 'left',
       min: chosen,
       max: chosen,
       fontSize: chosen,
       measured: true,
+      maxFillRatio: options.maxFillRatio ?? 1,
       valign: options.valign || 'top',
       fontFace: options.fontFace || (normalized === 'title' ? fonts.title : fonts.body),
       cjkFontFace: options.cjkFontFace || (normalized === 'title' ? fonts.cjkTitle : fonts.cjkBody),

@@ -1,8 +1,7 @@
-# Creative Student（创意学生）
+# Creative Student
 
-Optional style seed; follow [model-led design](../../../../references/model-led-design.md).
+Colors and font families for authoring from the material.
 
-- **Style character:** Warm and human; a studio-notebook feel with a single warm accent.
-- **Palette:** canvas `F7F4EF`; surface `FFFFFF`; primary text `1F2937`; secondary text `596273`; primary accent `C4510B`; secondary accent `0EA5E9`. Optional grouping colors `008478`, `7656A8`, `B54064`, `8B7123`.
-- **Background reference:** Optional dark canvas `221A14` / surface `33281E` or the light palette; choose treatment and page rhythm from the content.
-- **SVG reference:** `studio-tape` — Optional tape or studio-note motif; use only when it supports process or iteration.
+- **Style character:** Creative Student color and font family.
+- **Palette:** canvas `F7F4EF`; surface `FFFFFF`; primary_text `1F2937`; secondary_text `596273`; primary_accent `C4510B`; secondary_accent `0EA5E9`; category_1 `008478`; category_2 `7656A8`; category_3 `B54064`; category_4 `8B7123`; dark canvas `221A14`; surface `33281E`; primary_text `EADCC8`; secondary_text `BFA98A`; primary_accent `E8761F`; secondary_accent `8A5A34`.
+- **Font families:** cjk_title_font `Microsoft YaHei`; cjk_body_font `Microsoft YaHei`; title_font `Century Schoolbook`; body_font `Calibri`.

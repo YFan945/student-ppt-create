@@ -1,8 +1,7 @@
-# Midnight Business（午夜商务）
+# Midnight Business
 
-Optional style seed; follow [model-led design](../../../../references/model-led-design.md).
+Colors and font families for authoring from the material.
 
-- **Style character:** Composed and corporate; a deep field with one confident accent.
-- **Palette:** canvas `F6F8FC`; surface `FFFFFF`; primary text `17213C`; secondary text `52627A`; primary accent `3157A4`; secondary accent `3B82F6`. Optional grouping colors `087F8C`, `7656A8`, `B45F06`, `B54064`.
-- **Background reference:** Optional dark canvas `0E162C` / surface `192341` or the light palette; choose treatment and page rhythm from the content.
-- **SVG reference:** `midnight-beam` — Optional beam motif on cover, section, or closing; do not place it behind body copy.
+- **Style character:** Midnight Business color and font family.
+- **Palette:** canvas `F6F8FC`; surface `FFFFFF`; primary_text `17213C`; secondary_text `52627A`; primary_accent `3157A4`; secondary_accent `3B82F6`; category_1 `087F8C`; category_2 `7656A8`; category_3 `B45F06`; category_4 `B54064`; dark canvas `0E162C`; surface `192341`; primary_text `C2CBDE`; secondary_text `8E9CB7`; primary_accent `5A86E0`; secondary_accent `30497E`.
+- **Font families:** cjk_title_font `Microsoft YaHei`; cjk_body_font `Microsoft YaHei`; title_font `Cambria`; body_font `Arial`.

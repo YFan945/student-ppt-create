@@ -20,7 +20,7 @@ import pptx_actual_content_check as content
 from page_copy_fidelity_check import missing_fragments
 
 from shared.content_requirements import exact_present, numbers, semantic_binding, semantic_review_issues
-from shared.design_policy import advance_design, design_mode
+from shared.design_policy import design_mode
 from shared.slide_spec_contract import validate_spec_data
 
 
@@ -198,36 +198,11 @@ class SemanticTests(unittest.TestCase):
 
 
 class DesignTests(unittest.TestCase):
-    def test_custom_critic_geometry_findings_downgrade_but_facts_do_not(self):
-        manifest = {"design_freedom": "auto", "build": {"repair_count": 0}}
-        advance_design(manifest, [{"slide": 2, "code": "orphaned-title", "category": "readability"}])
-        advance_design(manifest, [{"slide": 2, "code": "split-word", "category": "readability"}])
-        self.assertEqual(manifest["design_state"]["page_modes"], {"2": "guided"})
-        fact = [{"slide": 3, "code": "unsupported_visual_ratio", "category": "structure", "repair_level": "composition"}]
-        advance_design(manifest, fact)
-        advance_design(manifest, fact)
-        self.assertNotIn("3", manifest["design_state"]["page_modes"])
-
-
     def test_defaults_and_independent_mode(self):
         self.assertEqual(design_mode({"schema_version": "2.1"}), "auto")
         self.assertEqual(design_mode({"schema_version": "2.0"}), "guided")
         self.assertEqual(design_mode({"meta": {"design_freedom": "deterministic", "quality_level": "rigorous"}}), "deterministic")
 
-    def test_only_repeated_page_design_failures_downgrade(self):
-        manifest = {"design_freedom": "auto", "build": {"repair_count": 0}}
-        problem = [{"slide": 2, "code": "text_overflow"}]
-        advance_design(manifest, problem)
-        self.assertEqual(manifest["design_state"]["page_modes"], {})
-        advance_design(manifest, [{"slide": 2, "code": "layout_fit"}])
-        self.assertEqual(manifest["design_state"]["page_modes"], {"2": "guided"})
-        advance_design(manifest, [{"slide": 2, "code": "text_may_overflow"}])
-        self.assertEqual(manifest["design_state"]["page_modes"], {"2": "deterministic"})
-        advance_design(manifest, [{"slide": 3, "code": "planned_numbers_missing"}])
-        self.assertNotIn("3", manifest["design_state"]["page_modes"])
-
-
-class TextLayoutTests(unittest.TestCase):
     def test_module_selfcheck_reads_positioned_spans_without_partial_numbers(self):
         with tempfile.TemporaryDirectory() as tmp:
             directory = Path(tmp)

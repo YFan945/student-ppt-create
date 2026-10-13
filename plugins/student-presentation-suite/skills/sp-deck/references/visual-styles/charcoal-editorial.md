@@ -1,8 +1,7 @@
-# Charcoal Editorial（炭黑编辑）
+# Charcoal Editorial
 
-Optional style seed; follow [model-led design](../../../../references/model-led-design.md).
+Colors and font families for authoring from the material.
 
-- **Style character:** Editorial and ink-like; type, rules and crop marks carry the page ahead of colour.
-- **Palette:** canvas `F2F2F2`; surface `FFFFFF`; primary text `111111`; secondary text `4B5563`; primary accent `36454F`; secondary accent `C9B89B`. Optional grouping colors `587C78`, `75658C`, `A66D43`, `9D5367`.
-- **Background reference:** Optional dark canvas `1D1D1D` / surface `2D2D2D` or the light palette; choose treatment and page rhythm from the content.
-- **SVG reference:** `editorial-crop` — Optional crop-mark motif for cover, section, or image-led editorial pages.
+- **Style character:** Charcoal Editorial color and font family.
+- **Palette:** canvas `F2F2F2`; surface `FFFFFF`; primary_text `111111`; secondary_text `4B5563`; primary_accent `36454F`; secondary_accent `C9B89B`; category_1 `587C78`; category_2 `75658C`; category_3 `A66D43`; category_4 `9D5367`; dark canvas `1D1D1D`; surface `2D2D2D`; primary_text `D6D6D6`; secondary_text `A4A4A4`; primary_accent `7FA0B5`; secondary_accent `5C6B75`.
+- **Font families:** cjk_title_font `SimHei`; cjk_body_font `SimSun`; title_font `Century Schoolbook`; body_font `Times New Roman`.

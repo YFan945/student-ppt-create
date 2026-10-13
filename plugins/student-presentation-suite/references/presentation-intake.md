@@ -106,8 +106,8 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/style_previews.py" \
   --out "${CLAUDE_PROJECT_DIR}/outputs/<topic>-style-previews" --json
 ```
 
-- Each preview is a real 2-page deck (dark cover + light chart page) built by
-  the same layout engine the final deck will use — what they see is what they get.
+- Each preview is a two-page information/evidence sample. The final presentation
+  is authored from its own material and does not inherit that sample layout.
 - Default trio is one style per category (modern-minimal / ocean-tech /
   coral-energy); prefer content-informed picks per `pptx-art-direction.md` and
   say in one line why each candidate was picked.

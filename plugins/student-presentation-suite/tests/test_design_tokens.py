@@ -158,8 +158,8 @@ class DesignTokenTests(unittest.TestCase):
         }
         self.assertEqual([], validate_custom_style(good))
 
-    def test_style_files_have_exact_four_fields_and_match_tokens(self) -> None:
-        expected_fields = ["Style character", "Palette", "Background reference", "SVG reference"]
+    def test_style_files_contain_colors_and_fonts_without_layout_recipes(self) -> None:
+        expected_fields = ["Style character", "Palette", "Font families"]
         style_dir = ROOT / "skills" / "sp-deck" / "references" / "visual-styles"
         self.assertEqual(12, len(list(style_dir.glob("*.md"))))
         for style in STYLES:
@@ -170,7 +170,7 @@ class DesignTokenTests(unittest.TestCase):
                 self.assertEqual(expected_fields, actual)
                 for value in tokens["palette"].values():
                     self.assertIn(str(value), text)
-                self.assertIn(tokens["svg_reference"]["name"], text)
+                self.assertNotIn("SVG reference", text)
                 # The cover/section/closing scheme must be stated in every style file.
                 self.assertIn(tokens["dark_palette"]["canvas"], text)
 

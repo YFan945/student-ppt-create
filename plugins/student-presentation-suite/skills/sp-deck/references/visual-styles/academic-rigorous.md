@@ -1,8 +1,7 @@
-# Academic Rigorous（学术严谨）
+# Academic Rigorous
 
-Optional style seed; follow [model-led design](../../../../references/model-led-design.md).
+Colors and font families for authoring from the material.
 
-- **Style character:** Formal, evidence-first and restrained; suited to teacher-scored academic work.
-- **Palette:** canvas `F8FAFC`; surface `FFFFFF`; primary text `0F172A`; secondary text `475569`; primary accent `1D4ED8`; secondary accent `8B9BAB`. Optional grouping colors `087F8C`, `7656A8`, `B45F06`, `B54064`.
-- **Background reference:** Optional dark canvas `0D172D` / surface `192441` or the light palette; choose treatment and page rhythm from the content.
-- **SVG reference:** `academic-bracket` — Optional bracket or evidence-rail motif on cover, section, or one representative evidence page.
+- **Style character:** Academic Rigorous color and font family.
+- **Palette:** canvas `F8FAFC`; surface `FFFFFF`; primary_text `0F172A`; secondary_text `475569`; primary_accent `1D4ED8`; secondary_accent `8B9BAB`; category_1 `087F8C`; category_2 `7656A8`; category_3 `B45F06`; category_4 `B54064`; dark canvas `0D172D`; surface `192441`; primary_text `C4D2E4`; secondary_text `8A9FB4`; primary_accent `5C86F0`; secondary_accent `30447E`.
+- **Font families:** cjk_title_font `SimHei`; cjk_body_font `SimSun`; title_font `Cambria`; body_font `Calibri`.

@@ -214,7 +214,7 @@ pptx.writeFile({fileName:OUTPUT}).then(()=>process.stdout.write(JSON.stringify(g
             cropped = pictures[2].find("p:blipFill/a:srcRect", ns)
             self.assertLess(int(cropped.get("l")), int(cropped.get("r")))
 
-    def test_model_indentation_is_advisory_but_real_overlap_is_blocking(self):
+    def test_model_indentation_has_no_design_warning_but_overlap_is_blocking(self):
         code = r"""
 const {SlideElementRegistry:R}=require('./scripts/pptx-element-registry.js');
 const r=new R({designPreferencesAdvisory:true});
@@ -231,7 +231,7 @@ process.stdout.write(JSON.stringify({before,after,legacy:legacy.analyzeDeck()}))
         result = subprocess.run(["node", "-e", code], cwd=ROOT, capture_output=True, text=True, check=True)
         report = json.loads(result.stdout)
         self.assertTrue(report["before"]["ok"])
-        self.assertIn("near_miss_alignment", [item["code"] for item in report["before"]["warnings"]])
+        self.assertNotIn("near_miss_alignment", [item["code"] for item in report["before"]["warnings"]])
         self.assertIn("text_overlap", [item["code"] for item in report["after"]["errors"]])
         self.assertFalse(report["legacy"]["ok"])
 

@@ -1,0 +1,421 @@
+{
+  "defaults": {
+    "geometry": {
+      "slide_ratio": "16:9",
+      "safe_margin_pct": 6,
+      "title_zone_pct": 16,
+      "footer_zone_pct": 5,
+      "spacing_scale_pt": [
+        6,
+        12,
+        18,
+        24,
+        36,
+        48
+      ],
+      "min_gutter_pt": 18,
+      "min_card_padding_pt": 16,
+      "max_columns": 3,
+      "alignment_tolerance_pt": 3,
+      "corner_radius_pt": 8
+    },
+    "lines": {
+      "hairline_pt": 0.75,
+      "standard_pt": 1.25,
+      "emphasis_pt": 2.5,
+      "section_rule_pt": 4,
+      "connector_style": "orthogonal",
+      "connector_color_role": "secondary_text",
+      "arrowhead": "triangle-small",
+      "dashed_semantics": "optional-or-future"
+    },
+    "typography": {
+      "title_min_pt": 32,
+      "title_max_pt": 44,
+      "cover_title_pt": 40,
+      "subtitle_min_pt": 26,
+      "body_cjk_min_pt": 22,
+      "body_latin_min_pt": 20,
+      "body_max_pt": 22,
+      "label_min_pt": 16,
+      "caption_min_pt": 11,
+      "title_weight": "semibold",
+      "title_font": "Cambria",
+      "body_font": "Calibri",
+      "cjk_title_font": "Microsoft YaHei",
+      "cjk_body_font": "Microsoft YaHei"
+    },
+    "effects": {
+      "soft_shadow": {
+        "blur_pt": 10,
+        "offset_pt": 4,
+        "angle_deg": 90,
+        "opacity": 0.16,
+        "enabled": true,
+        "comment": "Color derives from the light palette's primary_text at resolve time; suppressed on dark pages."
+      }
+    }
+  },
+  "styles": {
+    "academic-rigorous": {
+      "backgrounds": {
+        "cover": "Primary-text navy field with canvas-colored title, or a quiet canvas background.",
+        "content": "Canvas background with white surface areas used only when grouping is useful.",
+        "section": "Canvas or primary-text field with one restrained accent cue.",
+        "closing": "Reuse the cover background treatment for visual closure."
+      },
+      "svg_reference": {
+        "name": "academic-bracket",
+        "usage": "Optional bracket or evidence-rail motif on cover, section, or one representative evidence page."
+      },
+      "visual_language": {
+        "rule": "bracket",
+        "panel": "outlined",
+        "radius": 0.03,
+        "motif_at": "corner-tr",
+        "chart": "columns",
+        "decor": "restrained",
+        "pattern": "none",
+        "emphasis_marker": "square",
+        "cover_band": "corner-block"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    },
+    "data-driven": {
+      "backgrounds": {
+        "cover": "Clean canvas or primary-text field with one data-point accent.",
+        "content": "Neutral canvas that leaves charts and labels visually dominant.",
+        "section": "Canvas background with a sparse coordinate cue when useful.",
+        "closing": "Return to the cover treatment with one verified takeaway."
+      },
+      "svg_reference": {
+        "name": "data-axis",
+        "usage": "Optional axis, bracket, or data-point motif; never substitute it for an actual chart."
+      },
+      "visual_language": {
+        "rule": "left-rail",
+        "panel": "flush",
+        "radius": 0.02,
+        "motif_at": "edge-right",
+        "chart": "columns",
+        "decor": "restrained",
+        "pattern": "grid",
+        "emphasis_marker": "number",
+        "cover_band": "side-band"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    },
+    "modern-minimal": {
+      "backgrounds": {
+        "cover": "Open canvas with a single focal accent or optional primary-text field.",
+        "content": "Mostly unboxed canvas with disciplined whitespace.",
+        "section": "Open canvas with one focal cue and no decorative bands.",
+        "closing": "Minimal cover echo with one concluding statement."
+      },
+      "svg_reference": {
+        "name": "minimal-focus",
+        "usage": "Optional focal dot or alignment motif used sparingly at structural moments."
+      },
+      "visual_language": {
+        "rule": "underline-left",
+        "panel": "flush",
+        "radius": 0.0,
+        "motif_at": "corner-bl",
+        "chart": "line",
+        "decor": "restrained",
+        "pattern": "none",
+        "emphasis_marker": "dash",
+        "cover_band": "none"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    },
+    "charcoal-editorial": {
+      "backgrounds": {
+        "cover": "Charcoal or off-white editorial field with strong type hierarchy.",
+        "content": "Off-white canvas with flat image and text regions rather than UI cards.",
+        "section": "Charcoal field or off-white spread with restrained crop marks.",
+        "closing": "Reuse the cover contrast and editorial spacing."
+      },
+      "svg_reference": {
+        "name": "editorial-crop",
+        "usage": "Optional crop-mark motif for cover, section, or image-led editorial pages."
+      },
+      "visual_language": {
+        "rule": "top-band",
+        "panel": "outlined",
+        "radius": 0.0,
+        "motif_at": "corner-tr",
+        "chart": "bars",
+        "decor": "restrained",
+        "pattern": "grid",
+        "emphasis_marker": "slash",
+        "cover_band": "side-band"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    },
+    "midnight-business": {
+      "backgrounds": {
+        "cover": "Primary-text midnight field with canvas-colored title and restrained blue light.",
+        "content": "Light canvas with navy text and limited blue emphasis.",
+        "section": "Alternate a midnight field with a light decision page when it supports pacing.",
+        "closing": "Return to the midnight cover treatment."
+      },
+      "svg_reference": {
+        "name": "midnight-beam",
+        "usage": "Optional beam motif on cover, section, or closing; do not place it behind body copy."
+      },
+      "visual_language": {
+        "rule": "left-rail",
+        "panel": "edge-band",
+        "radius": 0.06,
+        "motif_at": "corner-bl",
+        "chart": "columns",
+        "decor": "balanced",
+        "pattern": "grid",
+        "emphasis_marker": "number",
+        "cover_band": "bottom-band"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    },
+    "ocean-tech": {
+      "backgrounds": {
+        "cover": "Primary-text deep-ocean field with canvas-colored title and cyan-blue accents.",
+        "content": "Pale ocean canvas with white surfaces only where structure needs them.",
+        "section": "Deep-ocean or pale-canvas field selected by narrative emphasis.",
+        "closing": "Reuse the deep-ocean cover treatment."
+      },
+      "svg_reference": {
+        "name": "ocean-circuit",
+        "usage": "Optional circuit, node, or signal-path motif on technical overview pages."
+      },
+      "visual_language": {
+        "rule": "top-band",
+        "panel": "soft-fill",
+        "radius": 0.1,
+        "motif_at": "edge-right",
+        "chart": "line",
+        "decor": "balanced",
+        "pattern": "waves",
+        "emphasis_marker": "chevron",
+        "cover_band": "side-band"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    },
+    "teal-trust": {
+      "backgrounds": {
+        "cover": "Teal-led field or pale canvas with one clear checkpoint.",
+        "content": "Pale canvas with white surfaces and restrained teal navigation cues.",
+        "section": "Pale or deep teal field selected for legibility and pacing.",
+        "closing": "Reuse the cover checkpoint treatment."
+      },
+      "svg_reference": {
+        "name": "teal-checkpoint",
+        "usage": "Optional checkpoint or handoff motif on service-flow and structural pages."
+      },
+      "visual_language": {
+        "rule": "underline-left",
+        "panel": "soft-fill",
+        "radius": 0.12,
+        "motif_at": "corner-tr",
+        "chart": "bars",
+        "decor": "balanced",
+        "pattern": "waves",
+        "emphasis_marker": "dot",
+        "cover_band": "bottom-band"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    },
+    "cherry-bold": {
+      "backgrounds": {
+        "cover": "Cherry or navy statement field with high-contrast title.",
+        "content": "Warm off-white canvas; cherry is limited to evidence-backed emphasis.",
+        "section": "Statement field using cherry or navy, not both at equal weight.",
+        "closing": "Return to the strongest cover color with one concise conclusion."
+      },
+      "svg_reference": {
+        "name": "cherry-slash",
+        "usage": "Optional slash or directional motif for a decisive cover, comparison, or conclusion."
+      },
+      "visual_language": {
+        "rule": "slash",
+        "panel": "flush",
+        "radius": 0.0,
+        "motif_at": "corner-tr",
+        "chart": "columns",
+        "decor": "expressive",
+        "pattern": "grid",
+        "emphasis_marker": "slash",
+        "cover_band": "corner-block"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    },
+    "creative-student": {
+      "backgrounds": {
+        "cover": "Warm paper-like canvas with one vivid accent and authentic imagery when available.",
+        "content": "Warm canvas with open collage or process space; avoid fake documentary material.",
+        "section": "Paper-like field with one optional taped cue.",
+        "closing": "Reuse the cover paper treatment with a clear next step."
+      },
+      "svg_reference": {
+        "name": "studio-tape",
+        "usage": "Optional tape or studio-note motif; use only when it supports process or iteration."
+      },
+      "visual_language": {
+        "rule": "underline-left",
+        "panel": "soft-fill",
+        "radius": 0.14,
+        "motif_at": "corner-bl",
+        "chart": "columns",
+        "decor": "expressive",
+        "pattern": "dots",
+        "emphasis_marker": "dot",
+        "cover_band": "bottom-band"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    },
+    "coral-energy": {
+      "backgrounds": {
+        "cover": "Warm canvas or coral statement field with navy text contrast.",
+        "content": "Warm canvas with coral used for motion and emphasis, not body text.",
+        "section": "Coral-led statement field or warm canvas with one arc.",
+        "closing": "Reuse the cover energy with one action-oriented conclusion."
+      },
+      "svg_reference": {
+        "name": "coral-arc",
+        "usage": "Optional rising arc or route motif on launch, roadmap, or closing pages."
+      },
+      "visual_language": {
+        "rule": "top-band",
+        "panel": "soft-fill",
+        "radius": 0.16,
+        "motif_at": "edge-right",
+        "chart": "columns",
+        "decor": "expressive",
+        "pattern": "waves",
+        "emphasis_marker": "chevron",
+        "cover_band": "side-band"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    },
+    "forest-moss": {
+      "backgrounds": {
+        "cover": "Earth-toned canvas or forest field with strong text contrast.",
+        "content": "Warm natural canvas with documentary imagery or open explanatory structure.",
+        "section": "Forest field or canvas with an optional contour cue.",
+        "closing": "Return to the cover landscape treatment."
+      },
+      "svg_reference": {
+        "name": "moss-contour",
+        "usage": "Optional contour motif on place, environment, section, or systems pages."
+      },
+      "visual_language": {
+        "rule": "left-rail",
+        "panel": "outlined",
+        "radius": 0.1,
+        "motif_at": "corner-bl",
+        "chart": "bars",
+        "decor": "balanced",
+        "pattern": "dots",
+        "emphasis_marker": "leaf",
+        "cover_band": "corner-block"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    },
+    "warm-terracotta": {
+      "backgrounds": {
+        "cover": "Warm material canvas or terracotta field with grounded typography.",
+        "content": "Warm canvas with archival or documentary evidence when reliable sources exist.",
+        "section": "Terracotta or warm-canvas field with one archival cue.",
+        "closing": "Reuse the cover material treatment for closure."
+      },
+      "svg_reference": {
+        "name": "terracotta-stamp",
+        "usage": "Optional stamp or archival motif on historical, evidence, or section pages."
+      },
+      "visual_language": {
+        "rule": "underline-left",
+        "panel": "soft-fill",
+        "radius": 0.08,
+        "motif_at": "corner-tr",
+        "chart": "bars",
+        "decor": "balanced",
+        "pattern": "dots",
+        "emphasis_marker": "square",
+        "cover_band": "bottom-band"
+      },
+      "typography": {
+        "title_pt": 30,
+        "subtitle_pt": 24,
+        "body_pt": 18,
+        "label_pt": 15,
+        "caption_pt": 11
+      }
+    }
+  }
+}

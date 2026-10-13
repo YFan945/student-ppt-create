@@ -74,27 +74,9 @@ The example includes optional background and SVG choices. Only style character a
 - `Sage Calm` / `sage-calm` resolves to `Forest Moss` with a compatibility warning.
 - Any other historical unknown style retains its name as `style_character`, uses the Modern Minimal safety seed, and emits a compatibility warning.
 
-## Optional SVG Toolbox
+## Style inputs
 
-Each formal seed points to one recommended SVG name. It is only a motif seed. The author chooses whether and where to use it. Do not insert SVG solely to prove the style was selected, and never substitute ornamental SVG for evidence, a chart, a diagram or a meaningful image.
-
-## Reference and Layout Independence
-
-The layout and visual-reference libraries are optional composition examples. Adapt them to the content when useful.
-
-## Optional component defaults
-
-Beyond the two palettes, each style declares a `visual_language` in
-`references/design-tokens.json`: how its accent rules are drawn (`bracket`,
-`left-rail`, `underline-left`, `top-band`, `slash`), how panels are treated
-(`outlined`, `flush`, `soft-fill`, `edge-band`), its corner radius, where the
-style's SVG motif sits (`corner-tr`, `corner-bl`, `edge-right`), its signature
-chart grammar (`columns`, `line`, `bars`) and its decoration density
-(`restrained`, `balanced`, `expressive`). These are component defaults; authored pages may override them.
-
-**Rendered exemplars:** `examples/visual-template-gallery/` is an optional
-reference and deterministic fallback. Use it for ideas or failure recovery;
-there is no visual ceiling or required imitation of its treatment.
+The current catalog contains colors and font families. It contains no page regions, font-size table, panel treatment, motif placement, chart grammar or decoration recipe. Page composition comes from the source material and the user's references.
 
 ## Template Inheritance
 

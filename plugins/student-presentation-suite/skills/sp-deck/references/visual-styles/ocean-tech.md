@@ -1,8 +1,7 @@
-# Ocean Tech（海洋科技）
+# Ocean Tech
 
-Optional style seed; follow [model-led design](../../../../references/model-led-design.md).
+Colors and font families for authoring from the material.
 
-- **Style character:** Cool, technical and current; engineered rather than decorative.
-- **Palette:** canvas `F4F9FC`; surface `FFFFFF`; primary text `132238`; secondary text `52677A`; primary accent `065A82`; secondary accent `1C7293`. Optional grouping colors `087F8C`, `7656A8`, `AD660C`, `B54064`.
-- **Background reference:** Optional dark canvas `0D1A2D` / surface `192941` or the light palette; choose treatment and page rhythm from the content.
-- **SVG reference:** `ocean-circuit` — Optional circuit, node, or signal-path motif on technical overview pages.
+- **Style character:** Ocean Tech color and font family.
+- **Palette:** canvas `F4F9FC`; surface `FFFFFF`; primary_text `132238`; secondary_text `52677A`; primary_accent `065A82`; secondary_accent `1C7293`; category_1 `087F8C`; category_2 `7656A8`; category_3 `AD660C`; category_4 `B54064`; dark canvas `0D1A2D`; surface `192941`; primary_text `C0D2DD`; secondary_text `89A3B3`; primary_accent `1E9AD4`; secondary_accent `30657E`.
+- **Font families:** cjk_title_font `Microsoft YaHei`; cjk_body_font `DengXian`; title_font `Arial`; body_font `Arial`.

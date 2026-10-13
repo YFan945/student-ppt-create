@@ -1,8 +1,7 @@
-# Coral Energy（珊瑚活力）
+# Coral Energy
 
-Optional style seed; follow [model-led design](../../../../references/model-led-design.md).
+Colors and font families for authoring from the material.
 
-- **Style character:** Energetic but legible; warm accents kept away from the reading text.
-- **Palette:** canvas `FFF9F0`; surface `FFFFFF`; primary text `202A44`; secondary text `5A6478`; primary accent `D94E54`; secondary accent `F9E795`. Optional grouping colors `087F8C`, `7656A8`, `AD660C`, `3168A5`.
-- **Background reference:** Optional dark canvas `2A1917` / surface `3B2622` or the light palette; choose treatment and page rhythm from the content.
-- **SVG reference:** `coral-arc` — Optional rising arc or route motif on launch, roadmap, or closing pages.
+- **Style character:** Coral Energy color and font family.
+- **Palette:** canvas `FFF9F0`; surface `FFFFFF`; primary_text `202A44`; secondary_text `5A6478`; primary_accent `D94E54`; secondary_accent `F9E795`; category_1 `087F8C`; category_2 `7656A8`; category_3 `AD660C`; category_4 `3168A5`; dark canvas `2A1917`; surface `3B2622`; primary_text `F0DDD5`; secondary_text `C6A79C`; primary_accent `F0716F`; secondary_accent `8A4A45`.
+- **Font families:** cjk_title_font `Microsoft YaHei`; cjk_body_font `Microsoft YaHei`; title_font `Calibri`; body_font `Cambria`.

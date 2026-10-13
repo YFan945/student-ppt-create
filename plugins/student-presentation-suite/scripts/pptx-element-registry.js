@@ -279,6 +279,9 @@ class SlideElementRegistry {
       for (let j = i + 1; j < boxes.length; j += 1) {
         const a = boxes[i];
         const b = boxes[j];
+        // Captured calls retain drawing order: a background painted before
+        // text cannot occlude that later text. Do not require a decoration tag.
+        if (this.options.capture && a.el.type !== 'text' && b.el.type === 'text') continue;
         if (isDecorative(a.el) || isDecorative(b.el)) continue;
         // Measured text occupies its rendered lines, not all empty space in
         // its authoring box. Keep conservative box checks when unmeasured.
@@ -320,13 +323,11 @@ class SlideElementRegistry {
       }
     }
 
-    if (this.options.designPreferencesAdvisory)
-      this._checkDesignGrammar(elements, boxes, warnings, warnings);
-    else this._checkDesignGrammar(elements, boxes, errors, warnings);
-    // Indentation and differing column edges are composition choices in
-    // model-led pages; actual overlap and overflow remain errors above.
-    this._checkAlignment(boxes, this.options.designPreferencesAdvisory ? warnings : errors);
-    this._checkDeadZone(boxes, warnings);
+    if (!this.options.designPreferencesAdvisory) {
+      this._checkDesignGrammar(elements, boxes, errors, warnings);
+      this._checkAlignment(boxes, errors);
+      this._checkDeadZone(boxes, warnings);
+    }
 
     return { slideIndex, ok: errors.length === 0, errors, warnings, elementCount: elements.length };
   }

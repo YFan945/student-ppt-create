@@ -243,22 +243,11 @@ function renderPage(ctx, mod) {
       ...ctx.tokens,
       visual_language: { ...ctx.tokens.visual_language, ...mod.visual_language },
     };
-  if (mode === 'auto' && typeof mod !== 'function')
-    throw new Error('auto page must export a render function with presentation_copy and notes');
-  if (mode !== 'auto' && typeof mod === 'function')
-    throw new Error(`${mode} page must use declarative engine data`);
-  if (mode === 'guided' && !require('./pptx-composition.js').MOVES.includes(mod.move))
-    throw new Error('guided page must declare one of the six supported moves');
   ctx.registry.options.designPreferencesAdvisory = true;
   ctx.registry.options.capture = true;
   captureSlide(ctx);
   if (typeof mod === 'function') {
     ctx.tokens = H.paletteMode(ctx.tokens, mod.dark ? 'dark' : 'light');
-    // Built-in style backgrounds are available by default; authors can disable them.
-    H.renderBackground(ctx.slide, ctx.tokens, {
-      kind: mod.kind || 'content',
-      decorations: mod.decorations,
-    });
     const addNotes = ctx.slide.addNotes.bind(ctx.slide);
     ctx.slide.addNotes = () => {
       throw new Error('Free page notes belong in module.notes; the harness writes them once');
@@ -279,7 +268,8 @@ function renderPage(ctx, mod) {
     if (notes) ctx.slide.addNotes(notes);
   } else {
     const request = { ...mod };
-    if (mode === 'deterministic') delete request.move;
+    if (!request.move && !request.layout)
+      throw new Error('Declarative page needs an explicit author-selected move or layout');
     try {
       L.renderDeclaredPage(ctx, request);
     } catch (error) {

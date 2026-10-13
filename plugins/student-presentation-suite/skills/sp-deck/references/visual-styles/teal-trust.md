@@ -1,8 +1,7 @@
-# Teal Trust（青绿可信）
+# Teal Trust
 
-Optional style seed; follow [model-led design](../../../../references/model-led-design.md).
+Colors and font families for authoring from the material.
 
-- **Style character:** Calm and credible; institutional without feeling heavy.
-- **Palette:** canvas `F3FAF9`; surface `FFFFFF`; primary text `173B3F`; secondary text `536C70`; primary accent `028090`; secondary accent `00A896`. Optional grouping colors `3168A5`, `7656A8`, `A86620`, `A74364`.
-- **Background reference:** Optional dark canvas `0E2A2D` / surface `193D41` or the light palette; choose treatment and page rhythm from the content.
-- **SVG reference:** `teal-checkpoint` — Optional checkpoint or handoff motif on service-flow and structural pages.
+- **Style character:** Teal Trust color and font family.
+- **Palette:** canvas `F3FAF9`; surface `FFFFFF`; primary_text `173B3F`; secondary_text `536C70`; primary_accent `028090`; secondary_accent `00A896`; category_1 `3168A5`; category_2 `7656A8`; category_3 `A86620`; category_4 `A74364`; dark canvas `0E2A2D`; surface `193D41`; primary_text `D6E9E6`; secondary_text `91B8B3`; primary_accent `17B4C6`; secondary_accent `30757E`.
+- **Font families:** cjk_title_font `Microsoft YaHei`; cjk_body_font `Microsoft YaHei`; title_font `Bookman Old Style`; body_font `Calibri`.

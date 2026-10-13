@@ -13,6 +13,7 @@ from shared.pptx_static_core import contrast_ratio
 
 ROOT = Path(__file__).resolve().parents[1]
 TOKEN_FILE = ROOT / "references" / "design-tokens.json"
+LEGACY_TOKEN_FILE = ROOT / "shared" / "legacy_design_tokens.json"
 
 STYLE_ALIASES = {
     "berry-cream": "warm-terracotta",
@@ -310,10 +311,13 @@ def derive_background_directives(tokens: dict[str, Any]) -> dict[str, dict[str, 
 def resolve_design_tokens(
     visual_style: str | None,
     visual_style_custom: dict[str, Any] | None = None,
+    *, authoring: bool = False,
 ) -> dict[str, Any]:
     """Resolve global safety tokens plus a lightweight visual reference."""
     catalog = json.loads(TOKEN_FILE.read_text(encoding="utf-8"))
-    styles = catalog["styles"]
+    legacy = {"defaults": {}, "styles": {}} if authoring else json.loads(LEGACY_TOKEN_FILE.read_text(encoding="utf-8"))
+    styles = {key: _merge(copy.deepcopy(record), legacy["styles"].get(key, {}))
+              for key, record in catalog["styles"].items()}
     requested_name = visual_style or "Modern Minimal"
     requested_key = style_key(requested_name)
     warnings: list[str] = []
@@ -325,7 +329,7 @@ def resolve_design_tokens(
         )
         requested_key = target
 
-    tokens = copy.deepcopy(catalog["defaults"])
+    tokens = copy.deepcopy(legacy["defaults"])
     if requested_key == "other":
         errors = validate_custom_style(visual_style_custom)
         if errors:
@@ -366,8 +370,19 @@ def resolve_design_tokens(
 
     # Executable background layer: derived once here so the scaffold, the builder
     # and any future consumer share one definition (same argument as TOKENS).
-    tokens["background_directives"] = derive_background_directives(tokens)
+    if not authoring:
+        tokens["background_directives"] = derive_background_directives(tokens)
 
     if warnings:
         tokens["compatibility_warnings"] = warnings
-    return tokens
+    return authoring_tokens(tokens) if authoring else tokens
+
+
+def authoring_tokens(tokens: dict[str, Any], typography: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Only colors, fonts and author-supplied typography enter new page source."""
+    result = {key: copy.deepcopy(tokens[key]) for key in
+              ("palette", "dark_palette", "style_key", "style_name") if key in tokens}
+    result["typography"] = {key: value for key, value in tokens.get("typography", {}).items()
+                            if key.endswith("_font")}
+    result["typography"].update(typography or {})
+    return result

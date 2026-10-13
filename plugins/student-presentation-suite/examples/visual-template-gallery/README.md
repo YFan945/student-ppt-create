@@ -4,7 +4,7 @@
 
 本目录的生成器为 **12 种风格各渲染 12 页高质量模板页**（共 144 页），页面实现全部来自
 `skills/sp-deck/references/layout-library.json` 的归一化分区（normalized-safe-area），
-配色、字号层级、母题与装饰来自 `references/design-tokens.json` 的
+配色、字号层级、母题与装饰来自 `shared/legacy_design_tokens.json` 的旧组件配置与当前配色目录的
 `palette` + `dark_palette` + `visual_language` + `svg_reference`。
 因此这里渲染出的每一页都是风格契约的诚实实现，可直接作为生成时的视觉参考锚点。
 
@@ -27,7 +27,7 @@
 
 ## 风格个性来自 `visual_language`
 
-同一版式在不同风格下呈现不同性格，由 design-tokens.json 中每风格的
+同一版式在不同风格下呈现不同性格，由 legacy_design_tokens.json 中每风格的
 `visual_language` 字段驱动：
 
 - `rule` — 强调规则线手法：`bracket`（学术角括）/ `left-rail`（左竖轨）/

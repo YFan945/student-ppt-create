@@ -1,10 +1,6 @@
 # Preset design and assets
 
-A visual style and a design mode are independent: selecting Academic Rigorous or Creative Student still permits `auto`. A preset supplies usable colors, fonts and optional background treatment; it does not prescribe content density or image counts. Every selected style should support a complete student presentation with useful evidence, readable detail and variation.
-
-Use `H.categoryColors(tokens, optionalColors)` for consistent category/series encoding. Component `colors` and page typography can override these defaults. Built-in background treatment is available through `H.renderBackground`; set `decorations: false` when imagery, a template or the composition calls for a plain field. Extra colors are available, not required on every page.
-
-Corner motifs are optional and enabled with `motif: true` when they fit the composition.
+A selected style supplies colors and font families, not a page format. New page source contains no background recipe, region allocation, font-size table or mandatory component. Compose from the actual subject and the user's references. H.categoryColors can supply category colors; authors may use other colors directly.
 
 ## Match expression to the material
 

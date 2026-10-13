@@ -24,56 +24,8 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete -
 
 ## Authoring
 
-学生内容页优先实现充分的证据、丰富的视觉表达与有层次的颜色；按需使用 [可运行视觉示例](main-session-visual-examples.md)。下面的短代码只说明接口，不能作为整套学生 PPT 的视觉质量范本。
+新任务 pages/ 导出页面函数：直接使用 ctx.slide（pptxgenjs）、ctx.pptx 和按需选用的 ctx.H。完整画布可用，背景和版式由页面源码绘制；脚手架不放置任何视觉元素，不按 design_freedom 限制函数或自动选择布局。presentation_copy 记录实际标题/标签；notes 写讲稿。
 
-`deck.js` 负责装配、登记、背景与讲稿。`auto` 页面导出函数，可直接使用 pptxgenjs 和共享工具；不必先选择 move 或固定模板。标题、文字和视觉元素均可编辑。函数的 `presentation_copy` 写实际标题与标签，`notes` 写真实讲稿。
+从事实材料和参考页面设计构图，保留必要的解释、证据与细节。使用组件时由作者选定输入与区域，不把其内部示例坐标复制成整套页面格式。接口查阅 pptxgenjs-helper-api.md、pptxgenjs-safety.md；图文实现可参阅 main-session-visual-examples.md。
 
-```javascript
-'use strict';
-module.exports = function (ctx) {
-  const { H, slide, tokens } = ctx;
-  H.addFittedText(slide, '从查询到回答', { x: 0.6, y: 0.5, w: 8.8, h: 0.8 },
-    tokens, 'chinese', 'title', { fontSize: 32, margin: 0 });
-  const labels = ['查询', '检索证据', '生成回答'];
-  labels.forEach((label, index) => {
-    const x = 0.6 + index * 3.1;
-    // 节点承载步骤，连接线承载先后关系；没有装饰面板。
-    H.addFittedText(slide, label, { x, y: 2.1, w: 2.4, h: 0.8 },
-      tokens, 'chinese', 'body', { fontSize: 26, margin: 0 });
-    if (index < labels.length - 1) slide.addShape('line', {
-      x: x + 2.5, y: 2.5, w: 0.45, h: 0,
-      line: { color: H.color(tokens, 'accent'), width: 2, endArrowType: 'triangle' },
-    });
-  });
-};
-module.exports.presentation_copy = { headline: '从查询到回答', visual_labels: ['查询', '检索证据', '生成回答'] };
-module.exports.notes = '先输入查询，再检索证据，最后基于证据生成回答。';
-```
-
-图片按真实长宽比与关键保留区域构图：
-
-`addPlannedImage` 默认等比例显示完整图片。仅明确 `crop_suggestion: 'cover'` 或合法 `crop` 区域时裁切；`preserve_region` 保留证据区域。原生 sizing 的可见范围会与几何登记保持一致。
-
-```javascript
-H.addPlannedImage(slide, {
-  path: '/absolute/path/paper-figure.png', width: 1200, height: 800,
-  preserve_region: { x: 0, y: 0, w: 1, h: 1 },
-}, { x: 0.5, y: 1.5, w: 6.2, h: 3.6 }, ctx.pptx);
-H.addFittedText(slide, '图中重点的解释', { x: 7, y: 1.6, w: 2.5, h: 2 },
-  tokens, 'chinese', 'body', { fontSize: 23 });
-```
-
-真实比较数据使用原生图表，系列值从用户材料或证据文件读取，不编造基线：
-
-```javascript
-slide.addChart(ctx.pptx.ChartType.bar, [{ name: '实测结果', labels: data.labels, values: data.values }], {
-  x: 0.8, y: 1.6, w: 8.4, h: 3.1,
-  catAxisLabelFontFace: 'Microsoft YaHei', catAxisLabelFontSize: 16,
-  valAxisLabelFontSize: 16, chartColors: [H.color(tokens, 'accent')],
-  showLegend: false, showValue: true,
-});
-```
-
-布局工具参考 `pptxgenjs-helper-api.md`，图表结构参考 `pptxgenjs-safety.md`。`guided` 的完整句子使用 `statement_pt` 或 `key_statement_pt`，`stat_pt` 用于数值。`cover_title_pt`、`slide_title_pt` 映射到对应页面的标题角色。未知字号键会给出具体错误，不会悄悄忽略。
-
-信息不足时保留事实边界；图片缺失时改变表达，不画空框或添加无意义图标。中文普通文本与 rich-text 共用实测断行；最终以渲染结果为准，不制定统一字号地板。
+图片按真实比例与证据保留区域布局；addPlannedImage 默认完整显示，明确裁切才使用 cover/crop。图表使用有来源的数据。调用原生或共享文本工具时可直接指定字号、字体、对齐、边距和坐标；最终检查实际渲染。

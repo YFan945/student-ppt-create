@@ -3,8 +3,7 @@
 For new tasks follow [model-led design](../../../references/model-led-design.md).
 New `fitText` uses
 fontkit through the measured role policy. `addPositionedText` controls mixed
-language spacing, and `addPlannedImage` protects image regions. Gallery, motif
-and cover band use is optional.
+language spacing, and `addPlannedImage` protects image regions. New page source has no implicit background or layout.
 
 For model-led pages, `module.typography` and `module.visual_language` record
 page-specific choices. The harness captures direct drawing calls. Direct
@@ -39,7 +38,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/pptx-helpers.js --describe"
 - `applyTokens(pptx, tokens, lang, opts)` — 建 deck 后第一件事，把 design tokens 装进去
 - `color(tokens, role)` — 按角色取色（`canvas` / `surface` / `primary_text` /
   `secondary_text` / `primary_accent` / `secondary_accent`）；页面也可使用有效的自定义 hex 配色
-- `fontFamily(tokens)`、`fontSizeScale(tokens, lang)` — 字号与字体族同样来自 tokens
+- `fontFamily(tokens)`、`fontSizeScale(tokens, lang)` — 字体族来自 tokens，字号可直接指定
 - `paletteMode(tokens, mode)`、`softShadow(tokens, overrides)`
 
 **几何**
@@ -52,7 +51,7 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/pptx-helpers.js --describe"
 **文字适配**（这一组最容易用错）
 
 - `addFittedText(slide, text, box, tokens, lang, role, options)` — **首选入口**，会按
-  role 自动降字号并登记几何
+  调用方字号进行实测排字并登记几何（旧组件保留其历史适配行为）
 - `preflightText(text, box, tokens, lang, role, options)` — 只算不画
 - `estimateTextFit(text, boxW, boxH, fontSize, isCJK)` — 返回
   `{ lines, fillRatio, overflow }`

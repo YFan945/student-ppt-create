@@ -62,7 +62,7 @@ function main() {{
   PAGES.forEach((mod, index) => {{
     const n = index + 1;
     const slide = pptx.addSlide();
-    const ctx = {{ pptx, slide, n, H, registry, tokens: TOKENS, slideNumber: n, layoutReport, presentationCopy, designMode: manifest.design_state?.page_modes?.[String(n)] || TOKENS.design_freedom }};
+    const ctx = {{ pptx, slide, n, H, registry, tokens: TOKENS, slideNumber: n, layoutReport, presentationCopy, designMode: TOKENS.design_freedom }};
     R.renderPage(ctx, mod);
   }});
   registry.assertSafe();
@@ -408,27 +408,22 @@ def inline_tokens_json(spec: dict[str, Any], art_direction: Path | None) -> str:
             ad = loaded
         style = ad.get("style_seed") or ad.get("visual_style") or style
         custom = ad.get("visual_style_custom") or custom
+    from shared.design_policy import design_mode, model_led
+
     try:
         tokens = resolve_design_tokens(
             str(style) if style else None,
             custom if isinstance(custom, dict) else None,
+            authoring=model_led(spec),
         )
         tokens = apply_topic_accent(tokens, ad.get("topic_accent") if isinstance(ad, dict) else None)
     except (OSError, ValueError, KeyError, TypeError):
         tokens = {"palette": {"canvas": "FFFFFF"}}
-    from shared.design_policy import design_mode, model_led
-
     if model_led(spec):
+        from shared.design_tokens import authoring_tokens
+        tokens = authoring_tokens(tokens, ad.get("typography"))
         tokens["model_led"] = True
         tokens["design_freedom"] = design_mode(spec)
-        typography = ad.get("typography") or {}
-        for source, target in (("slide_title_pt", "title_min_pt"), ("body_pt", "body_cjk_min_pt"), ("body_pt", "body_latin_min_pt"), ("caption_pt", "caption_min_pt")):
-            value = typography.get(source)
-            if isinstance(value, (float, int)) and value > 0:
-                tokens["typography"][target] = value
-        # Model values are suggestions, not readability floors.
-        tokens["typography"]["title_max_pt"] = tokens["typography"]["title_min_pt"]
-        tokens["typography"]["body_max_pt"] = tokens["typography"]["body_cjk_min_pt"]
     return json.dumps(tokens, ensure_ascii=False, indent=2)
 
 
@@ -498,20 +493,20 @@ def scaffold_generator(
             visual_js=_visual_payload(slide),
             move_js=json.dumps(_suggested_move(slide), ensure_ascii=False),
         )
-        from shared.design_policy import design_mode, model_led
+        from shared.design_policy import model_led
 
         if model_led(spec):
-            stub = stub.replace("/* Keep COPY.* string literals — page_copy_fidelity_check reads this file. */", "/* COPY is presentation input; preserve frozen information, not planning prose. */")
-            if design_mode(spec) == "auto":
-                exact = json.dumps(actual_check.planned_requirements(slide), ensure_ascii=False)
-                stub = (f"'use strict';\n/* {SCAFFOLD_MARKER} */\n"
-                        f"/* Frozen information: {_comment_safe(exact)} */\n"
-                        "module.exports = function (ctx) {\n"
-                        "  // Compose freely with ctx.H and ctx.slide; the harness captures geometry.\n"
-                        "};\nmodule.exports.presentation_copy = { headline: '', visual_labels: [] };\n"
-                        "module.exports.notes = '';\n")
-            elif design_mode(spec) == "deterministic":
-                stub = stub.replace(f"  move: {json.dumps(_suggested_move(slide))},", "  move: undefined,")
+            source_input = {"requirements": actual_check.planned_requirements(slide),
+                            "material": {key: slide[key] for key in
+                                         ("title", "claim", "slide_copy", "content", "speaker_notes", "evidence_refs")
+                                         if key in slide}}
+            exact = json.dumps(source_input, ensure_ascii=False)
+            stub = (f"'use strict';\n/* {SCAFFOLD_MARKER} */\n"
+                    f"const INPUT = {exact};\n"
+                    "module.exports = function (ctx) {\n"
+                    "  // Author from INPUT.material and preserve INPUT.requirements. No visuals are prepainted.\n"
+                    "};\nmodule.exports.presentation_copy = { headline: '', visual_labels: [] };\n"
+                    "module.exports.notes = '';\n")
         target = pages_dir / name
         if write_if_scaffoldable(target, stub):
             written_pages += 1

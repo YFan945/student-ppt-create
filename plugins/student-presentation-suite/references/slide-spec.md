@@ -198,24 +198,15 @@ When `sp-deck` receives Slide Spec YAML:
 - treat `visual.purpose` as required design intent when `visual` is present; it is
   planning prose for the implementer and is never rendered as on-screen text
 - use integer `timing_sec` values to balance speaker notes
-- keep `layout` unless a better layout is needed to prevent crowding
 - implement `layout` as a functional intent, not a fixed visual template
 - adapt typography and layout to preserve useful content and rendered readability
 - report any spec item that cannot be implemented
 - do not invent visuals or transitions for slide kinds where they would be decorative or artificial
 - when `source_deck` or `review_findings` is present, treat the spec as an existing-deck improvement plan: preserve listed elements, apply the findings, write a separate improved PPTX, and create `outputs/<topic>-change-summary.md` when required
 
-## Layout Functional Mapping
+## Layout information
 
-Use these mappings as intent rules. The final visual form may vary by creative direction.
-
-- `timeline`: must show sequence, phases, or change over time. May use a horizontal timeline, vertical timeline, stepped path, roadmap, process ribbon, or milestone cards.
-- `comparison`, `comparison-cards`, `before-after`: must make differences easy to scan. May use side-by-side panels, 2x2 matrix, before/after cards, annotated examples, or contrast bands.
-- `process`, `three-step-process`, `loop-diagram`: must show flow, order, or feedback. May use numbered nodes, cycle diagram, path diagram, swimlane, or staged panels.
-- `risk-callout`, `limitations`: must identify the risk or boundary and explain why it matters. May use warning callouts, evidence cards, redline annotations, or limitation panels.
-- `data`, `chart`, `survey`: must put the conclusion near the chart/table and avoid unexplained raw data.
-- `team-workflow`, `handoff`: must show member ownership and speaking flow. May use role lanes, member cards, sequence markers, or workflow arrows.
-- `summary-qa`, `closing`: must leave one memorable takeaway and a clear Q&A/closing cue. May use a summary card, final claim, key-number recap, or question prompt.
+For new tasks, layout names record the author's intended information relationship. They do not choose a template or require a title, final claim, card count or conclusion band. Implement the supplied information from the material; preserve layouts only when the user explicitly requires them.
 
 ## Review Rules
 
