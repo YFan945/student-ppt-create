@@ -277,8 +277,7 @@ def validate_art_direction(
                     "evidence_visuals) but this session declares no image source at all "
                     "(references/image-sourcing.md: undeclared means unavailable). Either declare "
                     "one or plan the deterministic stack (diagrams / native_charts / "
-                    "typography_led) — a promise nobody can deliver becomes a blocker the critic "
-                    "repeats every round until the repair budget runs out.",
+                    "typography_led). Resolve unavailable assets before authoring.",
                 )
             )
     if high_score:

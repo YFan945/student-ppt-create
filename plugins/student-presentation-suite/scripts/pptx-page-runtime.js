@@ -24,6 +24,9 @@ function captureSlide(ctx) {
         [...widths, ...heights].some((size) => !Number.isFinite(size) || size <= 0)
       )
         throw new RangeError('Table requires positive explicit cell geometry');
+      const palette = ctx.tokens.palette || {};
+      const headerRows =
+        options.headerRows ?? (rows[0].some((cell) => cell?.options?.bold) ? 1 : 0);
       let y = options.y;
       rows.forEach((row, index) => {
         let x = options.x;
@@ -34,13 +37,63 @@ function captureSlide(ctx) {
             throw new Error('Table spans require explicit registered cell shapes and text');
           const box = { x, y, w: widths[column], h: heights[index] };
           const cellOptions = { ...options, ...value.options, ...box };
+          const header = index < headerRows;
+          const highlighted = index === options.highlightRow;
+          const fill =
+            value.options?.fill ??
+            (header
+              ? (options.headerFill ?? { color: palette.primary_accent })
+              : (options.fill ?? {
+                  color: highlighted
+                    ? palette.primary_accent
+                    : index % 2
+                      ? palette.surface
+                      : palette.canvas,
+                }));
+          const foreground =
+            value.options?.color ??
+            (header
+              ? (options.headerColor ?? H.readableTextColor(fill.color, ctx.tokens))
+              : highlighted
+                ? H.readableTextColor(fill.color, ctx.tokens)
+                : (options.color ?? palette.primary_text));
+          const explicitBorder = cellOptions.border;
           ctx.slide.addShape('rect', {
             ...box,
-            fill: cellOptions.fill || { color: H.color(ctx.tokens, 'canvas') },
-            line: { color: H.color(ctx.tokens, 'secondary_text'), width: 0.5 },
+            fill,
+            line: explicitBorder
+              ? {
+                  color: explicitBorder.color ?? palette.secondary_text,
+                  width: explicitBorder.pt ?? 0.5,
+                }
+              : { type: 'none' },
             decorative: true,
           });
-          ctx.slide.addText(value.text ?? '', cellOptions);
+          if (!explicitBorder && !header)
+            ctx.slide.addShape('line', {
+              x: box.x,
+              y: box.y + box.h,
+              w: box.w,
+              h: 0,
+              line: { color: palette.secondary_text, transparency: 80, width: 0.4 },
+              decorative: true,
+            });
+          ctx.slide.addText(value.text ?? '', {
+            ...cellOptions,
+            fill: undefined,
+            color: foreground,
+            bold: value.options?.bold ?? (header || highlighted || options.bold),
+            fontSize:
+              value.options?.fontSize ??
+              (header ? (options.headerFontSize ?? options.fontSize) : options.fontSize) ??
+              H.fontSizeScale(ctx.tokens, 'chinese').label,
+            margin: cellOptions.margin ?? Math.min(4, box.h * 72 * 0.08),
+            align:
+              cellOptions.align ??
+              (typeof value.text === 'number' || /^[-+]?\d[\d,.]*%?$/.test(String(value.text))
+                ? 'right'
+                : 'left'),
+          });
           x += widths[column];
         }
         y += heights[index];
@@ -201,8 +254,11 @@ function renderPage(ctx, mod) {
   captureSlide(ctx);
   if (typeof mod === 'function') {
     ctx.tokens = H.paletteMode(ctx.tokens, mod.dark ? 'dark' : 'light');
-    // The harness paints the base surface only. Motifs and cover bands are optional.
-    ctx.slide.background = { color: H.color(ctx.tokens, 'canvas') };
+    // Built-in style backgrounds are available by default; authors can disable them.
+    H.renderBackground(ctx.slide, ctx.tokens, {
+      kind: mod.kind || 'content',
+      decorations: mod.decorations,
+    });
     const addNotes = ctx.slide.addNotes.bind(ctx.slide);
     ctx.slide.addNotes = () => {
       throw new Error('Free page notes belong in module.notes; the harness writes them once');

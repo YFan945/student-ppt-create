@@ -2,6 +2,8 @@
 
 Use this workflow after the Presentation Brief is confirmed.
 
+展示文案执行 shared-standards.md 的重要正文语言规范：直接写发现、分析、结论和行动；制作或自动验证说明留在交付对话，不冻结为页面主张。
+
 ## Generation Layers
 
 1. Directory: section names, purpose, timing, and story order.

@@ -14,7 +14,7 @@ states, `presentation-brief.md` owns global scenario/audience/control semantics,
 `slide-spec.md` owns structured handoff rules, `image-strategy.md`
 owns source/visual policy, `research-workflow.md` owns when and how external
 knowledge is gathered (A/B/C/D classification, source tiers, cross-validation,
-budget, and the Research Pack contract), and `cost-discipline.md` owns how the
+and the Research Pack contract), and `cost-discipline.md` owns how the
 work is carried out: batched tool calls, in-place edits, write-once artifacts,
 stage summaries, delegated search, and single-run gating.
 
@@ -65,6 +65,14 @@ Generate in this order: directory, slide claim/supporting points, concise PPT
 copy, speaker version, then Slide Spec/PPTX. Use `content-workflow.md` for
 structure modes, story checks, and compression rules. Do not present speaker
 notes as slide body text.
+
+## Audience-facing Content — Required
+
+PPT 正文与面向听众的讲稿直接呈现调研发现、分析结果、需求结论、方案、设计、成果和下一步行动。使用完整、连贯、自然的正式表达，让每段文字都服务于展示内容。
+
+不要将制作说明、报告定位、任务对应关系、自我解释、自动检查范围或免责式元说明写进展示正文。例如“此内容仅能用于……，不能作为……的证据”“本页只是……，不能证明……”“未实测，因此仅供参考”不应成为页面结论。制作过程、验证范围、交付限制与排障说明放在交付对话或独立质量报告中。
+
+保留实质性的研究条件、观测结果、业务约束、适用范围与尚待解决的问题，用具体条件和发现表达，例如“本轮在固定设备条件下记录延迟”“样本覆盖三个班级，下一轮补充跨年级观察”。不把未验证结果写成既定事实。合成样例标注简洁的数据来源“示例数据”，真实来源照常引用；不堆叠免责声明，也不伪装成真实研究。用户明确要求引用原文或展示限制条款时保留其意图。
 
 ## Anti-AI Wording
 

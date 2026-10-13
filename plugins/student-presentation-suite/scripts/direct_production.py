@@ -37,6 +37,7 @@ VISUAL_REVIEW_TASKS = [
     "Use the contact sheet for deck rhythm; check information density, hierarchy, color grouping and visual variety on individual slides.",
     "Compare supplied reference/template pages with the output, including fonts, imagery and richness requested by the user.",
     "Check the actual text and notes against must_convey, evidence and asset provenance; automatic checks do not prove meaning or visual quality.",
+    "Check public-facing copy and notes against shared audience-facing standards; move production/verification caveats to the delivery conversation or quality report.",
     "Repair affected pages, run again, inspect the current renders and scan the whole deck before complete.",
 ]
 
@@ -187,8 +188,6 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     mode = derive_production_mode(spec, args.production_mode)
     validate_production_source(spec, mode)
     source = Path(spec["source_deck"]) if spec.get("source_deck") else None
-    if args.repair_limit < 0 or args.repair_limit > 6:
-        raise ProductionError("repair-limit must be between 0 and 6")
     art = args.art_direction.resolve() if args.art_direction else None
     if art is not None and not art.is_file():
         raise ProductionError(f"Art Direction does not exist: {art}")
@@ -225,7 +224,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         "art_direction": bind(art) if art else None,
         "quality_level": meta.get("quality_level", "fast"),
         "design_freedom": meta.get("design_freedom", "auto"),
-        "repair_limit": args.repair_limit, "attempts": 0,
+        "attempts": 0,
         "research": research,
         "scaffold": scaffold, "build": {}, "render": {}, "check": {},
         "semantic_verification": "main-session-self-check",
@@ -353,9 +352,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     work = work_directory(args.work_dir)
     manifest = authorized(work)
-    if manifest["attempts"] >= 1 + manifest["repair_limit"]:
-        save(work, manifest, "incomplete")
-        raise ProductionError("repair budget exhausted; current artifacts remain available as incomplete")
     manifest["attempts"] += 1
     manifest["check"] = {}
     save(work, manifest, "producing")
@@ -401,11 +397,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "previews": manifest["render"], "check_report": manifest["check"]["report"],
                 "technical_checks": checked["check_scope"], "geometry": checked["geometry"],
                 "review_required": checked["review_required"],
-                "must_convey": checked["must_convey"], "semantic_verification": "main-session-self-check",
-                "repairs_remaining": 1 + manifest["repair_limit"] - manifest["attempts"]}
+                "must_convey": checked["must_convey"], "semantic_verification": "main-session-self-check"}
     except (ProductionError, OSError, ValueError) as exc:
         manifest["last_error"] = str(exc)
-        save(work, manifest, "incomplete" if manifest["attempts"] >= 1 + manifest["repair_limit"] else "producing")
+        save(work, manifest, "producing")
         raise
 
 
@@ -506,7 +501,7 @@ def main() -> int:
     planning.add_argument("--art-direction", type=Path, help="optional user/template design configuration")
     planning.add_argument("--research-pack", type=Path)
     planning.add_argument("--production-mode", choices=("create", "edit_ooxml", "rebuild_from_source"))
-    planning.add_argument("--repair-limit", type=int, default=3)
+    planning.add_argument("--repair-limit", type=int, default=None, help=argparse.SUPPRESS)  # legacy no-op
     planning.set_defaults(handler=plan)
     for name, handler in (("run", run), ("complete", complete)):
         command = commands.add_parser(name)

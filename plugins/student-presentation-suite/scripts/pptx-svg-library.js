@@ -80,6 +80,7 @@ function addCornerDecoration(slide, name, box, tokens, options = {}) {
       secondary: palette.secondary_accent,
     }),
     ...box,
+    decorative: true,
     transparency: Number(options.transparency || 0),
     rotate: Number(options.rotate || 0),
     // 角落组按右上朝向绘制，其余锚点靠镜像（motif_at 的落位由此生效）。

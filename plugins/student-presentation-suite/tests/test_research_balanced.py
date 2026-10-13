@@ -204,14 +204,14 @@ class BalancedEvidenceTests(unittest.TestCase):
         task.unlink()
         self.assertEqual(2, fixtures.runtime.handle(event))
 
-    def test_budget_and_scope_still_block_after_parent_stop(self):
+    def test_elapsed_time_allows_research_but_scope_still_blocks(self):
         _, event = self.start_bound_child()
         event.update(hook_event_name="PreToolUse", tool_name="WebSearch", tool_input={"query": "test"})
         control_path = self.fixture.work / "research-control.json"
         control = json.loads(control_path.read_text(encoding="utf-8"))
         control["started_at"] -= 1000
         control_path.write_text(json.dumps(control), encoding="utf-8")
-        self.assertEqual(2, fixtures.runtime.handle(event))
+        self.assertEqual(0, fixtures.runtime.handle(event))
         task_path = self.fixture.work / "research-task.json"
         task = json.loads(task_path.read_text(encoding="utf-8"))
         task["scope"] = "C"

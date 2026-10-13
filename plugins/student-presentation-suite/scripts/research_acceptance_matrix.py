@@ -56,7 +56,7 @@ def main() -> int:
         output = args.output_dir / (name + ".json")
         command = [sys.executable, str(ROOT / "scripts/smoke_research_fork.py"),
                    "--plugin-dir", str(ROOT), "--brief-file", str(ROOT / "scripts/live_prompts" / brief),
-                   "--scope", "B", "--max-budget-usd", "3",
+                   "--scope", "B",
                    "--stream", "--validate", "--json", "--timeout-seconds", "420", "--output", str(output)]
         print("Running " + name, flush=True)
         try:

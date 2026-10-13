@@ -25,7 +25,6 @@ python plugins/student-presentation-suite/scripts/smoke_research_fork.py \
   --plugin-dir plugins/student-presentation-suite \
   --scenario ai-agent-trends \
   --model <model> \            # 默认模型限流时，用 --model 切到未被限流的模型
-  --max-budget-usd 3 \
   --validate \
   --output outputs/_analysis/live-a-result.json
 ```
@@ -38,7 +37,7 @@ claude -p "/student-presentation-suite:sp-research live-a-2026 <brief绝对路�
   --add-dir plugins/student-presentation-suite \
   --output-format json \
   --allowedTools "Read,Write,Edit,Grep,Glob,Bash,PowerShell,Agent,Skill,WebSearch,WebFetch" \
-  --permission-mode acceptEdits --max-budget-usd 3 --no-session-persistence
+  --permission-mode acceptEdits --no-session-persistence
 ```
 
 ## 3. 产物后校验链（fork 之后，人工或脚本串起来）
@@ -69,7 +68,7 @@ python plugins/student-presentation-suite/skills/sp-deck/scripts/slide_spec_guar
 | `total_cost_usd` | |
 | `subagent_stats.spawned` | （必须 `>=1`，证明 fork 真发生） |
 | `started_in_background` | （必须 `=0`） |
-| `terminal_reason` | （应为 `max_turns` / `end_turn`，非 `budget_exhausted`） |
+| `terminal_reason` | 记录实际结束原因 |
 | pack `findings` / `data_points` / `sources` / `quotes` 计数 | |
 | `validate_research_pack` 的 `ok` | （必须 `true`，`blockers=0`） |
 | 联网检索是否真实发生 | （看 `research/<topic>.json` 是否有 WebFetch 记录） |

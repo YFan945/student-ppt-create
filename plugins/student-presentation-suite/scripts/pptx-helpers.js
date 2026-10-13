@@ -354,8 +354,52 @@ function renderCoverBand(slide, tokens, directive) {
     ...field,
     fill: { color: p.primary_accent },
     line: { color: p.primary_accent, transparency: 100 },
+    decorative: true,
   });
   return slide;
+}
+
+/** Available categorical colors; authors may supply their own valid colors. */
+function categoryColors(tokens, supplied) {
+  const p = tokens.palette || {};
+  const colors =
+    supplied ??
+    [
+      p.primary_accent,
+      ...Object.entries(p)
+        .filter(([role]) => role.startsWith('category_'))
+        .map(([, value]) => value),
+      p.secondary_accent,
+    ].filter(Boolean);
+  if (
+    !Array.isArray(colors) ||
+    !colors.length ||
+    colors.some((value) => typeof value !== 'string' || !/^[0-9a-f]{6}$/i.test(value))
+  )
+    throw new RangeError('Category colors require nonempty six-digit hex values');
+  return [...new Set(colors.map((value) => value.toUpperCase()))];
+}
+
+function readableTextColor(background, tokens) {
+  const luminance = (hex) => {
+    if (!/^[0-9a-f]{6}$/i.test(hex))
+      throw new RangeError('Text/background colors require six-digit hex');
+    const values = [0, 2, 4].map((start) => {
+      const channel = parseInt(hex.slice(start, start + 2), 16) / 255;
+      return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return values[0] * 0.2126 + values[1] * 0.7152 + values[2] * 0.0722;
+  };
+  const bg = luminance(background);
+  const candidates = [
+    tokens.palette?.primary_text,
+    tokens.palette?.canvas,
+    'FFFFFF',
+    '000000',
+  ].filter(Boolean);
+  const contrast = (value) =>
+    (Math.max(bg, luminance(value)) + 0.05) / (Math.min(bg, luminance(value)) + 0.05);
+  return candidates.sort((a, b) => contrast(b) - contrast(a))[0];
 }
 
 function paletteOf(tokens) {
@@ -373,7 +417,11 @@ function paletteOf(tokens) {
 function renderBackground(slide, tokens, opts = {}) {
   const pageTokens = opts.dark === true ? paletteMode(tokens, 'dark') : tokens;
   slide.background = { color: color(pageTokens, 'canvas') };
-  if (tokens.model_led && opts.decorations !== true) return slide;
+  if (
+    opts.decorations === false ||
+    (tokens.model_led && opts.decorations !== true && (!tokens.style_key || tokens.custom_style))
+  )
+    return slide;
   const kinds = ['cover', 'content', 'section', 'closing'];
   const kind = kinds.includes(opts.kind) ? opts.kind : 'content';
   const directive = (pageTokens.background_directives || {})[kind];
@@ -392,7 +440,7 @@ function renderBackground(slide, tokens, opts = {}) {
     });
   }
   renderCoverBand(slide, pageTokens, directive);
-  if (directive.motif && opts.motif !== false) {
+  if (directive.motif && opts.motif !== false && (!tokens.model_led || opts.motif === true)) {
     const margin = safeArea(SLIDE_W_IN, SLIDE_H_IN, pageTokens, { reserveTitle: false });
     addStyleMotif(
       slide,
@@ -970,10 +1018,10 @@ function addPlannedImage(slide, asset, box, pptx) {
 
 function plainText(text) {
   if (!Array.isArray(text)) {
-    return String(text || '');
+    return String(text ?? '');
   }
   return text
-    .map((item) => (typeof item === 'string' ? item : String((item && item.text) || '')))
+    .map((item) => (typeof item === 'string' ? item : String((item && item.text) ?? '')))
     .join('');
 }
 
@@ -1469,6 +1517,8 @@ module.exports = {
   color,
   assertHexColor,
   paletteMode,
+  categoryColors,
+  readableTextColor,
   fontSizeScale,
   fontFamily,
   fontWidthFactor,

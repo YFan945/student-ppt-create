@@ -6,6 +6,12 @@ Install, update, migration and uninstall instructions belong to the [marketplace
 
 Design references are optional tools. Typography, chart/icon counts, color usage, background rhythm and composition follow the content and rendered pages; no legacy numeric design rules are included in current authoring guidance.
 
+Built-in styles include optional categorical colors and editable information/evidence examples. Style selection is independent of design mode; component defaults remain overridable and all supporting items must be retained.
+
+Audience-facing language follows the required shared standards; tables use editable themed headers, banding and meaningful emphasis.
+
+Automatic monetary, token, request-count, research-time and repair-round budgets have been removed. Usage reports remain observational; real errors and incomplete work still require repair.
+
 ## Four skills
 
 | Skill | Outcome |
@@ -48,7 +54,7 @@ New tasks do not impose diagram item quotas or a supporting-point cap. Explicit 
 
 Artifacts belong to the active project's `outputs/`; temporary sources and previews belong to `outputs/.pptx-work/<work-id>/`. Never generate inside the installed plugin or marketplace repository.
 
-The existing intake confirmation is retained. Deterministic status and artifact bindings are maintained by tools, not copied by the model. The default budget is the first build plus three repairs; a task may set a smaller budget. Exhausted work is reported as incomplete.
+The existing intake confirmation is retained. Deterministic status and artifact bindings are maintained by tools, not copied by the model. Continue repairing actual issues until the task is complete; no default repair-round budget stops production.
 
 Historical manifests remain readable through `status`. They are not silently migrated or resumed through the removed agent pipeline. Continue an old artifact as a new edit task while keeping the original.
 

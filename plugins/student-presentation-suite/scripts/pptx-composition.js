@@ -27,6 +27,15 @@ function linesOf(value) {
 }
 
 function register(ctx, element) {
+  // A semantic visual zone is not another opaque shape. Captured pages already
+  // register the actual chart/image/text/shape objects inside this zone.
+  if (
+    ctx.tokens?.model_led &&
+    ctx.registry?.options?.capture &&
+    element.type === 'shape' &&
+    element.role === 'visual'
+  )
+    return;
   const n = ctx.slideNumber;
   if (ctx.registry && Number.isInteger(n) && n >= 1) ctx.registry.register(n, element);
 }
@@ -149,7 +158,10 @@ function paintKeyLine(ctx, frame) {
         })
       : { min: 14, max: 22, margin: 0, role: 'body' };
     const fit = H.fitText(frame.key, textBox, keyPolicy);
-    if (!fit.fits) return;
+    if (!fit.fits) {
+      if (ctx.tokens.model_led) throw layoutFit('key_line does not fit its reserved area');
+      return;
+    }
     H.addFittedText(ctx.slide, frame.key, textBox, ctx.tokens, lang, 'body', {
       bold: true,
       margin: 0,
@@ -164,7 +176,7 @@ function paintKeyLine(ctx, frame) {
       fontSize: fit.fontSize,
     });
   } catch (error) {
-    if (!(error instanceof RangeError)) throw error;
+    if (ctx.tokens.model_led || !(error instanceof RangeError)) throw error;
   }
 }
 
@@ -381,13 +393,23 @@ function renderThesis(ctx, request, canvas) {
   if (!primary) throw layoutFit('thesis needs a claim or a title');
   const kick = kicker(ctx, canvas, title, claim);
   const top = kick.nextY || canvas.y;
-  const supportLine = linesOf(slots.body)[0] || '';
+  const supportLine = (
+    ctx.tokens.model_led ? linesOf(slots.body) : linesOf(slots.body).slice(0, 1)
+  ).join('\n');
   const bottom = canvas.y + canvas.h;
   const avail = bottom - top;
-  const supportH = supportLine ? 0.46 : 0;
+  const supportH = supportLine
+    ? ctx.tokens.model_led
+      ? H.fitText(
+          supportLine,
+          { w: canvas.w * 0.72, h: avail },
+          H.rolePolicy(ctx.tokens, ctx.lang || 'chinese', 'body', { margin: 0, balance: true }),
+        ).requiredH + 0.12
+      : 0.46
+    : 0;
   const gapAfter = supportLine ? 0.14 : 0;
   const maxPrimary = avail - supportH - gapAfter;
-  const minPrimaryH = Math.max(1.35, canvas.h * 0.46);
+  const minPrimaryH = ctx.tokens.model_led ? 0.1 : Math.max(1.35, canvas.h * 0.46);
   if (maxPrimary < minPrimaryH) {
     throw layoutFit('thesis primary region is below 40% of the content area');
   }
@@ -397,7 +419,7 @@ function renderThesis(ctx, request, canvas) {
   const startY = top + Math.max(0, (avail - stackH) / 2);
   const primaryBox = { x: canvas.x, y: startY, w: canvas.w, h: primaryH };
   const share = (primaryBox.w * primaryBox.h) / (canvas.w * canvas.h);
-  if (share < 0.4) {
+  if (!ctx.tokens.model_led && share < 0.4) {
     throw layoutFit('thesis primary region is below 40% of the content area');
   }
   const sizes = H.fontSizeScale(ctx.tokens, ctx.lang || 'chinese');
@@ -446,9 +468,13 @@ function renderThesis(ctx, request, canvas) {
   return { focal: primaryBox };
 }
 
-function primaryShare(params, fallback) {
+function primaryShare(params, fallback, flexible = false) {
   const raw = Number(params && params.primaryShare);
   if (!Number.isFinite(raw)) return fallback;
+  if (flexible) {
+    if (raw <= 0 || raw >= 1) throw layoutFit('primaryShare must be between zero and one');
+    return raw;
+  }
   return Math.min(0.74, Math.max(0.52, raw));
 }
 
@@ -561,7 +587,7 @@ function renderWeighted(ctx, request, canvas) {
   const top = kick.nextY || canvas.y;
   const band = { x: canvas.x, y: top, w: canvas.w, h: canvas.y + canvas.h - top };
   const gap = H.spacing(ctx.tokens, 4);
-  const primaryW = band.w * primaryShare(request.params, 0.6);
+  const primaryW = band.w * primaryShare(request.params, 0.6, ctx.tokens.model_led);
   const primary = { x: band.x, y: band.y, w: primaryW, h: band.h };
   const rail = {
     x: band.x + primaryW + gap,
@@ -714,14 +740,22 @@ function renderSequence(ctx, request, canvas) {
   const visual = slots.visual && typeof slots.visual === 'object' ? slots.visual : {};
   const stages = linesOf(visual.stages || visual.steps);
   const steps = stages.length ? stages : linesOf(slots.body);
-  if (steps.length < 2 || steps.length > 5) throw layoutFit('sequence needs 2-5 steps');
+  if (!steps.length || (!ctx.tokens.model_led && (steps.length < 2 || steps.length > 5)))
+    throw layoutFit('sequence needs nonempty steps (legacy: 2-5)');
   const title = String(slots.title || '').trim();
   const claim = String(slots.claim || '').trim();
   const kick = kicker(ctx, canvas, title, claim || steps[0]);
   const top = kick.nextY || canvas.y;
-  let head = [];
+  let head = kick.planned;
   if (claim && title && title !== claim) {
-    head = kick.planned;
+    head = [
+      ...kick.planned,
+      planText(ctx, claim, { x: canvas.x, y: top, w: canvas.w, h: 0.7 }, 'subtitle', {
+        align: 'left',
+        margin: 0,
+        label: 'sequence claim',
+      }),
+    ];
   } else if (claim) {
     const claimBox = { x: canvas.x, y: top, w: canvas.w * 0.8, h: 0.7 };
     head = [
@@ -734,6 +768,12 @@ function renderSequence(ctx, request, canvas) {
   }
   const usedTop = head.length ? Math.max(...head.map((op) => op.box.y + op.box.h)) + 0.24 : top;
   const band = { x: canvas.x, y: usedTop, w: canvas.w, h: canvas.y + canvas.h - usedTop };
+  if (ctx.tokens.model_led && steps.length > 5) {
+    paint(ctx, head);
+    V.addProcessFlow(ctx.slide, { steps }, band, ctx.tokens, ctx.lang || 'chinese');
+    return { focal: band };
+  }
+
   if (band.h < 1.3) throw layoutFit('sequence has no room under the claim');
   const years = steps.every((step) => /\d{4}/.test(step));
   if (years && visual.stages) {
@@ -846,10 +886,11 @@ function renderFigure(ctx, request, canvas) {
   const top = kick.nextY || canvas.y;
   const band = { x: canvas.x, y: top, w: canvas.w, h: canvas.y + canvas.h - top };
   const gap = H.spacing(ctx.tokens, 4);
-  const visualW = band.w * primaryShare(request.params, 0.74);
+  const visualW = band.w * primaryShare(request.params, 0.74, ctx.tokens.model_led);
   const visualBox = { x: band.x, y: band.y, w: visualW, h: band.h };
   const share = (visualBox.w * visualBox.h) / (canvas.w * canvas.h);
-  if (share < 0.55) throw layoutFit('figure visual is under 55% of the content area');
+  if (!ctx.tokens.model_led && share < 0.55)
+    throw layoutFit('figure visual is under 55% of the content area');
   const caption = [claim, ...linesOf(slots.body)].filter(Boolean).join('\n');
   const planned = [...kick.planned];
   if (caption && claim !== title) {

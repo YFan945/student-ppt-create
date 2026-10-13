@@ -15,7 +15,7 @@ The main session passes only the absolute `research-task.json` path and work-dir
 Read the task, and use its absolute paths before retrieval.
 The spawn hook already validates and freezes the task. Missing/invalid task inputs
 return RESEARCH_BLOCKED; do not guess or ask mid-run.
-The task owns work_id, brief_path, scope, materials_path, budget, background,
+The task owns work_id, brief_path, scope, materials_path, background,
 claim ids, exact claim text and acceptance requirements.
 
 Read only the task-relevant sections once: `references/research-workflow.md`,
@@ -93,7 +93,7 @@ Before final validation, re-read support from a counterexample perspective. For 
    ready/partial may proceed; insufficient names core gaps. Save partial work before
    returning; do not repeat completed research or keep waiting without useful progress.
    Hook stop_requested is authoritative: finish the partial pack and return; do not
-   bypass the time budget/stall decision or start another researcher.
+   bypass explicit stop decisions or start another researcher.
    For simple/source tasks, leave quotes and visual_candidates empty unless explicitly
    requested. Once one direct passage meets the claim and validation
    is ready, return immediately. Do not generate extra visual candidates or seek

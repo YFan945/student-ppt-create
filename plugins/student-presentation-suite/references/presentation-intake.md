@@ -175,6 +175,7 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
 
 引用内置风格名时先核对 `../../references/design-tokens.json`。六个角色提供基础配色，
 不是颜色数量上限；可按内容增加一致的语义分类色，用户品牌和真实渲染可读性优先。
+视觉风格与设计模式独立；选择预设也可使用 auto，预设不降低内容充实度或视觉完成度。
 用户已经给出视觉方向时复用它，不要求再选择预设；自由设计可用 `Other` 描述方向。
 
 - `Visual style` → **两步选择**:

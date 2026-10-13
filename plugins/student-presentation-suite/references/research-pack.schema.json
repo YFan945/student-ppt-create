@@ -4,7 +4,7 @@
   "title": "Research Pack",
   "description": "sp-research 的唯一交付物：把互联网原始信息压缩为可追溯、可引用的结构化结论，供 sp-outline 与 sp-deck 直接消费。规则见 research-workflow.md；本文件只约束形状，语义检查（来源分级、交叉验证）见 scripts/validate_research_pack.py。",
   "type": "object",
-  "required": ["version", "topic", "budget", "queries", "findings", "sources"],
+  "required": ["version", "topic", "queries", "findings", "sources"],
   "additionalProperties": false,
   "properties": {
     "evidence_contract": {
@@ -91,7 +91,7 @@
     "generated_at": {"type": "string", "description": "ISO 8601"},
     "budget": {
       "enum": ["simple", "standard", "deep"],
-      "description": "检索深度档位（建议值，不设次数上限）；选择规则见 research-workflow.md"
+      "description": "Legacy metadata; no runtime budget limit."
     },
     "queries": {
       "type": "array",

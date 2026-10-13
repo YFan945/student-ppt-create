@@ -100,14 +100,15 @@ module.exports.notes={json.dumps(notes)};
         with self.assertRaisesRegex(production.ProductionError, "slide_spec changed"):
             production.run(self.args)
 
-    def test_unfinished_pages_cannot_pass_and_budget_is_bounded(self):
+    def test_unfinished_pages_still_fail_without_attempt_budget(self):
         self.args.repair_limit = 0
         production.plan(self.args)
-        with self.assertRaisesRegex(production.ProductionError, "unfinished pages"):
-            production.run(self.args)
-        self.assertEqual(production.load(self.work / "build-manifest.json")["state"], "incomplete")
-        with self.assertRaisesRegex(production.ProductionError, "budget exhausted"):
-            production.run(self.args)
+        for _ in range(8):
+            with self.assertRaisesRegex(production.ProductionError, "unfinished pages"):
+                production.run(self.args)
+        manifest=production.load(self.work / "build-manifest.json")
+        self.assertEqual(manifest["state"], "producing")
+        self.assertEqual(manifest["attempts"], 8)
 
     def test_typography_alias_is_used_for_sentences_and_unknown_keys_are_named(self):
         code = """

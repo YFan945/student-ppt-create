@@ -283,7 +283,7 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
     stamps = [item["ts"] for item in requests if item["ts"]]
     work_span = (stamps[-1] - stamps[0]).total_seconds() if len(stamps) >= 2 else None
     # Gap between consecutive turns, ignoring the long stalls: a turn ON the critical path
-    # is what a time budget has to pay for, and a multi-hour wait for a user answer is not.
+    # excludes idle waits for user answers.
     gaps = []
     for index in range(1, len(stamps)):
         gap = (stamps[index] - stamps[index - 1]).total_seconds()
@@ -380,8 +380,7 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
         "per_request_sec": round(work_span / len(requests), 2) if (work_span and requests) else None,
         # Turn economy: wall clock is turns x round-trip latency, and the gates themselves
         # cost seconds (2026-09-18: 150s across the whole suite = 1.7% of a 147-min run).
-        # So the number that predicts whether a deck fits a time budget is turns and how
-        # many tool calls each turn carries — 1.0/turn means the model waits for every call.
+        # Record actual turns and batch size; do not infer a hypothetical budget.
         "turns": len(requests),
         "tool_calls_per_turn": (
             round(sum(batch_sizes) / len(batch_sizes), 2) if batch_sizes else None
@@ -397,10 +396,6 @@ def profile(records: list[dict[str, Any]]) -> dict[str, Any]:
             ),
             "p90": (sorted(gaps)[min(len(gaps) - 1, int(len(gaps) * 0.9))] if gaps else None),
             "mean": (round(sum(gaps) / len(gaps), 1) if gaps else None),
-        },
-        "turns_under_20min": {
-            "at_median": (round(1200 / sorted(gaps)[len(gaps) // 2]) if gaps else None),
-            "at_mean": (round(1200 / (sum(gaps) / len(gaps))) if gaps else None),
         },
         # Batch 0 baseline metrics (v0.15 targets: deterministic round-trips ↓70%,
         # shared-context duplication ↓ via Builder Packet). Duplication token count is
@@ -513,8 +508,6 @@ def render_markdown(summary: dict[str, Any], source: Path) -> str:
         "把独立工作（多页写入、多张图读取）放在同一回合即可减少回合数",
         f"- per-turn seconds: median {summary['turn_seconds']['median']} / "
         f"p90 {summary['turn_seconds']['p90']} / mean {summary['turn_seconds']['mean']}",
-        f"- 20 分钟预算可容纳的回合数：中位延迟下 **{summary['turns_under_20min']['at_median']}** 回合、"
-        f"均值延迟下 {summary['turns_under_20min']['at_mean']} 回合",
         "",
         "## Batch 0 baseline metrics (v0.15 简化系列)",
         f"- deterministic agent round-trips: **{summary.get('deterministic_agent_roundtrips')}** / "

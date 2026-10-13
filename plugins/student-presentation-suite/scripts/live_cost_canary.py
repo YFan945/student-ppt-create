@@ -11,8 +11,8 @@ Production Summary confirmation as a second user turn, then combines:
 
 The primary model-cost metric is *estimated token-context work*:
 `request_count * average resident context`. It is a regression proxy, not an
-API billing token count. Monetary spend is separately bounded by Claude CLI's
-`--max-budget-usd` on each turn.
+API billing token count. Reported monetary usage is observed from CLI responses;
+no automatic monetary or request ceilings are applied.
 
 Examples:
     python scripts/live_cost_canary.py --plugin-dir . --scenario deck-local
@@ -20,9 +20,9 @@ Examples:
     python scripts/live_cost_canary.py --plugin-dir . --scenario both --result-dir canary-results
 
 Exit codes:
-    0 = requested canary scenario(s) completed and stayed inside guardrails
+    0 = requested canary scenario(s) completed
     2 = harness/auth/runtime infrastructure failure
-    3 = real pipeline ran but did not complete or exceeded a cost guardrail
+    3 = real pipeline ran but did not complete
 """
 from __future__ import annotations
 
@@ -51,33 +51,17 @@ SCENARIOS: dict[str, dict[str, Any]] = {
         "prompt": PROMPT_DIR / "canary-deck-local.md",
         "work_id": "canary-deck-local",
         "scope": "C",
-        "intake_budget_usd": 1.0,
-        "production_budget_usd": 6.0,
-        "guardrails": {
-            "main_peak_context": 200_000,
-            "main_requests": 180,
-            "total_estimated_token_context": 40_000_000,
-            "builds": 3,
-            "repairs": 2,
-        },
+        "guardrails": {},
     },
     "deck-research": {
         "prompt": PROMPT_DIR / "canary-deck-research.md",
         "work_id": "canary-deck-research",
         "scope": "A",
-        "intake_budget_usd": 1.5,
-        "production_budget_usd": 9.0,
-        "guardrails": {
-            "main_peak_context": 200_000,
-            "main_requests": 240,
-            "total_estimated_token_context": 60_000_000,
-            "builds": 3,
-            "repairs": 2,
-        },
+        "guardrails": {},
     },
 }
 
-CONFIRMATION = """我确认刚才的 Production Summary。请继续同一个 work-id，由主会话直接编写页面、调用 plan/run、查看预览并在原预算内修改，最后 complete。不要派发 Builder/critic，不需要校准、Packet、分片或评审回执。保留冻结事实与源文件，只导出已确认类型。"""
+CONFIRMATION = """我确认刚才的 Production Summary。请继续同一个 work-id，由主会话直接编写页面、调用 plan/run、查看预览并按实际问题修改，最后 complete。不要派发 Builder/critic，不需要校准、Packet、分片或评审回执。保留冻结事实与源文件，只导出已确认类型。"""
 
 
 def find_claude() -> str | None:
@@ -119,13 +103,14 @@ def build_command(
     claude: str,
     plugin_dir: Path,
     prompt: str,
-    budget: float,
+    budget: float | None = None,
     *,
     scope: str,
     model: str | None = None,
     resume: str | None = None,
     permission_mode: str = DEFAULT_PERMISSION_MODE,
 ) -> list[str]:
+    del budget  # compatibility with earlier callers; no cost ceiling
     tools = list(CORE_TOOLS)
     if scope.upper() != "C":
         tools.extend(WEB_TOOLS)
@@ -143,8 +128,6 @@ def build_command(
         permission_mode,
         "--allowedTools",
         ",".join(tools),
-        "--max-budget-usd",
-        str(budget),
     ]
     if scope.upper() == "C":
         command += ["--disallowedTools", ",".join(WEB_TOOLS)]
@@ -253,22 +236,12 @@ def collect_pipeline(project_dir: Path, expected_work_id: str) -> tuple[list[dic
 def evaluate_guardrails(
     model_cost: dict[str, Any], pipeline: dict[str, Any] | None, guardrails: dict[str, int]
 ) -> list[str]:
+    del model_cost, guardrails  # metrics are observational, not pass/fail quotas
     problems: list[str] = []
     if pipeline is None:
         return ["expected build-manifest.json was not produced"]
     if pipeline.get("state") != "complete":
         problems.append(f"pipeline state is {pipeline.get('state')!r}, expected 'complete'")
-    mapping = {
-        "main_peak_context": model_cost.get("main_peak_context"),
-        "main_requests": model_cost.get("main_requests"),
-        "total_estimated_token_context": model_cost.get("total_estimated_token_context"),
-        "builds": pipeline.get("builds"),
-        "repairs": pipeline.get("repairs"),
-    }
-    for key, ceiling in guardrails.items():
-        value = mapping.get(key)
-        if value is not None and int(value) > int(ceiling):
-            problems.append(f"{key}={value} exceeds guardrail {ceiling}")
     return problems
 
 
@@ -290,6 +263,7 @@ def run_scenario(
     production_budget_override: float | None,
     permission_mode: str,
 ) -> tuple[dict[str, Any], bool, bool]:
+    del production_budget_override  # legacy no-op
     scenario = SCENARIOS[name]
     prompt_path = Path(scenario["prompt"])
     if not prompt_path.is_file():
@@ -302,12 +276,7 @@ def run_scenario(
     config_dir.mkdir(parents=True, exist_ok=True)
     prompt = prompt_path.read_text(encoding="utf-8")
 
-    intake_budget = float(scenario["intake_budget_usd"])
-    production_budget = (
-        production_budget_override
-        if production_budget_override is not None
-        else float(scenario["production_budget_usd"])
-    )
+    intake_budget = production_budget = None  # legacy arguments carry no limit
     first_cmd = build_command(
         claude,
         plugin_dir,
@@ -376,7 +345,7 @@ def run_scenario(
     if permission_denials:
         guardrail_problems.append(f"permission denials occurred: {permission_denials}")
 
-    reported_cost = sum(
+    reported_cost = max(
         float(payload.get("total_cost_usd") or 0.0) for payload in (first_payload, second_payload)
     )
     summary = {
@@ -388,8 +357,8 @@ def run_scenario(
         "main_transcript": str(main_path),
         "infrastructure_ok": infrastructure_ok,
         "canary_ok": infrastructure_ok and not guardrail_problems,
-        "reported_turn_cost_usd_sum": round(reported_cost, 4),
-        "budgets_usd": {"intake": intake_budget, "production": production_budget},
+        "reported_session_cost_usd": round(reported_cost, 4),
+        "actual_provider_cost_usd": None,
         "model_cost": model_cost,
         "agent_profiles": profiles,
         "pipeline": pipeline,
@@ -410,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scenario", choices=[*SCENARIOS, "both"], default="deck-local")
     parser.add_argument("--result-dir", type=Path, help="persistent result root; defaults to a temp directory")
     parser.add_argument("--model", help="optional Claude model passed to both turns")
-    parser.add_argument("--production-budget-usd", type=float, help="override production-turn budget")
+    parser.add_argument("--production-budget-usd", type=float, help=argparse.SUPPRESS)  # legacy no-op
     parser.add_argument("--permission-mode", default=DEFAULT_PERMISSION_MODE)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)

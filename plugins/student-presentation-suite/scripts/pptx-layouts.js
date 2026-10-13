@@ -620,7 +620,11 @@ function renderDeclaredPage(ctx, spec = {}) {
   const H = _sibling('pptx-helpers');
   const { slide, tokens } = ctx;
   const dark = Boolean(spec.dark);
-  H.renderBackground(slide, tokens, { kind: String(spec.kind || 'content'), dark });
+  H.renderBackground(slide, tokens, {
+    kind: String(spec.kind || 'content'),
+    dark,
+    decorations: spec.decorations,
+  });
   const pageTokens = H.paletteMode(tokens, dark ? 'dark' : 'light');
   // context 缺省字段从槽位自动推导（itemCount/titleChars/slideKind）：少一层
   // 手工填错面——builder 只在确要覆盖时才写 context（显式值优先于推导）。

@@ -3,9 +3,8 @@
 
 P2-11 "show, don't tell" (frontend-slides mechanism), opt-in at intake: when
 the user cannot choose between the 12 style families from descriptions, this
-tool builds one tiny 2-page deck per candidate style (dark cover + light chart
-page, fixed sample copy themed by the topic) through the SAME engine the real
-deck will use, renders them to PNG, and writes a manifest the main session can
+tool builds one editable 2-page information/evidence deck per candidate style
+(fixed synthetic teaching copy) through the shared drawing tools, renders them to PNG, and writes a manifest the main session can
 show. Cost: ~3 node builds + ~3 LibreOffice renders, zero model tokens.
 
 This is an intake aid, not a pipeline stage: it never writes into a work-dir
@@ -115,6 +114,20 @@ def _build_preview(style: str, topic: str, pptx_path: Path) -> None:
             f"{(result.stderr or result.stdout or '').strip()[-300:]}"
         )
 
+    # Match production's rich-text and East Asian font normalization before QA.
+    cjk_path = Path(str(pptx_path) + ".cjk-map.json")
+    cjk_map = json.loads(cjk_path.read_text(encoding="utf-8")) if cjk_path.is_file() else {}
+    with tempfile.TemporaryDirectory(prefix="style-normalize-") as tmp:
+        normalized = Path(tmp) / "normalized.pptx"
+        command = [sys.executable, str(SCRIPTS / "pptx_tool.py"), "normalize-generated",
+                   str(pptx_path), "--output", str(normalized)]
+        for latin, cjk in cjk_map.items():
+            command.extend(["--cjk-map", f"{latin}={cjk}"])
+        normalize = subprocess.run(command, capture_output=True, text=True, encoding="utf-8", timeout=120)
+        if normalize.returncode or not normalized.is_file():
+            raise SystemExit(f"style_previews: normalize failed: {normalize.stderr[-600:]}")
+        shutil.copyfile(normalized, pptx_path)
+
 
 def run(args: argparse.Namespace) -> int:
     out_dir = args.out.resolve()
@@ -165,7 +178,7 @@ def run(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--topic", required=True, help="deck topic shown on the sample cover")
+    parser.add_argument("--topic", required=True, help="deck topic shown in the sample caption")
     parser.add_argument(
         "--styles",
         nargs="+",

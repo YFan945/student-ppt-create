@@ -388,7 +388,6 @@ def compile_pack(
     report: dict[str, Any] = {
         "schema_version": "1.0",
         "topic": pack.get("topic"),
-        "budget": pack.get("budget"),
         "ref_map": ref_map,
         "source_index": source_index(pack),
         "evidence_ledger": ledger,

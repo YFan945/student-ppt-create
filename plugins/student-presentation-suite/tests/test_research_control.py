@@ -22,13 +22,13 @@ class ControlTests(unittest.TestCase):
         self.task = self.work / "research-task.json"
         self.task.write_text(json.dumps({"budget": "simple"}), encoding="utf-8")
 
-    def test_stall_stops_and_failures_do_not_refresh_progress(self):
+    def test_failures_do_not_refresh_progress_or_trigger_timer_budget(self):
         self.assertEqual("active", status(self.work, now=10, retrieval=True)["state"])
         fetched = self.work / "research/fetched/fetch-text-report.json"
         fetched.parent.mkdir(parents=True)
         fetched.write_text(json.dumps({"records": [{"ok": False, "reason": "unreachable"}]}), encoding="utf-8")
         decision = status(self.work, now=101)
-        self.assertEqual("no_useful_progress", decision["reason"])
+        self.assertEqual("active", decision["state"])
         self.assertEqual(10, decision["last_progress_at"])
         self.assertTrue(self.task.is_file())
 
@@ -38,12 +38,22 @@ class ControlTests(unittest.TestCase):
         fetched.parent.mkdir(parents=True)
         fetched.write_text(json.dumps({"records": [{"ok": True, "text_sha256": "new", "host_class": "public"}]}), encoding="utf-8")
         self.assertEqual(10, status(self.work, now=40)["last_progress_at"])
-        self.assertEqual("no_useful_progress", status(self.work, now=101)["reason"])
+        self.assertEqual("active", status(self.work, now=101)["state"])
 
-    def test_task_can_override_time_without_search_count_quotas(self):
+    def test_legacy_timer_fields_do_not_stop_preparation(self):
         self.task.write_text(json.dumps({"budget": "simple", "time_budget_seconds": 5, "stall_timeout_seconds": 60}), encoding="utf-8")
         status(self.work, now=10)
-        self.assertEqual("time_budget_exhausted", status(self.work, now=15)["reason"])
+        self.assertEqual("active", status(self.work, now=1500)["state"])
+
+    def test_old_budget_stop_can_continue_without_resetting_evidence(self):
+        status(self.work,now=10)
+        path=self.work/'research-control.json'
+        state=json.loads(path.read_text(encoding='utf-8'))
+        state.update(state='stop_requested',reason='time_budget_exhausted',seen=['saved'])
+        path.write_text(json.dumps(state),encoding='utf-8')
+        resumed=status(self.work,now=10000)
+        self.assertEqual(resumed['state'],'active')
+        self.assertEqual(resumed['seen'],['saved'])
 
     def test_preparation_is_not_misclassified_as_stalled_search(self):
         status(self.work, now=10)
@@ -92,7 +102,7 @@ class HandoffTests(unittest.TestCase):
         self.assertEqual(0, fixtures.validator.main([str(self.pack)]))
         decision = status(self.work, now=70)
         self.assertEqual(40, decision["last_progress_at"])
-        self.assertEqual("no_useful_progress", status(self.work, now=191)["reason"])
+        self.assertEqual("active", status(self.work, now=191)["state"])
         self.assertTrue(fixtures.validator.validate(pack, fetch_report=self.fixture.report, work_dir=self.work)["ok"], "progress checks must preserve source bytes")
 
     def test_resume_requires_reason_and_preserves_seen_evidence(self):

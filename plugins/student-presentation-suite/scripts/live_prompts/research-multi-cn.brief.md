@@ -1,6 +1,5 @@
 # 学生Python并发课程中文资料研究验收
 scenario: coursework
-budget: standard
 semantic_review_required: true
 scope: B
 C01 core/source: ThreadPoolExecutor使用线程池异步执行调用。

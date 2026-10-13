@@ -69,7 +69,7 @@ class HookEventUtf8Tests(unittest.TestCase):
 
 
 class StallTurnaroundTests(unittest.TestCase):
-    """Stall is judged after an in-flight batch could have returned, not raw elapsed."""
+    """Elapsed time remains observational and never terminates research."""
 
     def setUp(self):
         self.tmp = TemporaryDirectory()
@@ -80,17 +80,16 @@ class StallTurnaroundTests(unittest.TestCase):
         )
 
     def test_in_flight_batch_is_not_stalled(self):
-        # last progress 80s ago, stall line 60s — but a batch issued seconds ago
-        # cannot have produced pack progress yet, so the 30s turnaround applies.
+        # Legacy stall settings do not interrupt an in-flight batch.
         controller.status(self.work, now=10, retrieval=True)
         decision = controller.status(self.work, now=90)
         self.assertEqual("active", decision["state"])
 
-    def test_persistent_silence_still_stalls(self):
+    def test_elapsed_silence_does_not_invent_a_stop(self):
         controller.status(self.work, now=10, retrieval=True)
         decision = controller.status(self.work, now=140)
-        self.assertEqual("stop_requested", decision["state"])
-        self.assertEqual("no_useful_progress", decision["reason"])
+        self.assertEqual("active", decision["state"])
+        self.assertEqual("", decision["reason"])
 
 
 class RebindTests(unittest.TestCase):

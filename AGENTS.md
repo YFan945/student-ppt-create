@@ -120,7 +120,7 @@ Canonical ownership:
 - `references/revision-training-export.md`: locking, revisions, rehearsal, scoring, and export boundaries.
 - `references/image-strategy.md`: image sourcing and visual policy.
 - `references/research-workflow.md`: when and how external knowledge is gathered — A/B/C/D
-  classification, source tiers, cross-validation, budget bands, and the Research Pack contract.
+  classification, source tiers, cross-validation, source sufficiency, and the Research Pack contract.
 - `references/cost-discipline.md`: how the work is carried out — batched tool calls,
   in-place edits, write-once artifacts, per-stage summaries, delegated search, single-run gating.
 - `references/visual-review.schema.json`: optional standalone historical review format;

@@ -2,18 +2,28 @@
 
 // Synthetic teaching content: editable text, native shapes/icons/connectors/table.
 // Coordinates are examples, not a layout policy.
-const COLORS = ['087F8C', '7152A3', 'C87512'];
+function colors(ctx) {
+  return ctx.H.categoryColors(ctx.tokens);
+}
 
 function text(ctx, value, x, y, w, h, size = 17, extra = {}) {
-  return ctx.H.addFittedText(ctx.slide, value, { x, y, w, h }, ctx.tokens, 'chinese', 'body', {
-    fontSize: size,
-    margin: 0,
-    ...extra,
-  });
+  return ctx.H.addFittedText(
+    ctx.slide,
+    value,
+    { x, y, w, h },
+    ctx.tokens,
+    'chinese',
+    extra.role || 'body',
+    {
+      fontSize: size,
+      margin: 0,
+      ...extra,
+    },
+  );
 }
 
 function title(ctx, value) {
-  text(ctx, value, 0.55, 0.34, 8.9, 0.56, 27, { bold: true });
+  text(ctx, value, 0.55, 0.34, 8.9, 0.56, 27, { bold: true, role: 'title' });
 }
 
 function panel(ctx, x, y, w, h, color) {
@@ -83,16 +93,16 @@ function relationship(ctx) {
   ];
   nodes.forEach(([name, label, support, detail], index) => {
     const y = 1.24 + index * 1.2;
-    panel(ctx, 0.55, y, 4.25, 1.02, COLORS[index]);
-    icon(ctx, name, 0.78, y + 0.16, COLORS[index]);
-    text(ctx, label, 1.25, y + 0.13, 3.25, 0.4, 19, { bold: true, color: COLORS[index] });
+    panel(ctx, 0.55, y, 4.25, 1.02, colors(ctx)[index]);
+    icon(ctx, name, 0.78, y + 0.16, colors(ctx)[index]);
+    text(ctx, label, 1.25, y + 0.13, 3.25, 0.4, 19, { bold: true, color: colors(ctx)[index] });
     text(ctx, support, 1.25, y + 0.57, 3.25, 0.36, 15);
-    arrow(ctx, 4.95, y + 0.45, 0.54, COLORS[index]);
+    arrow(ctx, 4.95, y + 0.45, 0.54, colors(ctx)[index]);
     text(ctx, detail, 5.7, y + 0.12, 3.55, 0.7, 17);
   });
   text(ctx, '共同目标：把概念、协作和操作连接成可复盘的学习过程', 0.65, 4.96, 8.7, 0.4, 17, {
     bold: true,
-    color: COLORS[0],
+    color: colors(ctx)[0],
   });
 }
 relationship.presentation_copy = {
@@ -115,7 +125,7 @@ function groups(ctx) {
       'compare',
       '结果分析',
       '把不同条件下的现象放在同一口径中比较，说明可能影响。',
-      '样本不足时保留不确定性，不把一次观察写成普遍规律。',
+      '结合样本、条件与多轮记录，识别稳定变化并解释差异。',
     ],
     [
       'refresh',
@@ -126,9 +136,9 @@ function groups(ctx) {
   ];
   groups.forEach(([name, label, a, b], index) => {
     const x = 0.55 + index * 3.04;
-    panel(ctx, x, 1.2, 2.8, 2.65, COLORS[index]);
-    icon(ctx, name, x + 0.18, 1.4, COLORS[index]);
-    text(ctx, label, x + 0.63, 1.4, 1.98, 0.4, 19, { bold: true, color: COLORS[index] });
+    panel(ctx, x, 1.2, 2.8, 2.65, colors(ctx)[index]);
+    icon(ctx, name, x + 0.18, 1.4, colors(ctx)[index]);
+    text(ctx, label, x + 0.63, 1.4, 1.98, 0.4, 19, { bold: true, color: colors(ctx)[index] });
     text(ctx, a, x + 0.18, 2.02, 2.42, 0.84, 15);
     text(ctx, b, x + 0.18, 2.96, 2.42, 0.84, 15);
   });
@@ -148,8 +158,9 @@ function groups(ctx) {
       rowH: 0.27,
       fontSize: 12,
       margin: 0,
-      color: '153A52',
-      border: { color: 'C8D9E3', pt: 0.6 },
+      headerRows: 1,
+      headerFontSize: 12,
+      color: ctx.tokens.palette.primary_text,
     },
   );
 }
@@ -158,7 +169,7 @@ groups.presentation_copy = {
   visual_labels: ['观察记录', '结果分析', '下一步验证'],
 };
 groups.notes =
-  '本页是合成教学说明，三个栏目分别解释记录、分析和验证，下方可编辑表格整理各层材料的用途。';
+  '我们先记录实验条件和现象，再比较不同条件下的变化。确认样本和条件后，把发现转化为下一轮验证任务。记录、解释与行动共同形成复盘依据。';
 
 function evidence(ctx) {
   title(ctx, '实验图与说明共同呈现观察依据');
@@ -173,8 +184,11 @@ function evidence(ctx) {
   ['先说明图中对象与实验条件', '再标明观察位置和对应现象', '最后区分直接观察与解释边界'].forEach(
     (label, index) => {
       const y = 1.35 + index * 1.2;
-      panel(ctx, 5.95, y, 3.45, 1.0, COLORS[index]);
-      text(ctx, `${index + 1}`, 6.13, y + 0.16, 0.4, 0.4, 23, { bold: true, color: COLORS[index] });
+      panel(ctx, 5.95, y, 3.45, 1.0, colors(ctx)[index]);
+      text(ctx, `${index + 1}`, 6.13, y + 0.16, 0.4, 0.4, 23, {
+        bold: true,
+        color: colors(ctx)[index],
+      });
       text(ctx, label, 6.7, y + 0.17, 2.43, 0.65, 17);
     },
   );
@@ -193,7 +207,7 @@ evidence.presentation_copy = {
   visual_labels: ['实验条件', '观察位置', '解释边界'],
 };
 evidence.notes =
-  '这是合成教学示例。图片由调用者提供，不作为真实测量证据；实际任务应更新图源说明、观察位置和素材来源。';
+  '我们把图中的观察位置与条件记录对应起来，结合一致的测量过程解释差异，再明确下一步验证任务。';
 
 function actions(ctx) {
   title(ctx, '把复盘问题对应到可执行的改进');
@@ -206,11 +220,14 @@ function actions(ctx) {
   ];
   rows.forEach(([problem, action, condition], index) => {
     const y = 1.7 + index * 1.05;
-    panel(ctx, 0.55, y, 8.88, 0.88, COLORS[index]);
-    text(ctx, `${index + 1}`, 0.73, y + 0.2, 0.3, 0.4, 22, { color: COLORS[index], bold: true });
+    panel(ctx, 0.55, y, 8.88, 0.88, colors(ctx)[index]);
+    text(ctx, `${index + 1}`, 0.73, y + 0.2, 0.3, 0.4, 22, {
+      color: colors(ctx)[index],
+      bold: true,
+    });
     text(ctx, problem, 1.15, y + 0.24, 3.2, 0.4, 18);
-    arrow(ctx, 4.55, y + 0.43, 0.5, COLORS[index]);
-    text(ctx, action, 5.43, y + 0.1, 3.72, 0.4, 18, { bold: true, color: COLORS[index] });
+    arrow(ctx, 4.55, y + 0.43, 0.5, colors(ctx)[index]);
+    text(ctx, action, 5.43, y + 0.1, 3.72, 0.4, 18, { bold: true, color: colors(ctx)[index] });
     text(ctx, condition, 5.43, y + 0.53, 3.72, 0.28, 14);
   });
   text(ctx, '完成条件应对应实际记录，不用装饰性进度条替代验证依据', 0.65, 5.0, 8.7, 0.3, 16);

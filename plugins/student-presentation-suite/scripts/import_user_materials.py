@@ -67,7 +67,6 @@ def build_pack(materials: list[Path], topic: str) -> dict[str, Any]:
         "version": "0.10",
         "topic": topic,
         "pack_author": "import_user_materials",
-        "budget": "simple",
         "queries": [],
         "findings": [],
         "sources": sources,

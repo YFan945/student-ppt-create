@@ -56,6 +56,7 @@ Check:
 - useful evidence and supporting detail remain visible where needed
 - data slides include one conclusion sentence
 - examples connect to the main argument
+- public-facing text follows the required Audience-facing Content section of shared standards; production/verification caveats are reported in the delivery conversation
 
 ## Classroom Readability
 

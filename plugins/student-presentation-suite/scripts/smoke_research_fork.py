@@ -97,16 +97,14 @@ verification: source
 # Scenario presets. `brief_file` is resolved relative to the plugin root so the
 # harness can be launched from anywhere.
 SCENARIOS = {
-    "smoke": {"scope": "A", "budget": 1.0, "brief": BRIEF, "materials": "-"},
+    "smoke": {"scope": "A", "brief": BRIEF, "materials": "-"},
     "ai-agent-trends": {
         "scope": "A",
-        "budget": 3.0,
         "brief_file": "scripts/live_prompts/ai-agent-trends-2026.brief.md",
         "materials": "-",
     },
     "d-mode": {
         "scope": "D",
-        "budget": 1.0,
         "brief_file": "scripts/live_prompts/own-paper-d-mode.brief.md",
         # materials must be supplied via --materials on the command line
     },
@@ -143,7 +141,7 @@ def build_command(
     claude: str,
     plugin_dir: Path,
     invocation: str,
-    budget: float,
+    budget: float | None,
     model: str | None,
     stream: bool = False,
     *,
@@ -151,6 +149,7 @@ def build_command(
     permission_mode: str = DEFAULT_PERMISSION_MODE,
     allowed_tools: tuple[str, ...] | None = None,
 ) -> list[str]:
+    del budget  # accepted for older callers; no runtime cost ceiling
     plugin = str(plugin_dir.resolve())
     tools = allowed_tools if allowed_tools is not None else allowed_tools_for_scope(scope)
     command = [
@@ -167,8 +166,6 @@ def build_command(
         permission_mode,
         "--allowedTools",
         ",".join(tools),
-        "--max-budget-usd",
-        str(budget),
         "--no-session-persistence",
     ]
     if str(scope).upper() == "D":
@@ -224,7 +221,7 @@ def mechanism_verdict(
     if denials:
         problems.append(f"permission denials: {denials}")
     if payload.get("terminal_reason") == "budget_exhausted":
-        problems.append("budget exhausted before the run finished - raise --max-budget-usd for a real verdict")
+        problems.append("budget exhausted before the run finished - resume the existing session without a budget flag")
     return not problems, problems, notes
 
 
@@ -312,7 +309,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scope", choices=["A", "B", "C", "D"])
     parser.add_argument("--materials", default=None, help="D-mode materials path (or - for none)")
     parser.add_argument("--work-dir", type=Path, help="project dir / CLAUDE_PROJECT_DIR (defaults to a temp dir)")
-    parser.add_argument("--max-budget-usd", type=float, help="override the scenario budget")
+    parser.add_argument("--max-budget-usd", type=float, help=argparse.SUPPRESS)  # legacy no-op
     parser.add_argument("--model", help="pass through to --model; use to bypass a per-model rate limit")
     parser.add_argument(
         "--permission-mode",
@@ -341,7 +338,7 @@ def main(argv: list[str] | None = None) -> int:
 
     scen = dict(SCENARIOS[args.scenario])
     scope = args.scope or scen.get("scope", "A")
-    budget = args.max_budget_usd if args.max_budget_usd is not None else scen.get("budget", 1.0)
+    budget = None  # legacy builder argument, no cost limit
     materials = args.materials if args.materials is not None else scen.get("materials", "-")
 
     plugin_dir = args.plugin_dir.resolve()

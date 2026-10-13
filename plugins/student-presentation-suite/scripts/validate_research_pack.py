@@ -1005,7 +1005,7 @@ def render(report: dict[str, Any], path: Path, *, verbose: bool, max_items: int)
         f"(critical {counts['critical']}, major {counts['major']}), minor {counts['minor']} | "
         f"{inv['findings']}F/{inv['data_points']}D/{inv['quotes']}Q/{inv['sources']}S/"
         f"{inv['conflicts']}C/{inv['visual_candidates']}V/{inv['unresolved']}U | "
-        f"budget {report['budget']} | delivery {report.get('delivery_status', 'legacy')} | report: {path}"
+        f"delivery {report.get('delivery_status', 'legacy')} | report: {path}"
     ]
     audit_line = retrieval_advisory_line(report)
     if audit_line:

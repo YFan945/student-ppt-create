@@ -16,37 +16,10 @@ python plugins/student-presentation-suite/scripts/design_benchmark.py --output-d
 
 Outputs must be outside the marketplace checkout. The deterministic harness is
 a reproducible runtime/typography benchmark, not evidence of model design skill.
-The opt-in live harness runs the actual installed Claude configuration on
-`chinese-defense` and `illustrated-paper`, once each for guided and auto. It uses
-the same frozen facts/assets, quality tier and six-page constraint, permits at
-most one repair per path, and records raw responses, monetary cost, time,
-pipeline state, semantic coverage and geometry findings. Each path is bounded
-with CLI budget flags of USD 1 intake + USD 6 production; unknown provider
-pricing may prevent monetary enforcement or reporting. Actual model ids,
-transcript usage and reported USD are recorded separately, with unavailable
-costs left unknown. Resume responses contain cumulative session USD/token
-values: monetary aggregation uses each session's maximum reported estimate,
-not the sum of its responses. Provider billing remains unavailable. Invocation
-authorizes those calls. It never runs during
-the normal test/release suite.
+The opt-in live harness uses the actual configured Claude backend with frozen facts/assets. It records responses, observed model IDs, time, usage, pipeline state and geometry. It has no monetary, token, request-count or repair-round budget gate. CLI monetary estimates are observational; unavailable provider billing remains unknown. Same-session cumulative cost values are aggregated by maximum, not summed. Invocation authorizes model calls; this harness never runs in the normal test/release suite.
 
-After an infrastructure or CLI budget interruption, `--live-claude --resume-live
---continue-stages` continues the same frozen manifests. It does not reset repair
-counts or start a replacement trial. The local harness executes deterministic
-transitions; fresh Claude sessions perform only the dispatched Agent work, with
-USD 4 per builder boundary and USD 2 per critic boundary, at most eight boundaries
-per invocation. All attempts and interruption overhead remain in the results;
-unknown provider prices stay unknown. Do not treat interrupted calls as free or
-use continuation to exceed the page repair cap.
+After an infrastructure interruption, `--live-claude --resume-live --continue-stages` continues the existing manifests and pages. Preserve earlier attempts in the results instead of starting a replacement trial.
 
-Evaluate the current rendered pages with an independent critic. Compare
-coverage (all required ids and exact items), typography (lost/duplicated text,
-unit breaks, punctuation, overflow, orphaned endings, rich-text emphasis),
-protected asset regions, composition (focal point, structure, whitespace,
-rhythm) and cost. Report measured differences and failures; mode names alone
-are not evidence of improvement. Saved facts, prompts and output hashes make
-the comparison replayable; actual Claude output can vary.
+Inspect all complete current renders and compare required facts, typography, image regions, composition and page rhythm. The main session checks meaning and visuals; no independent critic is provided. Report actual observations and failures, since mode names do not establish improvement.
 
-[RESULTS.md](RESULTS.md) records the observed backend, outcomes, costs and
-limitations of the bounded 2026-10-11 comparison. Separate runtime replays
-verify engine fixes without replacing failed live trials or refunding repairs.
+[RESULTS.md](RESULTS.md) preserves the historical 2026-10-11 comparison, including the limits and failures used at that time; it does not define current runtime policy.

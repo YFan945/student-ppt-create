@@ -16,7 +16,9 @@ const SHAPE = new pptxgen().ShapeType;
 const CHART = new pptxgen().ChartType;
 
 function items(value) {
-  return Array.isArray(value) ? value.filter(Boolean) : [];
+  return Array.isArray(value)
+    ? value.filter((entry) => entry !== undefined && entry !== null && entry !== '')
+    : [];
 }
 
 // ── 数值轴范围 ────────────────────────────────────────────
@@ -96,7 +98,8 @@ function takeawayLayout(text, area, tokens, lang) {
 }
 
 function textOf(value, fallback) {
-  if (typeof value === 'string') return value;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean')
+    return String(value);
   if (value && typeof value === 'object') {
     return String(value.label || value.title || value.name || fallback || '');
   }
@@ -118,6 +121,73 @@ function probeImageSize(path) {
   const size = imageSize(fs.readFileSync(path));
   if (!size.width || !size.height) throw new RangeError(`Cannot determine image size: ${path}`);
   return size;
+}
+
+function informationCells(area, count, data, tokens) {
+  const columns =
+    data.columns ?? Math.min(count, Math.max(1, Math.round(Math.sqrt((count * area.w) / area.h))));
+  if (!Number.isInteger(columns) || columns <= 0)
+    throw new RangeError('columns must be a positive integer');
+  const rows = Math.ceil(count / columns);
+  const gap =
+    data.gap ?? Math.min(H.spacing(tokens, 2), area.w / (columns * 12), area.h / (rows * 12));
+  return H.gridLayout(area, columns, rows, { columnGap: gap, rowGap: gap }).slice(0, count);
+}
+
+function addInformationItems(slide, entries, data, area, tokens, lang) {
+  if (!entries.length) throw new RangeError('Information groups require nonempty items');
+  const cells = informationCells(area, entries.length, data, tokens);
+  const colors = H.categoryColors(tokens, data.colors);
+  entries.forEach((entry, index) => {
+    const cell = cells[index];
+    const accent = colors[index % colors.length];
+    const detail =
+      typeof entry === 'object'
+        ? entry.detail ||
+          entry.description ||
+          (Array.isArray(entry.points || entry.details)
+            ? items(entry.points || entry.details)
+                .map(textOf)
+                .join('\n')
+            : String(entry.points || entry.details || ''))
+        : '';
+    addPanel(slide, cell, tokens, { line: accent, fill: accent, fillTransparency: 94 });
+    const pad = Math.min(0.16, cell.w * 0.08, cell.h * 0.1);
+    const headingH = detail ? Math.min(cell.h * 0.4, 0.58) : cell.h - pad * 2;
+    addLabel(
+      slide,
+      textOf(entry),
+      { x: cell.x + pad, y: cell.y + pad, w: cell.w - pad * 2, h: headingH },
+      tokens,
+      lang,
+      {
+        align: 'left',
+        bold: true,
+        fontSize: data.fontSize ?? H.fontSizeScale(tokens, lang).label,
+        label: `Group ${index + 1}`,
+        margin: 0,
+      },
+    );
+    if (detail)
+      addLabel(
+        slide,
+        detail,
+        {
+          x: cell.x + pad,
+          y: cell.y + pad + headingH,
+          w: cell.w - pad * 2,
+          h: cell.h - pad * 2 - headingH,
+        },
+        tokens,
+        lang,
+        {
+          align: 'left',
+          fontSize: data.detailFontSize ?? H.fontSizeScale(tokens, lang).caption,
+          label: `Group details ${index + 1}`,
+          margin: 0,
+        },
+      );
+  });
 }
 
 function containImage(path, box) {
@@ -147,16 +217,23 @@ function coverImage(path, box) {
 
 function addPanel(slide, box, tokens, options) {
   const p = palette(tokens);
-  const shape = options?.shape || 'roundRect';
+  const shape =
+    options?.shape ||
+    (tokens.model_led && Number(tokens.visual_language?.radius) === 0 ? 'rect' : 'roundRect');
   return S.addStyledContainer(slide, shape, box, tokens, {
     fill: options?.fill || p.surface,
-    line: options?.line || p.accent,
+    line:
+      options?.line ||
+      (tokens.model_led && options?.variant !== undefined
+        ? H.categoryColors(tokens)[options.variant % H.categoryColors(tokens).length]
+        : p.accent),
     lineWidth: options?.lineWidth || 1.25,
     fillTransparency: options?.fillTransparency,
   });
 }
 
 function addLabel(slide, text, box, tokens, lang, options) {
+  if (!H.plainText(text).trim()) return null;
   const role = options?.role || (options?.align === 'left' ? 'body' : 'label');
   const inset = options?.shape ? S.safeInsetForShape(options.shape, box) : { x: 0, y: 0 };
   const safeBox = {
@@ -234,9 +311,18 @@ function addSectionHero(slide, data, area, tokens, lang) {
 
 function addProcessFlow(slide, data, area, tokens, lang) {
   const steps = items(data.steps || data.items);
-  if (steps.length < 2 || steps.length > 5) {
+  if (!steps.length || (!tokens.model_led && (steps.length < 2 || steps.length > 5))) {
     throw new RangeError('addProcessFlow requires 2-5 steps.');
   }
+  if (tokens.model_led && steps.length > 5)
+    return addInformationItems(
+      slide,
+      steps.map((step, index) => ({ label: `${index + 1}. ${textOf(step)}`, detail: step.detail })),
+      data,
+      area,
+      tokens,
+      lang,
+    );
   const gap = H.spacing(tokens, 3);
   const cells = H.weightedColumns(area, steps.length, data.weights, gap);
   const p = palette(tokens);
@@ -294,7 +380,7 @@ function stageTimeValue(stage) {
  */
 function addTimeline(slide, data, area, tokens, lang) {
   const stages = items(data.stages || data.items);
-  if (stages.length < 3 || stages.length > 6) {
+  if (!stages.length || (!tokens.model_led && (stages.length < 3 || stages.length > 6))) {
     throw new RangeError('addTimeline requires 3-6 stages.');
   }
   const p = palette(tokens);
@@ -302,6 +388,7 @@ function addTimeline(slide, data, area, tokens, lang) {
   const stepW = area.w / stages.length;
   const times = stages.map(stageTimeValue);
   const proportional =
+    stages.length > 1 &&
     times.every((value) => value !== null) &&
     times.every((value, index) => index === 0 || value > times[index - 1]);
   const minTime = proportional ? times[0] : 0;
@@ -353,9 +440,10 @@ function addTimeline(slide, data, area, tokens, lang) {
 
 function addComparison(slide, data, area, tokens, lang) {
   const entries = items(data.items);
-  if (entries.length < 2 || entries.length > 3) {
+  if (!entries.length || (!tokens.model_led && (entries.length < 2 || entries.length > 3))) {
     throw new RangeError('addComparison requires 2-3 items.');
   }
+  if (tokens.model_led) return addInformationItems(slide, entries, data, area, tokens, lang);
   const gap = H.spacing(tokens, 3);
   // 去等宽化：显式 weights 优先；有 highlight 时默认给首选项 1.55 倍权重，
   // 避免“等宽双卡”的 AI 模板感（参考 asymmetric-decision）。
@@ -425,9 +513,21 @@ function addComparison(slide, data, area, tokens, lang) {
 
 function addMetricDashboard(slide, data, area, tokens, lang) {
   const metrics = items(data.metrics || data.items);
-  if (metrics.length < 2 || metrics.length > 4) {
+  if (!metrics.length || (!tokens.model_led && (metrics.length < 2 || metrics.length > 4))) {
     throw new RangeError('addMetricDashboard requires 2-4 metrics.');
   }
+  if (tokens.model_led && metrics.length > 4)
+    return addInformationItems(
+      slide,
+      metrics.map((entry) => ({
+        label: String(entry.value ?? textOf(entry)),
+        detail: entry.label,
+      })),
+      data,
+      area,
+      tokens,
+      lang,
+    );
   const gap = H.spacing(tokens, 3);
   const emphasis = data.emphasis !== undefined ? Number(data.emphasis) : -1;
   const weights = metrics.map((_, index) => (index === emphasis ? 1.6 : 1));
@@ -533,16 +633,11 @@ function addStyledTable(slide, data, area, tokens, lang) {
     text: textOf(name),
     options: {
       fill: { color: p.accent },
-      color: readableOn(p.accent, p),
+      color: tokens.model_led ? H.readableTextColor(p.accent, tokens) : readableOn(p.accent, p),
       bold: true,
       fontFace: H.fontFamily(tokens).body,
       fontSize: tokens.model_led
-        ? Number(
-            data.header_font_size ??
-              data.font_size ??
-              tokens.typography?.caption_pt ??
-              H.fontSizeScale(tokens, lang).caption,
-          )
+        ? Number(data.header_font_size ?? data.font_size ?? H.fontSizeScale(tokens, lang).label)
         : Math.max(11, H.fontSizeScale(tokens, lang).caption + 1),
       align: 'left',
       valign: 'middle',
@@ -552,20 +647,26 @@ function addStyledTable(slide, data, area, tokens, lang) {
   const bodyRows = rows.map((row, rowIndex) => {
     const zebra = data.zebra === false ? false : rowIndex % 2 === 1;
     const emphasized = rowIndex === highlight;
-    const baseFill = emphasized ? p.accent2 : zebra ? p.surface : p.canvas;
-    return items(row).map((cell) => ({
+    const baseFill = emphasized
+      ? tokens.model_led
+        ? p.accent
+        : p.accent2
+      : zebra
+        ? p.surface
+        : p.canvas;
+    return row.map((cell) => ({
       text: textOf(cell),
       options: {
         fill: { color: baseFill },
-        color: emphasized ? readableOn(baseFill, p) : p.text,
+        color: emphasized
+          ? tokens.model_led
+            ? H.readableTextColor(baseFill, tokens)
+            : readableOn(baseFill, p)
+          : p.text,
         bold: emphasized,
         fontFace: H.fontFamily(tokens).body,
         fontSize: tokens.model_led
-          ? Number(
-              data.font_size ??
-                tokens.typography?.caption_pt ??
-                H.fontSizeScale(tokens, lang).caption,
-            )
+          ? Number(data.font_size ?? H.fontSizeScale(tokens, lang).label)
           : Math.max(11, H.fontSizeScale(tokens, lang).caption),
         align: 'left',
         valign: 'middle',
@@ -586,24 +687,40 @@ function addStyledTable(slide, data, area, tokens, lang) {
   const colWs =
     widths.length === colCount
       ? widths.map(Number)
-      : Array.from({ length: colCount }, () => tableBox.w / colCount);
+      : (() => {
+          const weights = Array.from({ length: colCount }, (_, index) =>
+            Math.sqrt(
+              Math.max(
+                1,
+                ...[columns[index], ...rows.map((row) => row[index])].map(
+                  (value) => H.plainText(textOf(value)).length,
+                ),
+              ),
+            ),
+          );
+          const total = weights.reduce((sum, value) => sum + value, 0);
+          return weights.map((value) => (tableBox.w * value) / total);
+        })();
   const dataRows = bodyRows.length;
   const rowH = tableBox.h / Math.max(1, dataRows + (columns.length ? 1 : 0));
   if (!dataRows || colWs.reduce((sum, w) => sum + w, 0) <= 0) {
     throw new RangeError('addStyledTable requires non-empty rows and positive column widths.');
   }
-  const drawCell = (text, fill, color, box, bold, label) => {
+  const drawCell = (text, fill, color, box, bold, label, fontSize, align) => {
     slide.addShape('rect', {
       x: box.x,
       y: box.y,
       w: box.w,
       h: box.h,
       fill: { color: fill },
-      line: { type: 'solid', color: p.muted, pt: 0.5 },
+      line: tokens.model_led ? { type: 'none' } : { type: 'solid', color: p.muted, pt: 0.5 },
+      decorative: true,
     });
     H.addTextBox(slide, text, box, tokens, lang, {
       role: 'label',
-      margin: 6,
+      margin: data.margin ?? (tokens.model_led ? Math.min(4, box.h * 72 * 0.08) : 6),
+      fontSize,
+      align: align || 'left',
       bold: Boolean(bold),
       color,
       label,
@@ -616,10 +733,12 @@ function addStyledTable(slide, data, area, tokens, lang) {
       drawCell(
         cell.text,
         p.accent,
-        readableOn(p.accent, p),
+        tokens.model_led ? H.readableTextColor(p.accent, tokens) : readableOn(p.accent, p),
         { x: hx, y: tableBox.y, w: cellW, h: rowH },
         true,
         `table-header[${colIndex}]`,
+        cell.options.fontSize,
+        cell.options.align,
       );
       hx += cellW;
     });
@@ -638,6 +757,8 @@ function addStyledTable(slide, data, area, tokens, lang) {
         { x: cellX, y: dataTop + rowIndex * dataRowH, w: cellW, h: dataRowH },
         cell.options.bold,
         `table[${rowIndex}][${colIndex}]`,
+        cell.options.fontSize,
+        data.align ?? (typeof rows[rowIndex][colIndex] === 'number' ? 'right' : 'left'),
       );
       cellX += cellW;
     });
@@ -654,7 +775,9 @@ function addStyledTable(slide, data, area, tokens, lang) {
 
 function addChartWithTakeaway(slide, data, area, tokens, lang) {
   const p = palette(tokens);
-  const colors = [p.accent, p.accent2, p.muted];
+  const colors = tokens.model_led
+    ? H.categoryColors(tokens, data.colors)
+    : [p.accent, p.accent2, p.muted];
   const rawSeries = items(data.series);
   const series = rawSeries.map((entry) => {
     const normalized = { ...entry };
@@ -706,7 +829,9 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
   const pointCount = Array.isArray(series[0] && series[0].values) ? series[0].values.length : 0;
   const varyByPoint = kind === 'bar' && !stacked && series.length === 1 && pointCount > 1;
   const chartColors = varyByPoint
-    ? S.accentRamp([p.accent, p.accent2, p.muted], pointCount, data.highlight_index)
+    ? tokens.model_led
+      ? Array.from({ length: pointCount }, (_, index) => colors[index % colors.length])
+      : S.accentRamp([p.accent, p.accent2, p.muted], pointCount, data.highlight_index)
     : rawSeries.map((entry, index) => entry.color || colors[index % colors.length]);
   // 图表内文字统一从字号层级派生：图表标题 < 页面标题，轴标签/数据标签 < 正文。
   // 之前的硬编码 18pt/22pt 与正文同级，一页会出现两个"准标题"。
@@ -780,7 +905,7 @@ function addChartWithTakeaway(slide, data, area, tokens, lang) {
 
 function addArchitecture(slide, data, area, tokens, lang) {
   const nodes = items(data.nodes || data.items);
-  if (nodes.length < 2 || nodes.length > 6) {
+  if (!nodes.length || (!tokens.model_led && (nodes.length < 2 || nodes.length > 6))) {
     throw new RangeError('addArchitecture requires 2-6 nodes.');
   }
   const columns = nodes.length > 3 ? 3 : nodes.length;
@@ -831,10 +956,13 @@ function addArchitecture(slide, data, area, tokens, lang) {
 
 function addMatrix(slide, data, area, tokens, _lang) {
   const entries = items(data.items);
-  if (entries.length < 2 || entries.length > 4) {
+  if (!entries.length || (!tokens.model_led && (entries.length < 2 || entries.length > 4))) {
     throw new RangeError('addMatrix requires 2-4 items.');
   }
   const p = palette(tokens);
+  const groupColors = tokens.model_led
+    ? H.categoryColors(tokens, data.colors)
+    : [p.accent, p.accent2];
   const plot = {
     x: area.x + area.w * 0.12,
     y: area.y + area.h * 0.02,
@@ -866,7 +994,7 @@ function addMatrix(slide, data, area, tokens, _lang) {
       y: y - 0.16,
       w: 0.32,
       h: 0.32,
-      fill: { color: index % 2 ? p.accent2 : p.accent },
+      fill: { color: groupColors[index % groupColors.length] },
       line: { transparency: 100 },
     });
   });
@@ -881,7 +1009,7 @@ function addMatrix(slide, data, area, tokens, _lang) {
   });
   entries.forEach((entry, index) => {
     addPanel(slide, legendCells[index], tokens, {
-      line: index % 2 ? p.accent2 : p.accent,
+      line: groupColors[index % groupColors.length],
     });
     addLabel(slide, textOf(entry), legendCells[index], tokens, _lang, {
       bold: true,
@@ -947,7 +1075,7 @@ function addAnnotatedVisual(slide, data, area, tokens, lang) {
       if (!(error instanceof RangeError)) throw error;
     }
   }
-  const annotations = items(data.annotations || data.items).slice(0, 3);
+  const annotations = items(data.annotations || data.items);
   const annotationArea = {
     x: area.x + area.w * 0.6,
     y: area.y,
@@ -1035,8 +1163,9 @@ function addQuotePanel(slide, data, area, tokens, lang) {
 }
 
 function addSummary(slide, data, area, tokens, lang) {
-  const takeaways = items(data.items || data.takeaways).slice(0, 4);
-  if (!takeaways.length) throw new RangeError('addSummary requires 1-4 takeaways.');
+  const takeaways = items(data.items || data.takeaways);
+  if (!takeaways.length) throw new RangeError('addSummary requires nonempty takeaways.');
+  if (tokens.model_led) return addInformationItems(slide, takeaways, data, area, tokens, lang);
   if (takeaways.length === 1) {
     addPanel(slide, area, tokens, { line: palette(tokens).accent2 });
     return addLabel(slide, textOf(takeaways[0]), area, tokens, lang, {
@@ -1109,7 +1238,9 @@ function addItemList(slide, data, area, tokens, lang) {
   if (!list.length) throw new RangeError('addItemList requires a non-empty string items list.');
   const p = palette(tokens);
   const gap = Math.min(0.12, area.h / (list.length * 10));
-  const weights = list.map((_, index) => (index === 0 ? 2.35 : Math.max(0.85, 1.2 - index * 0.08)));
+  const weights = list.map((_, index) =>
+    tokens.model_led ? 1 : index === 0 ? 2.35 : Math.max(0.85, 1.2 - index * 0.08),
+  );
   const total = weights.reduce((sum, weight) => sum + weight, 0);
   const usable = area.h - gap * (list.length - 1);
   let y = area.y;

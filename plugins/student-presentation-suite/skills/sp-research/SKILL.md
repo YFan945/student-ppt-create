@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.30.3
+version: 0.30.4
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
@@ -14,7 +14,7 @@ arguments: [work_id, brief_path, scope, materials_path]
 
 ## 输入与隔离
 
-1. 将 work_id、brief_path、scope、materials_path、budget、背景及逐条 claim/id/验收要求
+1. 将 work_id、brief_path、scope、materials_path、背景及逐条 claim/id/验收要求
    并设置 semantic_review_required=true，写入 `<work-dir>/research-task.json`（schema：`../../references/research-task.schema.json`）。
    work-dir 必须是当前项目 outputs/.pptx-work/<work-id> 的绝对路径，所有输入路径也用绝对路径。
 2. 调用 `scripts/validate_research_task.py <task>`；失败就补齐输入，不开始检索。

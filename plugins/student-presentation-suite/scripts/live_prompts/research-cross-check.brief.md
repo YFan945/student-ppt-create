@@ -1,6 +1,5 @@
 # 学生计算机课程研究验收
 scenario: coursework
-budget: standard
 semantic_review_required: true
 scope: B
 C01 core/cross_check: 在默认启用GIL的CPython中，同一时刻通常只有一个线程执行Python字节码。

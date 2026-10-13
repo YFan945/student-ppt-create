@@ -27,7 +27,6 @@ python plugins/student-presentation-suite/scripts/smoke_research_fork.py \
   --scenario d-mode \
   --materials plugins/student-presentation-suite/scripts/live_prompts/sample-paper.md \
   --model <model> \
-  --max-budget-usd 1 \
   --validate \
   --output outputs/_analysis/live-d-result.json
 ```
@@ -41,7 +40,7 @@ claude -p "/student-presentation-suite:sp-research live-d-paper <brief绝对路�
   --output-format json \
   --allowedTools "Read,Write,Edit,Grep,Glob,Bash,PowerShell,Agent,Skill" \
   --disallowedTools "WebSearch,WebFetch" \
-  --permission-mode acceptEdits --max-budget-usd 1 --no-session-persistence
+  --permission-mode acceptEdits --no-session-persistence
 ```
 
 ## 3. 产物后校验链

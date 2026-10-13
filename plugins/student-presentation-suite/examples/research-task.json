@@ -4,7 +4,6 @@
   "brief_path": "/absolute/project/brief.json",
   "scope": "A",
   "materials_path": null,
-  "budget": "standard",
   "background": "课程汇报中的年度能源数据；绝对路径需替换为实际项目路径。",
   "claims": [
     {

@@ -1,12 +1,14 @@
 ---
 name: sp-outline
 description: Use only for a clearly student-owned academic context when the user explicitly requests a PPT or slide outline, not an editable deck. Do not use for generic presentations, standalone scripts, Q&A-only work, or non-student tasks.
-version: 0.30.3
+version: 0.30.4
 ---
 
 # Student Presentation
 
 规划学生演示文稿，不创建 `.pptx` 文件。
+
+展示正文与讲稿执行 `../../references/shared-standards.md` 的 Audience-facing Content 规范；正文直接呈现实质内容，制作与验证说明留在交付对话。
 
 ## 快速约束
 

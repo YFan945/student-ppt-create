@@ -166,6 +166,7 @@ function addStyledContainer(slide, shape, box, tokens, options = {}) {
   const mapped = value === 'pill' ? SHAPE.roundRect : value === 'arch' ? SHAPE.arc : SHAPE[value];
   const shapeOptions = {
     ...box,
+    decorative: true,
     fill: { color: fill, transparency: Number(options.fillTransparency || 0) },
     line: {
       color: line,

@@ -115,11 +115,11 @@ class DesignTokenTests(unittest.TestCase):
         for style in STYLES:
             with self.subTest(style=style):
                 dark = resolve_design_tokens(style)["dark_palette"]
-                self.assertEqual(
+                self.assertTrue(
                     {"canvas", "surface", "primary_text", "secondary_text",
-                     "primary_accent", "secondary_accent"},
-                    set(dark),
+                     "primary_accent", "secondary_accent"}.issubset(dark)
                 )
+                self.assertEqual(set(resolve_design_tokens(style)["palette"]), set(dark))
                 for role in ("primary_text", "secondary_text"):
                     for background in ("canvas", "surface"):
                         self.assertGreaterEqual(contrast_ratio(dark[role], dark[background]), 4.5)

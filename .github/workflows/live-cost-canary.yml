@@ -17,11 +17,6 @@ on:
         required: false
         default: ""
         type: string
-      production_budget_usd:
-        description: Optional per-scenario production-turn budget override; 0 uses scenario default
-        required: false
-        default: "0"
-        type: string
 
 permissions:
   contents: read
@@ -75,9 +70,6 @@ jobs:
           )
           if [ -n "${{ inputs.model }}" ]; then
             args+=(--model "${{ inputs.model }}")
-          fi
-          if [ "${{ inputs.production_budget_usd }}" != "0" ]; then
-            args+=(--production-budget-usd "${{ inputs.production_budget_usd }}")
           fi
           python plugins/student-presentation-suite/scripts/live_cost_canary.py "${args[@]}" | tee live-canary-summary.json
 

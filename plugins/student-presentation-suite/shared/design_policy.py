@@ -40,7 +40,7 @@ def advance_design(manifest: dict[str, Any], findings: list[dict[str, Any]]) -> 
     """After an unsuccessful repair, lower only pages with recurring design defects.
 
     Content, source, receipt and package failures never cause a downgrade.
-    This records policy inside the existing repair budget; it grants no rounds.
+    This records page choices without adding execution limits.
     """
     if "design_freedom" not in manifest or manifest.get("model_led") is False:
         return  # historical work-id, not a migration

@@ -38,6 +38,7 @@ class LiveCostCanaryTests(unittest.TestCase):
         self.assertIn("session-123", command)
         self.assertNotIn("--no-session-persistence", command)
         self.assertIn("--plugin-dir", joined)
+        self.assertNotIn("--max-budget-usd",command)
 
     def test_research_command_allows_web(self) -> None:
         command = canary.build_command(
@@ -60,7 +61,7 @@ class LiveCostCanaryTests(unittest.TestCase):
         self.assertEqual(result["all_agent_requests"], 14)
         self.assertEqual(result["main_token_context_share_pct"], 83.3)
 
-    def test_guardrails_fail_incomplete_or_expensive_run(self) -> None:
+    def test_outcome_checks_completion_not_cost_quotas(self) -> None:
         model = {
             "main_peak_context": 210_000,
             "main_requests": 50,
@@ -76,8 +77,9 @@ class LiveCostCanaryTests(unittest.TestCase):
         }
         problems = canary.evaluate_guardrails(model, pipeline, limits)
         self.assertTrue(any("state" in item for item in problems))
-        self.assertTrue(any("main_peak_context" in item for item in problems))
-        self.assertTrue(any("repairs" in item for item in problems))
+        self.assertFalse(any("main_peak_context" in item for item in problems))
+        self.assertFalse(any("repairs" in item for item in problems))
+        self.assertEqual(canary.evaluate_guardrails(model,{**pipeline,"state":"complete"},limits),[])
 
     def test_guardrails_accept_complete_bounded_run(self) -> None:
         model = {

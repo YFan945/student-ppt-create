@@ -7,7 +7,7 @@
 完成 intake 后，工作目录为项目 `outputs/.pptx-work/<work-id>`：
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" plan --work-dir <wd> --slide-spec <spec> --repair-limit 3
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" plan --work-dir <wd> --slide-spec <spec>
 # 主会话实现 pages/pNN-*.js（编辑模式改 ooxml/）。
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" run --work-dir <wd>
 # 主会话查看返回的预览、实际文本和讲稿；有问题直接改，再 run。
@@ -16,7 +16,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete -
 
 `plan` 自动验证 Spec 并生成源码；`--art-direction` 可选，仅用于已有设计配置。研究任务可提供 `--research-pack`，工具批量编译证据。无需先调用多个验证或状态推进命令。
 
-`run` 执行构建、字体处理、事实精确项、包与作者几何报告检查和全页渲染，返回 `technical_checks`、`geometry`、`review_required` 及当前页面路径。`ok` 只表示列出的技术检查通过，不代表审美、核心语义或逐页看图已经验收。几何 warning 和字体替换供作者对照完整渲染判断；合理的装饰覆盖不按数量阻断。默认首次生成加 3 轮修复；任务明确更低预算时用该预算。当前文件与预览绑定一致时可复用渲染。
+`run` 执行构建、字体处理、事实精确项、包与作者几何报告检查和全页渲染，返回 `technical_checks`、`geometry`、`review_required` 及当前页面路径。`ok` 只表示列出的技术检查通过，不代表审美、核心语义或逐页看图已经验收。几何 warning 和字体替换供作者对照完整渲染判断；合理的装饰覆盖不按数量阻断。不以金额、token 或修复次数阻断当前工作。当前文件与预览绑定一致时可复用渲染。
 
 `complete` 绑定当前产物并生成已确认的辅助文件。主会话在调用前完成看图和核心语义自检；工具不假装替作者做独立视觉评审。`status` 可以读取历史 manifest，旧管线任务须保留原件后以新 work-id 继续。
 

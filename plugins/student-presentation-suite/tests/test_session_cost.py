@@ -212,11 +212,11 @@ class SessionCostTests(unittest.TestCase):
         self.assertEqual(1, summary["batched_turns"])
 
     def test_turn_economy_is_reported(self) -> None:
-        """Wall clock is turns x round-trip latency, so this is the time-budget metric."""
+        """Report observed latency and batching without hypothetical budget capacity."""
         self.assertEqual(3, self.summary["turns"])
         self.assertEqual(1.0, self.summary["tool_calls_per_turn"])
         self.assertIn("median", self.summary["turn_seconds"])
-        self.assertIsNotNone(self.summary["turns_under_20min"]["at_median"])
+        self.assertNotIn("turns_under_20min",self.summary)
 
     def test_batching_is_visible_in_the_per_turn_ratio(self) -> None:
         path = Path(self._tmp.name) / "batched.jsonl"
