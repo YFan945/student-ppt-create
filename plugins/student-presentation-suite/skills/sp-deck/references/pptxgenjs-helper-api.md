@@ -75,4 +75,4 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/pptx-helpers.js --describe"
 
 `--describe` 给签名，本文给用法。只有在需要确认**具体实现行为**（某个函数的降级
 策略、取整方式）时才去读 `scripts/pptx-helpers.js`，并且只读那一个函数，不要整文件
-读回上下文（CD-3）。
+读回上下文。

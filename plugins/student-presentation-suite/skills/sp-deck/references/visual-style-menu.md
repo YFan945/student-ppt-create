@@ -4,7 +4,7 @@ For new tasks, [model-led design](../../../references/model-led-design.md) owns 
 
 Visual styles are **user-facing style seeds**, not templates or layout engines. Seeds describe mood, palette and optional assets. The main session chooses typography, imagery, icons, charts and page rhythm from the content and actual renders. Art Direction is optional.
 
-This separation is intentional: users choose a comprehensible visual mood; the model then acts as art director instead of asking the user to configure dozens of design details. Apply priorities in this order: approved school/user template → readability/source safety/truthful representation → slide narrative task → confirmed style seed → generated Art Direction.
+This separation is intentional: users choose a comprehensible visual mood; the model then acts as art director instead of asking the user to configure dozens of design details. Factual integrity, source safety and usable readability remain binding. Preserve required user/template elements and adapt flexible content areas; resolve material conflicts explicitly. Within that boundary, follow the slide's information task, the confirmed style seed and optional Art Direction.
 
 ## Intake Categories
 
@@ -21,12 +21,13 @@ Do not expose old “show all styles”, cross-category markers, or multi-round 
 
 ## Style Seed Contract
 
-Each file under `visual-styles/` retains exactly these lightweight intake fields:
+Each file under `visual-styles/` supplies these lightweight authoring inputs:
 
 1. `Style character`
 2. `Palette`
-3. `Background reference`
-4. `SVG reference`
+3. `Font families`
+
+Background and SVG preferences are optional custom inputs, not required fields in each seed. The style character describes the mood and emphasis; it must do more than repeat the style name. Use it as direction, not as a mandatory layout.
 
 Palette roles are `canvas`, `surface`, `primary_text`, `secondary_text`, `primary_accent`, and `secondary_accent`. These files intentionally stay compact. **They are no longer the final design specification.** In new tasks, concrete design decisions live in authored pages; an optional `art-direction.yaml` may record reusable preferences.
 
@@ -81,3 +82,5 @@ The current catalog contains colors and font families. It contains no page regio
 ## Template Inheritance
 
 When the user supplies a school template, preserve required logo, footer, colors, cover and useful placeholders. The template takes priority over the style seed. Art Direction should then describe how to use the template well rather than force unrelated colors, motifs, cropping or component language into it.
+
+For object-level inheritance and the distinction between template, inspiration and content-only input, read `cover-and-template.md`.

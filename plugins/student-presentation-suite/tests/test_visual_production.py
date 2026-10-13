@@ -141,6 +141,7 @@ class TechnicalReportTests(unittest.TestCase):
                   patch.object(production, "validate_slide_spec", return_value=(spec, [], [])),
                   patch("shared.pptx_runtime.validate_pptx", return_value={"ok": True}),
                   patch("pptx_actual_content_check.run", side_effect=write_content),
+                  patch("pptx_actual_content_check.extract_pptx_text", return_value=["测试页面"]),
                   patch("pptx_actual_content_check.extract_pptx_notes", return_value={})):
                 manifest = {"source": None, "slide_spec": {"path": str(work / "spec.json")}}
                 production.write(sidecar, geometry)

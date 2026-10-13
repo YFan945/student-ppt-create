@@ -37,7 +37,7 @@ hero image | evidence image | annotated screenshot | native chart | diagram/proc
 | comparison/matrix | semantic icon | typography | none-needed
 ```
 
-If the intended asset is unavailable, change the visual strategy or reference recipe before writing the final page; do not leave a placeholder and do not silently replace a hero visual with four cards.
+Actively use available authorized tools for topical imagery; keep accurate tables, charts and diagrams editable. If the intended asset is unavailable, use another suitable asset or an explicitly allowed designed placeholder with a clear replacement target. Do not silently replace a hero visual with four empty cards. A placeholder is a deliberate visual treatment, not an unfinished page; see `image-sourcing.md` for policy and provenance.
 
 ## Deterministic Internal Visual Stack
 
@@ -69,7 +69,7 @@ provider 且用户未拒绝时，才可为封面、背景或抽象概念制作�
 
 - 适用：cover/closing hero、抽象概念、氛围性但内容相关的主视觉。
 - 不适用：图表、流程图、架构、需要准确文字/数字的 evidence visual。
-- prompt 为幻灯片文字留出明确空间；新任务参考 `art-direction.yaml` 中模型选定的 palette、crop language 和 treatment，用户指定的品牌与保留项必须遵守。旧任务继续遵循其冻结的视觉要求。
+- prompt 为幻灯片文字留出明确空间；从当前页面设计选定 palette、crop language 和 treatment，已有可选 `art-direction.yaml` 时才参考该文件，用户指定的品牌与保留项必须遵守。旧任务继续遵循其冻结的视觉要求。
 - 生成后逐图检查构图、错字、裁切和事实暗示，不把生成画面当事实证据。
 
 ## Sourced Web Images
@@ -91,6 +91,8 @@ provider 且用户未拒绝时，才可为封面、背景或抽象概念制作�
 
 If no suitable image is available, prefer an information-bearing transformation rather than unrelated decoration:
 
+An approved designed placeholder may preserve the intended image region: use a topical illustration, schematic or replaceable photo/screenshot treatment with a readable label. Mark potentially misleading images as “示意图” or “素材待替换”; keep the replacement list in working records/delivery. Missing data permits a labeled table/chart skeleton, not invented values, bars or trends. Explicit user prohibitions and old frozen controls remain effective.
+
 - causal/process flow;
 - comparison or decision matrix;
 - timeline/path;
@@ -104,7 +106,7 @@ If no suitable image is available, prefer an information-bearing transformation 
 ## Production Notes
 
 - Images should explain, evidence, or frame the slide's main message.
-- A visual must have an explicit role in the composition candidate; avoid “put something on the right because the left has text.”
+- A visual must have an explicit role in the authored page; avoid “put something on the right because the left has text.” No composition-candidate file is required.
 - Text over images needs robust contrast through crop choice, negative space, or a purposeful opaque/translucent panel.
 - Preserve aspect ratio unless an intentional crop is specified.
 - Record web image/source URLs in speaker notes or references when appropriate.

@@ -1,7 +1,7 @@
 ---
 name: sp-review
 description: Use only for a clearly student-owned academic context when the user explicitly asks to review, audit, score, critique, compare, or diagnose an existing PPT/PPTX/PowerPoint deck or rendered export.
-version: 0.30.5
+version: 0.30.6
 ---
 
 # Student Presentation Review
@@ -16,7 +16,7 @@ version: 0.30.5
 - 分级：Critical（阻断理解/评分/表达）、Major（应修复）、Minor（润色）
 - 静态 XML 风险是信号，不替代渲染检查
 - 视觉结论需要渲染证据支撑
-- 全程遵守 `../../references/cost-discipline.md`：调用并行批量发出、禁止整文件重写、产物写盘即弃、检索只走 `sp-research`；渲染图按 CD-9 同一轮并行 Read，同一 hash 不重读
+- 按 `../../references/cost-discipline.md` 批量检查独立文件和当前渲染，变化后检查更新页与全套；外部事实检索走 `sp-research`，不依赖已移除的 CD 编号或评审回执
 - 输出写入 `outputs/`，不得修改源文件
 
 ## 职责

@@ -14,6 +14,15 @@ SCRIPT = ROOT / "scripts" / "build_support_outputs.py"
 
 
 class SupportOutputTests(unittest.TestCase):
+    def test_concise_actual_notes_do_not_compress_rich_visible_content(self):
+        module = load_module(SCRIPT)
+        data = {'slides': [{'id': 1, 'title': '资料整理', 'content': ['采集条件', '版本记录', '关系解释'],
+                            'speaker_notes': '原始规划长讲稿'}]}
+        bound = module.with_actual_speaker_notes(data, {1: '只讲来源追溯。'})
+        self.assertEqual(bound['slides'][0]['content'], data['slides'][0]['content'])
+        self.assertIn('只讲来源追溯。', module.speaker_notes_markdown(bound))
+        self.assertNotIn('原始规划长讲稿', module.speaker_notes_markdown(bound))
+
     def test_builds_teleprompter_cards_and_references(self) -> None:
         module = load_module(SCRIPT)
         data = {

@@ -70,15 +70,9 @@ env check → 读取 image-sources.json，确认 search/generation/user-assets �
 `hero_visuals` / `evidence_visuals` 计数 > 0 而本会话**没有任何 image-sources.json** 时直接
 拒绝（`asset_plan_visuals_unavailable`，undeclared = unavailable）；已声明但 provider 都不
 ready 时只给一条 minor（`asset_plan_visuals_not_ready`）——这几页由 deterministic visual
-stack 交付是合法的，只需在构图前确认。素材不可用时主会话应先调整表达；不能在修复轮次中反复保留无法兑现的图片计划，也不能把占位符交付给用户。
+stack 或已确认允许的设计占位图交付是合法的，只需在构图前确认。新 model-led 任务的图源缺失是素材获取提醒，不以缺少外部 provider 阻断设计占位；旧任务仍保留冻结要求。不能反复保留无法兑现的真实图片计划，不能把未实现页面伪装为设计占位。
 
-**检索一律委派给子代理**（`cost-discipline.md` CD-5）：图片检索由子代理执行，主流程只
-接收结构化结果（`slide` / `purpose` / `provider_id` / `source_url` / `license` /
-`retrieved_at` / `alt_text` / `fallback`）与原始文件路径，不接收检索原始正文——原始结果
-落盘到 `outputs/.pptx-work/<work-id>/research/`。
-
-委派**不豁免**第 3 节的硬规则：子代理同样必须先确认 provider 就绪、权限为显式 `true`，
-并遵守"生图不得作为事实证据"与"无法记录来源的图片不得进入 composition"。主会话保留素材构图和视觉检查责任，不委派页面设计。
+外部事实研究按 `sp-research` 由研究员执行。图片选取、工具生图、构图与视觉检查由主会话负责；批量处理获取结果，记录文件路径与来源，不把图片构图派给研究员。获取仍须满足第 3 节权限与来源要求，已有明确授权不重复询问。
 
 ## 5. Provenance recording
 
@@ -96,13 +90,24 @@ stack 交付是合法的，只需在构图前确认。素材不可用时主会�
 
 ## 6. Fallbacks when unavailable
 
-`image_search_ready=false` 或 `image_generation_ready=false` 时，按此顺序降级，不得留占位符：
+`image_search_ready=false` 或 `image_generation_ready=false` 时，优先选择适合页面的信息表达；已确认允许时保留有设计的占位图：
 
 1. 用户提供的其他素材；
-2. 原生图表 / 关系图 / 流程图 / 架构图 / 时间线；
-3. custom SVG 或 native shape；
-4. `pptx-icons.js` 小型语义 icon（仅作辅助）；
-5. typography-led 版式。
+2. 工具制作的概念图、原生图表 / 关系图 / 流程图 / 架构图 / 时间线；
+3. 已获允许的主题占位图、可替换照片/截图区域或无虚构数值的表格骨架；
+4. custom SVG、native shape、语义 icon 或 typography-led 版式。
+
+### Designed placeholder record
+
+Production Summary 明确是否允许素材占位并保留历史禁止要求。`asset-manifest.json` 顶层 `placeholder_policy` 为 `allow` 或 `forbid`；省略默认为 `forbid`，仅在用户已允许时写 `allow`。每个有意占位 asset 用 `source: "placeholder:<id>"`；原生绘制用 `permission: "suite-original"`，工具生成用 `permission: "generated"` 并附生成 prompt，另附 `placeholder`：
+
+```json
+{"kind":"photo-slot","label":"素材待替换","replacement":"实验装置的实拍照片","reason":"尚未提供装置照片"}
+```
+
+kind 为 `photo-slot` / `screenshot-slot` / `concept` / `data-skeleton`。该页实际显示 label；素材文件存在则记录 path、真实尺寸，无独立文件的原生占位可省略 path。仍填写 slide、purpose、alt_text、fallback。`validate-asset-manifest` 验证策略、记录及文件；`run` 验证对应页的标记并返回占位/替换清单。修改素材记录后重新 run；占位存在本身不阻断已允许的交付，缺失的真实核心证据仍准确说明。
+
+短标记说明素材性质即可，不反复堆叠“替换内容”“到位后替换”“保持可编辑”等制作说明。具体替换对象、操作和清单放工作记录/交付说明，面向听众的备注继续讲主题。占位场景中的箭头不能暗示材料未支持的步骤、因果或数据关系；并列工具可以并列呈现。
 
 ## 7. Verification
 

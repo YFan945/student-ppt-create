@@ -34,7 +34,7 @@ other in `course` or `rubric`.
 - `classmates`: explain necessary concepts and use relatable examples.
 - `judges`: lead with differentiation, proof, feasibility, and risks.
 - `non-specialists`: reduce jargon and explain why each technical detail matters.
-- `mixed`: keep the main story accessible and move specialist detail to notes or appendix.
+- `mixed`: keep the reading focus accessible while preserving useful specialist detail on the page; optional supplementary material may use an allowed appendix. Notes selectively explain the highlights.
 
 Depth controls terminology and explanation:
 
@@ -64,8 +64,8 @@ boundary — do not restate it here.
 New student work aims for content-rich, varied visual expression and layered color, with free composition. Word/character controls are optional: record them only when the user confirms a cap, and preserve supplied constraints. See `model-led-design.md` for the canonical new-task policy.
 
 Choose one of the 12 formal lightweight references in `visual-style-menu.md`, or set
-`visual_style: Other`. A formal reference supplies only style character, six palette roles,
-cover/content/section/closing background references, and one optional SVG reference. It does not
+`visual_style: Other`. A formal reference supplies style character, palette roles and font families;
+custom background/SVG preferences are optional. It does not
 control layout, shapes, images, charts, components, or page rhythm.
 
 `Other` requires `visual_style_custom` with `style_character` and the six base `palette` roles.

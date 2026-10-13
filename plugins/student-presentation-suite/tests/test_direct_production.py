@@ -84,6 +84,19 @@ module.exports.notes={json.dumps(notes)};
         with self.assertRaisesRegex(production.ProductionError, "confirm"):
             production.plan(self.args)
 
+    def test_imported_template_blank_placeholder_paragraphs_do_not_become_headline(self):
+        import pptx_actual_content_check as content
+
+        (self.work / 'ooxml').mkdir()
+        pptx = self.work / 'deck.pptx'
+        pptx.write_bytes(b'fixture')
+        with patch.object(content, 'extract_pptx_text', return_value=['\n\n学院模板\n正式题目']), \
+             patch.object(content, 'extract_pptx_notes', return_value={}):
+            production.actual_copy(self.work, pptx, {'schema_version': '2.1'})
+        copy = production.load(self.work / 'presentation-copy.json')
+        self.assertEqual(copy['slides'][0]['headline'], '学院模板')
+        self.assertEqual(copy['slides'][0]['text_runs'], ['\n\n学院模板\n正式题目'])
+
     def test_repository_cannot_receive_generated_artifacts(self):
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(ROOT.parents[1])}):
             with self.assertRaisesRegex(production.ProductionError, "repository"):
@@ -181,6 +194,28 @@ console.log(JSON.stringify({fontSize:policy.fontSize,error,inherited:inherited.t
         result = production.run(self.args)
         self.assertFalse(result["ok"])
         with self.assertRaisesRegex(production.ProductionError, "current build"):
+            production.complete(self.args)
+
+    def test_designed_placeholder_permission_and_actual_label_bind_delivery(self):
+        from test_asset_contract import fixture
+
+        production.plan(self.args)
+        self.author()
+        data = fixture()
+        # Reuse a real visible carrier; an arbitrary unrendered label must fail.
+        data['assets'][0]['placeholder']['label'] = '合成实验'
+        production.write(self.work / 'asset-manifest.json', data)
+        result = production.run(self.args)
+        self.assertTrue(result['ok'])
+        self.assertEqual(result['asset_placeholders'][0]['replacement'], '装置实拍照片')
+        production.complete(self.args)
+        data['placeholder_policy'] = 'forbid'
+        production.write(self.work / 'asset-manifest.json', data)
+        with self.assertRaisesRegex(production.ProductionError, 'asset manifest changed'):
+            production.complete(self.args)
+        result = production.run(self.args)
+        self.assertFalse(result['ok'])
+        with self.assertRaisesRegex(production.ProductionError, 'current build'):
             production.complete(self.args)
 
 

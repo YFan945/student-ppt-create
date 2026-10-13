@@ -12,8 +12,8 @@ Critical:
 - English presentation is too difficult to speak naturally
 
 Major:
-- argumentative or evidence-slide titles are labels when a claim would materially improve comprehension
-- slides contain dense paragraphs or script-like text
+- evidence-slide titles obscure the actual finding when a supported takeaway would materially improve comprehension; direct subject titles remain appropriate for definitions, mechanisms, setup and process
+- paragraph/script-like text makes the page hard to browse or obscures emphasis; rich supporting detail with clear hierarchy is not itself a defect
 - evidence, data, or examples are not interpreted
 - visuals are decorative or unrelated
 - notes are robotic, essay-like, or missing key transitions
@@ -51,10 +51,10 @@ Defense decks should include:
 ## Slide Content Review
 
 Check:
-- argumentative and evidence-slide titles state the claim; covers, section dividers, references, appendix, and Q&A slides may use descriptive labels
+- title form fits the page function: direct subject titles for explanation/setup, supported takeaways for findings, descriptive titles for cover/divider/reference pages; no mandatory second conclusion band
 - body text is short enough to present
 - useful evidence and supporting detail remain visible where needed
-- data slides include one conclusion sentence
+- data slides communicate the supported interpretation through title, annotations or nearby explanation without requiring a repeated conclusion sentence
 - examples connect to the main argument
 - public-facing text follows the required Audience-facing Content section of shared standards; production/verification caveats are reported in the delivery conversation
 
@@ -81,6 +81,8 @@ Check:
 - background effects do not reduce readability
 - real people, places, products, historical materials, and current examples use appropriate factual sources when needed
 - image source and fallback choices match `../../../references/image-strategy.md`
+- allowed designed placeholders are substantive, visibly identified and replaceable; rich body content has a selective speaking path and concise notes
+- cover reading focus, semantic title breaks and grouped metadata are coherent; required template dimensions, masters and repeated objects survive
 
 ## Anti-AI Wording
 

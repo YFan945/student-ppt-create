@@ -37,7 +37,7 @@ The tools batch build, font processing, exact-content readback, package validati
 
 ## Assets, typography and editing
 
-New student decks aim for substantive content, varied visual expression and layered color. Typography, density and compositions follow the content and full-size renders; word/character caps apply only when explicitly confirmed. With no external images, editable diagrams, tables, charts and semantic icons remain available. See the [runnable visual examples](skills/sp-deck/references/main-session-visual-examples.md).
+New student decks aim for substantive content, varied visual expression and layered color. Typography, density and compositions follow the content and full-size renders; word/character caps apply only when explicitly confirmed. Slides remain rich while notes selectively explain the highlights. Actively acquire/generate topical imagery with available authorized tools; use editable diagrams, tables and charts. Explicitly allowed designed placeholders retain visual richness and replacement targets; they never stand in for factual evidence. See the [runnable visual examples](skills/sp-deck/references/main-session-visual-examples.md).
 
 Before delivery, inspect every full-size rendered page and compare supplied references, repair and render again, then scan the whole deck. `run` reports technical checks, geometry risks and pending author review tasks; `ok` does not certify aesthetics or completion of visual/semantic self-check. The commands remain `plan → run → complete`.
 
@@ -48,7 +48,7 @@ New tasks do not impose diagram item quotas or a supporting-point cap. Explicit 
 - Page modules use shared helpers or native pptxgenjs objects; the harness records geometry, backgrounds, notes and actual copy.
 - Font choices and sizes belong to the author. Page typography aliases are mapped explicitly, and unknown keys produce an actionable error.
 - OOXML editing preserves the source deck; rebuilt decks remain editable. Changes are accompanied by a change summary.
-- Speaker notes and support scripts come from the final PPTX notes panes. Only confirmed deliverable types are exported.
+- Speaker notes and support scripts come from the final PPTX notes panes; concise notes do not require compressing visible content. Only confirmed deliverable types are exported.
 
 ## Work files and recovery
 

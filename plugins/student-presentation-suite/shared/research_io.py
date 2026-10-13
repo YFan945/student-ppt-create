@@ -40,6 +40,15 @@ def atomic_json(path: Path, value: dict) -> None:
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
     try:
         temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        os.replace(temporary, path)
+        for attempt in range(5):
+            try:
+                os.replace(temporary, path)
+                break
+            except OSError as exc:
+                # Windows readers/virus scanners may briefly hold the destination.
+                # Keep replacement atomic; permanent access errors still propagate.
+                if getattr(exc, "winerror", None) not in {5, 32, 33} or attempt == 4:
+                    raise
+                time.sleep(0.02 * 2 ** attempt)
     finally:
         temporary.unlink(missing_ok=True)

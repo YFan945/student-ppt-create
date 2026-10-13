@@ -49,7 +49,7 @@ Confirm every item before production:
 | Template/branding | No required template, logo, or brand | Controls layout constraints |
 | Source deck (新建/改进) | No existing deck → create new | Decides `production_mode`: an editable `.pptx`/`.potx` source → `edit_ooxml`; a corrupt source or non-PPTX (PDF/preview) → `rebuild_from_source`; otherwise `create` |
 | Edit intent | None (new deck) | For improvements: `incremental` / `rebuild-clean-copy` / `fix-specific`; `rebuild-clean-copy` overrides the edit_ooxml default |
-| Image strategy | `hybrid-adaptive`：先核对真实用户素材、可用能力与已获授权；无外部图片时选可编辑关系图、流程、图表、表格及语义图标 | Controls sourcing and production |
+| Image strategy | `hybrid-adaptive`：先核对用户素材、可用能力与已获授权，积极制作图片及可编辑图表；素材不足时推荐有设计、可替换的占位图并纳入摘要确认，明确禁止时不使用 | Controls sourcing and production |
 | Visual style | Recommend three topic-fit styles; choose one only after confirmation | Controls visual direction |
 | Deliverables | PPTX only; speaker notes, preview, contact sheet, PDF, and full script appear only when the user selects them; add change summary for edits | Controls completion criteria |
 | Interaction/quality mode | Beginner + fast | Controls guidance, evidence, and rehearsal depth |
@@ -260,6 +260,8 @@ directory or filename prefix when known. Only an affirmative reply to this
 summary moves the workflow to `intake_confirmed`. 确认必须通过 `AskUserQuestion`
 （选项：确认，开始制作 / 调整方案 / 更换视觉风格 / Other），不要以纯文本
 "回复确认即可开始"这类方式中断会话等待自由输入。
+
+在图片策略中推荐并说明素材缺失时的设计占位方案，随完整摘要一起确认，不新增单独提问轮；用户已授权时直接沿用。未获允许或旧任务明确禁止时保持禁止。正文充实、备注选择性讲解的安排也应清楚，不用讲稿时长自动压缩正文。
 
 After confirmation, map supported values into Slide Spec `meta`:
 

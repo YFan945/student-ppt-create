@@ -35,6 +35,10 @@ RENDER_SETTINGS = {"dpi": 144, "format": "png", "pipeline": "libreoffice-poppler
 VISUAL_REVIEW_TASKS = [
     "Read every full-size slide: wrapping, clipping, unintended overlap, connectors, labels and page markers.",
     "Use the contact sheet for deck rhythm; check information density, hierarchy, color grouping and visual variety on individual slides.",
+    "Keep rich visible support and a selective speaking path: use weight, size and color for focus; concise notes need not narrate all detail.",
+    "Check same-level consistency, cross-level distinction, alignment and spacing at the intended viewing scale; improve organization before shrinking type.",
+    "Check cover focus, semantic title breaks, grouped metadata and image balance; preserve requested template dimensions, masters and repeated objects.",
+    "Actively use topical images and editable evidence visuals; verify allowed designed placeholders and replacement targets without claiming factual evidence.",
     "Compare supplied reference/template pages with the output, including fonts, imagery and richness requested by the user.",
     "Check the actual text and notes against must_convey, evidence and asset provenance; automatic checks do not prove meaning or visual quality.",
     "Check public-facing copy and notes against shared audience-facing standards; move production/verification caveats to the delivery conversation or quality report.",
@@ -248,12 +252,14 @@ def actual_copy(work: Path, pptx: Path, spec: dict[str, Any]) -> None:
     texts, notes = content.extract_pptx_text(pptx), content.extract_pptx_notes(pptx)
     entries = authored.get("slides", [])
     if not entries and (work / "ooxml").is_dir():
-        entries = [{"headline": text.splitlines()[0] if text.strip() else "", "visual_labels": []}
+        entries = [{"headline": next((line.strip() for line in text.splitlines() if line.strip()), ""), "visual_labels": []}
                    for text in texts]
         authored["slides"] = entries
     if len(entries) != len(texts):
         raise ProductionError("each page must provide presentation_copy with its actual headline and labels")
     for index, entry in enumerate(entries, 1):
+        if (work / "ooxml").is_dir() and not str(entry.get("headline") or "").strip():
+            entry["headline"] = next((line.strip() for line in texts[index - 1].splitlines() if line.strip()), "")
         entry.update(slide=index, speaker_notes=notes.get(index, ""), text_runs=[texts[index - 1]])
     authored["pptx_sha256"] = file_sha256(pptx)
     write(path, authored)
@@ -275,6 +281,13 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
     notes = content.extract_pptx_notes(pptx)
     missing_notes = [index for index in range(1, len(spec["slides"]) + 1)
                      if (spec.get("meta") or {}).get("include_speaker_notes") and not notes.get(index, "").strip()]
+    assets_path = work / "asset-manifest.json"
+    from shared.asset_contract import validate_assets
+    assets = validate_assets(load(assets_path) if assets_path.is_file() else {"deck": work.name, "assets": []},
+                             work, content.extract_pptx_text(pptx))
+    if assets_path.is_file():
+        assets["manifest"] = bind(assets_path)
+        assets["file_bindings"] = [bind(Path(path)) for path in assets["files"]]
     geometry_path = Path(str(pptx) + ".registry-report.json")
     geometry = {"performed": False, "ok": True, "errors": [], "warnings": [],
                 "limitation": "No authoring geometry report; inspect rendered pages for layout defects."}
@@ -286,10 +299,11 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
                     for key in ("ok", "errors", "warnings", "error_count", "warning_count", "font_substitutions")}
         geometry.update(performed=True, report=bind(geometry_path))
     report = {
-        "ok": package["ok"] and content_report["ok"] and not missing_notes and geometry["ok"],
+        "ok": package["ok"] and content_report["ok"] and not missing_notes and geometry["ok"] and assets["ok"],
         "pptx": bind(pptx), "slide_spec": manifest["slide_spec"],
         "package": package, "content": content_report, "missing_notes": missing_notes,
         "geometry": geometry,
+        "assets": assets,
         "check_scope": {"kind": "technical-checks", "visual_quality_verified": False,
                         "semantic_verification": "author-self-check-required",
                         "limitation": "ok covers the listed technical checks, not aesthetic approval or completed visual review."},
@@ -397,6 +411,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 "previews": manifest["render"], "check_report": manifest["check"]["report"],
                 "technical_checks": checked["check_scope"], "geometry": checked["geometry"],
                 "review_required": checked["review_required"],
+                "asset_placeholders": checked["assets"]["placeholders"],
                 "must_convey": checked["must_convey"], "semantic_verification": "main-session-self-check"}
     except (ProductionError, OSError, ValueError) as exc:
         manifest["last_error"] = str(exc)
@@ -424,6 +439,13 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
     if rendered.get("pptx_sha256") != file_sha256(pptx):
         raise ProductionError("previews do not belong to the current PPTX")
     report = load(Path(checked["report"]["path"]))
+    assets = report.get("assets") or {}
+    if (work / "asset-manifest.json").is_file() != bool(assets.get("manifest")):
+        raise ProductionError("asset manifest changed; run again before delivery")
+    if assets.get("manifest") and not current(assets["manifest"]):
+        raise ProductionError("asset manifest changed; run again before delivery")
+    if not all(current(item) for item in assets.get("file_bindings", [])):
+        raise ProductionError("asset file changed; run again before delivery")
     if len(rendered.get("pages", [])) != report["content"]["actual_slide_count"]:
         raise ProductionError("current build needs one rendered preview per slide")
     if (report.get("geometry") or {}).get("performed") and not current(report["geometry"].get("report")):

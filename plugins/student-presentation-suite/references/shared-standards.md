@@ -15,8 +15,8 @@ states, `presentation-brief.md` owns global scenario/audience/control semantics,
 owns source/visual policy, `research-workflow.md` owns when and how external
 knowledge is gathered (A/B/C/D classification, source tiers, cross-validation,
 and the Research Pack contract), and `cost-discipline.md` owns how the
-work is carried out: batched tool calls, in-place edits, write-once artifacts,
-stage summaries, delegated search, and single-run gating.
+work is carried out: batched independent calls, focused page repairs,
+main-session production, isolated factual research and observational usage reports.
 
 ## Intent Routing
 
@@ -62,6 +62,8 @@ Follow `model-led-design.md`. Choose typography, density, colors, imagery and la
 ## Layered Generation
 
 Read the material and preserve the explanations, examples and evidence needed by the audience. Plan pages and notes from that content; do not turn substantial material into keywords or transfer necessary explanation exclusively into notes. See `content-workflow.md`.
+
+Rich visible content and concise speaking notes are compatible. Plan selective oral emphasis without deleting the visible supporting detail; the content workflow owns this separation. Allowed designed placeholders follow `image-sourcing.md`, not a generic ban on every placeholder.
 
 ## Audience-facing Content — Required
 

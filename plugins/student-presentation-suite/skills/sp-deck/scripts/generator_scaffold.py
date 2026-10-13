@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Write the CD-2 generator layout: thin deck.js + one pages/pNN-*.js per slide.
+"""Write thin assembly and per-page source for main-session authoring.
 
-v0.8 still requires composition JSON; this module only creates the *generator*
-files so `ppt_pipeline.py build` can refuse a monolithic deck.js. Existing
-authored page files (no scaffold marker) are left untouched on replan.
+New model-led tasks receive full material and empty free functions, with no
+composition JSON or visual recipe. Legacy declarative stubs remain compatible.
+Existing authored page files are never overwritten by scaffolding.
 """
 
 from __future__ import annotations
@@ -67,7 +67,7 @@ function main() {{
   }});
   registry.assertSafe();
   if (TOKENS.model_led) require('node:fs').writeFileSync(path.join(__dirname, 'presentation-copy.json'), JSON.stringify({{ slides: presentationCopy }}, null, 2));
-  // 完整几何分析（含 warning）写 sidecar，供确定性 QA 带进 repair packet。
+  // 完整几何分析（含 warning）写 sidecar，供主会话对照当前渲染检查。
   registry.writeReport(out);
   require('node:fs').writeFileSync(
     `${{out}}.layout-report.json`,
@@ -349,7 +349,7 @@ def _suggested_move(slide: dict[str, Any]) -> str:
 
 
 def _page_background(slide: dict[str, Any]) -> tuple[str, str]:
-    """(kind, dark) JS 字面量：背景指令页型 + 深浅三明治默认。"""
+    """Legacy declarative background defaults; not injected into model-led pages."""
     kind = str(slide.get("kind") or "").strip().lower() or "content"
     kind_js = json.dumps(kind if kind in {"cover", "content", "section", "closing"} else "content")
     dark_js = "true" if kind in DARK_PAGE_KINDS else "false"
@@ -498,13 +498,17 @@ def scaffold_generator(
         if model_led(spec):
             source_input = {"requirements": actual_check.planned_requirements(slide),
                             "material": {key: slide[key] for key in
-                                         ("title", "claim", "slide_copy", "content", "speaker_notes", "evidence_refs")
+                                          ("title", "claim", "slide_copy", "content", "speaker_notes", "evidence_refs",
+                                           "kind", "role", "visual", "timing_sec", "owner", "transition", "note_goal",
+                                           "supporting_points", "key_line")
                                          if key in slide}}
             exact = json.dumps(source_input, ensure_ascii=False)
             stub = (f"'use strict';\n/* {SCAFFOLD_MARKER} */\n"
                     f"const INPUT = {exact};\n"
                     "module.exports = function (ctx) {\n"
-                    "  // Author from INPUT.material and preserve INPUT.requirements. No visuals are prepainted.\n"
+                    "  // Author rich visible content from INPUT.material; preserve INPUT.requirements.\n"
+                    "  // Highlight the selective speaking path; notes need not narrate every visible detail.\n"
+                    "  // Visual purpose is planning input, not display copy. No visuals are prepainted.\n"
                     "};\nmodule.exports.presentation_copy = { headline: '', visual_labels: [] };\n"
                     "module.exports.notes = '';\n")
         target = pages_dir / name

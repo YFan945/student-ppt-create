@@ -16,7 +16,7 @@ Choose from the actual material. Inspect provided images and screenshots before 
 
 Tables can use a colored header, meaningful row/column emphasis, subtle banding, aligned numbers and spacing instead of dense full-cell grids. Preserve user/template formatting. Use `V.addStyledTable` or editable `addTable` cells; choose typography and column widths from the content.
 
-For `guided`, use declarative page data rather than copying a free-page function. For example, a results table can use:
+New 2.1 tasks use free page functions in every design mode. Authors may optionally choose declarative data with an explicit move/layout when it fits; `guided` does not require this form or restrict drawing APIs. For example, a results table can use:
 
 ```javascript
 module.exports = {

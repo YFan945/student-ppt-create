@@ -333,6 +333,14 @@ class GenerationCoreV08Tests(unittest.TestCase):
         codes = {item["code"]: item["severity"] for item in result["issues"]}
         self.assertEqual("minor", codes.get("asset_plan_visuals_not_ready"))
 
+    def test_model_led_missing_provider_is_advice_for_designed_placeholder(self) -> None:
+        data = self.good_art_direction()
+        result = self.art.validate_art_direction(data, high_score=True,
+            image_sources={"configured": False, "image_search_ready": False, "image_generation_ready": False}, model_led=True)
+        finding = next(item for item in result['issues'] if item['code'] == 'asset_plan_visuals_unavailable')
+        self.assertEqual(finding['severity'], 'minor')
+        self.assertIn('designed placeholder', finding['message'])
+
     def test_art_direction_mix_floor_survives_without_image_capability(self) -> None:
         """With no imagery the achievable categories are diagrams/native_charts/typography_led,
         so the 'at least four kinds' floor must not demand an image nobody can fetch."""

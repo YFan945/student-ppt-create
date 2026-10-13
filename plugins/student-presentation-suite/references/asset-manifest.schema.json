@@ -7,6 +7,11 @@
     "assets"
   ],
   "properties": {
+    "placeholder_policy": {
+      "enum": ["allow", "forbid"],
+      "default": "forbid",
+      "description": "Record the confirmed permission for designed asset placeholders; omission preserves the historical prohibition."
+    },
     "deck": {
       "type": "string",
       "minLength": 1
@@ -25,6 +30,17 @@
           "fallback"
         ],
         "properties": {
+          "placeholder": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "label", "replacement", "reason"],
+            "properties": {
+              "kind": {"enum": ["photo-slot", "screenshot-slot", "concept", "data-skeleton"]},
+              "label": {"type": "string", "minLength": 1},
+              "replacement": {"type": "string", "minLength": 1},
+              "reason": {"type": "string", "minLength": 1}
+            }
+          },
           "slide": {
             "type": "integer",
             "minimum": 1

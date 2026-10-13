@@ -308,10 +308,12 @@ def validate_art_direction(
                     break
 
     if model_led:
-        preferences = {"dominance_missing", "dominance_out_of_range", "type_scale_missing", "background_rhythm_flat", "asset_mix_too_thin", "asset_mix_total_too_low", "high_leverage_count_invalid"}
+        preferences = {"dominance_missing", "dominance_out_of_range", "type_scale_missing", "background_rhythm_flat", "asset_mix_too_thin", "asset_mix_total_too_low", "high_leverage_count_invalid", "asset_plan_visuals_unavailable"}
         for finding in issues:
             if finding["code"] in preferences:
                 finding["severity"] = "minor"
+            if finding["code"] in {"asset_plan_visuals_unavailable", "asset_plan_visuals_not_ready"}:
+                finding["message"] = "No ready image provider: acquire a permitted asset or use an explicitly allowed designed placeholder with provenance and a replacement target."
         for name, value in typography.items():
             if name.endswith("_pt") and (not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value) or value <= 0):
                 issues.append(issue("major", "invalid_font_size", f"{name} must be a positive numeric size."))

@@ -16,8 +16,6 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-from jsonschema import Draft202012Validator
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -51,7 +49,6 @@ from shared.pptx_runtime.thumbnail import (  # noqa: E402
 from shared.slide_spec_contract import load_slide_spec, validate_slide_spec  # noqa: E402
 
 PPTX_SUFFIXES = {".pptx", ".potx"}
-ASSET_MANIFEST_SCHEMA = ROOT / "references" / "asset-manifest.schema.json"
 SKILL_SCRIPTS = ROOT / "skills" / "sp-deck" / "scripts"
 # 文本抽取子进程的超时：markitdown 曾是全仓唯一没有 timeout 的执行点。
 TEXT_EXTRACTION_TIMEOUT_SEC = 180
@@ -749,38 +746,14 @@ def command_content_qa(args: argparse.Namespace) -> int:
 
 
 def command_validate_asset_manifest(args: argparse.Namespace) -> int:
+    from shared.asset_contract import validate_assets
     try:
         data = json.loads(args.manifest.read_text(encoding="utf-8"))
-        schema = json.loads(ASSET_MANIFEST_SCHEMA.read_text(encoding="utf-8"))
+        result = validate_assets(data, args.manifest.parent)
     except (OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"cannot read asset manifest or schema: {exc}") from exc
-    errors = [
-        {"path": "/".join(str(part) for part in error.absolute_path), "message": error.message}
-        for error in Draft202012Validator(schema).iter_errors(data)
-    ]
-    if not errors:
-        for index, asset in enumerate(data.get("assets", [])):
-            path_value = asset.get("path")
-            if path_value and not Path(path_value).expanduser().is_file():
-                errors.append({"path": f"assets/{index}/path", "message": "asset file does not exist"})
-            if path_value and (not asset.get("width") or not asset.get("height")):
-                errors.append({"path": f"assets/{index}", "message": "file assets require width and height"})
-            if path_value and Path(path_value).expanduser().is_file():
-                try:
-                    from PIL import Image
-                    with Image.open(Path(path_value).expanduser()) as image:
-                        if image.size != (asset.get("width"), asset.get("height")):
-                            errors.append({"path": f"assets/{index}", "message": "declared dimensions differ from actual image"})
-                except (OSError, ValueError):
-                    pass  # Vector sources retain their own viewBox/dimension contract.
-            protected = asset.get("preserve_region")
-            crop = asset.get("crop")
-            for name, region in [("preserve_region", protected), ("crop", crop)]:
-                if isinstance(region, dict) and all(key in region for key in ("x", "y", "w", "h")) and (region["x"] + region["w"] > 1 or region["y"] + region["h"] > 1 or region["w"] <= 0 or region["h"] <= 0):
-                    errors.append({"path": f"assets/{index}/{name}", "message": "normalized region must stay inside image"})
-            if protected and crop and all(key in crop for key in ("x", "y", "w", "h")) and not (crop["x"] <= protected["x"] and crop["y"] <= protected["y"] and crop["x"] + crop["w"] >= protected["x"] + protected["w"] and crop["y"] + crop["h"] >= protected["y"] + protected["h"]):
-                errors.append({"path": f"assets/{index}/crop", "message": "asset_crop_invalid: protected information would be cropped"})
-    payload = {"ok": not errors, "report_type": "asset-manifest-validation-v1", "manifest": str(args.manifest), "manifest_sha256": _sha256(args.manifest), "errors": errors}
+    errors = result["errors"]
+    payload = {"ok": not errors, "report_type": "asset-manifest-validation-v1", "manifest": str(args.manifest), "manifest_sha256": _sha256(args.manifest), "errors": errors, "placeholders": result["placeholders"]}
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

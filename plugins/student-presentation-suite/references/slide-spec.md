@@ -2,9 +2,7 @@
 
 For new tasks, [model-led design](model-led-design.md) owns creative freedom and verification. Existing tasks retain their frozen controls.
 
-Slide Spec v2 adds layered content, story roles, evidence references, locking,
-and revision metadata while remaining backward-compatible with v1 specs. Omit
-`schema_version` for legacy input or set it to `"2.0"` for the expanded model.
+New handoffs use `schema_version: "2.1"`: freeze semantic requirements and exact items while allowing authored presentation wording. Keep existing 1.0/2.0 inputs in their original contract; never silently migrate them. Legacy-only rules are separated below.
 
 Use Slide Spec YAML as an optional handoff format when:
 - the user says the outline will later become a PPTX
@@ -18,9 +16,9 @@ Do not force YAML for simple outline-only requests.
 
 Each slide entry must include:
 - `id`: slide number
-- `title`: claim-style title for argumentative/evidence slides; descriptive title is allowed for cover, divider, quotation, references, appendix, Q&A, and closing slides
-- `layout`: adaptable composition hint or slide type; a known catalog ID is not locked by default
-- `content`: short on-slide text or structured objects
+- `title`: choose a direct subject title for definitions, mechanisms, setup and process; use a supported takeaway where the page establishes a finding. Cover, divider and reference titles may be descriptive. Do not force every page into an insight or repeat a conclusion.
+- `layout`: optional composition hint for 2.1; required on legacy input without semantic requirements. A known catalog ID is not locked by default
+- `content`: complete visible authoring material or structured objects, with no automatic length cap
 - `timing_sec`: planned speaking time as an integer number of seconds
 - `owner`: speaker/member, or `Individual`
 
@@ -28,12 +26,7 @@ Optional slide fields:
 - `layout_lock`: when `true`, use the named catalog layout exactly; omitted/`false` allows the
   producer to alter proportions, zones, shapes, or choose a better related composition
 - `kind`: `cover`, `content`, `section-divider`, `quotation`, `references`, `appendix`, `qa`, or `closing`; defaults conceptually to `content`
-- `visual`: visual type, purpose, optional `layout_family`, asset/alt text, and structured
-  details. In v2/high-score/balanced/visual-led production it is required on content slides;
-  exempt slide kinds may omit it when a visual would be decorative. `details` rides into the
-  component library as render data, so every details string stays within the payload label
-  width (32 em, CJK-weighted — enforced by copy-fit preflight): planning prose belongs in
-  `visual.purpose` (design intent, never rendered), on-screen prose in `slide_copy`.
+- `visual`: type, purpose, asset/alt text and structured details. Actively plan topical imagery, editable tables/charts/diagrams and permitted designed placeholders. The scaffold passes visual intent and data to the author; purpose is planning prose, not display copy. New 2.1 pages do not use legacy payload-width or component-count quotas.
 - `note_goal`: what the speaker note should accomplish
 - `transition`: transition or handoff sentence; omit on the final slide or when no meaningful transition exists
 
@@ -83,7 +76,15 @@ Optional top-level fields for existing deck improvement:
 - `preserve`: required elements to keep, such as template, logo, footer, citations, approved slide order, or strong existing content
 - `change_summary_required`: set to `true` when the PPTX workflow must write `outputs/<topic>-change-summary.md`
 
-Optional v2 slide fields:
+## New 2.1 slide semantics
+
+Each slide has `semantic_requirements.must_convey` with stable id/text and optional placement/evidence_refs, plus `must_show_exact`. Core meaning defaults to visible placement; supplementary oral requirements can use notes. A concise note may omit non-spoken slide detail without losing visible coverage. `title`, `content`, `slide_copy`, `visual` and notes are authoring material; actual wording is recorded in `presentation_copy`. `claim` is optional planning input, not a required second visible conclusion or fixed band.
+
+## Legacy 1.0/2.0 copy compatibility
+
+The following verbatim copy and band rules describe existing legacy work only. New 2.1 tasks use the semantic contract above.
+
+Optional legacy v2 slide fields:
 
 - `role`: story function such as `problem`, `method`, `result`, `limitation`, or `conclusion`
 - `claim`: the one message the audience should remember. It must reach the page as
@@ -91,11 +92,9 @@ Optional v2 slide fields:
   so a claim that lives only in this file is undelivered (chart data labels are not
   text runs).
   **Whether it may restate `title` depends on the page kind.**
-  - Argumentative / evidence slides: no. `title` labels the page, `claim` carries
-    the judgement the label does not (evidence, consequence, or a number). A
+  - Legacy argumentative / evidence slides: no. A separate claim must add supported information beyond the title. A
     duplicated claim prints the same sentence twice, wastes the claim band, and is
-    blocked by `copy_fit_preflight.py` as `claim_duplicates_title` (major) before
-    any generator is written.
+    flagged by the optional legacy `copy_fit_preflight.py` as `claim_duplicates_title` (major).
   - Descriptive-title kinds (`cover`, `section-divider`, `quotation`, `references`,
     `appendix`, `qa`, `closing`): yes, and it is normal. There the title *is* the
     takeaway line, the page prints it once, and `claim` repeats it so the verbatim
@@ -125,8 +124,8 @@ Schema and validation:
 - The validator requires `jsonschema` and `PyYAML` from `requirements.txt`.
 - Unknown fields are rejected in `meta`, slides, visuals, and review findings to catch spelling mistakes.
 - Semantic validation also checks contiguous slide ids, `slide_count`, total timing vs `duration_min`, group members/owners, existing-deck combinations, high-score controls, evidence references, and lock semantics.
-- `copy_fit_preflight.py` (run by `plan`) additionally checks that `title` fits the title band, that `claim` fits the claim band and does not restate `title`, and that `title` + `claim` + `slide_copy` stay inside the density cap.
-- **Which file to validate:** for a research-backed deck `plan` compiles your source spec into `slide-spec-compiled.yaml` and freezes *that* file, so the validation report must describe the compiled spec. `plan` now re-validates automatically when the supplied report describes a different file (recorded as `spec_report_regenerated` in the manifest); when you run the validator by hand before `plan`, run it against the source spec and let `plan` own the compiled one.
+- Current `plan` validates the Spec, compiles evidence when needed and prepares source modules; it does not invoke `copy_fit_preflight.py`. That script is an optional legacy preflight. New-page fit and exact-content checks use authored geometry, readback and actual renders, not fixed title/claim bands.
+- **Which file to validate:** for a research-backed deck `plan` compiles your source spec into `slide-spec-compiled.json` and freezes *that* file. Current `plan` validates both source and compiled input itself. When validating by hand, check the source and let `plan` own the compiled input.
 - Scenario-driven story roles（如 `defense` 的 problem/method/result/solution/limitation/qa）是**建议性**的，不再作为硬错误阻断：`validate_slide_spec.py` 不因缺失角色失败，`analyze_presentation_spec.py` 会以 Minor 提示。不要为了凑满角色而硬塞一页。
 
 ```powershell
@@ -167,7 +166,7 @@ review_findings:
   - severity: "Major"
     target: "Slide 4"
     problem: "The title is generic and does not state the conclusion."
-    fix: "Rename the slide with a claim-style title and reduce body text."
+    fix: "Use a supported takeaway title and reorganize the evidence while preserving useful detail."
 ```
 
 ## Example

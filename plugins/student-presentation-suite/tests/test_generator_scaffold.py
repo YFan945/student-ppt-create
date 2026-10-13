@@ -20,6 +20,25 @@ def load_module(name: str, path: Path):
 
 
 class ScaffoldContractTests(unittest.TestCase):
+    def test_model_led_input_preserves_visual_intent_and_selective_speaking_material(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            slide = {"id": 1, "kind": "content", "role": "method", "title": "完整技术说明",
+                     "content": ["保留详细资料", "解释处理过程", "对应知识关系"],
+                     "visual": {"type": "process", "purpose": "展示处理顺序", "details": {"steps": ["采集", "整理"]}},
+                     "speaker_notes": "只讲处理顺序。", "timing_sec": 25, "owner": "speaker",
+                     "note_goal": "讲关键步骤", "transition": "接着看关联结果。",
+                     "semantic_requirements": {"must_convey": [{"id": "method", "text": "完整处理过程"}], "must_show_exact": []}}
+            spec = work / "spec.json"
+            spec.write_text(json.dumps({"schema_version": "2.1", "slides": [slide]}), encoding="utf-8")
+            result = self.scaffold.scaffold_generator(work, spec)
+            source = (work / "pages" / result["pages"][0]).read_text(encoding="utf-8")
+            data = json.loads(source.split('const INPUT = ', 1)[1].split(';\n', 1)[0])
+            for key in ("visual", "kind", "role", "timing_sec", "owner", "note_goal", "transition", "content", "speaker_notes"):
+                self.assertEqual(data['material'][key], slide[key])
+            self.assertNotIn('slots:', source)
+            self.assertNotIn('fontSize:', source)
+
     @classmethod
     def setUpClass(cls) -> None:
         cls.scaffold = load_module("generator_scaffold_contract_test", SCAFFOLD)
