@@ -1,8 +1,8 @@
 # Modern Minimal（现代极简）
 
-For new tasks, all sizes, panels, motifs, bands and palette proportions here are suggestions. Follow [model-led design](../../../../references/model-led-design.md); no fixed font floor or required imitation.
+Optional style seed; follow [model-led design](../../../../references/model-led-design.md).
 
-- **Style character:** Quiet, neutral and typographic; whitespace and scale do the work. Hierarchy comes from a 40pt cover / 32pt title / 26pt statement / 22pt body / 11pt caption scale, and the accent only marks the emphasised line, the recommended option, the key number and the conclusion.
+- **Style character:** Quiet, neutral and typographic; whitespace and scale do the work.
 - **Palette:** canvas `F8FAFC`; surface `FFFFFF`; primary text `111827`; secondary text `6B7280`; primary accent `2563EB`; secondary accent `93C5FD`.
-- **Background reference:** cover uses the dark field `15171B` with `E9EBEF` titles and `7FA8FF` accents; content uses the light canvas `F8FAFC` with `FFFFFF` surfaces only where grouping is meaningful, plus an evidence-rail accent rule; section reuses the dark field with a single accent cue; closing returns to the dark field with a `3C4A63` hairline source rail. The dark scheme `15171B` / `23262D` is the deliberate counterpart of the light `F8FAFC` / `FFFFFF`, so cover and body pages stay one colour family.
+- **Background reference:** Optional dark canvas `15171B` / surface `23262D` or the light palette; choose treatment and page rhythm from the content.
 - **SVG reference:** `minimal-focus` — Optional focal dot or alignment motif used sparingly at structural moments.

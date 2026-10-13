@@ -1,15 +1,8 @@
 # Visual Style Menu
 
-## New-task policy (2.1)
+For new tasks, [model-led design](../../../references/model-led-design.md) owns creative freedom and verification. Existing tasks retain their frozen controls.
 
-For new tasks, [model-led-design.md](../../../references/model-led-design.md) owns design modes, frozen semantic
-requirements and measured text. Its policy overrides legacy template/scale/
-verbatim-copy guidance below. `auto` is the default; user brand/template/logo
-and actual readability remain binding. Treat fixed sizes, proportions and
-gallery treatments here as optional design suggestions for new tasks.
-
-
-Visual styles are **user-facing style seeds**, not templates or layout engines. Each seed keeps the intake simple by describing character, a light six-role palette, its dark companion for cover/section/closing pages, background treatment and one optional SVG motif. For new tasks, the main session chooses typography, image treatment, icons, charts and page rhythm from the content and actual renders. Art Direction is optional; historical v0.8 expansion guidance applies only to legacy work.
+Visual styles are **user-facing style seeds**, not templates or layout engines. Seeds describe mood, palette and optional assets. The main session chooses typography, imagery, icons, charts and page rhythm from the content and actual renders. Art Direction is optional.
 
 This separation is intentional: users choose a comprehensible visual mood; the model then acts as art director instead of asking the user to configure dozens of design details. Apply priorities in this order: approved school/user template → readability/source safety/truthful representation → slide narrative task → confirmed style seed → generated Art Direction.
 
@@ -39,8 +32,8 @@ Palette roles are `canvas`, `surface`, `primary_text`, `secondary_text`, `primar
 
 ### Light and dark are one scheme, not two
 
-Every style carries **two** six-role palettes: the light `palette` for content pages and a matching
-`dark_palette` for the cover, section and closing pages. The dark scheme is derived from the same
+Every style carries **two** six-role palettes: the light `palette` and a matching
+`dark_palette`; the author chooses where to use each. The dark scheme is derived from the same
 hue family as the light one, so a deck never reads as "dark cover glued to unrelated light body
 pages". `resolve_design_tokens()` guarantees a dark companion for every style; custom and legacy
 styles get one derived automatically, and a supplied `dark_palette` is contrast-checked exactly
@@ -48,23 +41,6 @@ like the light palette.
 
 Both palettes must clear the same floors: `primary_text` and `secondary_text` at 4.5:1 against
 both `canvas` and `surface`, and `primary_accent` at 3:1 against both.
-
-### The shared visual system
-
-The style files describe *character and colour only*; the deck-wide system is shared and is
-expressed the same way in every style:
-
-- **Type scale**: 40pt cover / 32pt page title / 26pt statement / 22pt body / 11pt caption, so
-  hierarchy is visible instead of title≈body.
-- **Accent semantics**: the accent marks the emphasised line, the recommended option, the key
-  number and the conclusion node — never decoration.
-- **Background rhythm**: dark cover → light content → dark section → dark closing.
-- **Evidence rail motif**: a thin accent rule plus caption marks sourced or constructed evidence.
-
-Because the CJK body floor is 22pt, a page title must be at least 32pt to satisfy the 1.45×
-hierarchy requirement; this is why the scale starts where it does.
-
-Art Direction may strengthen or refine the seed while keeping its recognizable character. For example, `Academic Rigorous` can become “dark editorial cover + light figure-led evidence pages + Cambria/Arial hierarchy + half-bleed research figures + one evidence-rail motif” rather than merely “navy + blue accent.”
 
 ## Other / Custom
 
@@ -100,13 +76,13 @@ The example includes optional background and SVG choices. Only style character a
 
 ## Optional SVG Toolbox
 
-Each formal seed points to one recommended SVG name. It is only a motif seed. Art Direction decides whether the motif becomes part of the actual deck language and where it is allowed. Do not insert SVG solely to prove the style was selected, and never substitute ornamental SVG for evidence, a chart, a diagram or a meaningful image.
+Each formal seed points to one recommended SVG name. It is only a motif seed. The author chooses whether and where to use it. Do not insert SVG solely to prove the style was selected, and never substitute ornamental SVG for evidence, a chart, a diagram or a meaningful image.
 
 ## Reference and Layout Independence
 
-The 36-layout registry remains an inspiration/deterministic-fallback catalog. In v0.8 the stronger positive prior is `visual-reference-library.json`: reference recipes include a rationale, focal ownership, silhouette and normalized wireframe. `visual_reference_select.py` ranks them by slide role, grammar, visual strategy, density, tags and recent visual history. Neither reference recipes nor old layouts are fixed templates; the selected composition is adapted to the slide claim and Art Direction.
+The layout and visual-reference libraries are optional composition examples. Adapt them to the content when useful.
 
-## The shared visual system and per-style language
+## Optional component defaults
 
 Beyond the two palettes, each style declares a `visual_language` in
 `references/design-tokens.json`: how its accent rules are drawn (`bracket`,
@@ -114,8 +90,7 @@ Beyond the two palettes, each style declares a `visual_language` in
 (`outlined`, `flush`, `soft-fill`, `edge-band`), its corner radius, where the
 style's SVG motif sits (`corner-tr`, `corner-bl`, `edge-right`), its signature
 chart grammar (`columns`, `line`, `bars`) and its decoration density
-(`restrained`, `balanced`, `expressive`). This is what makes the same layout
-read differently across styles while staying one system.
+(`restrained`, `balanced`, `expressive`). These are component defaults; authored pages may override them.
 
 **Rendered exemplars:** `examples/visual-template-gallery/` is an optional
 reference and deterministic fallback. Use it for ideas or failure recovery;

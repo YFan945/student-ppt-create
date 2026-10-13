@@ -193,7 +193,7 @@ Batch fields so that the most impactful decisions come first. Typical grouping:
 - `Image strategy` → options:
   - `自适应混合（推荐）` → 生成能力可用且获准时制作关键插图；否则自动采用图表、原生形状或文字构图，不因缺少外部生图工具阻断生产
   - `内置生图 skill 生成插图` → 全部插图（含封面/背景/概念图）由 imagegen 生成
-  - `Diagram-only/仅图表` → 仅图表与原生形状，无外部依赖，最安全最快
+  - `Diagram-only/仅图表` → 使用图表、关系图、语义图标及原生形状，无需外部图片服务
   - `Web image/联网图片` → 真实人物/地点/产品等先确认是否允许联网搜图
   - `User-provided image/用户照片` → 优先使用用户提供的素材
   - `Ask-before-web-search/每次联网前询问`

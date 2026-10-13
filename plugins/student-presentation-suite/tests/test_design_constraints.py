@@ -142,5 +142,36 @@ process.stdout.write(JSON.stringify(Object.fromEntries(['empty','ink','unmeasure
             self.assertIn("text_overlap", [item["code"] for item in reports[kind]["errors"]])
 
 
+class AuthoringGuidanceTests(unittest.TestCase):
+    def test_current_guidance_does_not_repeat_legacy_design_limits(self):
+        names = ["references/shared-standards.md", "references/slide-spec.md",
+                 "references/image-strategy.md",
+                 "skills/sp-review/references/review-checklist.md",
+                 "skills/sp-deck/references/visual-style-menu.md",
+                 "skills/sp-deck/references/pptx-visual-engine.md",
+                 "skills/sp-deck/references/pptxgenjs-helper-api.md",
+                 "skills/sp-deck/references/pptxgenjs-safety.md",
+                 "skills/sp-deck/references/pptx-design-grammar.md"]
+        names += [str(p.relative_to(ROOT)) for p in
+                  (ROOT / "skills/sp-deck/references/visual-styles").glob("*.md")]
+        phrases = ["CJK body floor", "1.45", "no more than 4 bullets",
+                   "Use one main chart/table per slide", "icons sparingly",
+                   "only as a small supporting cue", "never decoration",
+                   "40pt cover / 32pt", "2-4 short sentences",
+                   "typography thresholds", "中文 body 17–22pt",
+                   "字号下限由共享", "D1 ✔", "至少占 50%"]
+        for name in names:
+            text = (ROOT / name).read_text(encoding="utf-8")
+            for phrase in phrases:
+                with self.subTest(file=name, phrase=phrase):
+                    self.assertNotIn(phrase, text)
+
+    def test_visual_tools_do_not_claim_guided_is_default(self):
+        text = (ROOT / "skills/sp-deck/references/pptx-visual-engine.md").read_text(encoding="utf-8")
+        self.assertIn("Optional composition tools", text)
+        self.assertIn("Art Direction is optional", text)
+        self.assertNotIn("不手填分区矩形", text)
+
+
 if __name__ == "__main__":
     unittest.main()

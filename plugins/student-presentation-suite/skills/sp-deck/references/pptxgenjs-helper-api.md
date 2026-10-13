@@ -1,7 +1,7 @@
 # PptxGenJS Helper API（`scripts/pptx-helpers.js`）
 
 For new tasks follow [model-led design](../../../references/model-led-design.md).
-Fixed font floors and ratios below describe legacy work only. New `fitText` uses
+New `fitText` uses
 fontkit through the measured role policy. `addPositionedText` controls mixed
 language spacing, and `addPlannedImage` protects image regions. Gallery, motif
 and cover band use is optional.
@@ -11,14 +11,6 @@ page-specific choices. The harness captures direct drawing calls. Direct
 `addTable` requires explicit cell dimensions (`colW`/`rowH` or `w`/`h`) and is
 drawn as editable, measured cells; express merged cells with explicit shapes
 and text. Free-page notes go in `module.notes` so the harness writes them once.
-
-## 为什么有这份文档
-
-一次 13 页 deck 的生成中，为了摸清 helper 有哪些可用函数，执行了 **25 条** `python -c` /
-`node -e` 内联探针——其中"提取 helper 库的可用 API"一次就跑了 8 条命令。按本项目实测
-成本模型（每次工具调用 ≈ 2 个请求 × 23 万 token），这 25 次探针约合 1200 万 token。
-
-这份摘要 + `--describe` 把这件事压成一次读取或一条命令。
 
 ## 权威来源
 
@@ -46,14 +38,14 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/pptx-helpers.js --describe"
 
 - `applyTokens(pptx, tokens, lang, opts)` — 建 deck 后第一件事，把 design tokens 装进去
 - `color(tokens, role)` — 按角色取色（`canvas` / `surface` / `primary_text` /
-  `secondary_text` / `primary_accent` / `secondary_accent`），**不要硬编码 hex**
+  `secondary_text` / `primary_accent` / `secondary_accent`）；页面也可使用有效的自定义 hex 配色
 - `fontFamily(tokens)`、`fontSizeScale(tokens, lang)` — 字号与字体族同样来自 tokens
 - `paletteMode(tokens, mode)`、`softShadow(tokens, overrides)`
 
 **几何**
 
-- `safeArea(slideW, slideH, tokens, opts)` — 页面安全区，是所有构图的起点
-- `footerArea(slideW, slideH, tokens)` — 来源行区域；正文内容不得侵入
+- `safeArea(slideW, slideH, tokens, opts)` — 可选页面安全区建议
+- `footerArea(slideW, slideH, tokens)` — 可选来源行区域
 - `gridLayout(area, columns, rows, opts)`、`weightedColumns(area, count, weights, gap)`
 - `spacing(tokens, step)`、`cornerRadius(tokens)`
 
@@ -74,21 +66,11 @@ node "${CLAUDE_PLUGIN_ROOT}/scripts/pptx-helpers.js --describe"
 - `addTitle` / `addBody` / `addTextBox` / `addFooter` / `addAccentCard` / `addDivider`
 - `addBackground(slide, tokens, dark)` / `addStyleMotif(slide, area, tokens, intensity)`
 
-## 三条反复踩到的坑
+## 使用注意
 
-1. **不要自己拼 hex。** 一律 `color(tokens, role)`，否则暗版页（封面 / 章节 / 结尾）
-   会直接不可读，且通不过 `pptx_rendered_check.py` 的字号与对比度量测。
-2. **先 `safeArea()` 再放元素。** 直接按画布边缘排会撞上安全边距，`registry` 会判
-   `out_of_canvas`。
-3. **长文本交给 `addFittedText`，不要手算行数。** 手写 `estLines` 容易漏算全角标点与
-   项目符号缩进——第二轮就因为估算偏乐观，P9 重排了两次。
-4. **小字必须走 `role`。** `addTextBox` 无 `role` 时字号下限是正文（CJK 22pt）：请求
-   更小的值会被抬高并**打印警告**，不会静默生效。数据标签、注解、来源一律走
-   `addTextBox(..., { role: 'caption' | 'source' | 'label' })`（角色字号表 11/12/16pt），
-   或直接用 `addFittedText` + `role`。看到"请求字号 Xpt 低于正文下限"就是走错了通道。
-5. **`color` 只接受 hex。** 传调色板角色名（`primary_text` 之类）会直接抛
-   `RangeError`；正确写法是 `color(tokens, 'primary_text')`。旧行为是静默接受并渲染成
-   不可读的文字，深色页要到独立评审才暴露。
+- 自定义颜色使用有效 hex；`color(tokens, role)` 用于读取配色角色。
+- 文字使用实测适配接口；`role` 用于语义和样式默认值，新任务可以直接指定有效字号。
+- 构图以实际画布为边界；安全区和页脚区域按页面内容选用。
 
 ## 什么时候才需要读源码
 

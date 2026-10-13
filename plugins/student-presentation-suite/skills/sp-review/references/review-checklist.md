@@ -53,19 +53,16 @@ Defense decks should include:
 Check:
 - argumentative and evidence-slide titles state the claim; covers, section dividers, references, appendix, and Q&A slides may use descriptive labels
 - body text is short enough to present
-- no normal slide has more than 4 bullets unless it is a deliberate summary/table
-- detailed explanation belongs in speaker notes
+- useful evidence and supporting detail remain visible where needed
 - data slides include one conclusion sentence
 - examples connect to the main argument
 
 ## Classroom Readability
 
-Typography thresholds below follow `../../../references/shared-standards.md`. Keep them in sync.
+Judge readability from the actual rendered pages and intended audience; enforce only confirmed user constraints.
 
 Flag:
-- Chinese normal body text likely below 22pt
-- English normal body text likely below 20pt
-- primary slide titles likely below 24pt, or secondary headers/labels are too small for projection
+- text or labels unreadable at the intended viewing size
 - low contrast
 - text touching edges
 - clipped or overflowing text
@@ -79,7 +76,7 @@ Check:
 - images support the message
 - images are clear enough for projection
 - diagrams simplify the idea
-- icons are not excessive
+- icons communicate clearly and fit the composition
 - background effects do not reduce readability
 - real people, places, products, historical materials, and current examples use appropriate factual sources when needed
 - image source and fallback choices match `../../../references/image-strategy.md`
@@ -110,7 +107,6 @@ Do not claim to predict an AI detector result. Describe these as writing-pattern
 
 Check:
 - B1-B2 level vocabulary and grammar for general undergraduate classroom presentations by default, adjusted for course level, discipline, audience, and speaker ability
-- 2-4 short sentences or phrase groups per slide
 - notes use natural connectors
 - long sentences are split
 - difficult terms have optional pronunciation or glossary help

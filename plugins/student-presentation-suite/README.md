@@ -4,6 +4,8 @@ A Claude Code plugin for student academic presentations: evidence gathering, out
 
 Install, update, migration and uninstall instructions belong to the [marketplace README](../../README.md). Runtime dependencies belong to this plugin; no external document-skills or Codex runtime is required.
 
+Design references are optional tools. Typography, chart/icon counts, color usage, background rhythm and composition follow the content and rendered pages; no legacy numeric design rules are included in current authoring guidance.
+
 ## Four skills
 
 | Skill | Outcome |

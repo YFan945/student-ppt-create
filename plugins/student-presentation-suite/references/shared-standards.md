@@ -1,13 +1,6 @@
 # Shared Student Presentation Standards
 
-## New-task policy (2.1)
-
-For new tasks, [model-led-design.md](model-led-design.md) owns design modes, frozen semantic
-requirements and measured text. Its policy overrides legacy template/scale/
-verbatim-copy guidance below. `auto` is the default; user brand/template/logo
-and actual readability remain binding. Treat fixed sizes, proportions and
-gallery treatments here as optional design suggestions for new tasks.
-
+For new tasks, [model-led design](model-led-design.md) owns creative freedom and verification. Existing tasks retain their frozen controls.
 
 Use these standards across research, planning, PPTX production, and review.
 
@@ -62,30 +55,9 @@ When the target remains genuinely ambiguous, ask one routing question: research/
 - User deliverables belong under `${CLAUDE_PROJECT_DIR}/outputs`; when that variable is unavailable, use the active project directory.
 - Never write generated decks, notes, previews, or reports into the installed plugin or Claude plugin cache.
 
-## Classroom Readability
+## Readability and Content Density
 
-For new model-led tasks, sizes follow actual projection readability and content hierarchy, without a global floor or ratio. The following sizes are historical guidance for legacy tasks; do not freeze them into a new Production Summary unless requested.
-
-- Chinese normal body text should be 22pt or larger.
-- English normal body text should be 20pt or larger.
-- **Bilingual slides** (中英混排): use 22pt as the minimum for mixed content to ensure Chinese readability; English at 22pt remains comfortably readable. When Chinese and English appear in separate text blocks on the same slide, Chinese blocks follow the 22pt rule and English blocks follow the 20pt rule.
-- Primary slide titles should normally be 24pt or larger. Subtitles, card headers, chart titles, panel labels, legends, diagram labels, and other secondary text may be smaller when the layout requires it, but must remain projection-readable.
-- Smaller text is allowed for secondary labels, captions, citations, footnotes, chart labels, diagram annotations, or minor explanations.
-- Keep slide text inside boxes with comfortable padding.
-- Prefer high contrast and simple classroom projection-friendly layouts.
-
-## Slide Density
-
-For new model-led tasks, density and typography follow `model-led-design.md`: choose readable sizes and enough on-slide evidence from the content and actual renders. Use color grouping, images, semantic icons, diagrams, tables or charts as appropriate; retain supporting detail rather than compressing every page to a slogan. Word/character caps and bullet counts are not default requirements. The historical guidance below applies to legacy tasks, or an explicitly confirmed constraint.
-
-- One slide should carry one core message.
-- Normal slides should use no more than 4 bullets.
-- Normal slide text should stay compact: roughly up to 80 Chinese characters or 40 English words, excluding citations, captions, and chart labels.
-- Keep slide text concise; move explanation to speaker notes.
-- Use one chart/table per data slide and add one conclusion sentence.
-- Split slides instead of shrinking text.
-- When the confirmed Presentation Brief provides stricter per-slide limits,
-  those limits override these defaults.
+Follow `model-led-design.md`. Choose typography, density, colors, imagery and layout from the content, audience, user references and actual rendered pages. Preserve useful evidence and supporting detail. Respect explicitly confirmed user constraints and frozen controls in existing tasks.
 
 ## Layered Generation
 
@@ -128,7 +100,6 @@ Reduce risk by adding:
 ## English Presentation Standard
 
 - Use B1-B2 level English for general undergraduate classroom presentations by default. Raise or lower the level when the course, audience, discipline, or speaker ability clearly requires it; do not simplify necessary technical terminology.
-- Keep each slide to 2-4 short sentences or phrase groups.
 - Avoid complex long sentences and passive-heavy academic writing.
 - Speaker notes should use natural connectors such as "First", "This example shows", "So the main point is", and "Now I will hand over to".
 - Add pronunciation or glossary support for difficult keywords when useful.

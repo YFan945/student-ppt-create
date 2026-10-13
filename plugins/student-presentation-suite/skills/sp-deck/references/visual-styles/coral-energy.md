@@ -1,8 +1,8 @@
 # Coral Energy（珊瑚活力）
 
-For new tasks, all sizes, panels, motifs, bands and palette proportions here are suggestions. Follow [model-led design](../../../../references/model-led-design.md); no fixed font floor or required imitation.
+Optional style seed; follow [model-led design](../../../../references/model-led-design.md).
 
-- **Style character:** Energetic but legible; warm accents kept away from the reading text. Hierarchy comes from a 40pt cover / 32pt title / 26pt statement / 22pt body / 11pt caption scale, and the accent only marks the emphasised line, the recommended option, the key number and the conclusion.
+- **Style character:** Energetic but legible; warm accents kept away from the reading text.
 - **Palette:** canvas `FFF9F0`; surface `FFFFFF`; primary text `202A44`; secondary text `5A6478`; primary accent `D94E54`; secondary accent `F9E795`.
-- **Background reference:** cover uses the dark field `2A1917` with `F0DDD5` titles and `F0716F` accents; content uses the light canvas `FFF9F0` with `FFFFFF` surfaces only where grouping is meaningful, plus an evidence-rail accent rule; section reuses the dark field with a single accent cue; closing returns to the dark field with a `8A4A45` hairline source rail. The dark scheme `2A1917` / `3B2622` is the deliberate counterpart of the light `FFF9F0` / `FFFFFF`, so cover and body pages stay one colour family.
+- **Background reference:** Optional dark canvas `2A1917` / surface `3B2622` or the light palette; choose treatment and page rhythm from the content.
 - **SVG reference:** `coral-arc` — Optional rising arc or route motif on launch, roadmap, or closing pages.

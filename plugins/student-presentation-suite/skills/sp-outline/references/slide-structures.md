@@ -87,7 +87,6 @@ Use this for common class reports:
 ## English Presentation
 
 Use B1-B2 level English by default for a general undergraduate classroom presentation, then adjust for course level, discipline, audience, and speaker ability:
-- keep each slide to 2-4 short sentences or phrase groups
 - avoid complex long sentences, passive-heavy academic wording, and abstract slogans
 - use simple connectors in notes: "First...", "This example shows...", "So the main point is..."
 - include optional pronunciation help or a short glossary for difficult keywords when useful

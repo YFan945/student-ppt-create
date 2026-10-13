@@ -1,13 +1,6 @@
 # Slide Spec YAML
 
-## New-task policy (2.1)
-
-For new tasks, [model-led-design.md](model-led-design.md) owns design modes, frozen semantic
-requirements and measured text. Its policy overrides legacy template/scale/
-verbatim-copy guidance below. `auto` is the default; user brand/template/logo
-and actual readability remain binding. Treat fixed sizes, proportions and
-gallery treatments here as optional design suggestions for new tasks.
-
+For new tasks, [model-led design](model-led-design.md) owns creative freedom and verification. Existing tasks retain their frozen controls.
 
 Slide Spec v2 adds layered content, story roles, evidence references, locking,
 and revision metadata while remaining backward-compatible with v1 specs. Omit
@@ -207,7 +200,7 @@ When `sp-deck` receives Slide Spec YAML:
 - use integer `timing_sec` values to balance speaker notes
 - keep `layout` unless a better layout is needed to prevent crowding
 - implement `layout` as a functional intent, not a fixed visual template
-- split slides or move details into speaker notes when content is dense; do not shrink normal body text below shared typography thresholds to make content fit
+- adapt typography and layout to preserve useful content and rendered readability
 - report any spec item that cannot be implemented
 - do not invent visuals or transitions for slide kinds where they would be decorative or artificial
 - when `source_deck` or `review_findings` is present, treat the spec as an existing-deck improvement plan: preserve listed elements, apply the findings, write a separate improved PPTX, and create `outputs/<topic>-change-summary.md` when required
@@ -220,7 +213,7 @@ Use these mappings as intent rules. The final visual form may vary by creative d
 - `comparison`, `comparison-cards`, `before-after`: must make differences easy to scan. May use side-by-side panels, 2x2 matrix, before/after cards, annotated examples, or contrast bands.
 - `process`, `three-step-process`, `loop-diagram`: must show flow, order, or feedback. May use numbered nodes, cycle diagram, path diagram, swimlane, or staged panels.
 - `risk-callout`, `limitations`: must identify the risk or boundary and explain why it matters. May use warning callouts, evidence cards, redline annotations, or limitation panels.
-- `data`, `chart`, `survey`: must put the conclusion near the chart/table and avoid unexplained raw data. Use one main chart/table per slide.
+- `data`, `chart`, `survey`: must put the conclusion near the chart/table and avoid unexplained raw data.
 - `team-workflow`, `handoff`: must show member ownership and speaking flow. May use role lanes, member cards, sequence markers, or workflow arrows.
 - `summary-qa`, `closing`: must leave one memorable takeaway and a clear Q&A/closing cue. May use a summary card, final claim, key-number recap, or question prompt.
 

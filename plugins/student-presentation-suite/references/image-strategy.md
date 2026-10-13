@@ -44,12 +44,12 @@ If the intended asset is unavailable, change the visual strategy or reference re
 The plugin already has an editable/no-network visual stack:
 
 1. `scripts/pptx-visuals.js` for process, comparison, timeline, architecture and structured native visuals;
-2. `scripts/pptx-icons.js` for small unified line icons used as semantic accents;
+2. `scripts/pptx-icons.js` for editable semantic icons;
 3. `scripts/pptx-svg-library.js` for motifs/background references;
 4. native PptxGenJS charts for quantitative evidence;
 5. custom SVG/native shapes for topic-specific diagrams.
 
-Use semantic icons sparingly: navigation, state, risk, user/system roles, small concept labels. Icons are not a substitute for a real diagram, chart, screenshot or evidence figure. A slide with four icons above four equal boxes is still a card grid.
+Choose icons, diagrams, charts, photographs and evidence figures according to the information they communicate.
 
 ## Image Sourcing Capability
 
@@ -99,7 +99,7 @@ If no suitable image is available, prefer an information-bearing transformation 
 - annotated text/quote evidence;
 - axis/quadrant/trade-off map;
 - oversized typographic thesis;
-- semantic icon only as a small supporting cue.
+- semantic icons or icon-based information graphics.
 
 ## Production Notes
 
@@ -118,5 +118,5 @@ When reviewing an existing deck, flag:
 - visuals that do not support the argument;
 - factual visuals without citation;
 - busy backgrounds that reduce readability;
-- pages that claim `visual-led` but only contain decorative icons/cards;
+- visual treatment that fails to communicate the planned information;
 - a deck whose asset mix is technically valid but monotonously text/shape-heavy.

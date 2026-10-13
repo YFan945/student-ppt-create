@@ -1,7 +1,7 @@
 # pptxgenjs Generation Rules
 
 本文件只维护生成 deck.js 时的 PptxGenJS gotchas。页面视觉、共享版式和 QA 分别以
-`visual-style-menu.md`、`layout-library.json` 和 `pptx-qa.md` 为准。创建/重建默认加载
+`../../../references/model-led-design.md` 与当前生产流程为准。创建/重建默认加载
 `pptx-helpers.js` 执行安全检查；layout、visual、shape、SVG 和 composer 库均为可选建议或
 fallback，不是逐页模板。逐页渲染检查是 complete 交付
 的必要证据。wrapper 只在生成后做 `normalize-generated`（修复类），不做静态门禁。
@@ -10,7 +10,7 @@ fallback，不是逐页模板。逐页渲染检查是 complete 交付
 
 1. 添加 slide 前先设 `pres.layout`。默认画布 `LAYOUT_16x9` = 10" × 5.625"；
    坐标超出边缘不会被裁剪，只是画不上。需要更宽画布用 `LAYOUT_WIDE`（13.3" × 7.5"）。
-2. 坐标必须落在画布内；建议最小边距 0.5"，内容块间距 0.3-0.5" 并保持一致。
+2. 以实际画布检查真实裁切与溢出；边距和内容间距由构图决定。
 
 ## 颜色与透明度
 
@@ -29,13 +29,9 @@ fallback，不是逐页模板。逐页渲染检查是 complete 交付
 
 ## 文本与列表
 
-9. 列表：每一项设 `bullet: true`，禁止在文本里写字面量 `•`（会渲染成双子弹）。数组项
-   除最后一项外设 `breakLine: true`。段间距用 `paraSpaceAfter`。行距必须用**磅值**
-   `lineSpacing: fontSize * 1.18`（与 helper / registry / 实际渲染一致）。禁止
-   `lineSpacingMultiple`（它乘的是字体自然行高 ≈1.2× 字号，不是字号本身）；禁止把
-   `lineSpacing` 写成 `1.18` 这种倍数——pptxgenjs 会当成 1.18 磅，文字不可见。
+9. 使用 `bullet: true` 时不要再添加字面量 `•`。需要换行的 rich-text run 设置 `breakLine: true`。`paraSpaceAfter` 和 `lineSpacing` 的单位是磅；选择适合字号的实际行距，不能将倍数当磅值写入。
 10. 文本框有内建内边距——文字要与形状/线条/图标对齐到同一 x 时设 `margin: 0`。
-11. 字号下限由共享 design tokens 决定；不得为了适配而在脚本中静默突破。
+11. 新任务由作者选择有效字号，按实际渲染检查可读性；旧任务保持已确认的控制。
 
 ## 实例与输出
 
@@ -46,10 +42,7 @@ fallback，不是逐页模板。逐页渲染检查是 complete 交付
 
 14. PowerPoint 原生能画的都用 `addChart()`，保持可编辑；组合图传数组
     `[{type, data, options}]`。
-15. 默认 chart 是裸的：必须设 `showTitle` + `title`、`showValue: true` +
-    `dataLabelPosition`、`chartColors`（从调色板取），并静默 frame
-    （`catAxisLabelColor`/`valAxisLabelColor`、`valGridLine: { color, size }`、
-    `catGridLine: { style: "none" }`、单系列 `showLegend: false`）。
+15. 图表标题、数据标签、图例、颜色及网格线按表达需要设置，保留必要单位与来源。
 16. stacked bar/column 的 `dataLabelPosition` 只能是 `ctr`/`inEnd`/`inBase`；
     `outEnd` 会损坏文件。
 17. 组合图用 secondary 轴时必须同时声明 `valAxes` 和 `catAxes` 各两条，否则 PowerPoint
@@ -70,33 +63,12 @@ fallback，不是逐页模板。逐页渲染检查是 complete 交付
 
 ## 图片与图标
 
-20. 图片走 `addImage({ data: "image/png;base64," + buf.toString("base64") })`——
-    前缀必须带。图标默认用内置库 `pptx-icons.js`
-    （`I.addIconFromLibrary(slide, name, box, tokens, role)` / `I.iconSVG(name, color)`，
-    约 30 个常用矢量图标，`addImage` base64 嵌入、随 token 着色）；自绘
-    `addText`/`addShape` 或手写内联 SVG 为后备；不引入外部图标库。库中无合适图标且自绘
-    难以保持一致时，按项目临时安装并注明在生产 brief 中。
+20. base64 图片的 data 前缀需带 MIME，例如 `image/png;base64,`。图标可使用内置库、原生形状、SVG 或可获得的素材；选择能正确渲染且适合页面的实现。
 
-## 字体安全表（QA 可信）
+## 字体与渲染
 
-写进 pptx 的字体由用户机器的 PowerPoint 渲染，QA 用 LibreOffice 会替换字体、宽度可能
-不同。为让 QA 的 text-fit 检查可信：
+使用可获得的字体并进行实测。LibreOffice 与目标 PowerPoint 的字体替换可能造成宽度差异；查看字体替换报告与最终渲染，必要时改字体或调整文本区域。
 
-- **安全字体**（QA 宽度一致 + 随 Office 分发）：Arial、Calibri、Cambria、Times New
-  Roman、Courier New、Bookman Old Style、Century Schoolbook。正文和任何需要对齐的文本
-  用这些。
-- **有性格的标题**：安全衬线（Cambria/Bookman Old Style/Century Schoolbook）+ 安全
-  无衬线正文（Calibri/Arial），零 QA 风险。
-- **QA 不可靠字体**（替换后宽度不同，overflow 检查可能错）：Georgia、Trebuchet MS、
-  Impact、Arial Black、Garamond、Consolas、Palatino Linotype、Calibri Light。用户点名
-  才用，容器留 ~10% slack，不信任 QA 的 text-fit。
-- **绝不默认 Aptos**：Office 2023+ 默认字体在此无 metric 兼容替换、老 Office 又缺失，
-  两端都不可靠。
+## Runtime helpers
 
-## Runtime helper 使用守则
-
-- 默认用 `H.safeArea`/`H.gridLayout`/`H.color`/
-  `H.addBackground` 和 `V.renderVisual` 降低手算坐标与组件契约错误。
-- `H.assertTextFits` 只 `console.warn` 不阻断生成；溢出靠 QA 逐页视觉检查兜底。
-- 页面默认可自定义构图；可先用 `L.suggestLayouts` 获取候选。只有 `layout_lock: true`、模板
-  复现或确定性 fallback 才直接 `L.resolveLayout`。所有页面仍须满足本文件 gotchas、容量和视觉 QA。
+按需使用 [helper API](pptxgenjs-helper-api.md) 和组件库。主会话自由编写页面；生成、几何检查与渲染按 [main-session-production.md](main-session-production.md) 执行。

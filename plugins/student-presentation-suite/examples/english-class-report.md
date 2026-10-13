@@ -7,5 +7,5 @@
 - Recommended: Coursework report, Teacher + classmates, B1-B2 English level, `Modern Minimal（现代简洁）`, diagram-only, PPTX + speaker notes + preview.
 - Gate: Confirm full Production Summary before checking environment and generating.
 - Deliverables: PPTX, English speaker notes, preview image; QA passed → `complete`.
-- Checks: English body text ≥ 20pt, 2-4 short sentences per slide, natural connectors in speaker notes (e.g., "First", "This example shows", "So the main point is"), pronunciation support for difficult keywords.
+- Checks: rendered readability and content appropriate to the audience, natural connectors in speaker notes (e.g., "First", "This example shows", "So the main point is"), pronunciation support for difficult keywords.
 - Style: Clean spacious layout, white/gray base + bright accent, no dense paragraphs.
