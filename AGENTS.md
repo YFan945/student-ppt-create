@@ -58,7 +58,8 @@ Inside the plugin package:
 - `scripts/`: environment checks, schema bridge, validation, session cost review, Research Pack
   validation, and PPTX smoke tooling.
 - `scripts/direct_production.py`: main-session production tools; the existing
-  `skills/sp-deck/scripts/ppt_pipeline.py` path exposes plan, run, complete and status.
+  `skills/sp-deck/scripts/ppt_pipeline.py` path exposes plan, run, complete, status
+  and measure (text-fit measurement without building).
   No page/critic agents, calibration, packets, sharding or production receipts.
 - `scripts/hook_dispatcher.py`: research-only hook routing from hooks/hooks.json;
   page authoring and preview inspection have no Builder/cost/production-entry guards.

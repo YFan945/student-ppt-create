@@ -1,4 +1,4 @@
-"""Read logical lines from actual OOXML, joining only named adjacent spans."""
+"""Read logical lines from actual OOXML, joining spans that share one named line."""
 from __future__ import annotations
 
 from xml.etree import ElementTree as ET
@@ -8,11 +8,14 @@ P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
 
 def fact_blocks(root: ET.Element) -> list[str]:
-    """One real text object/paragraph, or a named adjacent positioned line.
+    """One real text object/paragraph, or one named positioned line.
 
-    Never concatenate arbitrary neighboring shapes or table cells. Authors may
-    use one rich-text object for a metric and its value; normal reading order
-    and visual geometry remain unconstrained outside that explicit fact.
+    Fragments emitted by `addPositionedText` share the line's `sps-line:` shape
+    name; they re-join by that name alone. Baseline alignment gives fragments
+    of one line different y offsets, and language spans are separated by
+    measured gaps, so geometry must not gate the re-join. Unrelated shapes and
+    table cells are never concatenated. Normal reading order and visual
+    geometry remain unconstrained outside an explicit fact.
     """
     blocks = slide_text(root).splitlines()
     for shape in root.iter(f"{{{P}}}sp"):
@@ -25,25 +28,18 @@ def fact_blocks(root: ET.Element) -> list[str]:
 def slide_text(root: ET.Element) -> str:
     parents = {child: parent for parent in root.iter() for child in parent}
     pieces: list[str] = []
-    previous: tuple[str, int, int] | None = None
+    previous_group = ""
     for paragraph in root.iter(f"{{{A}}}p"):
         text = "".join("\n" if node.tag == f"{{{A}}}br" else (node.text or "") if node.tag == f"{{{A}}}t" else "" for node in paragraph.iter())
         owner = paragraph
         while owner in parents and owner.tag != f"{{{P}}}sp":
             owner = parents[owner]
         name = owner.find(f"./{{{P}}}nvSpPr/{{{P}}}cNvPr")
-        off = owner.find(f"./{{{P}}}spPr/{{{A}}}xfrm/{{{A}}}off")
-        ext = owner.find(f"./{{{P}}}spPr/{{{A}}}xfrm/{{{A}}}ext")
         group = name.get("name", "") if name is not None else ""
-        positioned = group.startswith("sps-line:") and off is not None and ext is not None
-        if positioned:
-            try:
-                x, y, width = int(off.get("x", "0")), int(off.get("y", "0")), int(ext.get("cx", "0"))
-            except ValueError:
-                positioned = False
-        if positioned and previous and previous[0] == group and previous[1] == y and abs(previous[2] - x) <= 18288:
+        positioned = group.startswith("sps-line:")
+        if positioned and group == previous_group:
             pieces[-1] += text
         else:
             pieces.append(text)
-        previous = (group, y, x + width) if positioned else None
+        previous_group = group if positioned else ""
     return "\n".join(pieces)

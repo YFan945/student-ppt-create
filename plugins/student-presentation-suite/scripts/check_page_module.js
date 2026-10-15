@@ -102,27 +102,24 @@ function mockSlide() {
 }
 
 function logicalRenderedText(calls) {
+  // Fragments of one positioned line share the line's `sps-line:` object name;
+  // they re-join by that name alone. Baseline alignment gives fragments of one
+  // line different y offsets and language spans carry measured gaps, so
+  // geometry must not gate the re-join.
   const pieces = [];
-  let previous = null;
+  let previousGroup = '';
   for (const call of calls) {
     if (call.kind !== 'text') {
-      previous = null;
+      previousGroup = '';
       continue;
     }
-    const options = call.args[1] || {};
     const text = require('./pptx-helpers.js').plainText(call.args[0]);
-    const group = String(options.objectName || '');
+    const group = String((call.args[1] || {}).objectName || '');
     const positioned = group.startsWith('sps-line:');
-    if (
-      positioned &&
-      previous &&
-      previous.group === group &&
-      previous.y === options.y &&
-      Math.abs(previous.right - options.x) <= 0.02
-    ) {
+    if (positioned && group === previousGroup) {
       pieces[pieces.length - 1] += text;
     } else pieces.push(text);
-    previous = positioned ? { group, y: options.y, right: options.x + options.w } : null;
+    previousGroup = positioned ? group : '';
   }
   return pieces.join('\n');
 }

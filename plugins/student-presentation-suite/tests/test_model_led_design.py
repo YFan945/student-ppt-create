@@ -127,7 +127,7 @@ class SemanticTests(unittest.TestCase):
         findings=[{'code':'visual_score_low','severity':'major'},{'code':'panel_alternative','severity':'major','category':'design_preference'},{'code':'text_crossed_by_line','severity':'minor','category':'readability','critic_severity':'major'},{'code':'logo_missing','severity':'minor','category':'design_preference'}]
         apply_modelled_findings(findings)
         self.assertEqual([finding['severity'] for finding in findings],['advisory','advisory','major','major'])
-    def test_positioned_readback_joins_only_bound_adjacent_spans(self):
+    def test_positioned_readback_joins_one_named_line(self):
         from xml.etree import ElementTree as ET
 
         from shared.pptx_text_readback import slide_text
@@ -140,8 +140,12 @@ class SemanticTests(unittest.TestCase):
             return slide_text(ET.fromstring(xml))
 
         self.assertTrue(exact_present('1,233', read(shape('233', 100000))))
+        # Baseline-aligned fragments of one line differ in y; language spans
+        # carry measured gaps. Both stay one logical line through the shared name.
+        self.assertTrue(exact_present('1,233', read(shape('233', 100000, y=100000))))
+        self.assertTrue(exact_present('1,233', read(shape('233', 500000))))
         self.assertFalse(exact_present('1,233', read(shape('233', 100000, 'ordinary'))))
-        self.assertFalse(exact_present('1,233', read(shape('233', 100000, y=100000))))
+        self.assertFalse(exact_present('1,233', read(shape('233', 100000, 'sps-line:paragraph:1'))))
         self.assertFalse(exact_present('233', read(shape('233', 100000))))
     def test_semantic_input_binding_changes_even_when_images_do_not(self):
         before = semantic_binding("a" * 64, ["233小时"], {1: "解释"})

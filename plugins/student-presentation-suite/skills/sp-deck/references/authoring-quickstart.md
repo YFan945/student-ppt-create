@@ -56,9 +56,13 @@ The coordinates, size and synthetic wording above illustrate the API, not a page
 
 ## Text and emphasis
 
-`H.addFittedText(slide, value, box, tokens, 'chinese', role, options)` accepts plain text or an array of `{text, options}`. Supply the size you choose; measured pages do not automatically shrink it. `options` supports fontFace, cjkFontFace, fontSize, color, bold, align and margin. Per-run bold/color retains editable inline emphasis. Roles identify content, not title/footer zones.
+`H.addFittedText(slide, value, box, tokens, 'chinese', role, options)` accepts plain text or an array of `{text, options}`. Supply the size you choose; measured pages do not automatically shrink it. `options` supports fontFace, cjkFontFace, fontSize, color, bold, align and margin. Per-run bold/color retains editable inline emphasis. Roles identify content, not title/footer zones. To change font families deck-wide (e.g. CJK in Microsoft YaHei), pass `typography` through `plan --art-direction` — it feeds both the inlined TOKENS and the build-time Latin→CJK `<a:ea>` map; a per-call `cjkFontFace` alone does not update that map.
 
-An overflow means the region is insufficient: improve wording/grouping or geometry without dropping required support. `H.fitText(value, box, H.rolePolicy(tokens, 'chinese', role, options))` returns `fits`, `requiredH`, `lines` and `lineGeometry` without drawing. Ordinary Chinese quotation marks use the Chinese family; explicit run font choices remain binding. Use `addPositionedText` only when a real render needs controlled mixed-language placement. Never claim PowerPoint behavior from LibreOffice alone.
+An overflow means the region is insufficient: improve wording/grouping or geometry without dropping required support. `H.fitText(value, box, H.rolePolicy(tokens, 'chinese', role, options))` returns `fits`, `requiredH`, `lines` and `lineGeometry` without drawing. Ordinary Chinese quotation marks use the Chinese family; explicit run font choices remain binding. Never claim PowerPoint behavior from LibreOffice alone.
+
+Mixed-language auto-positioning: when a measured text mixes CJK with Latin letters or digits, `addFittedText` places each language span as its own positioned shape (viewers otherwise add East Asian/Latin spacing and rewrap the line). The fragments share one `sps-line:` shape name and readback re-joins them by that name. Consequence: a `fact_bindings` metric must stay one text object — use the `metric` helper or pass `positionMixedText: false`; hand-splitting label/value/unit into separate calls fails the binding check.
+
+Measurement contract: each line's height is `max(block fontSize, largest run in that line) × 1.18 / 72` inches, and a block's required height is the sum of its lines — so a label line costs the big number's size when they share one block; separate objects price independently. Widths use the real font's advances (CJK ≈ 1 em, Latin ≈ 0.58 em). `fits` requires `requiredH ≤ box.h × 0.95` and every line within the margin-reduced width. Before `run`, check every text block in one pass with `python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" measure --work-dir <wd>`; it never draws or builds and reports all overflows and tight margins at once.
 
 ## Images, diagrams and tables
 
@@ -82,7 +86,7 @@ Implemented page functions may retain a provenance comment; empty functions rema
 
 For an optional relationship helper, require `${CLAUDE_PLUGIN_ROOT}/scripts/pptx-relations.js`. Supply actual supported content, box and fontSize; there is no global size or layout recipe:
 
-- `metric(ctx, {label,value,unit,context?}, box, {fontSize,labelSize?,color?})`: editable rich text in one object, suitable for the fact_bindings contract in slide-spec.md. The numeric value is a string; label and unit retain their actual meaning.
+- `metric(ctx, {label,value,unit,context?}, box, {fontSize,labelSize?,color?})`: editable rich text in one object, suitable for the fact_bindings contract in slide-spec.md — it keeps label, value and unit in a single text object (via `positionMixedText: false`), which the auto-positioning split would otherwise break. The numeric value is a string; label and unit retain their actual meaning.
 - `evidenceRows(ctx, [{label,detail}], box, {fontSize,labelWidth?,gap?,rowGap?})`: nearby explanation with a shared reading axis.
 - `processSteps(ctx, [{title,rows:[{label,detail}]}], box, {fontSize,titleHeight?,labelWidth?,gap?,rowGap?})`: directional process with explicit inputs/actions/retained evidence; rowGap and horizontal gap are independent.
 - `annotatedImage(ctx, asset, [{x,y}], box, {markerFontSize,markerSize?,color?})`: numbered anchors in normalized coordinates on an inspected image. Box must match asset aspect ratio; place markers away from evidence text and explain them nearby. It cannot determine whether a marker hides image content.

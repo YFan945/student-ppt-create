@@ -264,7 +264,12 @@ function renderPage(ctx, mod) {
     };
     try {
       mod(ctx);
-      if (typeof ctx.registry._slide === 'function' && !ctx.registry._slide(ctx.n).length)
+      // PPTX_MEASURE：测量工具把文本写入换成测量空操作，页面没有已登记元素属预期。
+      if (
+        !process.env.PPTX_MEASURE &&
+        typeof ctx.registry._slide === 'function' &&
+        !ctx.registry._slide(ctx.n).length
+      )
         throw new Error(
           'unfinished page: no drawable objects were authored; implement the page function',
         );

@@ -9,12 +9,18 @@
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" plan --work-dir <wd> --slide-spec <spec>
 # 主会话实现 pages/pNN-*.js（编辑模式改 ooxml/）。
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" measure --work-dir <wd>
+# measure 不构建不渲染：按真实页面代码一次报出全部文本溢出与余量偏紧的块，写 _tmp/measure-report.json。
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" run --work-dir <wd>
 # 主会话查看返回的预览、实际文本和讲稿；有问题直接改，再 run。
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete --work-dir <wd>
 ```
 
-`plan` 自动验证 Spec 并生成源码；`--art-direction` 可选，仅用于已有设计配置。研究任务可提供 `--research-pack`，工具批量编译证据。无需先调用多个验证或状态推进命令。
+`run` 的构建按页收集错误：多页同时溢出/失败时一次列出全部页面，不再在第一页中止。页面源码运行所需的环境变量由 pipeline 自行注入（`PPTX_HELPERS_DIR` 指向插件 `scripts/`）；作者手写调用页面代码的脚本时，需自行设置 `PPTX_HELPERS_DIR` 并经 `pptx-runtime-paths.js` 的 `installSearchPaths` 注册 pptxgenjs/fontkit——此类探测脚本属于 `_tmp/`。
+
+`plan` 自动验证 Spec 并生成源码；`--art-direction <file.yaml|json>` 可选，接受 `style_seed`/`visual_style`、`visual_style_custom`、`topic_accent` 与 `typography`。`typography` 是整套字体定制的受支持通道：覆盖 `title_font`、`body_font`、`cjk_title_font`、`cjk_body_font` 等 `*_font` 键，合入内联 TOKENS 并驱动构建期的 Latin→CJK `<a:ea>` 映射。需要整套换字体（如 CJK 用 Microsoft YaHei）时走这里，不要在每个文本调用上单独指定 `cjkFontFace`——那不进入字体映射。研究任务可提供 `--research-pack`，工具批量编译证据。无需先调用多个验证或状态推进命令。
+
+重新执行 `plan` 时，已含作者实现的 `pages/pNN-*.js` 不会被覆盖；`deck.js` 只在仍带脚手架 marker 注释行时才会被重写——手工调整 deck.js（配色、字体等）后删除该 marker 注释行即冻结。测量脚本等临时文件放在工作目录的 `_tmp/` 下：第一级以 `_` 或 `.` 开头的路径不参与 authoring 绑定与变更检测，可随时删除；`pages/` 内部的共享模块（如 `pages/_shared.js`）正常参与绑定，散放在工作目录根的其他 `.js` 也会被绑定进 manifest。
 
 `run` 执行构建、字体处理、事实精确项、包与作者几何报告检查和全页渲染，返回 `technical_checks`、`geometry`、`review_required` 及当前页面路径。`ok` 只表示列出的技术检查通过，不代表审美、核心语义或逐页看图已经验收。几何 warning 和字体替换供作者对照完整渲染判断；合理的装饰覆盖不按数量阻断。不以金额、token 或修复次数阻断当前工作。当前文件与预览绑定一致时可复用渲染。
 

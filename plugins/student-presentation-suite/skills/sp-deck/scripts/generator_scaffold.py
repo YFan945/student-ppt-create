@@ -59,12 +59,23 @@ function main() {{
   const presentationCopy = [];
   const manifestFile = path.join(__dirname, 'build-manifest.json');
   const manifest = require('node:fs').existsSync(manifestFile) ? JSON.parse(require('node:fs').readFileSync(manifestFile, 'utf8')) : {{}};
+  const pageErrors = [];
   PAGES.forEach((mod, index) => {{
     const n = index + 1;
     const slide = pptx.addSlide();
     const ctx = {{ pptx, slide, n, H, registry, tokens: TOKENS, slideNumber: n, layoutReport, presentationCopy, designMode: TOKENS.design_freedom }};
-    R.renderPage(ctx, mod);
+    try {{
+      R.renderPage(ctx, mod);
+    }} catch (error) {{
+      // 逐页收集错误（含 text_overflow），一次报全，不在第一页就中止。
+      pageErrors.push(`page ${{n}}: ${{(error && error.message) || error}}`);
+    }}
   }});
+  if (pageErrors.length) {{
+    console.error(`page build failed on ${{pageErrors.length}} page(s):`);
+    for (const line of pageErrors) console.error(`- ${{line}}`);
+    process.exit(1);
+  }}
   registry.assertSafe();
   if (TOKENS.model_led) require('node:fs').writeFileSync(path.join(__dirname, 'presentation-copy.json'), JSON.stringify({{ slides: presentationCopy }}, null, 2));
   // 完整几何分析（含 warning）写 sidecar，供主会话对照当前渲染检查。

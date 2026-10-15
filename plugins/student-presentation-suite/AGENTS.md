@@ -69,7 +69,8 @@ terminates production.
 ```
 
 - `scripts/workflow_guard.py` owns intake (`init` / `confirm`).
-- Main-session production uses `ppt_pipeline.py plan`, `run` and `complete`;
+- Main-session production uses `ppt_pipeline.py plan`, `run` and `complete`,
+  with `measure` (no-build text-fit report) and `status` as read-only aids;
   the tools maintain manifest and workflow status. The main author implements
   pages, views current renders and fixes them in the same conversation.
 - No Builder/critic agents, packets, calibration, sharding or production receipts.

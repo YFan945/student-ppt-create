@@ -128,6 +128,36 @@ def status(args: argparse.Namespace) -> dict[str, Any]:
     return result
 
 
+def measure(args: argparse.Namespace) -> dict[str, Any]:
+    """Measure every text block without building; all overflows in one pass."""
+    work = work_directory(args.work_dir)
+    entry = work / "deck.js"
+    if not entry.is_file():
+        raise ProductionError("plan first: deck.js does not exist in the work directory")
+    report = work / "_tmp" / "measure-report.json"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    environment = {**os.environ, "CLAUDE_PLUGIN_ROOT": str(ROOT),
+                   "PPTX_HELPERS_DIR": str(ROOT / "scripts")}
+    proc = subprocess.run(
+        ["node", str(ROOT / "scripts" / "pptx-measure.js"), str(entry), str(report)],
+        cwd=work, env=environment, capture_output=True, text=True, encoding="utf-8",
+        errors="replace", timeout=360)
+    payload: dict[str, Any] = {}
+    if report.is_file():
+        with contextlib.suppress(OSError, ValueError):
+            payload = load(report)
+    overflow = payload.get("overflow") or []
+    tight = payload.get("tight") or []
+    build_error = payload.get("build_error")
+    ok = proc.returncode == 0 and not overflow and not build_error
+    return {"ok": ok, "action": "ok" if ok else "fix_layout",
+            "block_count": payload.get("block_count", 0),
+            "overflow": overflow, "tight": tight, "build_error": build_error,
+            "report": bind(report) if report.is_file() else None,
+            "stdout": (proc.stdout or "").strip()[-2000:],
+            "stderr": (proc.stderr or "").strip()[-2000:]}
+
+
 def review_current(review: dict[str, Any] | None, manifest: dict[str, Any]) -> bool:
     """An author's account is bound to artifacts, not proof of inspection."""
     if not review:
@@ -498,7 +528,11 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 else:
                     Path(str(pptx) + suffix).unlink(missing_ok=True)
         manifest["build"] = {"pptx": bind(pptx), "seconds": round(time.monotonic() - start, 3)}
-        manifest["build"]["authoring_inputs"] = [bind(path) for path in sorted(work.rglob("*.js"))]
+        # 只绑定作者源码：第一级以 `_`/`.` 开头的路径（如 _tmp/ 探测脚本）不参与绑定；
+        # pages/ 内部的共享模块（如 pages/_shared.js）正常参与绑定与变更检测。
+        manifest["build"]["authoring_inputs"] = [
+            bind(path) for path in sorted(work.rglob("*.js"))
+            if not path.relative_to(work).parts[0].startswith(("_", "."))]
         checked = check_artifact(work, manifest, pptx)
         manifest["check"] = {"ok": checked["ok"], "report": bind(work / "production-check.json")}
         if (work / "presentation-copy.json").is_file():
@@ -694,6 +728,9 @@ def main() -> int:
     inspection = commands.add_parser("status", help="read current reports and delivery health without building")
     inspection.add_argument("--work-dir", type=Path, required=True)
     inspection.set_defaults(handler=status)
+    measuring = commands.add_parser("measure", help="measure all text blocks without building; reports every overflow and tight margin in one pass")
+    measuring.add_argument("--work-dir", type=Path, required=True)
+    measuring.set_defaults(handler=measure)
     args = parser.parse_args()
     try:
         result = args.handler(args)
