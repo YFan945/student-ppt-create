@@ -73,6 +73,21 @@ PPT 正文与面向听众的讲稿直接呈现调研发现、分析结果、需�
 
 保留实质性的研究条件、观测结果、业务约束、适用范围与尚待解决的问题，用具体条件和发现表达，例如“本轮在固定设备条件下记录延迟”“样本覆盖三个班级，下一轮补充跨年级观察”。不把未验证结果写成既定事实。合成样例标注简洁的数据来源“示例数据”，真实来源照常引用；不堆叠免责声明，也不伪装成真实研究。用户明确要求引用原文或展示限制条款时保留其意图。
 
+### 直接表达与防御性说明
+
+默认将“不是……而是……”“这并非……”“不只是……更是……”“本页旨在……”“需要说明的是……”等自我定位、预先辩护或空泛拔高改写为具体主张。检查标题、正文、图注、收束句和备注；不能只清理正文段落。不要用“可追溯、可复用、可推广”等抽象形容词在多页反复充当结论，说明具体对象、做法和有依据的变化。
+
+| 原表达 | 直接表达示例 |
+| --- | --- |
+| 这不是简单的资料汇总，而是一套成长支持体系 | 汇集实验室方向、竞赛日历和项目入口，为同学提供成长路径指引 |
+| 本页并非证明实际成效，仅用于说明方案 | 在正文展示方案本身；验证范围放交付报告 |
+| 学生会不只是活动组织者，更是舞台搭建者 | 学生会征集同学提案、协调资源并支持班级共同策划活动 |
+| 从信息堆积走向系统赋能 | 按方向、时间和参与条件整理机会信息，给出对应入口 |
+
+上述示例说明表达方法，不能成为自动补充事实的句库。真实比较、概念辨析、研究反证或用户要求的原文引用仍可使用必要的否定句；保留有信息价值的条件和限制。判断句子的用途和证据，不按关键词机械删除。共享规范应独立包含这些要求，不能假设插件运行时能访问个人全局记忆。
+
+生成正文默认直接陈述对象、行为、依据、结果及其关系；不使用“不是……而是……”“并非……”“由此可见”组织通用转折，不添加“xx仅作为xx参考，不是真实依据”“本页不能证明……”等防御性说明。标题、正文、图注和备注均执行；用户提供的草稿含有这些句式时也应在保留含义后改写，明确要求逐字保留的引文除外。示例数字保留简短“示例数据”，占位保留简短“素材待替换/示意图”和用户要求的生图提示词；验证限制留在交付报告，不在每页反复自我解释。
+
 ## Anti-AI Wording
 
 Avoid:
@@ -86,7 +101,7 @@ Prefer:
 - concrete class/project context
 - direct claims
 - examples from student life, experiments, surveys, cases, or source material
-- modest conclusions that admit limits
+- conclusions supported by the actual material, with relevant research conditions when needed
 
 ## AI Writing Pattern Risk
 
@@ -101,7 +116,7 @@ Reduce risk by adding:
 - course context
 - group process details
 - actual observation, survey, experiment, or case details
-- limits and uncertainty
+- relevant research conditions or uncertainty when supported, without adding generic disclaimers
 - specific source or data references
 
 ## English Presentation Standard
@@ -123,4 +138,4 @@ Reduce risk by adding:
 
 - Open with a concrete scene, question, or data point instead of only "Today I will introduce...".
 - End with a clear closing line such as "以上是我的分享，请老师批评指正".
-- For Q&A, use polite framing such as "感谢老师的提问" and "这个问题确实是我们考虑不够充分的地方".
+- For Q&A, a brief "感谢老师的提问" may introduce a direct answer with supporting facts. Acknowledge a concrete shortcoming only when it exists; do not automatically preface answers with self-criticism or defensive qualifications.

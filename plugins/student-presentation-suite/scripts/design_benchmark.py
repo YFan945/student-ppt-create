@@ -9,6 +9,7 @@ import math
 import os
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -22,6 +23,42 @@ import pptx_actual_content_check as content  # noqa: E402
 import session_cost  # noqa: E402
 
 FIXTURES = ROOT / "examples/design-benchmarks/cases.json"
+
+
+def observe_first_candidate(directory: Path, stop: threading.Event) -> None:
+    """Preserve the first stable QA render observed, without touching production.
+
+    This is an observed candidate, not proof that no earlier draft existed.
+    A concurrent rebuild is rejected by hashes and retried on the next tick.
+    """
+    import shutil
+
+    target = directory / 'first-observed-candidate'
+    while not stop.wait(1):
+        manifests = list((directory / 'outputs').rglob('build-manifest.json'))
+        if len(manifests) != 1 or (target / 'snapshot.json').exists():
+            continue
+        try:
+            manifest = json.loads(manifests[0].read_text(encoding='utf-8'))
+            pages = (manifest.get('render') or {}).get('pages', [])
+            pptx = (manifest.get('build') or {}).get('pptx')
+            if manifest.get('state') not in {'qa', 'complete'} or not pages or not pptx:
+                continue
+            bindings = [pptx, *pages]
+            if not all(sha(Path(item['path'])) == item['sha256'] for item in bindings):
+                continue
+            target.mkdir(exist_ok=True)
+            copied = []
+            for index, item in enumerate(bindings):
+                destination = target / ('deck.pptx' if index == 0 else f'slide-{index}.png')
+                shutil.copy2(item['path'], destination)
+                copied.append({'path': str(destination), 'sha256': sha(destination)})
+            if any(copied[index]['sha256'] != item['sha256'] or sha(Path(item['path'])) != item['sha256'] for index, item in enumerate(bindings)):
+                continue
+            save(target / 'snapshot.json', {'kind': 'first-stable-observed-candidate', 'not_guaranteed_first_draft': True, 'artifacts': copied})
+            return
+        except (OSError, ValueError, KeyError):
+            continue
 
 
 def save(path: Path, data: object) -> None:
@@ -87,9 +124,9 @@ def collect_evidence(work: Path, config: Path, session: str | None) -> dict:
 def prepare(case: dict, directory: Path, mode: str) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     save(directory / "case.json", case)
-    spec = {"schema_version": "2.1", "research_scope": "C", "meta": {"topic": case["topic"], "language": "Chinese", "visual_style": "Academic Rigorous", "quality_level": "standard", "design_freedom": mode, "citation_style": "none", "include_speaker_notes": True, "duration_min": 6, "slide_count": 6}, "slides": []}
+    spec = {"schema_version": "2.1", "research_scope": "C", "meta": {"topic": case["topic"], "language": "Chinese", "visual_style": case.get('visual_style', 'Academic Rigorous'), "quality_level": case.get('quality_level', 'standard'), "design_freedom": mode, "citation_style": "none", "include_speaker_notes": True, "duration_min": len(case['pages']), "slide_count": len(case['pages'])}, "slides": []}
     for index, page in enumerate(case["pages"], 1):
-        spec["slides"].append({"id": index, "title": page["title"], "claim": page["fact"], "content": [page["fact"]], "layout": "claim-focus", "kind": "cover" if index == 1 else "closing" if index == 6 else "content", "timing_sec": 60, "owner": "speaker", "semantic_requirements": {"must_convey": [{"id": f"fact-{index}", "text": page["fact"], "placement": "slide"}], "must_show_exact": page["exact"]}})
+        spec["slides"].append({"id": index, "title": page["title"], "claim": page["fact"], "content": page.get('content', [page["fact"]]), "kind": page.get('kind', 'cover' if index == 1 else 'content'), "timing_sec": 60, "owner": "speaker", "semantic_requirements": {"must_convey": [{"id": f"fact-{index}", "text": page["fact"], "placement": "slide"}], "must_show_exact": page["exact"], 'fact_bindings': page.get('fact_bindings', [])}, 'visual': page.get('visual', {'type': 'auto', 'purpose': 'Choose expression from the supplied content'})})
     path = directory / "slide-spec.json"
     save(path, spec)
     if case["image"]:
@@ -194,8 +231,8 @@ def live_case(case: dict, directory: Path, mode: str, resume_existing: bool = Fa
         prepare(case, directory, mode)
     work_id = f"comparison-{case['id']}-{mode}"
     prompt = f"""/student-presentation-suite:sp-deck
-请制作6页中文课程展示，work-id={work_id}，研究范围C，只使用本地case.json与figure.png（若有）。所有成果和论文数字均是合成演示，不得声称是真实发表或真实个人成果。
-听众为本科教师与同学，6分钟，16:9，quality_level=standard，design_freedom={mode}，新Slide Spec必须为2.1并逐页保留case.json中的核心信息和精确项。模型可压缩标题与表达。要求PPTX、讲稿、逐页预览。
+请制作{len(case.get('pages', [])) or 6}页中文课程展示，work-id={work_id}，研究范围C，只使用本地case.json与figure.png（若有）。所有成果和论文数字均是合成演示，不得声称是真实发表或真实个人成果。
+听众为本科教师与同学，每页约1分钟，16:9，沿用本地Spec的quality_level，design_freedom={mode}，新Slide Spec必须为2.1并逐页保留case.json中的核心信息和精确项。模型可重写标题与表达，充分组织已有正文、视觉关系和素材。要求PPTX、讲稿、逐页预览。
 将本地slide-spec.json复制到work-dir，原样保留semantic_requirements与meta.design_freedom；只可补充缺少的meta。图片来源已在image-sources.json声明（若有）；图片需完整保留流程。Art Direction可选。主会话直接创作、看图和修改，不派发页面或评审子代理。修复真实问题并重新渲染；不得把自检称为独立语义核验。
 本回合只准备完整Production Summary和intake文件，然后停止；不要提前生成或渲染。路径：{directory}。请自行选择可合理默认的细节。
 """
@@ -237,20 +274,32 @@ def live_case(case: dict, directory: Path, mode: str, resume_existing: bool = Fa
         if production_file.is_file():
             payload2 = live.parse_result(production_file.read_text(encoding="utf-8"))
     elif first.returncode == 0 and session:
-        confirmation = live.CONFIRMATION + f"\n必须meta.design_freedom={mode}。用户已经批准的是{mode}。如果尚未构建且此前plan遗漏该字段，请只纠正meta，然后使用合法plan --force重新冻结，传--design-freedom {mode}。不要以默认auto替代用户选择。新任务须保留本地slide-spec.json逐页冻结信息。按实际问题继续修复，不重做冻结材料。"
+        confirmation = live.CONFIRMATION + f"\n必须meta.design_freedom={mode}，在plan之前填妥。保留本地slide-spec.json逐页冻结信息。主会话直接创作、看图、修复、run与complete，不调用Agent。不使用旧repair、plan --force、Builder或评分文件。"
         command = live.build_command(claude, ROOT, confirmation, scope="C", resume=session)
-        command[2] += "\n本次对照所有 Agent 必须前台执行（run_in_background=false）并等到返回；不要在代理仍运行时结束主回合。前次初始 Builder 被 CLI 后台等待时限终止，可 resume 原 Builder 或继续当前 initial round；保留已写页面，不增加正式修复轮数。初始源码和 gate-side 修正无需重启一条路径。完整图文事实都是合成演示；讲稿也不得添加未经本地 case/Spec 支撑的事实。"
+        command[2] += "\n所有素材均为合成演示；正文与讲稿不得添加case/Spec外的事实。完整查看最终渲染，并以实际页说明发现与修复；不要将自述称为独立评审。"
+        if '--disallowedTools' in command:
+            command[command.index('--disallowedTools') + 1] += ',Agent'
         production_file = directory / "production.stdout.json"
         if production_file.is_file():
             saved_output = directory / f"production-before-resume-{len(list(directory.glob('production-before-resume-*.json'))) + 1}.json"
             saved_output.write_text(production_file.read_text(encoding="utf-8"), encoding="utf-8")
-        _, payload2 = live.run_turn(command, project_dir=directory, config_dir=config, stdout_path=directory / "production.stdout.json", stderr_path=directory / "production.stderr.txt")
+        stop = threading.Event()
+        observer = threading.Thread(target=observe_first_candidate, args=(directory, stop), daemon=True)
+        observer.start()
+        try:
+            _, payload2 = live.run_turn(command, project_dir=directory, config_dir=config, stdout_path=directory / "production.stdout.json", stderr_path=directory / "production.stderr.txt")
+        finally:
+            stop.set()
+            observer.join(timeout=5)
     manifests = list((directory / "outputs").rglob("build-manifest.json"))
     manifest = json.loads(manifests[0].read_text(encoding="utf-8")) if len(manifests) == 1 else {}
     work = manifests[0].parent if len(manifests) == 1 else directory
     review = json.loads((work / "visual-review.json").read_text(encoding="utf-8")) if (work / "visual-review.json").is_file() else {}
     result = {"case": case["id"], "mode": mode, "actual_design_freedom": manifest.get("design_freedom"), "state": manifest.get("state"), "ok": manifest.get("state") == "complete" and manifest.get("design_freedom") == mode, "repair_count": (manifest.get("build") or {}).get("repair_count"), "reported_cost_usd": round(sum(float(value.get("total_cost_usd") or 0) for value in [payload1, payload2]), 4) if all(value.get("total_cost_usd") is not None for value in [payload1,payload2]) else None, "semantic_coverage": [{"slide": entry["slide"], "decisions": entry.get("semantic_coverage", [])} for entry in review.get("slides", [])], "composition": [{"slide": entry["slide"], "visual_structure": entry.get("visual_structure"), "scores": entry.get("scores"), "issues": entry.get("issues")} for entry in review.get("slides", [])], "session_id": session, "work_dir": str(work), "prompt_sha256": sha(directory / "prompt.md"), "turns": [payload1, payload2]}
     result["observed_evidence"] = collect_evidence(work, config, session)
+    result['first_candidate_snapshot'] = str(directory / 'first-observed-candidate/snapshot.json') if (directory / 'first-observed-candidate/snapshot.json').is_file() else None
+    result['visual_acceptance'] = 'Not scored automatically; compare full renders and source fidelity, then record concrete findings.'
+    result['attempts'] = manifest.get('attempts')
     result["continuation_turns"] = stage_turns
     result["continuation_evidence"] = [collect_evidence(work, config, turn.get("session_id")) for turn in stage_turns]
     result['all_attempts'] = collect_attempts(directory)
@@ -265,6 +314,7 @@ def main() -> int:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--mode", choices=["auto", "guided", "deterministic"], default="auto")
     parser.add_argument("--case", default="all")
+    parser.add_argument('--cases-file', type=Path, default=FIXTURES, help='Frozen local cases; keep identical material for before/after trials')
     parser.add_argument("--render", action="store_true")
     parser.add_argument("--live-claude", action="store_true")
     parser.add_argument("--resume-live", action="store_true", help="resume infrastructure-interrupted intakes, preserving saved evidence")
@@ -275,7 +325,7 @@ def main() -> int:
     output = args.output_dir.resolve()
     if output.is_relative_to(ROOT.parent.parent):
         parser.error("benchmark artifacts must be outside the marketplace repository")
-    cases = json.loads(FIXTURES.read_text(encoding="utf-8"))["cases"]
+    cases = json.loads(args.cases_file.read_text(encoding="utf-8"))["cases"]
     if args.typography_stress:
         if args.live_claude or args.mode != "auto":
             parser.error("typography stress is an auto runtime fixture")
@@ -285,11 +335,9 @@ def main() -> int:
         cases = [case for case in cases if case["id"] == args.case]
         if not cases:
             parser.error("unknown case")
-    if args.live_claude:
-        cases = [case for case in cases if case["id"] in {"chinese-defense", "illustrated-paper"}]
     summaries = []
     for case in cases:
-        for mode in ([args.live_mode] if args.live_claude and args.live_mode else ["guided", "auto"] if args.live_claude else [args.mode]):
+        for mode in ([args.live_mode] if args.live_claude and args.live_mode else [args.mode]):
             directory = output / ("live" if args.live_claude else "runtime") / case["id"] / mode
             if directory.exists() and not (args.live_claude and args.resume_live):
                 parser.error(f"preserve existing results; choose a fresh output root: {directory}")

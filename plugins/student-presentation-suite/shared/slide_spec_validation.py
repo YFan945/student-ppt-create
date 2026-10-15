@@ -240,6 +240,10 @@ def semantic_errors(data: Any) -> list[dict[str, str]]:
         if data.get("schema_version") != "2.1":
             errors.append({"path": f".slides.{index}.semantic_requirements", "message": "semantic_requirements requires schema_version 2.1"})
         requirements = semantic.get("must_convey", [])
+        facts = semantic.get("fact_bindings", [])
+        fact_ids = [item["id"] for item in facts]
+        if len(fact_ids) != len(set(fact_ids)):
+            errors.append({"path": f".slides.{index}.semantic_requirements.fact_bindings", "message": "fact binding ids must be unique per page"})
         ids = [item["id"] for item in requirements]
         if len(ids) != len(set(ids)):
             errors.append({"path": f".slides.{index}.semantic_requirements", "message": "requirement ids must be unique per page"})

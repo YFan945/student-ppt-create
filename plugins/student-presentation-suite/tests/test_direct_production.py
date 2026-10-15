@@ -77,6 +77,70 @@ module.exports.notes={json.dumps(notes)};
             self.assertFalse((self.work / name).exists())
         self.assertEqual(production.load(self.work / "build-manifest.json")["semantic_verification"], "main-session-self-check")
 
+    def test_final_outline_uses_actual_title_and_visible_support_without_old_claim(self):
+        spec = {'slides': [{'title': '旧标题', 'claim': '过时的结论', 'role': 'method'},
+                           {'title': '导入页面', 'claim': '旧摘要'}]}
+        before = json.dumps(spec, ensure_ascii=False)
+        text = production.final_outline(spec, ['最终标题\n方法解释\n证据 78.4%', '导入正文'], {1: '最终标题'})
+        self.assertIn('## 1. 最终标题', text)
+        self.assertIn('方法解释\n证据 78.4%', text)
+        self.assertIn('## 2. 导入页面', text)
+        self.assertNotIn('过时的结论', text)
+        self.assertNotIn('旧标题', text)
+        self.assertEqual(json.dumps(spec, ensure_ascii=False), before)
+
+    def test_author_review_is_stale_after_spec_or_artifact_changes(self):
+        page = self.project / 'page.png'
+        page.write_bytes(b'fixture')
+        manifest = {'build': {'pptx': production.bind(self.spec)}, 'slide_spec': production.bind(self.spec),
+                    'render': {'pages': [production.bind(page)]}}
+        review = {'note': 'author account', 'pptx': manifest['build']['pptx'],
+                  'slide_spec': manifest['slide_spec'], 'pages': manifest['render']['pages']}
+        self.assertTrue(production.review_current(review, manifest))
+        page.write_bytes(b'changed')
+        self.assertFalse(production.review_current(review, manifest))
+
+    def test_output_directory_is_frozen_and_cannot_escape_project_outputs(self):
+        data = production.load(self.spec)
+        data['meta']['output_dir'] = 'outputs/独立交付'
+        production.write(self.spec, data)
+        production.plan(self.args)
+        self.assertEqual(production.load(self.work / 'build-manifest.json')['delivery_dir'],
+                         str(self.project / 'outputs' / '独立交付'))
+        for path in ('../escape', 'outputs/.pptx-work/unsafe'):
+            with self.assertRaisesRegex(production.ProductionError, 'output_dir'):
+                production.delivery_directory(self.work, {'output_dir': path})
+
+    def test_windows_build_lock_retries_atomically_and_permanent_failure_preserves_original(self):
+        target = self.work / 'deck.pptx'
+        source = self.work / 'new.pptx'
+        target.write_bytes(b'old')
+        source.write_bytes(b'new')
+        error = PermissionError('held file')
+        error.winerror = 32
+        real_replace = os.replace
+        attempts = []
+
+        def transient(first, second):
+            attempts.append(first)
+            if len(attempts) == 1:
+                raise error
+            real_replace(first, second)
+
+        with patch.object(production.os, 'replace', side_effect=transient) as replace, \
+             patch.object(production.time, 'sleep'):
+            production.replace_build(source, target)
+        self.assertEqual(replace.call_count, 2)
+        self.assertEqual(target.read_bytes(), b'new')
+        target.write_bytes(b'old')
+        source.write_bytes(b'new')
+        with patch.object(production.os, 'replace', side_effect=error), patch.object(production.time, 'sleep'):
+            with self.assertRaisesRegex(production.ProductionError, 'build replacement failed'):
+                production.replace_build(source, target)
+        self.assertEqual(target.read_bytes(), b'old')
+        real_replace(source, target)
+        self.assertEqual(target.read_bytes(), b'new')
+
     def test_pending_intake_cannot_plan(self):
         state = production.load(self.work / "workflow-state.json")
         state["state"] = "intake_pending"
@@ -106,6 +170,13 @@ module.exports.notes={json.dumps(notes)};
         production.write(self.work / "build-manifest.json", {"manifest_version": "2.0", "state": "complete"})
         with self.assertRaisesRegex(production.ProductionError, "legacy manifests"):
             production.authorized(self.work)
+
+    def test_status_reads_unknown_historical_publication_without_migration(self):
+        old = {'manifest_version': '2.0', 'state': 'complete', 'published': ['legacy-artifact']}
+        production.write(self.work / 'build-manifest.json', old)
+        report = production.status(self.args)
+        self.assertEqual(report['published'], old['published'])
+        self.assertEqual(production.load(self.work / 'build-manifest.json'), old)
 
     def test_changed_spec_is_refused_before_build(self):
         production.plan(self.args)
@@ -145,12 +216,43 @@ console.log(JSON.stringify({fontSize:policy.fontSize,error,inherited:inherited.t
     def test_real_build_render_and_delivery_without_subagents(self):
         production.plan(self.args)
         self.author()
+        manifest = production.load(self.work / 'build-manifest.json')
+        manifest['last_error'] = 'previous failed build'
+        production.write(self.work / 'build-manifest.json', manifest)
         result = production.run(self.args)
+        self.assertNotIn('last_error', production.load(self.work / 'build-manifest.json'))
         self.assertTrue(result["ok"])
         self.assertEqual(len(result["previews"]["pages"]), 2)
         self.assertEqual(result["action"], "inspect_previews")
+        self.assertEqual(result['changed_pages'], [1, 2])
         finished = production.complete(self.args)
+        self.assertEqual(finished['author_review_status'], 'unrecorded')
+        self.args.review_note = '测试作者自述：页1/2内容与备注已核对；本测试不宣称实际视觉检查。'
+        finished = production.complete(self.args)
+        self.assertEqual(finished['author_review_status'], 'recorded-current')
+        review_report = production.load(self.work / 'production-check.json')
+        self.assertFalse(review_report['check_scope']['visual_quality_verified'])
+        self.assertFalse(review_report['author_review']['independent'])
         self.assertEqual(set(finished["outputs"]), {"pptx", "speaker-notes", "preview"})
+        self.assertTrue(all(production.current(page) for page in finished['outputs']['preview']['pages']))
+        self.assertEqual(len(finished['outputs']['preview']['pages']), 2)
+        with patch.object(production, 'execute', side_effect=AssertionError('status must not build')):
+            inspected = production.status(self.args)
+        self.assertTrue(inspected['delivery_health']['ok'])
+        self.assertFalse(inspected['production_performed'])
+        self.assertEqual(production.complete(self.args)['outputs'], finished['outputs'])
+        preview = Path(finished['outputs']['preview']['pages'][0]['path'])
+        image = preview.read_bytes()
+        preview.unlink()
+        self.assertEqual(production.status(self.args)['state'], 'incomplete')
+        # A lost exported copy breaks delivery, not the inspected internal render.
+        self.assertEqual(production.status(self.args)['author_review_status'], 'recorded-current')
+        preview.write_bytes(image)
+        (self.work / 'pages' / '_shared.js').write_text('module.exports = {};', encoding='utf-8')
+        rerun = production.run(self.args)
+        self.assertTrue(rerun['shared_source_changed'])
+        self.assertEqual(rerun['changed_pages'], [1, 2])
+        production.complete(self.args)
         with zipfile.ZipFile(Path(finished["outputs"]["pptx"]["path"])) as package:
             xml = package.read("ppt/slides/slide1.xml").decode("utf-8")
             self.assertIn("78.4%", xml)

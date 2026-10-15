@@ -145,11 +145,13 @@ def actual_speaker_notes(
 
 
 def with_actual_speaker_notes(
-    data: dict[str, Any], notes: dict[int, str]
+    data: dict[str, Any], notes: dict[int, str], actual_titles: dict[int, str] | None = None
 ) -> dict[str, Any]:
+    actual_titles = actual_titles or {}
     value = dict(data)
     value["slides"] = [
-        {**slide, "speaker_notes": notes.get(int(slide.get("id") or 0), "")}
+        {**slide, "speaker_notes": notes.get(int(slide.get("id") or 0), ""),
+         "title": actual_titles.get(int(slide.get("id") or 0)) or slide.get("title", "")}
         if isinstance(slide, dict)
         else slide
         for slide in data.get("slides", [])

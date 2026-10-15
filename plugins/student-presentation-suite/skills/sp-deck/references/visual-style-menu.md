@@ -8,7 +8,7 @@ This separation is intentional: users choose a comprehensible visual mood; the m
 
 ## Intake Categories
 
-Step A shows exactly three categories plus `Other`. Step B shows all four styles in the selected category in one question.
+This catalogue is optional when the user wants help choosing. Reuse a supplied direction or choose one under delegated preferences; do not require category/subtype rounds. If browsing categories is requested, Step A shows exactly three categories plus `Other`; Step B shows all four styles in the selected category.
 
 | Category | Four available styles |
 | --- | --- |
@@ -17,7 +17,7 @@ Step A shows exactly three categories plus `Other`. Step B shows all four styles
 | Creative and humanistic / 创意与人文类 | Creative Student, Coral Energy, Forest Moss, Warm Terracotta |
 | Other / 其他 | Free user description; the AI completes and confirms the required custom seed |
 
-Do not expose old “show all styles”, cross-category markers, or multi-round style lists. Recommend the category and style that best fit the topic, but keep the final seed choice with the user.
+Do not expose old “show all styles”, cross-category markers, or multi-round style lists. Recommend the category and style that best fit the topic, and include the actual direction in the approved summary.
 
 ## Style Seed Contract
 

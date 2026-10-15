@@ -22,7 +22,12 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from shared.content_requirements import exact_present, numbers, semantic_requirements  # noqa: E402
+from shared.content_requirements import (  # noqa: E402
+    exact_present,
+    fact_binding_present,
+    numbers,
+    semantic_requirements,
+)
 from shared.hashing import file_sha256 as sha256_file  # noqa: E402
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -64,6 +69,18 @@ def extract_pptx_text(pptx: Path) -> list[str]:
 
             slides.append((int(match.group(1)), slide_text(root)))
     return [text for _, text in sorted(slides)]
+
+
+def extract_fact_blocks(pptx: Path) -> list[list[str]]:
+    from shared.pptx_text_readback import fact_blocks
+
+    slides = []
+    with zipfile.ZipFile(pptx) as package:
+        for name in package.namelist():
+            match = re.fullmatch(r"ppt/slides/slide(\d+)\.xml", name)
+            if match:
+                slides.append((int(match.group(1)), fact_blocks(ET.fromstring(package.read(name)))))
+    return [blocks for _, blocks in sorted(slides)]
 
 
 NOTESLIDE_REL_RE = re.compile(r'Type="[^"]*?/notesSlide"[^>]*?Target="([^"]+)"')
@@ -157,6 +174,7 @@ def planned_requirements(planned: dict[str, Any]) -> dict[str, Any]:
             "title": "", "claim": "", "copy_fragments": [],
             "numbers": sorted({n for text in exact for n in numbers(text)}),
             "must_show_exact": exact, "must_convey": semantic.get("must_convey", []),
+            "fact_bindings": semantic.get("fact_bindings", []),
             "copy_policy": "semantic",
         }
     title = str(planned.get("title") or "").strip()
@@ -171,7 +189,7 @@ def planned_requirements(planned: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def check(spec: dict[str, Any], actual: list[str]) -> dict[str, Any]:
+def check(spec: dict[str, Any], actual: list[str], fact_blocks: list[list[str]] | None = None) -> dict[str, Any]:
     slides = planned_slides(spec)
     issues: list[dict[str, Any]] = []
     per_slide: list[dict[str, Any]] = []
@@ -190,6 +208,11 @@ def check(spec: dict[str, Any], actual: list[str]) -> dict[str, Any]:
         slide_issues: list[dict[str, Any]] = []
 
         requirements = planned_requirements(planned)
+        facts = (semantic_requirements(planned) or {}).get("fact_bindings", [])
+        blocks = fact_blocks[index - 1] if fact_blocks is not None and index <= len(fact_blocks) else actual_text.splitlines()
+        for fact in facts:
+            if not fact_binding_present(fact, blocks):
+                slide_issues.append({"severity": "major", "code": "fact_binding_missing_or_changed", "fact": fact})
         for expected in requirements.get("must_show_exact", []):
             if not exact_present(expected, actual_text):
                 slide_issues.append({"severity": "major", "code": "exact_content_missing", "expected": expected})
@@ -233,6 +256,8 @@ def check(spec: dict[str, Any], actual: list[str]) -> dict[str, Any]:
         "issue_count": len(issues),
         "issues": issues,
         "slides": per_slide,
+        "fact_binding_count": sum(len((semantic_requirements(slide) or {}).get("fact_bindings", [])) for slide in slides),
+        "semantic_scope": "Exact tokens and opted-in metric/value/unit bindings only; unbound numbers, meaning, causality and claims require author review.",
     }
 
 
@@ -245,7 +270,8 @@ def run(args: argparse.Namespace) -> int:
 
     spec = load_structured(args.slide_spec)
     actual = extract_pptx_text(args.pptx)
-    report = check(spec, actual)
+    has_bindings = any((semantic_requirements(slide) or {}).get("fact_bindings") for slide in planned_slides(spec))
+    report = check(spec, actual, extract_fact_blocks(args.pptx) if has_bindings else None)
     if spec.get("schema_version") == "2.1":
         copy_path = args.pptx.parent / "presentation-copy.json"
         if not copy_path.is_file():

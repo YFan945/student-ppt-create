@@ -45,6 +45,24 @@ def semantic_requirements(slide: dict[str, Any]) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def fact_binding_present(fact: dict[str, str], blocks: list[str]) -> bool:
+    """Match an opted-in metric/value/unit in one actual OOXML text block.
+
+    Label before or after value is supported, including wrapping/colon. No
+    inferred synonyms, arithmetic, or union of unrelated text boxes is used.
+    """
+    label = re.sub(r"\s+", "", fact["label"])
+    quantity = fact["value"] + fact.get("unit", "")
+    for block in blocks:
+        normalized = re.sub(r"\s+", "", block).replace("：", ":")
+        if fact.get("context") and not exact_present(fact["context"], block):
+            continue
+        for phrase in (label + quantity, label + ":" + quantity, quantity + label):
+            if exact_present(phrase, normalized):
+                return True
+    return False
+
+
 def semantic_review_issues(
     spec: dict[str, Any], review: dict[str, Any], actual: list[str], notes: dict[int, str],
     visual_elements: dict[int, set[str]] | None = None,

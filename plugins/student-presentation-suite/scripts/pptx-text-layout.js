@@ -179,7 +179,9 @@ function atoms(input, policy) {
         ) || []) {
           const requested =
             run.options.fontFace ||
-            (CJK.test(part) ? policy.cjkFontFace || run.fontFace : run.fontFace);
+            (CJK.test(part) || (CJK.test(text) && /^[“”‘’]+$/u.test(part))
+              ? policy.cjkFontFace || run.fontFace
+              : run.fontFace);
           let font = resolveFont(requested, Boolean(run.options.bold), Boolean(run.options.italic));
           if (
             [...part].some(

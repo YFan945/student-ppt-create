@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
 from shared.design_policy import design_mode, model_led
 from shared.design_tokens import resolve_design_tokens
 from shared.handoff_validation import handoff_errors
-from shared.runtime_paths import output_root
+from shared.runtime_paths import output_root, project_root
 from shared.slide_spec_contract import validate_spec_data as validate_spec
 
 
@@ -237,9 +237,18 @@ def build_brief(
     slides = data["slides"]
     output_prefix = meta.get("output_prefix") or source.stem
     resolved_output_dir = output_root(deliverable_dir)
+    if meta.get("output_dir") and deliverable_dir is None:
+        planned_output = Path(meta["output_dir"])
+        if not planned_output.is_absolute():
+            planned_output = project_root() / planned_output
+        planned_output = planned_output.resolve()
+        if not planned_output.is_relative_to(output_root()) or planned_output.is_relative_to(output_root() / ".pptx-work"):
+            raise ValueError("output_dir must stay inside project outputs and outside .pptx-work")
+        resolved_output_dir = planned_output
     pptx_path = resolved_output_dir / f"{output_prefix}-presentation.pptx"
     notes_path = resolved_output_dir / f"{output_prefix}-speaker-notes.md"
-    preview_path = resolved_output_dir / f"{output_prefix}-preview.png"
+    preview_suffix = '.json' if data.get('schema_version') == '2.1' else '.png'
+    preview_path = resolved_output_dir / f"{output_prefix}-preview{preview_suffix}"
     change_summary_path = resolved_output_dir / f"{output_prefix}-change-summary.md"
     quality_report_path = resolved_output_dir / f"{output_prefix}-quality-report.json"
     teleprompter_path = resolved_output_dir / f"{output_prefix}-teleprompter.html"
@@ -293,9 +302,9 @@ def build_brief(
     if "speaker-notes" in deliverables:
         lines.append(f"- Notes: `{notes_path}`")
     lines.append(
-        "- Preview/contact sheet (QA evidence: always rendered because the visual "
-        f"critic and QA gates read it; a deliverable only when selected): `{preview_path}` "
-        "or a contact sheet in the same directory"
+        "- Current page renders and overview are author self-check evidence, delivered only when selected. "
+        f"Preview binding index: `{preview_path}`; preview includes all final slide PNGs. "
+        f"Separate contact sheet: `{resolved_output_dir / f'{output_prefix}-contact-sheet.png'}`"
     )
     lines.append(f"- Delivery report: `{delivery_report_path}`")
     if production_mode == "edit_ooxml":

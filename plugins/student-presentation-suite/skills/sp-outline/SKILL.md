@@ -1,7 +1,7 @@
 ---
 name: sp-outline
 description: Use only for a clearly student-owned academic context when the user explicitly requests a PPT or slide outline, not an editable deck. Do not use for generic presentations, standalone scripts, Q&A-only work, or non-student tasks.
-version: 0.30.6
+version: 0.30.7
 ---
 
 # Student Presentation
@@ -35,7 +35,7 @@ version: 0.30.6
 3. **Research Need Analysis**：排页前先在主流程里只做“是否需要证据”的轻量判定，把待证内容拆成 Claim 并标 A/B/C/D；**这一步本身不联网**。若存在 A/B Claim，则调用 `sp-research`；D 类**不派子代理**——运行 `${CLAUDE_PLUGIN_ROOT}/scripts/import_user_materials.py <材料文件...> --work-dir <wd> --spec <spec> --json` 做结构化导入（sources 全为哈希绑定的 `user-file`、`queries` 为空、写 `research-import.json` 凭据，`plan` 直接接受该凭据），仅当用户点名要研究员整理时才走 `sp-research scope:D`。若全部是 C（仅重排/概括用户已有内容、过渡页等），**不要启动子代理，也不要制造空 Research Pack**。只要调用过 `sp-research`，必须拿到 `research-pack.json` + passing validation report 后才能排页。不要先写正文再补来源。
 4. 缺哪条规则再读哪份（各一次）：`references/slide-structures.md`、`references/transition-phrases.md`、`references/group-handoff.md`、`references/qa-prediction.md`、`../../references/content-workflow.md`、`../../references/evidence-and-citations.md`、`../../references/research-workflow.md`、`../../references/revision-training-export.md`、`../../references/slide-spec.md`、`../../references/image-strategy.md`。不要 grep 插件源码。
 5. 宽泛主题时，根据时长和证据提供 2-3 个角度选择。
-6. 从材料构建内容完整的大纲与展示文案，单独规划重点讲解路径和简短备注；明确重点加粗/放大/颜色强调及图片、表格、图解用途，缺素材时按已确认策略规划设计占位。用户表明将转 PPTX 时写 Slide Spec。
+6. 按 references/slide-structures.md 选择适合任务的拆解方法，先分配章节问题、论点归属与逐页新增信息，检查跨页重复；按 ../../references/content-workflow.md 构建充分的正文、解释与证据组，不能只写名称和一句用途。单独规划重点讲解路径和简短备注。按 ../../references/content-to-visual.md 规划主体图片/表格/统计图/具体图解及来源或生成提示词占位，检查整套布局多样性与统一视觉语言，小图标仅辅助。用户表明将转 PPTX 时写 Slide Spec。
 7. 新建交接使用 schema_version: "2.1" 和 meta.design_freedom（默认 auto），每页提供 semantic_requirements：must_convey 的稳定 id/text/placement/evidence_refs，以及 must_show_exact 的精确文字和关键数字。核心信息默认上屏，补充内容才可指定 notes；规划 prose 不再作为逐字展示要求。不得自动迁移用户已有的旧 spec。每页内容幻灯片提供故事角色、核心信息、完整展示文案、可选视觉、证据引用、讲稿、时间、归属、转场。研究支持的 **draft Slide Spec** 在 `evidence_refs` 中直接使用 Research Pack 的 `F/D/Q` id；不要生成 `E<n>`、不要手写 Research Evidence Ledger。`confidence: low` 或 conflict 条目必须写成区间/限定语。`sp-deck` 后续由 `research_pack_to_evidence.py` 机械编译为 E ids、ledger 与 `used_on_slides`。
 8. 新手模式下解释关键结构/布局选择。用 `analyze_presentation_spec.py` 做结构/证据/密度风险检查；需要训练卡、Q&A、词汇表、提词版或修订元数据时运行 `build_support_outputs.py`。
 9. 如需文件输出并转 PPTX：若走过 Research Gate，写 `outputs/<topic>-brief.yaml` 与 **draft** `outputs/<topic>-slide-spec.yaml`，将 Brief、draft spec、Research Pack、research validation 一并交给 `sp-deck`；若是 C-only，则按普通无 research 流程交接。最终冻结的是 `sp-deck` 编译/验证后的 Slide Spec，而不是研究型 draft。交给 `sp-deck` 时仍保留**完整 intake 门禁**，outline 阶段不能替代其 Production Summary 确认。

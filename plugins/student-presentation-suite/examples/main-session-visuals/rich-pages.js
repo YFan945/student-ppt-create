@@ -257,7 +257,48 @@ photoProcess.presentation_copy = {
 };
 photoProcess.notes = '重点看右侧四步怎样保留上下文；左侧影像可选择一张说明。';
 
+// An editable image region with the actual planned generation prompt visible.
+// The caller must register the returned record under an approved allow policy.
+function promptPlaceholder(ctx, options, box) {
+  const { prompt, replacement, reason, label = '素材待替换', kind = 'concept' } = options;
+  if (![prompt, replacement, reason].every((value) => typeof value === 'string' && value.trim()))
+    throw new TypeError('promptPlaceholder needs a prompt, replacement and reason');
+  const p = ctx.tokens.palette;
+  const { x, y, w, h } = box;
+  shape(ctx, 'rect', x, y, w, h, p.surface, {
+    decorative: true,
+    line: { color: p.primary_accent, width: 1, transparency: 0 },
+  });
+  text(ctx, label, x + w * 0.04, y + h * 0.06, w * 0.92, h * 0.18, options.labelSize || 16, {
+    color: p.primary_accent,
+    bold: true,
+  });
+  text(
+    ctx,
+    `生成提示词：${prompt}`,
+    x + w * 0.04,
+    y + h * 0.3,
+    w * 0.92,
+    h * 0.62,
+    options.promptSize || 14,
+    {
+      color: p.secondary_text,
+    },
+  );
+  return {
+    slide: ctx.n,
+    purpose: options.purpose || replacement,
+    source: `placeholder:${options.id || `image-${ctx.n}`}`,
+    permission: 'suite-original',
+    alt_text: replacement,
+    fallback: '使用已授权工具按提示词生成并检查后替换此区域',
+    prompt,
+    placeholder: { kind, label, replacement, reason, prompt_visible: true },
+  };
+}
+
 module.exports = {
+  promptPlaceholder,
   cover,
   shortCover,
   richTechnical,

@@ -7,6 +7,21 @@ A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
 
+def fact_blocks(root: ET.Element) -> list[str]:
+    """One real text object/paragraph, or a named adjacent positioned line.
+
+    Never concatenate arbitrary neighboring shapes or table cells. Authors may
+    use one rich-text object for a metric and its value; normal reading order
+    and visual geometry remain unconstrained outside that explicit fact.
+    """
+    blocks = slide_text(root).splitlines()
+    for shape in root.iter(f"{{{P}}}sp"):
+        body = shape.find(f"{{{P}}}txBody")
+        if body is not None:
+            blocks.append(slide_text(body))
+    return list(dict.fromkeys(block for block in blocks if block.strip()))
+
+
 def slide_text(root: ET.Element) -> str:
     parents = {child: parent for parent in root.iter() for child in parent}
     pieces: list[str] = []

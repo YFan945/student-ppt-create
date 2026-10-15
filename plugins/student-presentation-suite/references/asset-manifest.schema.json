@@ -38,7 +38,8 @@
               "kind": {"enum": ["photo-slot", "screenshot-slot", "concept", "data-skeleton"]},
               "label": {"type": "string", "minLength": 1},
               "replacement": {"type": "string", "minLength": 1},
-              "reason": {"type": "string", "minLength": 1}
+              "reason": {"type": "string", "minLength": 1},
+              "prompt_visible": {"type": "boolean", "description": "When true, the planned generation prompt must be present and visible on this slide."}
             }
           },
           "slide": {

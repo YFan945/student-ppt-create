@@ -9,12 +9,12 @@ and actual readability remain binding. Treat fixed sizes, proportions and
 gallery treatments here as optional design suggestions for new tasks.
 
 
-Use this strategy across planning, optional Art Direction, production, and review. Choose available assets and information-bearing graphics before composition; visual richness includes grouping, semantic icons and editable diagrams as well as photographs.
+Use this strategy across planning, optional Art Direction, production, and review. Choose available assets and information-bearing graphics before composition; visual richness comes from relevant evidence, explanatory imagery, readable tables/charts and meaningful diagrams, with icons as optional auxiliary labels.
 
 ## Source Choice
 
 - Use user-provided assets first when they are relevant, clear, and allowed.
-- For real people, places, products, historical material, current events, factual charts, and source-sensitive examples, ask whether web search is allowed before using web images.
+- For real people, places, products, historical material, current events, factual charts, and source-sensitive examples, resolve existing web authorization before acquiring images. Ask only when the needed authorization is absent; do not ask again when already allowed.
 - For abstract concepts, process explanations, cover mood images, and conceptual scenes, generated visuals may be used when the current environment provides approved generation and the user does not forbid it.
 - If the user says no network, no generated images, or user-assets only, respect that constraint and use diagrams, native charts, custom SVG, built-in semantic icons, or typography-led layouts.
 
@@ -28,26 +28,30 @@ Before writing pages, choose the expression that each page needs. Art Direction 
 - Editable diagrams, process paths, timelines, tables and category groups;
 - Typography-led pages when a clear statement genuinely carries the page.
 
-Use deliberate diversity of information-bearing visuals. Do not impose asset quotas. `diagram-only` permits detailed multicolor diagrams, native charts/tables and semantic icons; it does not mean plain text plus a few lines. No external provider configuration means external acquisition is unavailable, not that user files or native drawing tools are unavailable.
+Use deliberate diversity of information-bearing visuals. Prefer meaningful images, editable tables/charts and detailed diagrams over repeated small icons. Do not impose asset quotas. `diagram-only` permits detailed multicolor diagrams and native charts/tables; it does not mean plain text plus a few lines. No external provider configuration means external acquisition is unavailable, not that user files or native drawing tools are unavailable. An old demonstration's diagram-only setting is not the default for the next task. For new mixed-visual tasks record the authorized hybrid-adaptive policy; do not silently turn missing configuration into a user ban on images or approved placeholders.
 
 For each slide, classify the desired asset before layout:
 
 ```text
 hero image | evidence image | annotated screenshot | native chart | diagram/process
-| comparison/matrix | semantic icon | typography | none-needed
+| comparison/matrix | typography | none-needed
 ```
 
 Actively use available authorized tools for topical imagery; keep accurate tables, charts and diagrams editable. If the intended asset is unavailable, use another suitable asset or an explicitly allowed designed placeholder with a clear replacement target. Do not silently replace a hero visual with four empty cards. A placeholder is a deliberate visual treatment, not an unfinished page; see `image-sourcing.md` for policy and provenance.
+
+Semantic icons are auxiliary labels, navigation or legends; they do not by themselves fulfill the primary visual plan. For numeric material, select comparisons, trends, distributions or an evidence table from actual units, dates, denominators and relationships. Independent counts with different units need not share a chart axis; do not invent a funnel, percentage, baseline or missing observations to satisfy a request for charts. A labeled chart/table skeleton is possible only under an allowed placeholder policy.
+
+When an image slot is approved but the image is not yet obtainable, preserve a meaningful image region and show a usable generation prompt there when requested: subject, setting/action, visual style, composition/crop, palette and text-free/accuracy constraints. Keep this instruction inside the placeholder; it is removed with the slot when the final image arrives. The image-sourcing owner defines its record and validation.
 
 ## Deterministic Internal Visual Stack
 
 The plugin already has an editable/no-network visual stack:
 
-1. `scripts/pptx-visuals.js` for process, comparison, timeline, architecture and structured native visuals;
-2. `scripts/pptx-icons.js` for editable semantic icons;
-3. `scripts/pptx-svg-library.js` for motifs/background references;
-4. native PptxGenJS charts for quantitative evidence;
-5. custom SVG/native shapes for topic-specific diagrams.
+- `scripts/pptx-visuals.js` for process, comparison, timeline, architecture and structured native visuals;
+- native PptxGenJS charts and editable tables for quantitative evidence;
+- custom SVG/native shapes for content-specific diagrams and explanatory illustrations;
+- `scripts/pptx-icons.js` for auxiliary semantic icons;
+- `scripts/pptx-svg-library.js` for optional motifs/background references.
 
 Choose icons, diagrams, charts, photographs and evidence figures according to the information they communicate.
 
@@ -56,6 +60,8 @@ Choose icons, diagrams, charts, photographs and evidence figures according to th
 搜图/生图是否为可用能力，由项目根目录的 `image-sources.json` **显式声明**，不靠假设。运行
 `check_claude_pptx_env.py` 会报告 `capabilities.image_search_ready` /
 `image_generation_ready` / `user_assets_ready`；未声明时全部为 `false`。
+
+`ready` 仅表示配置条件满足；实际获取结果及过期判定见 `image-sourcing.md`，不能据环境声明承诺已获得图片。
 
 - 声明格式、权限门禁、来源留痕与降级顺序见 `image-sourcing.md`（schema：`image-sources.schema.json`，示例：`image-sources.example.json`）。
 - 规划顺序应为"先解析能力，再决定 asset plan"，不要先画好版式再发现拿不到图。

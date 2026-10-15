@@ -16,6 +16,61 @@ TINY_PNG = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAC
 
 
 class FetchImagesTests(unittest.TestCase):
+    def test_configured_provider_is_not_claimed_as_successful_fetch(self) -> None:
+        import tempfile
+
+        from shared.image_capability import resolve_image_sources
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            contract = self._make_contract(root, allow_web=False)
+            data = json.loads(contract.read_text(encoding='utf-8'))
+            data['providers'][1]['capability'] = 'command:python'
+            contract.write_text(json.dumps(data), encoding='utf-8')
+            configured = resolve_image_sources(root)
+            self.assertTrue(configured['generation_ready'])
+            self.assertEqual(configured['fetch_evidence']['status'], 'not-tested')
+            report = fetch_images(contract, ['lab photo'], root/'fetched', project_root=root)
+            report_path = root/'fetch-images-report.json'
+            report_path.write_text(json.dumps(report), encoding='utf-8')
+            evidence = resolve_image_sources(root, report_path)['fetch_evidence']
+            self.assertTrue(evidence['verified'])
+            self.assertEqual(evidence['verified_images'], 1)
+            Path(report['records'][0]['path']).write_bytes(b'changed asset')
+            self.assertEqual(resolve_image_sources(root, report_path)['fetch_evidence']['status'], 'stale-asset')
+            contract.write_text(json.dumps(data) + ' ', encoding='utf-8')
+            self.assertEqual(resolve_image_sources(root, report_path)['fetch_evidence']['status'], 'stale-contract')
+
+    def test_non_image_output_is_rejected_and_fallback_is_decoded(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            contract = self._make_contract(root, allow_web=False)
+            (root/'assets'/'lab-photo.png').write_text('<html>service error</html>', encoding='utf-8')
+            command = json.loads(contract.read_text(encoding='utf-8'))['providers'][1]['command']
+            report = fetch_images(contract, ['lab photo'], root/'fetched', project_root=root,
+                                  approved_commands={hashlib.sha256(command.encode()).hexdigest()})
+            self.assertTrue(report['ok'])
+            self.assertEqual(report['records'][0]['provider_id'], 'fake-gen')
+            self.assertEqual(report['records'][0]['image']['format'], 'PNG')
+            self.assertIn('invalid image output', ' '.join(report['provider_attempts']['lab photo']))
+
+    def test_failed_fetch_report_and_malformed_report_do_not_prove_capability(self) -> None:
+        import tempfile
+
+        from shared.image_capability import resolve_image_sources
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            contract = self._make_contract(root, allow_web=False)
+            report = fetch_images(contract, ['unavailable'], root/'fetched', project_root=root)
+            path = root/'report.json'
+            path.write_text(json.dumps(report), encoding='utf-8')
+            self.assertEqual(resolve_image_sources(root, path)['fetch_evidence']['status'], 'failed')
+            path.write_text('[]', encoding='utf-8')
+            self.assertFalse(resolve_image_sources(root, path)['fetch_evidence']['verified'])
+
     def test_project_permission_cannot_authorize_local_command(self) -> None:
         import tempfile
 

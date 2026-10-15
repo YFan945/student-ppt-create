@@ -9,9 +9,7 @@ and actual readability remain binding. Treat fixed sizes, proportions and
 gallery treatments here as optional design suggestions for new tasks.
 
 
-The Presentation Brief is the confirmed global control plane. It answers what
-the presentation is for and how it should be produced. Slide Spec answers what
-each slide contains.
+The Presentation Brief is an optional reusable record of global controls. For a normal deck, the approved summary and Slide Spec meta are sufficient; do not create another copy. A supplied or reused Brief must agree with the approved summary. Slide Spec owns per-page content.
 
 ## Scenario Classification
 
@@ -79,13 +77,18 @@ unused backgrounds or motifs. Word/character caps accept any positive integer wh
 Canonical tiers (`fast` / `standard` / `rigorous`) live in `quality_tiers.py`;
 `basic` and `high-score` are accepted legacy aliases.
 
-- `fast` (legacy `basic`): complete, readable, correctly timed, and easy to present.
-- `standard`: main-session authoring with careful evidence and visual self-check; no extra agent stages.
-- `rigorous` (legacy `high-score`): additionally optimize rubric alignment, evidence chain,
-  distinctive opening, limitations, teacher/judge questions, and rehearsal.
+All tiers require factual correctness, current full-page renders, visual inspection and selected deliverables; fast never skips those checks.
+
+- `fast` (legacy `basic`): directly author from supplied material; inspect all final pages and repair actual problems.
+- `standard`: also compare the relevant full-page reference when available, check non-adjacent repetition and compare visible content with the selective speaking path.
+- `rigorous` (legacy `high-score`): also trace important claims/numeric associations to source, examine the most difficult page at full and reduced scale, and test likely audience questions against evidence. Consider an internal alternative composition only when the current page fails its communication purpose; do not generate alternatives by quota. Check editability and template preservation when applicable. Rehearsal/export stays within the confirmed scope.
+
+Record concrete page findings in the existing review-note when useful. These are author actions, not new agent stages, aesthetic score gates or independent verification.
 
 Validate a saved brief with:
 
 ```powershell
 python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_presentation_brief.py" brief.yaml --json
 ```
+
+`output_dir` selects a delivery directory inside the active project outputs tree; carry it to Slide Spec `meta.output_dir`. New production defaults to `outputs/<work-id>`. Preview exports all slides, while contact-sheet is the overview.

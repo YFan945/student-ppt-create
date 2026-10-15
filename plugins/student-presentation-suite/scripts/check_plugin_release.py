@@ -394,6 +394,10 @@ def check_test_suite(errors: list[str]) -> dict[str, object]:
         errors.append(f"单元测试套件无法完成: {exc}")
         return {"ok": False, "error": str(exc)}
     report = parse_test_summary((proc.stdout or "") + (proc.stderr or ""), proc.returncode)
+    if not report.get("ok"):
+        output = (proc.stdout or "") + (proc.stderr or "")
+        failure = re.search(r"^={20,}\n(?:FAIL|ERROR):", output, re.MULTILINE)
+        report["failure_details"] = (output[failure.start():] if failure else output)[-8000:]
     message = test_suite_error(report)
     if message:
         errors.append(message)

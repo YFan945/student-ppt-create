@@ -17,6 +17,7 @@ the last). Same file, same question, one function.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -52,7 +53,38 @@ def image_source_config_path(project: Path) -> Path | None:
     return candidate if candidate.is_file() else None
 
 
-def resolve_image_sources(project: Path) -> dict[str, Any]:
+def fetch_evidence(report_path: Path | None, config_path: Path | None) -> dict[str, Any]:
+    """Read existing acquisition evidence without making a network/provider call."""
+    result = {"status": "not-tested", "verified": False, "verified_images": 0}
+    if report_path is None:
+        return result
+    try:
+        from shared.pptx_runtime.fetch_images import image_metadata
+
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        contract = report.get("source_contract") or {}
+        if not config_path or contract.get("sha256") != hashlib.sha256(config_path.read_bytes()).hexdigest():
+            return {**result, "status": "stale-contract"}
+        records = report.get("records") or []
+        if not records:
+            return result
+        successes = 0
+        for record in records:
+            if record.get("status") != "fetched":
+                continue
+            path = Path(record["path"])
+            if hashlib.sha256(path.read_bytes()).hexdigest() != record.get("sha256"):
+                return {**result, "status": "stale-asset"}
+            image_metadata(path)
+            successes += 1
+        return {"status": "succeeded" if successes == len(records) else "partial" if successes else "failed",
+                "verified": successes > 0, "verified_images": successes,
+                "report": str(report_path.resolve()), "last_attempt": report.get("retrieved_at")}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError, SyntaxError):
+        return {**result, "status": "invalid-report-or-image"}
+
+
+def resolve_image_sources(project: Path, fetch_report: Path | None = None) -> dict[str, Any]:
     """读项目里的 image-sources.json，报告 search/generation/user-assets 是否就绪。
 
     未配置时返回安全的"未声明"状态，不把缺失当成错误。
@@ -67,6 +99,8 @@ def resolve_image_sources(project: Path) -> dict[str, Any]:
         "user_assets_ready": False,
         "permission": {},
         "providers": [],
+        "readiness_scope": "configuration-only; not a live provider test",
+        "fetch_evidence": fetch_evidence(fetch_report, config_path),
         "detail": "No image-sources.json declared; image search and generation are treated as unavailable.",
     }
     if config_path is None:
@@ -154,6 +188,8 @@ def resolve_image_sources(project: Path) -> dict[str, Any]:
 
     declared = bool(providers)
     return {
+        "readiness_scope": base["readiness_scope"],
+        "fetch_evidence": base["fetch_evidence"],
         "ok": declared,
         "configured": True,
         "config_path": str(config_path),

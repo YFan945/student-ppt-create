@@ -62,6 +62,33 @@ function isDecorative(el) {
   return Boolean(el.decorative || el.allowOverlap || el.type === 'background');
 }
 
+function solidColor(fill) {
+  if (!fill || fill.type === 'none' || Number(fill.transparency || 0) !== 0) return null;
+  const value = typeof fill === 'string' ? fill : fill.color;
+  return typeof value === 'string' && /^[0-9a-f]{6}$/i.test(value) ? value : null;
+}
+
+function contrastRatio(first, second) {
+  const luminance = (hex) => {
+    const channels = [0, 2, 4].map((offset) => {
+      const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  };
+  const a = luminance(first);
+  const b = luminance(second);
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+function overlaps(a, b) {
+  return Math.min(a.r, b.r) > Math.max(a.x, b.x) && Math.min(a.b, b.b) > Math.max(a.y, b.y);
+}
+
+function encloses(a, b) {
+  return a.x <= b.x && a.y <= b.y && a.r >= b.r && a.b >= b.b;
+}
+
 /**
  * 非安全字体的字宽余量。优先复用 pptx-helpers 的白名单（单一事实源）；
  * registry 需要保持可独立使用：裸名解析失败时回退同目录文件，再失败按 1
@@ -139,6 +166,7 @@ class SlideElementRegistry {
   constructor(options = {}) {
     this.options = { ...DEFAULTS, ...options };
     this.slides = new Map();
+    this.backgrounds = new Map();
   }
 
   _slide(index) {
@@ -210,6 +238,67 @@ class SlideElementRegistry {
     const warnings = [];
     const { slideW, slideH, safeMargin } = this.options;
 
+    // Only known solid surfaces are deterministic. Images, gradients, partial
+    // coverage and rotated shapes need inspection; do not guess their pixels.
+    let contrastChecked = 0;
+    let contrastUnresolved = 0;
+    if (this.options.capture) {
+      for (const [index, el] of elements.entries()) {
+        if (el.type !== 'text' || !String(el.text || '').trim()) continue;
+        const box = bboxOf(el);
+        if (!box) continue;
+        let background = solidColor(this.backgrounds.get(slideIndex));
+        for (const lower of elements.slice(0, index)) {
+          const lowerBox = bboxOf(lower);
+          if (
+            !lowerBox ||
+            lower.type === 'text' ||
+            lower.type === 'line' ||
+            !overlaps(lowerBox, box)
+          )
+            continue;
+          if (lower.fill?.transparency === 100 || lower.fill?.type === 'none') continue;
+          background =
+            lower.type === 'shape' &&
+            lower.shapeType === 'rect' &&
+            !lower.rotate &&
+            encloses(lowerBox, box)
+              ? solidColor(lower.fill)
+              : null;
+        }
+        if (el.fill && el.fill.transparency !== 100) background = solidColor(el.fill);
+        const colors = el.textColors || [el.color];
+        if (
+          !background ||
+          el.transparency ||
+          !colors.length ||
+          colors.some((color) => !solidColor({ color }))
+        ) {
+          contrastUnresolved += 1;
+          continue;
+        }
+        contrastChecked += 1;
+        const ratio = Math.min(...colors.map((color) => contrastRatio(color, background)));
+        if (ratio < 3)
+          errors.push({
+            code: 'text_low_contrast',
+            element: el.id,
+            ratio: Number(ratio.toFixed(2)),
+            background,
+            message:
+              'Text on a known solid surface has contrast below 3:1; change foreground/background and inspect the render.',
+          });
+        else if (ratio < 4.5)
+          warnings.push({
+            code: 'text_contrast_review',
+            element: el.id,
+            ratio: Number(ratio.toFixed(2)),
+            background,
+            message: 'Contrast is below 4.5:1; inspect text size, weight and viewing conditions.',
+          });
+      }
+    }
+
     for (const el of elements) {
       if (el.type === 'line') continue;
       const box = bboxOf(el);
@@ -229,10 +318,11 @@ class SlideElementRegistry {
         });
       }
       if (
-        box.x < -safeMargin ||
-        box.y < -safeMargin ||
-        box.r > slideW + safeMargin ||
-        box.b > slideH + safeMargin
+        (box.x < -safeMargin ||
+          box.y < -safeMargin ||
+          box.r > slideW + safeMargin ||
+          box.b > slideH + safeMargin) &&
+        !(el.bleed === true && isDecorative(el) && el.type === 'shape')
       ) {
         errors.push({
           code: 'out_of_canvas',
@@ -282,7 +372,15 @@ class SlideElementRegistry {
         // Captured calls retain drawing order: a background painted before
         // text cannot occlude that later text. Do not require a decoration tag.
         if (this.options.capture && a.el.type !== 'text' && b.el.type === 'text') continue;
-        if (isDecorative(a.el) || isDecorative(b.el)) continue;
+        if (isDecorative(a.el) || isDecorative(b.el)) {
+          // Decorative describes purpose, never permission to hide earlier text.
+          const foregroundMask =
+            this.options.capture &&
+            a.el.type === 'text' &&
+            b.el.type !== 'text' &&
+            (b.el.type === 'image' || Boolean(solidColor(b.el.fill)));
+          if (!foregroundMask) continue;
+        }
         // Measured text occupies its rendered lines, not all empty space in
         // its authoring box. Keep conservative box checks when unmeasured.
         const aInk = occupiedRegions(a.el, a.box);
@@ -329,7 +427,18 @@ class SlideElementRegistry {
       this._checkDeadZone(boxes, warnings);
     }
 
-    return { slideIndex, ok: errors.length === 0, errors, warnings, elementCount: elements.length };
+    return {
+      slideIndex,
+      ok: errors.length === 0,
+      errors,
+      warnings,
+      elementCount: elements.length,
+      contrast: {
+        checked: contrastChecked,
+        unresolved: contrastUnresolved,
+        scope: 'known solid surfaces; unresolved requires rendered inspection',
+      },
+    };
   }
 
   /**
@@ -521,6 +630,7 @@ class SlideElementRegistry {
         slide: slide.slideIndex,
         element_count: slide.elementCount,
         warnings: slide.warnings,
+        contrast: slide.contrast,
         elements: this._slide(slide.slideIndex).map((element) =>
           Object.fromEntries(
             [

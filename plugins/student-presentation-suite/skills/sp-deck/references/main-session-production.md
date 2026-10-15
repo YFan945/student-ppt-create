@@ -20,6 +20,16 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete -
 
 `complete` 绑定当前产物并生成已确认的辅助文件。主会话在调用前完成看图和核心语义自检；工具不假装替作者做独立视觉评审。`status` 可以读取历史 manifest，旧管线任务须保留原件后以新 work-id 继续。
 
+看图后可在 `complete` 使用 `--review-note "已查看哪些最终页、发现并修复了什么、哪些条件未实测"`。工具将说明与当前PPT、Spec及页面图绑定，写入已有质量报告；status区分 recorded-current、stale、unrecorded。不填时明确报告自检未留记录，不能自动声称语义验收完成。记录是作者自述，不证明真实查看、不表示独立评审，也不新增强制文件、评分、生产凭据或审批阶段。只有实际完成的检查才写入。
+
+`outline` 导出使用最终可回读正文及已核验的作者标题，保留规划中的页面作用，不再仅导出旧标题和一句claim。导入OOXML标题沿用规划标题，避免误把任意模板文字猜作标题；冻结Spec独立保留。
+
+## Minimal reference path
+
+常规创建按顺序只读当前SKILL、content-workflow的规划要求、authoring-quickstart的接口及本文件的执行要求。结构选择只读slide-structures中适合当前任务的方法；语言查shared-standards。已经读过的规则不重复加载。其他参考按当前操作选择：模板/封面查cover-and-template，丰富视觉或松散问题查content-to-visual，获取图片查image-sourcing，具体API疑问查单函数帮助。不要在创作前遍历全部规范、示例或运行时实现。各文件保持自身所有权，入口仅链接，不复制整份政策。
+
+用户要求“充实/丰富”、提供参考件或诊断松散时，content-to-visual属于本次必要参考，不能只读通用接口后把文字排进矩形就算完成。diagram-only仅限定素材类型，仍需表达主题对象与关系。对照材料逐句检查新增解释的依据：不能把“缺少持续跟进”扩写为已观察到“无人维护联系、参与停在一次活动”。在真实主会话看图发现这些问题后直接修复；自述检查记录不能替代修复。
+
 交付前必须渲染所有最终页面，总览看节奏，再逐页完整查看断行、裁切、意外重叠、连接线、标签归属、页码、信息密度、颜色层级和图文关系。检查同级一致、跨级区分、重点突出、对齐间距、正文支撑完整和简短讲解路径；再按课堂投影/目标观看条件缩放检查表格、图例和重点。封面与模板按 `cover-and-template.md` 对照真实页面。占位须确认是有意设计且已获允许，有替换目标和可读内容，不把遗留 TODO、空白页或缺失核心证据当作完成。修复后再次 `run`，查看变化页并扫描全套；最后确认内容、素材来源和用户要求。自动报告不证明美观、事实语义正确或已在 PowerPoint 中实测。
 
 ## Authoring
@@ -28,6 +38,16 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete -
 
 从事实材料和参考页面设计构图，保留必要的解释、证据与细节。使用组件时由作者选定输入与区域，不把其内部示例坐标复制成整套页面格式。接口查阅 pptxgenjs-helper-api.md、pptxgenjs-safety.md；图文实现可参阅 main-session-visual-examples.md。
 
-INPUT 保留该页视觉用途、结构数据、页面功能、时间与原始展示材料；用途描述不是上屏文案。正文供观看与选择性讲解，module.notes 只写重点、解释与转场。图片缺失时按已确认策略制作设计占位，登记 asset-manifest.json；其 placeholder_policy 默认为 forbid，明确允许时为 allow，记录格式见 image-sourcing.md。页面骨架标记必须移除并完成实际绘制，允许素材占位不等于允许未实现页面。
+INPUT 保留该页视觉用途、结构数据、页面功能、时间与原始展示材料；用途描述不是上屏文案。正文供观看与选择性讲解，module.notes 只写重点、解释与转场。图片缺失时按已确认策略制作设计占位，登记 asset-manifest.json；其 placeholder_policy 默认为 forbid，明确允许时为 allow，记录格式见 image-sourcing.md。空页面函数必须完成实际绘制；已实现函数保留来源注释不会被判为未完成，允许素材占位不等于允许未实现页面。
 
 图片按真实比例与证据保留区域布局；addPlannedImage 默认完整显示，明确裁切才使用 cover/crop。图表使用有来源的数据。调用原生或共享文本工具时可直接指定字号、字体、对齐、边距和坐标；最终检查实际渲染。
+
+## Current reports and delivery
+
+Read `authoring-quickstart.md` for normal page creation instead of discovering helper internals. `run` returns a concrete `check_summary` and `changed_pages`; shared source modifications flag all affected pages. Read `status --work-dir <wd>` for stored reports and current delivery health without production. Do not rerun merely to print a report. A persistent build replacement lock reports its exact stage/path; close that artifact and retry, without deleting unrelated files.
+
+New plans freeze `meta.output_dir`, project-relative or absolute inside project outputs, outside .pptx-work; omission defaults to `outputs/<work-id>`. Older manifests without this field retain their stored export convention. `preview` exports every slide PNG and a binding index; `contact-sheet` exports the overview separately. Never relocate frozen inputs or delivered files after complete. `status` reports incomplete delivery when a published binding is missing/changed, even if the stored state says complete.
+
+Review content roles against `../../../references/content-to-visual.md`, not shape quotas. Full final pages and the latest overview must reflect the last changes. Check unsupported comparisons/guarantees/causality in notes as well as visible text. Do not claim a target viewer or projector was tested unless it was actually used.
+
+`check_summary.expression_findings`汇总实际正文/备注的行文风险与已登记图标的跨页复用，不改变technical ok，不自动删除引文或判断美观。对应详情在现有production-check.json的expression_review。查看提醒涉及的页，按content-to-visual检查主体与整套布局；未登记的图标仍需看图。允许的提示词占位按image-sourcing登记prompt_visible，必须能在对应页回读提示词。工具不会为本次规则更新修改既有PPT。

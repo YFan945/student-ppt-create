@@ -12,6 +12,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -36,6 +37,7 @@ VISUAL_REVIEW_TASKS = [
     "Read every full-size slide: wrapping, clipping, unintended overlap, connectors, labels and page markers.",
     "Use the contact sheet for deck rhythm; check information density, hierarchy, color grouping and visual variety on individual slides.",
     "Keep rich visible support and a selective speaking path: use weight, size and color for focus; concise notes need not narrate all detail.",
+    "Compare the deck's main visuals and body compositions: icons supplement evidence, charts, images and detailed explanations; inspect expression_findings for registered icon reuse and copy risks.",
     "Check same-level consistency, cross-level distinction, alignment and spacing at the intended viewing scale; improve organization before shrinking type.",
     "Check cover focus, semantic title breaks, grouped metadata and image balance; preserve requested template dimensions, masters and repeated objects.",
     "Actively use topical images and editable evidence visuals; verify allowed designed placeholders and replacement targets without claiming factual evidence.",
@@ -71,6 +73,93 @@ def current(binding: dict[str, Any] | None) -> bool:
         return False
     path = Path(binding["path"])
     return path.is_file() and file_sha256(path) == binding.get("sha256")
+
+
+def delivery_directory(work: Path, meta: dict[str, Any]) -> Path:
+    project = work.parents[2]
+    output = Path(meta.get("output_dir") or f"outputs/{work.name}").expanduser()
+    if not output.is_absolute():
+        output = project / output
+    output = output.resolve()
+    if not output.is_relative_to(project / "outputs") or output.is_relative_to(work.parent):
+        raise ProductionError("output_dir must stay inside project outputs and outside .pptx-work")
+    return output
+
+
+def replace_build(source: Path, destination: Path) -> None:
+    """Atomically replace only our build, tolerating transient Windows sharing locks."""
+    for attempt in range(5):
+        try:
+            os.replace(source, destination)
+            return
+        except OSError as exc:
+            if getattr(exc, "winerror", None) not in {5, 32, 33} or attempt == 4:
+                raise ProductionError(f"build replacement failed at {destination}: {exc}; close the file and run again") from exc
+            time.sleep(0.02 * 2 ** attempt)
+
+
+def publication_health(published: dict[str, Any]) -> dict[str, Any]:
+    stale = []
+    for name, item in published.items():
+        for entry in [item, *item.get("pages", [])]:
+            if not current(entry):
+                stale.append({"deliverable": name, "path": entry.get("path")})
+    return {"ok": not stale, "stale": stale}
+
+
+def status(args: argparse.Namespace) -> dict[str, Any]:
+    """Read stored checks and live delivery bindings without running production."""
+    manifest = load(args.work_dir / "build-manifest.json")
+    result = {**manifest, "stored_state": manifest.get("state"), "production_performed": False}
+    published = manifest.get("published") or {}
+    if published and isinstance(published, dict) and all(isinstance(item, dict) for item in published.values()):
+        result["delivery_health"] = publication_health(published)
+        if not result["delivery_health"]["ok"]:
+            result.update(ok=False, state="incomplete", action="restore_or_export_delivery")
+    check = manifest.get("check") or {}
+    if current(check.get("report")):
+        report = load(Path(check["report"]["path"]))
+        result["check_summary"] = check_summary(report)
+    review = manifest.get("author_review")
+    result["author_review_status"] = (
+        "recorded-current" if review_current(review, manifest)
+        else "stale" if review else "unrecorded"
+    )
+    return result
+
+
+def review_current(review: dict[str, Any] | None, manifest: dict[str, Any]) -> bool:
+    """An author's account is bound to artifacts, not proof of inspection."""
+    if not review:
+        return False
+    rendered = manifest.get("render") or {}
+    return bool(review.get("note") and review.get("pptx") == (manifest.get("build") or {}).get("pptx")
+                and review.get("pages") == rendered.get("pages")
+                and review.get("slide_spec") == manifest.get("slide_spec")
+                and all(current(item) for item in [review.get("pptx"), review.get("slide_spec"), *review.get("pages", [])]))
+
+
+def final_outline(spec: dict[str, Any], texts: list[str], titles: dict[int, str]) -> str:
+    """Export final visible content with planning roles, never obsolete claims."""
+    sections = []
+    for index, slide in enumerate(spec["slides"], 1):
+        title = titles.get(index) or slide["title"]
+        lines = [line.strip() for line in texts[index - 1].splitlines() if line.strip()]
+        body = "\n".join(line for line in lines if line != title)
+        role = slide.get("story_role") or slide.get("role")
+        sections.append(f"## {index}. {title}\n\n" + (f"页面作用：{role}\n\n" if role else "") + body)
+    return "\n\n".join(sections) + "\n"
+
+
+def check_summary(report: dict[str, Any]) -> dict[str, Any]:
+    return {"ok": report.get("ok"), "content": {key: (report.get("content") or {}).get(key)
+            for key in ("ok", "planned_slide_count", "actual_slide_count", "issue_count", "blocker_count", "issues")},
+            "package_error_count": (report.get("package") or {}).get("error_count"),
+            "geometry_errors": (report.get("geometry") or {}).get("errors", []),
+            "geometry_warnings": (report.get("geometry") or {}).get("warnings", []),
+            "asset_errors": (report.get("assets") or {}).get("errors", []),
+            "expression_findings": (report.get("expression_review") or {}).get("findings", []),
+            "missing_notes": report.get("missing_notes")}
 
 
 def work_directory(path: Path) -> Path:
@@ -187,6 +276,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     spec, errors, _ = validate_slide_spec(spec_path)
     if errors:
         raise ProductionError("invalid Slide Spec: " + json.dumps(errors, ensure_ascii=False))
+    output = delivery_directory(work, spec.get("meta") or {})
     if spec.get("source_deck"):
         spec["source_deck"] = str((spec_path.parent / spec["source_deck"]).resolve())
     mode = derive_production_mode(spec, args.production_mode)
@@ -223,6 +313,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     manifest = {
         "manifest_version": MANIFEST_VERSION, "execution_mode": EXECUTION_MODE,
         "work_id": work.name, "work_dir": str(work), "mode": mode,
+        "delivery_dir": str(output),
         "summary": bind(summary), "slide_spec": bind(spec_path),
         "source": bind(source) if source else None,
         "art_direction": bind(art) if art else None,
@@ -235,6 +326,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     }
     save(work, manifest, "planned")
     return {"ok": True, "action": "author_pages", "work_dir": str(work), "assets": measured_assets(work),
+            "delivery_dir": str(output), "authoring_guide": str(ROOT / "skills/sp-deck/references/authoring-quickstart.md"),
             "pages": [str(work / "pages" / name) for name in scaffold.get("pages", [])],
             "source_directory": str(work / "ooxml") if mode == "edit_ooxml" else None,
             "next_command": f'python "{HERE / "ppt_pipeline.py"}" run --work-dir "{work}"'}
@@ -312,6 +404,13 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
         "must_convey": [{"slide": index, "requirements": slide.get("semantic_requirements", {}).get("must_convey", [])}
                         for index, slide in enumerate(spec["slides"], 1)],
     }
+    from shared.deck_expression_review import review_expression
+
+    copy_path = work / "presentation-copy.json"
+    actual = load(copy_path) if spec.get("schema_version") == "2.1" and copy_path.is_file() else {
+        "slides": [{"slide": index, "text_runs": [text], "speaker_notes": notes.get(index, "")}
+                   for index, text in enumerate(content.extract_pptx_text(pptx), 1)]}
+    report["expression_review"] = review_expression(spec, actual)
     write(work / "production-check.json", report)
     return report
 
@@ -366,6 +465,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     work = work_directory(args.work_dir)
     manifest = authorized(work)
+    previous_pages = (manifest.get("render") or {}).get("pages", [])
+    previous_inputs = (manifest.get("build") or {}).get("authoring_inputs", [])
     manifest["attempts"] += 1
     manifest["check"] = {}
     save(work, manifest, "producing")
@@ -380,11 +481,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 entry = work / "deck.js"
                 remaining = generator_scaffold.scaffolded_pages(generator_scaffold.listed_page_files(work / "pages"))
                 if remaining:
-                    raise ProductionError("unfinished pages: " + ", ".join(remaining))
+                    raise ProductionError("unfinished pages: " + ", ".join(remaining) +
+                                          "; implement their empty page functions using authoring-quickstart.md")
                 execute(["node", str(ROOT / "scripts" / "run_with_pptxgenjs.js"), "--output", str(staging), str(entry)], work)
             # The Node wrapper already normalizes XML and injects CJK fonts.
             # OOXML editing packs directly to preserve untouched source parts.
-            shutil.copy2(staging, pptx)
+            replace_build(staging, pptx)
             for suffix in (".registry-report.json", ".layout-report.json"):
                 sidecar = Path(str(staging) + suffix)
                 if sidecar.is_file():
@@ -406,12 +508,25 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         manifest["render"]["seconds"] = round(time.monotonic() - render_start, 3)
         if len(manifest["render"]["pages"]) != checked["content"]["actual_slide_count"]:
             raise ProductionError("rendered page count differs from the PPTX")
+        manifest.pop("last_error", None)
         save(work, manifest, "qa")
+        changed_pages = [index for index, page in enumerate(manifest["render"]["pages"], 1)
+                         if index > len(previous_pages) or page["sha256"] != previous_pages[index - 1]["sha256"]]
+        previous_paths = {item["path"]: item for item in previous_inputs}
+        new_paths = {item["path"]: item for item in manifest["build"]["authoring_inputs"]}
+        source_changes = [path for path in previous_paths.keys() | new_paths.keys()
+                          if previous_paths.get(path) != new_paths.get(path)]
+        shared_changed = bool(previous_inputs) and any(not re.match(r"p\d+-", Path(path).name)
+                                                       for path in source_changes)
+        if shared_changed:
+            changed_pages = list(range(1, len(manifest["render"]["pages"]) + 1))
         return {"ok": checked["ok"], "action": "inspect_and_fix" if not checked["ok"] else "inspect_previews",
                 "previews": manifest["render"], "check_report": manifest["check"]["report"],
                 "technical_checks": checked["check_scope"], "geometry": checked["geometry"],
                 "review_required": checked["review_required"],
                 "asset_placeholders": checked["assets"]["placeholders"],
+                "changed_pages": changed_pages, "shared_source_changed": shared_changed,
+                "check_summary": check_summary(checked),
                 "must_convey": checked["must_convey"], "semantic_verification": "main-session-self-check"}
     except (ProductionError, OSError, ValueError) as exc:
         manifest["last_error"] = str(exc)
@@ -451,9 +566,30 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
     if (report.get("geometry") or {}).get("performed") and not current(report["geometry"].get("report")):
         raise ProductionError("current geometry report is required before delivery")
     spec = load_slide_spec(Path(manifest["slide_spec"]["path"]))
+    note = getattr(args, "review_note", None)
+    if note is not None:
+        if not note.strip():
+            raise ProductionError("review_note must describe the author's actual inspection and findings")
+        manifest["author_review"] = {
+            "note": note.strip(), "kind": "author-self-report", "independent": False,
+            "pptx": manifest["build"]["pptx"], "pages": rendered["pages"],
+            "slide_spec": manifest["slide_spec"],
+        }
+    if review_current(manifest.get("author_review"), manifest):
+        report["author_review"] = manifest["author_review"]
+    else:
+        report.pop("author_review", None)
+    report.setdefault("check_scope", {"kind": "technical-checks", "visual_quality_verified": False})
+    report["check_scope"]["author_review_status"] = "recorded-current" if report.get("author_review") else "unrecorded"
+    report["check_scope"]["semantic_verification"] = "author-self-report" if report.get("author_review") else "author-self-check-unrecorded"
+    write(Path(checked["report"]["path"]), report)
+    checked["report"] = bind(Path(checked["report"]["path"]))
     meta = spec.get("meta") or {}
     selected = set(meta.get("deliverables") or meta.get("export_formats") or ["pptx"])
-    output = work.parent.parent
+    output = Path(manifest.get("delivery_dir") or work.parent.parent)
+    if manifest.get("delivery_dir") and output != delivery_directory(work, meta):
+        raise ProductionError("delivery directory changed after planning")
+    output.mkdir(parents=True, exist_ok=True)
     prefix = str(meta.get("output_prefix") or work.name)
     if Path(prefix).name != prefix or any(char in prefix for char in "/\\") or prefix.startswith("."):
         raise ProductionError("output_prefix must be a plain filename prefix")
@@ -463,12 +599,17 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         summary = work / "change-summary.md"
         if not summary.is_file() or not summary.read_text(encoding="utf-8").strip():
             raise ProductionError("editing needs change-summary.md")
+    titles = {}
+    if spec.get("schema_version") == "2.1" and manifest["mode"] != "edit_ooxml" and checked.get("presentation_copy"):
+        copy = load(Path(checked["presentation_copy"]["path"]))
+        titles = {entry["slide"]: " ".join(str(entry.get("headline") or "").splitlines()).strip()
+                  for entry in copy.get("slides", [])}
     if selected & support.SUPPORTED:
         import pptx_actual_content_check as content
         notes = (support.actual_speaker_notes(spec, None, pptx)
                  if selected & {"full-script", "teleprompter"}
                  else content.extract_pptx_notes(pptx))
-        data = support.with_actual_speaker_notes(spec, notes)
+        data = support.with_actual_speaker_notes(spec, notes, titles)
         renderers = {"speaker-notes": ("speaker-notes.md", support.speaker_notes_markdown),
                      "full-script": ("full-script.md", support.full_script_markdown),
                      "teleprompter": ("teleprompter.html", support.teleprompter_html),
@@ -482,7 +623,6 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
             destination.write_text(text, encoding="utf-8")
             published[name] = bind(destination)
     copies = {"pptx": pptx, "pdf": Path(rendered["pdf"]["path"]),
-              "preview": Path(rendered["contact_sheet"]["path"]),
               "contact-sheet": Path(rendered["contact_sheet"]["path"]),
               "slide-spec": Path(manifest["slide_spec"]["path"]),
               "quality-report": Path(checked["report"]["path"])}
@@ -494,9 +634,25 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
             raise ProductionError("delivery must preserve the source deck")
         shutil.copy2(source, destination)
         published[name] = bind(destination)
+    if "preview" in selected:
+        directory = output / f"{prefix}-slides"
+        directory.mkdir(exist_ok=True)
+        pages = []
+        for index, page in enumerate(rendered["pages"], 1):
+            destination = directory / f"slide-{index:02}.png"
+            shutil.copy2(page["path"], destination)
+            pages.append(bind(destination))
+        for stale in directory.glob("slide-*.png"):
+            if str(stale.resolve()) not in {item["path"] for item in pages}:
+                stale.unlink()
+        index_path = output / f"{prefix}-preview.json"
+        write(index_path, {"pptx_sha256": rendered["pptx_sha256"], "pages": pages})
+        published["preview"] = {**bind(index_path), "pages": pages}
     if "outline" in selected:
+        import pptx_actual_content_check as content
+
         path = output / f"{prefix}-outline.md"
-        path.write_text("\n\n".join(f"## {slide['id']}. {slide['title']}\n\n{slide.get('claim', '')}" for slide in spec["slides"]) + "\n", encoding="utf-8")
+        path.write_text(final_outline(spec, content.extract_pptx_text(pptx), titles), encoding="utf-8")
         published["outline"] = bind(path)
     if "revision-manifest" in selected:
         path = output / f"{prefix}-revision-manifest.json"
@@ -509,9 +665,13 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         shutil.copy2(summary, destination)
         published["change-summary"] = bind(destination)
     manifest["published"] = published
+    health = publication_health(published)
+    if not health["ok"]:
+        raise ProductionError("delivery bindings are not current: " + json.dumps(health, ensure_ascii=False))
     save(work, manifest, "complete")
     return {"ok": True, "state": "complete", "outputs": published,
-            "semantic_verification": "main-session-self-check"}
+            "semantic_verification": report["check_scope"]["semantic_verification"],
+            "author_review_status": report["check_scope"]["author_review_status"]}
 
 
 def main() -> int:
@@ -528,10 +688,12 @@ def main() -> int:
     for name, handler in (("run", run), ("complete", complete)):
         command = commands.add_parser(name)
         command.add_argument("--work-dir", type=Path, required=True)
+        if name == "complete":
+            command.add_argument("--review-note", help="Record actual author inspection/findings in the existing quality report; not independent verification")
         command.set_defaults(handler=handler)
-    status = commands.add_parser("status", help="read any manifest without migrating it")
-    status.add_argument("--work-dir", type=Path, required=True)
-    status.set_defaults(handler=lambda args: load(args.work_dir / "build-manifest.json"))
+    inspection = commands.add_parser("status", help="read current reports and delivery health without building")
+    inspection.add_argument("--work-dir", type=Path, required=True)
+    inspection.set_defaults(handler=status)
     args = parser.parse_args()
     try:
         result = args.handler(args)

@@ -6,6 +6,12 @@ from shared.handoff_validation import handoff_errors
 
 
 class HandoffValidationTests(unittest.TestCase):
+    def test_delivery_directory_must_survive_handoff(self):
+        brief = {'output_dir': 'outputs/independent'}
+        self.assertEqual([], handoff_errors(brief, {'meta': dict(brief)}))
+        for meta in ({}, {'output_dir': 'outputs/other'}):
+            self.assertIn('.meta.output_dir', {item['path'] for item in handoff_errors(brief, {'meta': meta})})
+
     def test_matching_handoff_passes(self) -> None:
         brief = {
             "topic": "AI literacy",

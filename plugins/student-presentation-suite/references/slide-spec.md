@@ -221,3 +221,17 @@ evidence map. The research skill maintains its own runtime-generated researcher 
 ledger entries also trigger this requirement even if scope was omitted. C is only
 for decks that need no external facts. Source-deck mode is derived from source_deck
 and edit_intent; a PDF/image source is rebuilt, never silently treated as create.
+
+## Delivery directory
+
+New production accepts `meta.output_dir` inside the active project outputs tree (project-relative or absolute); omit it for `outputs/<work-id>`. The plan freezes this destination. Preview means all final slide PNGs plus their binding index; contact-sheet is the separate overview. The tools own export and status bindings; do not move exported artifacts after complete.
+
+## Numeric association in 2.1
+
+`semantic_requirements.fact_bindings` optionally protects a metric together with its exact value/unit. Use this for important numeric facts whose labels could be swapped; preserve original units and scope. It is not a general semantic or arithmetic verifier. Existing 2.1 records remain valid without it. In new numeric tasks, choose supported stable labels and record bindings where the facts will be shown in text; independently check values in native charts and other visuals.
+
+```json
+{"must_convey":[{"id":"participants","text":"参与人数233人"}],"must_show_exact":["233"],"fact_bindings":[{"id":"participants","label":"参与人数","value":"233","unit":"人"}]}
+```
+
+Each binding has a unique page-local `id`, nonempty `label`, numeric string `value`, optional `unit` and optional exact `context` (e.g. date/population). One actual OOXML text object or named adjacent text line must contain `label[:]? value unit` or `value unit label`; line wrapping is allowed. Context must occur in that same block. Separate arbitrary boxes/table cells are never concatenated to pass. A native editable rich-text object can style its label and value separately; the optional `metric` helper demonstrates it. Do not freeze an entire explanatory sentence merely to check a number. The bridge and scaffold preserve these bindings, and readback reports `fact_binding_missing_or_changed` on mismatch. Empty bindings do not certify semantic correspondence.

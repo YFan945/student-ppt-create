@@ -73,6 +73,16 @@ console.log(JSON.stringify(registry.analyzeDeck()));
         self.assertFalse(report["ok"])
         self.assertIn("out_of_canvas", {item["code"] for item in report["errors"]})
 
+    def test_explicit_decorative_bleed_does_not_relax_content_boundaries(self) -> None:
+        background = self.run_registry(
+            "registry.shape(1, {x:-1,y:0,w:3,h:3,decorative:true,bleed:true});"
+        )
+        self.assertTrue(background['ok'])
+        for kind in ('text', 'image'):
+            call = "registry.text(1,'important'," if kind == 'text' else 'registry.image(1,'
+            report = self.run_registry(call + '{x:-1,y:0,w:3,h:3,decorative:true,bleed:true});')
+            self.assertIn('out_of_canvas', {item['code'] for item in report['errors']})
+
     def test_actual_element_registry_blocks_text_overlap(self) -> None:
         report = self.run_registry(
             "registry.text(1, 'Primary claim', {x: 1.0, y: 1.0, w: 3.0, h: 1.0, fontSize: 24});"

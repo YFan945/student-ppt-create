@@ -929,15 +929,26 @@ function addPositionedText(slide, text, box, tokens, lang, role, options = {}) {
     throw new RangeError(`text_overflow: ${fit.requiredH}in required in ${box.w}x${box.h}in`);
   fit.lineGeometry.forEach((line, index) => {
     let x = line.x;
-    line.fragments.forEach((fragment) => {
+    const ascents = line.fragments.map((fragment) => {
+      const font = require('./pptx-text-layout.js').resolveFont(
+        fragment.fontFace,
+        Boolean(fragment.options.bold),
+        Boolean(fragment.options.italic),
+      );
+      return ((font.ascent / font.unitsPerEm) * fragment.fontSize) / 72;
+    });
+    const baseline = Math.max(...ascents);
+    line.fragments.forEach((fragment, fragmentIndex) => {
+      const y = line.y + baseline - ascents[fragmentIndex];
+      const h = Math.min(line.h - (y - line.y), (fragment.fontSize * LINE_SPACING_FACTOR) / 72);
       slide.addText(fragment.text, {
         ...options,
         color: options.color || color(tokens, options.colorRole || 'primary_text'),
         ...fragment.options,
         x,
-        y: line.y,
+        y,
         w: fragment.w + 0.01,
-        h: line.h,
+        h,
         fontFace: fragment.fontFace,
         fontSize: fragment.fontSize,
         margin: 0,
@@ -950,7 +961,7 @@ function addPositionedText(slide, text, box, tokens, lang, role, options = {}) {
         logicalBox: { x: box.x, y: box.y, w: box.w, h: box.h },
         _textLayout: {
           sourceText: fragment.text,
-          lineGeometry: [{ ...line, x, w: fragment.w }],
+          lineGeometry: [{ ...line, x, y, h, w: fragment.w }],
           substitutions: fit.substitutions,
         },
       });
@@ -1592,7 +1603,39 @@ module.exports = {
  * has to rediscover runtime limits by trial (2026-09-17 live session:
  * series-level line.width/dashType turned out to be ignored on line charts).
  */
-function describeApi() {
+function describeApi(functionName) {
+  const guidance = {
+    addFittedText: {
+      description:
+        'Write measured editable text at the author-selected size; overflow reports required region. Returns the slide.',
+      example:
+        "H.addFittedText(slide, [{text:'入口：'}, {text:'科研信息汇总',options:{bold:true,color:'2563EB'}}], {x:.6,y:1,w:8,h:1}, tokens, 'chinese', 'body', {fontSize:22,margin:0});",
+      options:
+        'fontSize, fontFace, cjkFontFace, color, bold, align, margin; per-run options preserve inline emphasis. No automatic font reduction for model-led pages.',
+    },
+    addPositionedText: {
+      description:
+        'Place measured language fragments explicitly when a viewer changes mixed-text spacing; retains logical text for readback.',
+      example:
+        "H.addPositionedText(slide,'样本量 233 人',{x:.6,y:1,w:8,h:1},tokens,'chinese','body',{fontSize:22});",
+    },
+    addPlannedImage: {
+      description:
+        'Use an existing image with real dimensions. Evidence is contained by default; explicit crop must preserve protected regions.',
+      example:
+        "H.addPlannedImage(slide,{path:'figure.png',width:1200,height:800},{x:5,y:1,w:4,h:3},pptx);",
+    },
+    fitText: {
+      description:
+        'Measure without drawing. Returns fits, requiredH, lines and lineGeometry. Expand the region or reorganize content on failure.',
+      example:
+        "H.fitText('科研信息汇总',{x:.6,y:1,w:4,h:1},H.rolePolicy(tokens,'chinese','body',{fontSize:22}));",
+    },
+    rolePolicy: {
+      description:
+        'Resolve explicit font choices and size into a measured policy; body/title are semantic aliases, not mandated page regions.',
+    },
+  };
   const entries = [];
   for (const [name, value] of Object.entries(module.exports)) {
     if (typeof value === 'function') {
@@ -1600,15 +1643,43 @@ function describeApi() {
         .split('\n')[0]
         .replace(/\s*\{$/, '')
         .trim();
-      entries.push({ name, kind: 'function', signature: head, arity: value.length });
+      entries.push({
+        name,
+        kind: 'function',
+        signature: head,
+        arity: value.length,
+        ...guidance[name],
+      });
     } else {
       entries.push({ name, kind: 'constant', value });
     }
   }
+  if (functionName) {
+    const entry = entries.find((item) => item.name === functionName);
+    if (!entry) throw new RangeError(`Unknown helper: ${functionName}`);
+    return {
+      entries: [entry],
+      authoringGuide: 'skills/sp-deck/references/authoring-quickstart.md',
+    };
+  }
   const pptx = new _pptxgen();
   const chartTypes = pptx.ChartType ? Object.keys(pptx.ChartType) : [];
   const shapeTypes = _shapeType ? Object.keys(_shapeType) : [];
+  const primary = [
+    'addFittedText',
+    'fitText',
+    'rolePolicy',
+    'addPositionedText',
+    'addPlannedImage',
+  ];
+  entries.sort((a, b) => {
+    const rank = (entry) =>
+      primary.includes(entry.name) ? primary.indexOf(entry.name) : primary.length;
+    return rank(a) - rank(b);
+  });
   return {
+    authoringGuide: 'skills/sp-deck/references/authoring-quickstart.md',
+    entries,
     canvas: { slideWIn: SLIDE_W_IN, slideHIn: SLIDE_H_IN },
     safeTitleFonts: SAFE_TITLE_FONTS,
     safeBodyFonts: SAFE_BODY_FONTS,
@@ -1631,14 +1702,16 @@ function describeApi() {
       'stacked charts allow dataLabelPosition ctr/inEnd/inBase only; outEnd corrupts the file',
       'chart axis/legend/title colors are palette-bound in pptx-visuals chart options; never hand-patch per chart',
     ],
-    entries,
   };
 }
 
 if (require.main === module) {
   const argv = process.argv.slice(2);
   if (argv.includes('--describe')) {
-    process.stdout.write(`${JSON.stringify(describeApi(), null, 2)}\n`);
+    const selected = argv.indexOf('--function');
+    process.stdout.write(
+      `${JSON.stringify(describeApi(selected >= 0 ? argv[selected + 1] : undefined), null, 2)}\n`,
+    );
   } else {
     process.stdout.write('Usage: node scripts/pptx-helpers.js --describe\n');
     process.exit(argv.length ? 2 : 0);

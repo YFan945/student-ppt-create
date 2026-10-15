@@ -373,7 +373,7 @@ def _source_rail_js(work_dir: Path) -> str:
 def write_if_scaffoldable(path: Path, contents: str) -> bool:
     if path.is_file():
         existing = path.read_text(encoding="utf-8")
-        if SCAFFOLD_MARKER not in existing:
+        if SCAFFOLD_MARKER not in existing or (PAGE_NAME_RE.match(path.name) and authored_function(existing)):
             return False
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(contents, encoding="utf-8")
@@ -536,11 +536,23 @@ def scaffold_generator(
 
 
 def scaffolded_pages(files: list[Path]) -> list[str]:
-    """Page modules that still carry the stub marker, i.e. never implemented."""
+    """Fast detection of empty stubs; provenance comments do not undo authoring."""
     return [
         path.name for path in files
         if SCAFFOLD_MARKER in path.read_text(encoding="utf-8")
+        and not authored_function(path.read_text(encoding="utf-8"))
     ]
+
+
+def authored_function(text: str) -> bool:
+    cleaned = re.sub(r"/\*[\s\S]*?\*/|//[^\n]*", "", text)
+    match = re.search(r"module\.exports\s*=\s*function(?:\s+[\w$]+)?\s*\([^)]*\)\s*\{([\s\S]*?)\}", cleaned)
+    if match:
+        return bool(match.group(1).strip())
+    arrow = re.search(r"module\.exports\s*=\s*(?:\([^)]*\)|[\w$]+)\s*=>\s*([\s\S]+)", cleaned)
+    if arrow:
+        return not re.match(r"\{\s*\}\s*;", arrow.group(1))
+    return False
 
 
 def assert_page_split(entry: Path, spec_path: Path) -> None:
@@ -572,8 +584,8 @@ def assert_page_split(entry: Path, spec_path: Path) -> None:
     unimplemented = scaffolded_pages(files)
     if unimplemented:
         raise ValueError(
-            "pages/ still contain the scaffold marker — those pages were never implemented: "
+            "pages/ still contain empty or legacy scaffold stubs: "
             + ", ".join(unimplemented)
-            + ". Implement each page and delete the marker comment before building; "
+            + ". Implement each page function (or finish the legacy declaration) before building; "
             "a stub-only deck must not reach build, render or QA."
         )

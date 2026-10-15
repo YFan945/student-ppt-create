@@ -32,6 +32,7 @@ def handoff_errors(brief: Any, spec: Any) -> list[dict[str, str]]:
         "visual_style": "visual_style",
         "image_source": "image_source",
         "output_prefix": "output_prefix",
+        "output_dir": "output_dir",
     }
     if spec.get("schema_version") == "2.1" or "design_freedom" in meta:
         scalar_map.update({"brand": "brand", "logo": "logo", "template": "template"})

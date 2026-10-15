@@ -1,5 +1,7 @@
 # PptxGenJS Helper API（`scripts/pptx-helpers.js`）
 
+For routine page creation start with [authoring quickstart](authoring-quickstart.md). Filter live help with `--describe --function addFittedText` to get behavior and a correct example.
+
 For new tasks follow [model-led design](../../../references/model-led-design.md).
 New `fitText` uses
 fontkit through the measured role policy. `addPositionedText` controls mixed

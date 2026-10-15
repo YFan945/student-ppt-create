@@ -1,0 +1,9 @@
+{
+  "kind": "same-material-examples",
+  "scope": "Synthetic teaching examples, not real-model quality measurements or mandatory layouts.",
+  "cases": [
+    {"id": "mechanism", "question": "How does material become a traceable relationship?", "learn": "Compare inputs, operations and retained evidence along a directional process.", "avoid": "Do not invent a process or copy the example's column count.", "source": "paired-pages.js facts.mechanism", "pages": [1, 2]},
+    {"id": "data", "question": "How do comparable measurements differ under the same conditions?", "learn": "Use a zero-based native chart, exact values and nearby interpretation.", "avoid": "Independent counts with different units are not this comparison. Do not infer causality.", "source": "paired-pages.js facts.data", "pages": [3, 4]},
+    {"id": "evidence", "question": "Where does the image support the explanation?", "learn": "Enlarge the relevant image and anchor numbered explanations to actual regions.", "avoid": "The supplied interface is a synthetic diagram, not a product screenshot or field evidence.", "source": "render_visual_cases.py interface fixture and paired-pages.js facts.evidence", "pages": [5, 6]}
+  ]
+}

@@ -65,3 +65,15 @@ Historical manifests remain readable through `status`. They are not silently mig
 - [Image sourcing](references/image-sourcing.md)
 - [Research workflow](references/research-workflow.md)
 - [Development and validation](AGENTS.md)
+
+New plans support `meta.output_dir` inside project outputs, defaulting to `outputs/<work-id>`. Preview exports all slide PNGs and a binding index; contact-sheet exports the overview. `status` reads current checks and delivery health without rebuilding. The [authoring quickstart](skills/sp-deck/references/authoring-quickstart.md) provides normal page APIs; [content-to-visual guidance](references/content-to-visual.md) covers substantive visual expression without layout quotas.
+
+Planning methods and cross-page progression are owned by [slide structures](skills/sp-outline/references/slide-structures.md); direct audience-facing language is owned by [shared standards](references/shared-standards.md).
+
+Final outlines use readable artifact content. Optional author inspection notes and their current/stale status are documented in [production](skills/sp-deck/references/main-session-production.md); configuration readiness and verified image-fetch history are distinguished by [image sourcing](references/image-sourcing.md).
+
+Content planning now includes substantive support and main-media choices before drawing. The existing quality report gives advisory registered-icon reuse and copy findings; approved image slots may show a generation prompt whose visibility is validated. See [content workflow](references/content-workflow.md), [visual organization](references/content-to-visual.md), and [image sourcing](references/image-sourcing.md) for the rules, without fixed density or layout quotas.
+
+### Visual audit repairs
+
+Current production protects opaque text occlusion and checks contrast on known solid surfaces, while explicitly leaving image/gradient cases for rendered inspection. Optional Slide Spec 2.1 metric bindings keep labels, values and units together. Intake uses one complete summary, optional Brief reuse and run-based repair. Full same-material visual examples and relationship tools support authoring without layout quotas or new aesthetic gates. See the owning intake, Slide Spec, authoring quickstart and visual-examples references.

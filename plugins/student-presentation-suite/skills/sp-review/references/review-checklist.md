@@ -32,14 +32,16 @@ Check:
 - the deck has a clear story arc
 - the opening explains why the topic matters
 - each section connects to the next
-- every slide has one main message
+- each page has a coherent purpose; supporting claims may be grouped when they answer the same section question
 - the conclusion restates the main finding or lesson
 - Q&A or thank-you ending is suitable for the presentation type
 - repeated claims/pages are merged or clearly differentiated
+- the selected decomposition fits the task (see ../../sp-outline/references/slide-structures.md); overview, detail, evidence and synthesis have different jobs
+- each page adds supported information or a useful relationship; review non-adjacent repetition as well as neighboring pages
 - method/evidence appears before supported conclusions unless an intentional executive-summary opening is used
 - transitions explain the relationship between sections
 
-Defense decks should include:
+For defense decks, check the applicable audience/rubric requirements; these are possible information needs, not mandatory separate pages:
 - background
 - objective or research question
 - method, design, or work process
@@ -52,7 +54,7 @@ Defense decks should include:
 
 Check:
 - title form fits the page function: direct subject titles for explanation/setup, supported takeaways for findings, descriptive titles for cover/divider/reference pages; no mandatory second conclusion band
-- body text is short enough to present
+- visible text is readable and organized for selective explanation; notes fit the speaking path without removing needed slide evidence
 - useful evidence and supporting detail remain visible where needed
 - data slides communicate the supported interpretation through title, annotations or nearby explanation without requiring a repeated conclusion sentence
 - examples connect to the main argument
@@ -174,9 +176,9 @@ If the user provides a rubric:
 ## Slide Spec Vs Actual
 
 When a Slide Spec YAML is provided with a deck:
-- compare planned title, layout, content, visual purpose, timing, and owner with the actual slide
+- compare frozen facts, core information, visual purpose, timing and owner with the actual slide; respect legacy explicit copy/layout controls
 - flag lost design intent, missing visuals, changed claims, or timing drift
-- treat differences as risks unless the actual slide is clearly better
+- new 2.1 titles and compositions may be rewritten while preserving requirements; flag lost meaning or evidence, not stylistic difference alone
 
 ## Before/After Diff Review
 
@@ -196,10 +198,18 @@ For `.pptx` files, run `python "${CLAUDE_PLUGIN_ROOT}/skills/sp-review/scripts/p
 - paragraph-heavy text
 - excessive color complexity
 
-Use `--strict` only for automated validation where a failed scan should fail the step. Treat script output as risk evidence, not absolute proof. `font-size-not-explicit` often means the script could not resolve inherited theme or master styles, not that the deck is definitely unreadable. True overflow and projection readability still need rendered previews or manual inspection.
+Use `--strict` to fail on unreadable or corrupt input; static risk findings remain warnings. Treat script output as risk evidence, not absolute proof. `font-size-not-explicit` often means the script could not resolve inherited theme or master styles, not that the deck is definitely unreadable. True overflow and projection readability still need rendered previews or manual inspection.
 
 ## Suggested Output
 
 Use `review-output-format.md` as the single source for the four-field `review_findings`
 contract, examples, edit plan, and change-summary handoff. This checklist only determines
 what to inspect and how to classify the evidence.
+
+## Reference richness and factual scope
+
+Use ../../../references/content-to-visual.md to compare visible evidence, subject objects, relationships and module support with user preferences. Equal columns or conclusion bands are not defects by themselves; identify mechanical repetition or thin content on a specific page. Review notes for unsupported superlatives, guarantees and causal claims. Reduced renders do not prove real projection or another viewer.
+
+For loose or empty pages, identify the actual weak grouping, missing support, undersized subject, misplaced labels or unnecessary gap; apply the spatial repair guidance in content-to-visual.md. Read shared-standards.md for direct expression: diagnose defensive self-positioning in titles, body, captions and notes by its purpose, not a blanket keyword ban.
+
+Check primary media and substantive supporting groups before praising cleanliness. A glyph added to each one-sentence card is still thin support. Inspect deck-wide icon repetition and body composition separately from consistent fonts/colors/navigation. Read expression_findings when present; unregistered icons and layout variation require visual inspection. For approved prompt placeholders, check the prompt is usable and visible in the image region; do not treat it as a generated or factual image.

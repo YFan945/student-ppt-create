@@ -39,6 +39,13 @@ def validate_assets(data: dict[str, Any], directory: Path, slide_texts: list[str
                 label = "".join(intended["label"].split())
                 if number > len(slide_texts) or label not in "".join(slide_texts[number - 1].split()):
                     errors.append({"path": prefix, "message": "placeholder label must be visible on its declared slide"})
+            if intended.get("prompt_visible"):
+                prompt = "".join(str(asset.get("prompt") or "").split())
+                if not prompt:
+                    errors.append({"path": prefix, "message": "visible image prompt must be substantive"})
+                elif slide_texts is not None and (asset["slide"] > len(slide_texts)
+                        or prompt not in "".join(slide_texts[asset["slide"] - 1].split())):
+                    errors.append({"path": prefix, "message": "image prompt must be visible on its declared slide"})
         raw = asset.get("path")
         if raw:
             path = Path(raw).expanduser()

@@ -386,6 +386,11 @@
             "guided",
             "deterministic"
           ]
+        },
+        "output_dir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Delivery directory inside the active project outputs tree; relative paths are project-relative. New plans default to outputs/<work-id>."
         }
       },
       "allOf": [
@@ -890,6 +895,40 @@
                 "items": {
                   "type": "string",
                   "minLength": 1
+                }
+              },
+              "fact_bindings": {
+                "type": "array",
+                "description": "Optional explicit metric/value/unit bindings in one actual text object or named adjacent line. No automatic semantic inference.",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "label",
+                    "value"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "value": {
+                      "type": "string",
+                      "pattern": "^[+-]?(?:\\d{1,3}(?:,\\d{3})+|\\d+)(?:\\.\\d+)?[%％]?$"
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "context": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
                 }
               }
             }

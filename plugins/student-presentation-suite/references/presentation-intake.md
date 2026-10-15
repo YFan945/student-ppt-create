@@ -1,322 +1,74 @@
 # Presentation Intake
 
-## New-task policy (2.1)
+This file owns clarification, the Production Summary and intake state. For new 2.1 tasks, model-led-design.md owns visual freedom; actual user constraints remain binding. Reuse supplied materials and confirmed choices.
 
-For new tasks, [model-led-design.md](model-led-design.md) owns design modes, frozen semantic
-requirements and measured text. Its policy overrides legacy template/scale/
-verbatim-copy guidance below. `auto` is the default; user brand/template/logo
-and actual readability remain binding. Treat fixed sizes, proportions and
-gallery treatments here as optional design suggestions for new tasks.
+## Intake modes
 
+- PPTX creation/editing: inspect material, resolve consequential gaps, show one complete Production Summary and obtain approval before production.
+- Outline-only: clarify only missing decisions affecting content, evidence or speaking requirements; state reasonable assumptions for optional preferences.
+- Review-only: inspect the supplied artifact without modifying it; ask only for missing context that materially changes the diagnosis.
+- Beginner explains recommendations; expert keeps them short. Neither mode adds mandatory preference questionnaires.
 
-This is the canonical intake contract for student presentation work. Reuse facts
-already supplied by the user, attached materials, an existing deck, or Slide
-Spec meta. Never ask for a confirmed item again.
+## Resolve the brief
 
-## Intake Modes
+Separate current instructions from pasted historical tool logs. Read supplied files first: identify missing facts, conflicting versions, usable images, template requirements and output expectations. Historical environment checks are not current evidence.
 
-- PPTX creation or existing-deck editing: full intake is a hard gate.
-- Outline-only planning: ask only for missing items that materially change the
-  story, timing, evidence, or ownership; low-risk preferences may be stated as
-  assumptions.
-- Review-only work: proceed when the artifact is readable; ask only for missing
-  duration, presentation type, group format, or rubric when it materially
-  changes the review.
+Ask only about unresolved decisions that change correctness, scope, permissions or the requested result. Group related choices in a small AskUserQuestion batch; do not ask one question for every schema field. Optional preferences may be reasonable stated assumptions in the summary. Do not re-ask authorized choices. If the user says “你决定/按推荐来”, complete remaining preferences yourself and present the full summary for approval.
 
-Use `presentation-brief.md` for scenario classification, audience depth,
-interaction mode, quality level, structure mode, and generation controls.
-`beginner` mode explains recommendations; `expert` mode asks only unresolved
-high-impact decisions. Both modes keep the full PPTX confirmation gate.
+The summary must cover these controls, using concise grouped prose or rows:
 
-## Full PPTX Intake
+| Controls | Recommendation when absent |
+| --- | --- |
+| Topic, course/context, presentation type, scenario, rubric/required sections | Restate the actual topic and course; undergraduate coursework only when consistent with the request; no invented rubric |
+| Audience, audience depth, language | Teacher/classmates, standard, user's language |
+| Duration, slide count | Propose a material-appropriate scope; 5 minutes and 7–9 pages are suggestions, never automatic caps |
+| Individual/group, members and ownership | Individual unless members are named |
+| Source material, research scope, sources/citations | User material and authorized evidence; Classroom citation style unless otherwise needed |
+| Source deck, edit intent, preserve | New deck → create; editable source → edit_ooxml; explicit rebuild or non-PPTX → rebuild_from_source; preserve the original |
+| Template, branding/logo, visual direction | Reuse supplied requirements; propose one content-fit direction when delegated |
+| Image strategy, permissions, unavailable assets/placeholders | hybrid-adaptive: inspect local assets and actual available tools; retain explicit prohibitions; ask about designed placeholders only when not already authorized |
+| Content and speaking plan | Substantive visible explanation with selective speaking notes; no default word/Chinese-character cap |
+| Structure, interaction and quality | Structure from material; beginner guidance; fast unless requested quality calls for standard/rigorous |
+| Deliverables, output_dir/output_prefix, export/versioning | PPTX only by default; outputs/<work-id>; preserve source/version for edits; add change-summary for edits |
 
-Confirm every item before production:
+Map these controls to the existing Slide Spec meta fields; use top-level source_deck, edit_intent, preserve, review_findings and change_summary_required for edits. Only write max_words_per_slide/max_chinese_chars_per_slide when expressly requested. Quality actions are owned by presentation-brief.md, not additional production stages.
 
-| Item | Recommended value when missing | Why it matters |
-| --- | --- | --- |
-| Topic | Restate the user's topic as one focused sentence | Defines the story and slide claims |
-| Course/context | General undergraduate classroom report | Controls terminology and academic framing |
-| Presentation type | Coursework report | Determines required sections |
-| Audience | Teacher and classmates | Controls explanation depth |
-| Scenario | Coursework | Selects scoring and story defaults |
-| Audience depth | Standard | Controls terminology and explanation |
-| Language | Follow the user's language | Controls slide and note language |
-| Duration | 5 minutes | Controls scope and timing |
-| Slide count | 7-9 slides for 5 minutes | Controls density |
-| Format | Individual unless members are named | Controls ownership and handoffs |
-| Rubric/required sections | No supplied rubric; use standard academic structure | Controls scoring priorities |
-| Source material | User material plus stable general background | Controls evidence boundaries |
-| Template/branding | No required template, logo, or brand | Controls layout constraints |
-| Source deck (新建/改进) | No existing deck → create new | Decides `production_mode`: an editable `.pptx`/`.potx` source → `edit_ooxml`; a corrupt source or non-PPTX (PDF/preview) → `rebuild_from_source`; otherwise `create` |
-| Edit intent | None (new deck) | For improvements: `incremental` / `rebuild-clean-copy` / `fix-specific`; `rebuild-clean-copy` overrides the edit_ooxml default |
-| Image strategy | `hybrid-adaptive`：先核对用户素材、可用能力与已获授权，积极制作图片及可编辑图表；素材不足时推荐有设计、可替换的占位图并纳入摘要确认，明确禁止时不使用 | Controls sourcing and production |
-| Visual style | Recommend three topic-fit styles; choose one only after confirmation | Controls visual direction |
-| Deliverables | PPTX only; speaker notes, preview, contact sheet, PDF, and full script appear only when the user selects them; add change summary for edits | Controls completion criteria |
-| Interaction/quality mode | Beginner + fast | Controls guidance, evidence, and rehearsal depth |
-| Structure mode | Scenario default | Controls the narrative spine |
-| Content controls | 按内容与完整渲染决定可读的信息密度、图文关系与字号；字数限制仅记录用户明确要求，notes on | Controls density and output layers |
-| Citation/export/versioning | Classroom citations; requested local exports; versioning on for edits | Controls traceability and rollback |
+## Visual direction and image capability
 
-`quality_level` records the desired care. Canonical tiers are
-`fast` / `standard` / `rigorous` (`Basic` and `High-score` are legacy aliases
-for `fast` and `rigorous`). All tiers use main-session authoring and self-check;
-they do not add calibration, page agents or visual scoring stages. Rigorous work
-spends more care on evidence and audience questions. Preserve the confirmed choice.
+A style name provides palette/font-family guidance, not page composition. Reuse reference decks and user wording. If a visual choice is genuinely unresolved, present a few relevant directions with their concrete differences. The optional style menu groups 学术与专业类、商务与科技类、创意与人文类; do not force category and subtype rounds. Exact names come from design-tokens.json. Use Other with visual_style_custom when appropriate; describe actual style_character/palette, not unused background or SVG recipes.
 
-### Deliverables vs. pipeline evidence
+Before promising imagery, inspect supplied files and available tool declarations. Missing image-sources.json means acquisition is undeclared, not user refusal. Follow image-sourcing.md to record an available authorized provider; do not make paid/network test calls merely to fill an intake field. An unavailable tool cannot be offered as ready. No-web does not by itself forbid supplied images or already authorized concept generation. Rich native diagrams remain an option, not an automatic substitute for every missing photo.
 
-`deliverables` is the **user-confirmed** set and nothing else. Two neighbors are
-routinely confused with it and must stay separate:
-
-- **Pipeline evidence** — rendered pages, the contact sheet, and the
-  package/readback reports. Tools write these into the work directory so the
-  main author can inspect concrete artifact problems.
-  They are **not** implied deliverables: never list them in the Production
-  Summary as "will be delivered" unless the user actually selected `preview`,
-  `contact-sheet`, or `quality-report`.
-- **Embedded speaker notes** — Slide Spec `meta.include_speaker_notes` puts the
-  script into the PPTX notes pane. It is independent of `deliverables`, so a
-  deck approved as "PPTX only" can still carry notes inside the file. Selecting
-  `speaker-notes` asks for an *additional* standalone `-speaker-notes.md`.
-
-When the user selects `pptx` and nothing else, the Production Summary says
-exactly that. Do not pad the list with defaults: before 0.14.x a missing value
-silently expanded to "PPTX, speaker notes, preview", which made the summary
-contradict the user's own choice and forced the deck to produce a script nobody
-asked for. If the deck needs a script for a 10-minute talk, raise it as a
-`调整方案` hint at the confirmation round — do not add it silently.
-
-If duration is known but slide count is not, recommend:
-
-- 3 minutes: 5-7 slides
-- 5 minutes: 7-9 slides
-- 8 minutes: 9-12 slides
-- 10 minutes: 10-14 slides
-- 15 minutes: 14-18 slides
-
-## Style preview at intake (opt-in, v0.19)
-
-When the user hesitates between style families ("哪个好看？"), offer **show, don't
-tell**: render 2-3 tiny preview decks and let them react to pixels, not
-adjectives. One command, no model tokens:
-
-```bash
-python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/style_previews.py" \
-  --topic "<确认的主题>" --styles <style-key-1> <style-key-2> <style-key-3> \
-  --out "${CLAUDE_PROJECT_DIR}/outputs/<topic>-style-previews" --json
-```
-
-- Each preview is a two-page information/evidence sample. The final presentation
-  is authored from its own material and does not inherit that sample layout.
-- Default trio is one style per category (modern-minimal / ocean-tech /
-  coral-energy); prefer content-informed picks per `pptx-art-direction.md` and
-  say in one line why each candidate was picked.
-- Opt-in only: it costs 2-3 renders and an extra user round, so do not run it
-  unprompted when the user already picked a style or when speed was requested.
-- Output PNGs + `style-previews.json` are intake evidence, not deliverables;
-  the confirmed Production Summary still owns the real content.
-
-## Required Interaction
-
-For an incomplete PPTX request, use `AskUserQuestion` to let the user select
-each unresolved field directly — one question per field, with recommended values
-as the first option. Do NOT list all fields in text and ask for a consolidated
-reply.
-
-### Interaction flow
-
-1. Extract all already-confirmed facts from the user's request; display them as
-   `✅ 已确认` in a short summary.
-2. Identify unresolved fields that have clear option sets. Batch them into
-   `AskUserQuestion` calls (max 4 questions per call, 2-4 options each).
-3. For each question, the first option is always the recommended value, labeled
-   with `（推荐）`. Include a one-line impact statement in each option's
-   `description`.
-4. After the user selects, move to the next batch of unresolved fields. Repeat
-   until all fields are resolved.
-5. If the user types “你决定”, “按推荐来”, or “use the recommendations” at any
-   point, stop asking and fill all remaining fields with recommended values.
-6. After all fields are resolved, show the complete `Production Summary` and ask
-   for final confirmation **via `AskUserQuestion`**（不要以纯文本收尾等待自由输入）。
-   Delegation does NOT itself move the state to `intake_confirmed`; approval of
-   the summary does. 确认选项固定为：
-   - `确认，开始制作（推荐）` → 批准摘要并进入生产
-   - `调整方案` → 修改页数/配色/内容后重新确认
-   - `更换视觉风格` → 回到风格选择（Round 3a）重新选
-   - `Other`（自由输入，例如"改为仅大纲"）
-   用户选中"确认"后，才调用 `confirm --work-id <work-id> --summary-file <summary>` 落 `intake_confirmed`。
-7. 任何一轮询问之后需要用户表态时，一律用 `AskUserQuestion` 继续，不要以纯文本
-   收尾中断会话。
-8. Do not run environment checks, generation scripts, rendering, or delivery
-   checks while the state is `intake_pending`.
-9. If a field has no natural option set (e.g. Topic, Course/context, Rubric),
-   use `AskUserQuestion` with `”Other”` as a free-text fallback, or ask inline.
-
-### Question batches (by priority)
-
-Batch fields so that the most impactful decisions come first. Typical grouping:
-
-**Round 1 — 场景与受众** (pick the ones that are unresolved):
-- `Presentation type` → options: Coursework report, Defense/答辩, Competition/竞赛, Club showcase, Research paper
-- `Scenario` → options from scenario classification table
-- `Audience` → options: Teacher + classmates, Non-specialists, Judges/Panel, Mixed
-- `Audience depth` → options: Introductory, Standard, Expert
-
-**Round 2 — 规模与格式**:
-- `Duration` → options: 3min (5-7页), 5min (7-9页), 8min (9-12页), 10min (10-14页), 15min (14-18页)
-- `Format` → options: Individual/个人, Group/小组 (2-4人), Group/小组 (5+人)
-- `Interaction mode` → options: Beginner/新手引导, Expert/专家模式
-
-`Quality level` 不再询问：默认 `fast/快速`（canonical 档位为 fast/standard/rigorous；
-用户明确要求高质量时升为 `rigorous`，`High-score`/`Basic` 是 `rigorous`/`fast` 的旧称，
-不要把默认档写成 High-score）。`Citation style` 不再询问：默认 `Classroom/课堂引用`，内容中不强调引用风格。
-
-**Round 3 — 视觉与素材**:
-
-引用内置风格名时先核对 `../../references/design-tokens.json`。六个角色提供基础配色，
-不是颜色数量上限；可按内容增加一致的语义分类色，用户品牌和真实渲染可读性优先。
-视觉风格与设计模式独立；选择预设也可使用 auto，预设不降低内容充实度或视觉完成度。
-用户已经给出视觉方向时复用它，不要求再选择预设；自由设计可用 `Other` 描述方向。
-
-- `Visual style` → **两步选择**:
-  - **Step A — 风格类别**：根据 topic 将最匹配的类别放在第一个选项并标注
-    `（推荐）`，一次提供以下四个选项：
-    - 学术与专业类：Academic Rigorous、Data Driven、Modern Minimal、Charcoal Editorial
-    - 商务与科技类：Midnight Business、Ocean Tech、Teal Trust、Cherry Bold
-    - 创意与人文类：Creative Student、Coral Energy、Forest Moss、Warm Terracotta
-    - 其他：用户自由描述视觉方向
-  - **Step B — 具体样式**：仅当用户选择前三类时，一次显示该类全部 4 种，
-    根据 topic 标注一个最佳推荐。不要再提供“显示全部”、跨类别或分轮入口。
-  - 用户选择“其他”时不进入 Step B。根据主题和用户描述补齐
-    `visual_style_custom` 的核心内容：`style_character` 与基础 `palette`；可在 palette
-    中增加语义分类色。`backgrounds` 只填写需要的页型，`svg_reference` 仅在采用 SVG
-    母题时填写。Production Summary 展示实际设计意图，不为未使用的元素编写配置。
-- `Image strategy` → options:
-  - `自适应混合（推荐）` → 生成能力可用且获准时制作关键插图；否则自动采用图表、原生形状或文字构图，不因缺少外部生图工具阻断生产
-  - `内置生图 skill 生成插图` → 全部插图（含封面/背景/概念图）由 imagegen 生成
-  - `Diagram-only/仅图表` → 使用图表、关系图、语义图标及原生形状，无需外部图片服务
-  - `Web image/联网图片` → 真实人物/地点/产品等先确认是否允许联网搜图
-  - `User-provided image/用户照片` → 优先使用用户提供的素材
-  - `Ask-before-web-search/每次联网前询问`
-  - `No images/无图` → 纯图表/形状/文字版式
-  - 选项可用性以当前会话解析出的 image capability 为准：`image_generation_ready` 为 false
-    时不得提供"内置生图 skill 生成插图"为可兑现项，`image_search_ready` 为 false 时不得
-    承诺联网搜图；声明机制与降级见 `../../references/image-sourcing.md`。
-- `Citation style` → 不询问，默认 `Classroom/课堂引用`（详见 `../../references/evidence-and-citations.md`）
-- Round 3 只有视觉风格（占 2 轮）与配图 1 个问题，若需要可把 Deliverables 提前到本轮填满槽位
-- topic 明确映射到某一类别时，Round 3a/3b 合并为一轮：直接给出该类别 4 种样式（外加
-  Other 逃生项），两步选择只在 topic 跨类别模糊时使用——2026-09-19 实测：3a 一轮只拿到
-  一个类别选择，白耗一轮交互与两个请求
-
-**Round 4 — 输出格式**:
-- `Deliverables` (multi-select) → options: PPTX/幻灯片（默认，始终包含）, Speaker notes/讲稿（额外的独立 .md；PPTX 备注窗格由 `include_speaker_notes` 单独控制）, Preview/预览图（管线必产作质检留痕，勾选=额外交付给你）, PDF export/PDF, Contact sheet/缩略图联系人表（管线必产，勾选=额外交付）, Full script/完整演讲稿
-- Other output-specific fields as needed
-
-### Example
-
-```
-已确认：Topic=深度学习入门, Language=中文, Source material=课程讲义
-
-→ 调用 AskUserQuestion（Round 1，4 个问题）让用户选择：
-  1. Presentation type → Coursework report（推荐）
-  2. Scenario → coursework
-  3. Audience → Teacher + classmates（推荐）
-  4. Audience depth → Standard（推荐）
-
-→ 用户选择后，调用 AskUserQuestion（Round 2）：
-  1. Duration → 5min（推荐）
-  2. Format → Individual（推荐）
-  3. Interaction mode → Beginner（推荐）
-  （Quality level 不再询问，默认 fast/快速）
-
-→ 用户选择后，调用 AskUserQuestion（Round 3a — 风格类别）：
-  1. 风格类别 → 商务与科技类（推荐）/ 学术与专业类 / 创意与人文类 / 其他
-
-→ 用户选"商务与科技类"后，调用 AskUserQuestion（Round 3b — 具体样式与配图）：
-  1. Visual style → Ocean Tech 海洋科技（推荐）/ Midnight Business 午夜商务 /
-     Teal Trust 青绿可信 / Cherry Bold 樱桃醒目
-  2. Image strategy → 生图+SVG/原生形状结合（推荐）/ Diagram-only 仅图表 / 内置生图 skill / Web image / ...
-  （Citation style 不再询问，默认 Classroom）
-
-→ 所有字段确认完毕，展示完整 Production Summary，用 AskUserQuestion 请求最终确认：
-  1. 是否按以上方案开始制作？ → 确认，开始制作（推荐）/ 调整方案 / 更换视觉风格 / Other
-```
-
-### Delegation shortcut
-
-If the user says “你决定”, “按推荐来”, or “use the recommendations” at any
-point, fill every remaining unresolved field with the recommended value. Then
-show the complete `Production Summary` and ask for explicit confirmation **via
-`AskUserQuestion`**（选项见 Interaction flow 步骤 6，勿以纯文本收尾）。
-
-If all fields were already supplied in the initial request, skip the question
-rounds and go directly to showing the complete `Production Summary` for
-confirmation.
+Do not run environment, generation, rendering or delivery commands in intake_pending. Existing reference images can be inspected. If the user wants a generated style comparison, first approve a complete summary for that limited preview task; run it under its own work-id, then confirm the full deck summary. Alternatively inspect representative pages during the approved deck's normal authoring. There is no implicit preview exemption from intake. Style previews remain synthetic examples and do not establish final content or require an extra style-approval stage for ordinary tasks.
 
 ## Production Summary
 
-The confirmation summary must list all full-intake fields plus the planned output
-directory or filename prefix when known. Only an affirmative reply to this
-summary moves the workflow to `intake_confirmed`. 确认必须通过 `AskUserQuestion`
-（选项：确认，开始制作 / 调整方案 / 更换视觉风格 / Other），不要以纯文本
-"回复确认即可开始"这类方式中断会话等待自由输入。
+Show the full summary including assumptions, existing-deck preservation, planned output directory, exact deliverables, imagery permissions and allowed placeholders. Use AskUserQuestion to obtain an affirmative reply (confirm / adjust). Only approval of this summary moves intake_pending to intake_confirmed. Do not re-confirm a summary already approved in the current task. A prior authorization applies to its stated scope; changes to facts, deliverables or permissions must remain within it.
 
-在图片策略中推荐并说明素材缺失时的设计占位方案，随完整摘要一起确认，不新增单独提问轮；用户已授权时直接沿用。未获允许或旧任务明确禁止时保持禁止。正文充实、备注选择性讲解的安排也应清楚，不用讲稿时长自动压缩正文。
+Example: “中文课程汇报，老师与同学，5分钟约8页，个人；使用已给材料，不外查；沿用蓝灰参考的层级并按内容变化构图；优先本地图片和可编辑图解，允许已确认的素材占位；正文保留支撑，备注讲重点；交付PPTX到outputs/course-report。” Ask only about consequential missing choices before this final approval.
 
-After confirmation, map supported values into Slide Spec `meta`:
+## Deliverables vs. pipeline evidence
 
-- `topic`, `presentation_type`, `audience`, `language`, `duration_min`, `slide_count`
-- `scenario`, `audience_type`, `audience_depth`, `structure_mode`
-- `interaction_mode`, `quality_level`, `visual_text_ratio`；仅确认有字数限制时写入
-  `max_words_per_slide` / `max_chinese_chars_per_slide`，否则省略，不能自动填历史默认值
-- `include_speaker_notes`, `include_key_lines`, `citation_style`,
-  `export_formats`, `versioning`
-- `format`, `members`, `course`, `rubric`
-- `source_material`, `template`, `logo`, `image_source`, `visual_style`
-- `visual_style_custom`（仅 `visual_style: Other` 或兼容旧未知风格时使用）
-- `deliverables`, `output_prefix`
+Deliverables are precisely what the user selected. Internal full-page renders, contact sheet and technical reports are pipeline evidence; do not promise them as exports unless selected. Embedded include_speaker_notes is separate from an exported speaker-notes.md. Preview exports every slide; contact-sheet is the overview. Additional PDF, outline, script, quality-report or rehearsal material needs the corresponding scope. Editing requires change-summary.md.
 
-Use existing-deck top-level fields for editing: `source_deck`, `edit_intent`,
-`review_findings`, `preserve`, and `change_summary_required`.
+## Planning ownership
 
-For complex or file-producing work, save the confirmed global controls as a
-Presentation Brief and validate it before creating the Slide Spec. Do not ask
-the user to approve both documents separately when the Slide Spec faithfully
-implements the already approved summary.
+The approved summary captures user authorization. Slide Spec meta stores production controls and slides store content/visual intent. Keep narrative progression and brief visual conventions in the existing handoff-plan when useful; do not rewrite all controls there. A separate Presentation Brief is optional for cross-task reuse or a user-supplied brief, not a mandatory second copy for every PPTX. When supplied, validate it and carry controls consistently into Spec; do not ask for two approvals of the same plan.
 
-## Workflow States
+## Workflow states and recovery
 
-`intake_pending → intake_confirmed → planned → producing → qa → complete`
+intake_pending → intake_confirmed → planned → producing → qa → complete
 
-- `intake_pending`: full intake is incomplete or its summary is unconfirmed.
-- `intake_confirmed`: user approved the complete Production Summary.
-- `planned`: slide spine or Slide Spec is ready.
-- `producing`: editable files are being generated or edited.
-- `qa`: package validation, optional rendering/inspection, and delivery checks run.
-- `complete`: all required deliverables and gates passed.
-- `incomplete`: a usable artifact exists but a required deliverable or QA gate failed.
-- `blocked`: production cannot proceed because a required input, artifact, or runtime dependency is unavailable.
+- workflow_guard.py init/confirm persists intake and the approved summary hash.
+- ppt_pipeline.py plan validates approved inputs and creates page sources; its build-manifest.json owns production state and mirrors workflow-state.json.
+- run builds/checks/renders and returns to qa, including after fixes. Rework is qa → producing → qa through run; there is no repair subcommand.
+- complete verifies current artifacts and exports selected types after author inspection.
+- A failed run preserves evidence and records its actual error. Correct that cause and run again under the same approved work-id. Do not restart intake for a missing dependency or a routine design repair.
+- status reads current checks, publication health and historical manifests without rebuilding. Old production manifests are read-only; use a new approved edit task preserving the original to continue them.
+- blocked/incomplete describe real inability to proceed or missing required output; never claim completion while required work is missing. Changes outside approved scope need revised authorization, not an automatic reset for every warning.
 
-The rework edge is `qa → producing`, invoked as
-`skills/sp-deck/scripts/ppt_pipeline.py repair --work-dir <wd>` after a QA
-blocker, without restarting the whole pipeline. The recovery edge is
-`incomplete → qa`, used to re-enter QA after a missing gate or runtime
-dependency is resolved; `blocked` recovers via `workflow_guard.py unblock`,
-which returns to `intake_pending` and requires re-confirmation. Never claim
-production has started before `intake_confirmed`. `incomplete` and `blocked`
-may be entered from any later state when their conditions are met.
-
-For PPTX work, `scripts/workflow_guard.py` persists intake only (`init` /
-`confirm`). The summary file hash is the auditable confirmation boundary.
-After `ppt_pipeline.py plan`, `build-manifest.json` is the production
-authority; the pipeline mirrors `workflow-state.json` automatically. Do not
-call `workflow_guard.py transition` to advance `producing` or `complete`.
-Build/check/render with `ppt_pipeline.py run`; after main-session inspection,
-deliver with `ppt_pipeline.py complete`. Commands belong to main-session-production.md.
+Commands and rendering/inspection requirements live in skills/sp-deck/references/main-session-production.md. Do not manually transition production states or move frozen inputs/deliverables after complete.
 
 ## Work isolation
 
-Use `workflow_guard.py init --work-id <work-id>` and confirm with the same identifier.
-The state is `outputs/.pptx-work/<work-id>/workflow-state.json`; each manifest binds
-its work_id, state path and summary SHA256. Never reset another deck to start a new deck.
-Legacy global states are not automatically trusted: use a new work-id and reconfirm.
+Use one work-id consistently with init/confirm and outputs/.pptx-work/<work-id>. A manifest binds its state path and approved summary. Never reset another deck's work; do not trust legacy global state as current authorization. User artifacts stay in the active project's outputs, outside the installed plugin and marketplace repository.

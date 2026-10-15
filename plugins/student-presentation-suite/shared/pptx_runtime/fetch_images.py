@@ -26,6 +26,7 @@ import shlex
 import shutil
 import subprocess
 import urllib.parse
+import xml.etree.ElementTree as ET
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,21 @@ from typing import Any
 # 跨 query 并行抓取的线程上限。provider 命令大多是网络等待，4 个并发足以把
 # 串行逐条等待压成 ~1/4 墙钟，又不至于触发图库/provider 的速率限制。
 MAX_PARALLEL_QUERIES = 4
+
+
+def image_metadata(path: Path) -> dict[str, Any]:
+    """Decode delivered imagery; a nonempty HTTP error page is not an image."""
+    from PIL import Image
+
+    try:
+        with Image.open(path) as image:
+            image.load()
+            return {"format": image.format, "width": image.width, "height": image.height}
+    except OSError:
+        root = ET.parse(path).getroot()
+        if root.tag.rsplit("}", 1)[-1] != "svg":
+            raise ValueError("provider output is not a decodable image") from None
+        return {"format": "SVG"}
 
 _PLACEHOLDER = re.compile(r"\{(query|url|output)\}")
 _SCHEMA_PATH = Path(__file__).resolve().parents[2] / "references" / "image-sources.schema.json"
@@ -223,6 +239,12 @@ def fetch_images(
                 result = _run_command(provider, query, out_dir, timeout_sec, notes)
             if result is None:
                 continue
+            path = Path(result["path"])
+            try:
+                metadata = image_metadata(path)
+            except (OSError, ValueError, ET.ParseError) as exc:
+                notes.append(f"{provider.get('id')}: invalid image output ({type(exc).__name__})")
+                continue
             fetched.append(
                 {
                     "query": query,
@@ -233,6 +255,8 @@ def fetch_images(
                     "license": provider.get("permission", "unknown"),
                     "retrieved_at": now,
                     "status": "fetched",
+                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                    "image": metadata,
                 }
             )
             break
@@ -253,15 +277,15 @@ def fetch_images(
         if query.strip() and query not in unique:
             unique.append(query)
     grouped: dict[str, list[dict[str, Any]]] = {}
+    notes_by_query: dict[str, list[str]] = {query: [] for query in unique}
     if len(unique) > 1:
-        notes_by_query = {query: [] for query in unique}
         with ThreadPoolExecutor(max_workers=min(MAX_PARALLEL_QUERIES, len(unique))) as pool:
             fetched = pool.map(lambda item: run_query(item, notes_by_query[item]), unique)
             for query, records in zip(unique, fetched, strict=True):
                 grouped[query] = records
     else:
         for query in unique:
-            grouped[query] = run_query(query, [])
+            grouped[query] = run_query(query, notes_by_query[query])
 
     records: list[dict[str, Any]] = []
     for query in queries:
@@ -270,9 +294,12 @@ def fetch_images(
         records.extend(grouped.get(query) or [])
 
     return {
+        "source_contract": {"path": str(Path(sources_path).resolve()),
+                            "sha256": hashlib.sha256(Path(sources_path).read_bytes()).hexdigest()},
         "ok": all(r.get("status") == "fetched" for r in records) if records else True,
         "queries": queries,
         "gate_reasons": gate_reasons,
+        "provider_attempts": notes_by_query,
         "records": records,
         "retrieved_at": now,
     }

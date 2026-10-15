@@ -388,6 +388,11 @@
         "deterministic"
       ],
       "default": "auto"
+    },
+    "output_dir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Delivery directory inside the active project outputs tree; relative paths are project-relative. New plans default to outputs/<work-id>."
     }
   },
   "allOf": [

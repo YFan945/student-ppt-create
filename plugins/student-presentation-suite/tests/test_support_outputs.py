@@ -23,6 +23,14 @@ class SupportOutputTests(unittest.TestCase):
         self.assertIn('只讲来源追溯。', module.speaker_notes_markdown(bound))
         self.assertNotIn('原始规划长讲稿', module.speaker_notes_markdown(bound))
 
+    def test_actual_title_and_notes_match_final_slides_without_changing_planned_material(self):
+        module = load_module(SCRIPT)
+        planned = {'slides': [{'id': 1, 'title': '规划标题', 'content': ['全部展示材料'], 'speaker_notes': '旧稿'}]}
+        final = module.with_actual_speaker_notes(planned, {1: '实际重点'}, {1: '实际标题'})
+        self.assertIn('Slide 1: 实际标题', module.speaker_notes_markdown(final))
+        self.assertEqual(planned['slides'][0]['title'], '规划标题')
+        self.assertEqual(final['slides'][0]['content'], planned['slides'][0]['content'])
+
     def test_builds_teleprompter_cards_and_references(self) -> None:
         module = load_module(SCRIPT)
         data = {

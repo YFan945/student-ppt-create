@@ -71,3 +71,5 @@ Supported local deliverables:
 DOCX notes are not produced by the suite-owned PPTX runtime. Web editing, cloud
 synchronization, and multi-user collaboration require an external service and
 are not claimed by this local plugin.
+
+For 2.1 authored pages, exported support headings use the checked actual headline from presentation-copy when available, while the frozen Spec remains unchanged. Notes content still comes from final PPTX panes. Imported OOXML without authored headline metadata keeps the planning title rather than guessing from an arbitrary source text box.

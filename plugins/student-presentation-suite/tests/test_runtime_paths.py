@@ -68,23 +68,17 @@ class RuntimePathTests(unittest.TestCase):
         self.assertTrue((root / "__init__.py").is_file())
         self.assertTrue((ROOT / "scripts" / "pptx_tool.py").is_file())
 
-    def test_pptxgenjs_resolution_order(self) -> None:
+    def test_env_checker_consumes_shared_resolver_and_child_load_evidence(self) -> None:
         module = load_env_checker()
-        success = json.dumps({"path": "X:/node_modules/pptxgenjs/index.js", "version": "4.0.1"})
-        with mock.patch.object(module, "command_path", side_effect=lambda name, *_: name):
-            with mock.patch.object(module, "npm_global_root", return_value=Path("G:/npm")):
-                with mock.patch.object(module, "run_probe", return_value=(True, success)):
-                    self.assertEqual("project", module.resolve_pptxgenjs(Path("P:/project"))["module_source"])
-                with mock.patch.object(
-                    module, "run_probe", side_effect=[(False, "no"), (True, success)]
-                ):
-                    self.assertEqual("plugin", module.resolve_pptxgenjs(Path("P:/project"))["module_source"])
-                with mock.patch.object(
-                    module,
-                    "run_probe",
-                    side_effect=[(False, "no"), (False, "no"), (True, success)],
-                ):
-                    self.assertEqual("global", module.resolve_pptxgenjs(Path("P:/project"))["module_source"])
+        success = json.dumps({"ok": True, "source": "plugin", "moduleRoot": "X:/node_modules",
+                              "modulePath": "X:/node_modules/pptxgenjs/index.js", "version": "4.0.1",
+                              "childLoadVerified": True, "attempts": []})
+        with mock.patch.object(module, "command_path", return_value="node"), \
+             mock.patch.object(module, "run_probe", return_value=(True, success)) as probe:
+            resolved = module.resolve_pptxgenjs(Path("P:/project"))
+        self.assertEqual(resolved["module_root"], "X:/node_modules")
+        self.assertTrue(resolved["child_load_verified"])
+        self.assertIn("pptx-runtime-paths.js", probe.call_args.args[0][1])
 
     def test_env_modes_report_distinct_workflow_capabilities(self) -> None:
         module = load_env_checker()

@@ -20,6 +20,22 @@ def load_module(name: str, path: Path):
 
 
 class ScaffoldContractTests(unittest.TestCase):
+    def test_real_authoring_is_not_rejected_or_overwritten_by_provenance_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'p01-cover.js'
+            marker = self.scaffold.SCAFFOLD_MARKER
+            path.write_text(f'/* {marker} */\nmodule.exports = function(ctx) {{ /* author here */ }};', encoding='utf-8')
+            self.assertEqual(self.scaffold.scaffolded_pages([path]), [path.name])
+            authored = f'/* {marker} */\nmodule.exports = function page(ctx) {{ ctx.slide.addText("真实内容", {{}}); }};'
+            path.write_text(authored, encoding='utf-8')
+            self.assertEqual(self.scaffold.scaffolded_pages([path]), [])
+            self.assertFalse(self.scaffold.write_if_scaffoldable(path, 'new stub'))
+            self.assertEqual(path.read_text(encoding='utf-8'), authored)
+            path.write_text(f'/* {marker} */\nmodule.exports = ctx => {{ ctx.slide.addText("内容", {{}}); }};', encoding='utf-8')
+            self.assertEqual(self.scaffold.scaffolded_pages([path]), [])
+            path.write_text(f'/* {marker} */\nmodule.exports = (ctx) => {{ /* still empty */ }};', encoding='utf-8')
+            self.assertEqual(self.scaffold.scaffolded_pages([path]), [path.name])
+
     def test_model_led_input_preserves_visual_intent_and_selective_speaking_material(self):
         with tempfile.TemporaryDirectory() as tmp:
             work = Path(tmp)

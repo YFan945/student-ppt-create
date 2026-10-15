@@ -65,3 +65,15 @@ Slide Spec 2.1 冻结核心信息、精确事实、数字和来源，允许改�
 - [图片来源](references/image-sourcing.md)
 - [研究流程](references/research-workflow.md)
 - [开发与验证](AGENTS.md)
+
+新计划支持项目 outputs 内的 `meta.output_dir`，默认 `outputs/<work-id>`。预览导出全部页面 PNG 与绑定索引；contact-sheet 单独导出总览。`status` 读取当前检查和交付有效性，不重建。正常创作接口见[创作快速说明](skills/sp-deck/references/authoring-quickstart.md)；[内容转视觉](references/content-to-visual.md)指导充分的信息表达，不设置版式配额。
+
+大纲拆解方法与跨页信息递进见[结构参考](skills/sp-outline/references/slide-structures.md)；面向听众的直接表达要求见[共享规范](references/shared-standards.md)。
+
+最终大纲使用产物可回读内容；可选作者自检说明及其当前/过期状态见[制作流程](skills/sp-deck/references/main-session-production.md)。配置就绪与已验证图片获取记录的区别见[图片获取规范](references/image-sourcing.md)。
+
+制作前规划充分正文、支撑内容与主要视觉；已有质量报告增加已登记图标复用与行文风险提醒。获准的图片占位可显示生图提示词，并校验对应页的可见性。具体要求见[内容流程](references/content-workflow.md)、[视觉组织](references/content-to-visual.md)和[图片获取](references/image-sourcing.md)，不设置密度或版式配额。
+
+### 视觉审计修复
+
+当前生产检查不透明前景对文字的遮挡，并检查已知纯色表面的对比度；图片/渐变等情况明确交给渲染检查。Slide Spec 2.1可选数值绑定保护指标、数值与单位的对应。intake采用一次完整摘要、可选Brief复用和run修复。完整同材料视觉案例与关系工具辅助创作，不增加版式配额或审美门禁。具体规则见intake、Slide Spec、创作快速入口与视觉案例参考。

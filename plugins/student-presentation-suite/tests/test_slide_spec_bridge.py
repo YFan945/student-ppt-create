@@ -20,6 +20,19 @@ def load_bridge_module():
 
 
 class SlideSpecBridgeTests(unittest.TestCase):
+    def test_explicit_delivery_directory_and_preview_roles_survive_bridge(self):
+        bridge = load_bridge_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp)
+            data = {'schema_version': '2.1', 'meta': {'topic': '演示', 'output_dir': 'outputs/independent'},
+                    'slides': [{'id': 1, 'title': '演示', 'content': ['解释'], 'timing_sec': 30, 'owner': 'Individual'}]}
+            with mock.patch.object(bridge, 'project_root', return_value=project), \
+                 mock.patch.object(bridge, 'output_root', return_value=project / 'outputs'):
+                text = bridge.build_brief(data, project / 'spec.json')
+            self.assertIn(str(project / 'outputs' / 'independent'), text)
+            self.assertIn('preview.json', text)
+            self.assertIn('all final slide PNGs', text)
+
     def test_production_mode_rejects_pdf_as_ooxml_edit_source(self) -> None:
         bridge = load_bridge_module()
         data = {"source_deck": "reference.pdf", "edit_intent": "review-fix"}

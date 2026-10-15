@@ -4,7 +4,7 @@ const { spawnSync } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
-const Module = require('node:module');
+const { resolveModule, installSearchPaths } = require('./pptx-runtime-paths.js');
 const USAGE =
   'Usage: run_with_pptxgenjs.js --output <new-deck.pptx> <deck-script.js> [deck-args...]';
 
@@ -13,71 +13,11 @@ if (['--help', '-h'].includes(process.argv[2])) {
   process.exit(0);
 }
 
-function npmGlobalRoot() {
-  // On Windows, Node 20+ blocks direct spawn of .cmd/.bat. Use a fixed cmd.exe
-  // command with no user-controlled interpolation instead of shell: true.
-  const result =
-    process.platform === 'win32'
-      ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npm root -g'], {
-          encoding: 'utf8',
-        })
-      : spawnSync('npm', ['root', '-g'], { encoding: 'utf8' });
-  return result.status === 0 ? result.stdout.trim() : '';
-}
-
-function candidateRoots() {
-  const project = process.env.CLAUDE_PROJECT_DIR || process.cwd();
-  const plugin = path.resolve(__dirname, '..');
-  return [
-    { source: 'project', root: project },
-    { source: 'plugin', root: plugin },
-    { source: 'global', root: npmGlobalRoot() },
-  ].filter((item) => item.root);
-}
-
-function packageVersion(modulePath) {
-  let dir = path.dirname(modulePath);
-  while (dir !== path.dirname(dir)) {
-    const candidate = path.join(dir, 'package.json');
-    if (fs.existsSync(candidate)) {
-      const pkg = JSON.parse(fs.readFileSync(candidate, 'utf8'));
-      if (pkg.name === 'pptxgenjs') {
-        return pkg.version;
-      }
-    }
-    dir = path.dirname(dir);
-  }
-  throw new Error('pptxgenjs package.json was not found above the resolved module');
-}
-
-function resolveRuntime() {
-  for (const candidate of candidateRoots()) {
-    try {
-      const modulePath = require.resolve('pptxgenjs', { paths: [candidate.root] });
-      return {
-        ...candidate,
-        modulePath,
-        version: packageVersion(modulePath),
-      };
-    } catch (_) {
-      // Continue to the next supported location.
-    }
-  }
-  throw new Error(
-    `pptxgenjs was not found. Try running:\n` +
-      `  npm --prefix ${path.resolve(__dirname, '..')} ci\n` +
-      `If the issue persists, install globally: npm install -g pptxgenjs`,
-  );
-}
-const runtime = resolveRuntime();
-const existing = process.env.NODE_PATH ? process.env.NODE_PATH.split(path.delimiter) : [];
-const moduleRoot =
-  runtime.source === 'global' ? runtime.root : path.join(runtime.root, 'node_modules');
-// 把 scripts 目录也加入 NODE_PATH，让生成的 deck 可以 require('./pptx-helpers.js')
+const runtime = resolveModule('pptxgenjs');
+const fontkit = resolveModule('fontkit');
 const scriptsDir = __dirname;
-process.env.NODE_PATH = [scriptsDir, moduleRoot, ...existing].filter(Boolean).join(path.delimiter);
+installSearchPaths([runtime, fontkit], [scriptsDir]);
 process.env.PPTX_HELPERS_DIR = scriptsDir;
-Module._initPaths();
 
 if (process.argv[2] === '--probe') {
   process.stdout.write(JSON.stringify(runtime));

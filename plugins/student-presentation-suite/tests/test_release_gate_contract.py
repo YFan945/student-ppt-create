@@ -12,6 +12,8 @@ from __future__ import annotations
 import importlib.util
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "check_plugin_release.py"
@@ -36,6 +38,16 @@ FAILED (failures=2, skipped=1)
 
 
 class TestSummaryParsingTests(unittest.TestCase):
+    def test_gate_failure_includes_actionable_trace_without_unrelated_test_noise(self):
+        trace = 'unrelated policy output\n' + '=' * 70 + '\nFAIL: important_regression\nAssertionError: mismatch\nRan 1 test in 1s\nFAILED (failures=1)\n'
+        with patch.object(check.subprocess, 'run', return_value=SimpleNamespace(stdout='', stderr=trace, returncode=1)):
+            errors = []
+            report = check.check_test_suite(errors)
+        self.assertFalse(report['ok'])
+        self.assertIn('important_regression', report['failure_details'])
+        self.assertNotIn('unrelated policy output', report['failure_details'])
+        self.assertTrue(errors)
+
     def test_reads_a_green_run(self) -> None:
         report = check.parse_test_summary(GREEN, 0)
         self.assertTrue(report["ok"])

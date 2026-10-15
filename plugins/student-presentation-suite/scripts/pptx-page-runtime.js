@@ -150,8 +150,17 @@ function captureSlide(ctx) {
       const isLine = method === 'addShape' && args[0] === 'line';
       const element = {
         type: isLine ? 'line' : type,
+        shapeType: method === 'addShape' ? args[0] : undefined,
         ...options,
         text,
+        textColors:
+          type === 'text'
+            ? Array.isArray(args[0])
+              ? args[0]
+                  .filter((run) => String(run.text || '').trim())
+                  .map((run) => run.options?.color || options.color)
+              : [options.color]
+            : undefined,
         decorative: Boolean(
           (type !== 'text' && (options.decorative || options.allowOverlap)) ||
           options._background ||
@@ -246,6 +255,7 @@ function renderPage(ctx, mod) {
   ctx.registry.options.designPreferencesAdvisory = true;
   ctx.registry.options.capture = true;
   captureSlide(ctx);
+  ctx.visualUsage = [];
   if (typeof mod === 'function') {
     ctx.tokens = H.paletteMode(ctx.tokens, mod.dark ? 'dark' : 'light');
     const addNotes = ctx.slide.addNotes.bind(ctx.slide);
@@ -254,6 +264,10 @@ function renderPage(ctx, mod) {
     };
     try {
       mod(ctx);
+      if (typeof ctx.registry._slide === 'function' && !ctx.registry._slide(ctx.n).length)
+        throw new Error(
+          'unfinished page: no drawable objects were authored; implement the page function',
+        );
     } catch (error) {
       if (!/^Slide \d+:/.test(error.message))
         error.message = `Slide ${ctx.n}: ${/cannot fit|text_overflow/.test(error.message) ? 'text_overflow' : 'construction_failure'} ${error.message}`;
@@ -277,6 +291,7 @@ function renderPage(ctx, mod) {
       throw error;
     }
   }
+  ctx.registry.backgrounds?.set(ctx.n, ctx.slide.background);
   ctx.presentationCopy?.push({
     slide: ctx.n,
     design_freedom: mode,
@@ -284,6 +299,7 @@ function renderPage(ctx, mod) {
       headline: mod.slots?.title,
       visual_labels: mod.slots?.body || [],
     }),
+    visual_usage: [...(mod.presentation_copy?.visual_usage || []), ...ctx.visualUsage],
     speaker_notes: String(mod.notes || mod.presentation_copy?.speaker_notes || ''),
     text_runs: ctx.registry
       ._slide(ctx.n)

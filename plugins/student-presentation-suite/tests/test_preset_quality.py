@@ -61,8 +61,8 @@ class PresetQualityTests(unittest.TestCase):
         self.assertNotIn('defaults',catalog)
 
     def test_all_modes_accept_free_functions_without_automatic_paint_or_zones(self):
-        out=self.node("const R=require('./scripts/pptx-page-runtime.js'),Registry=require('./scripts/pptx-element-registry.js').SlideElementRegistry;slide.addNotes=()=>{};const results=[];for(const mode of ['auto','guided','deterministic']){calls.length=0;const mod=()=>{};mod.kind='cover';mod.presentation_copy={headline:'Authored'};const registry=new Registry();R.renderPage({slide,tokens,registry,n:1,presentationCopy:[],designMode:mode},mod);results.push(calls.length);}console.log(JSON.stringify([results,H.contentArea(tokens,'cover'),H.safeArea(10,5.625,tokens,{reserveTitle:true})]));")
-        self.assertEqual(out[0],[0,0,0])
+        out=self.node("const R=require('./scripts/pptx-page-runtime.js'),Registry=require('./scripts/pptx-element-registry.js').SlideElementRegistry;slide.addNotes=()=>{};const results=[];for(const mode of ['auto','guided','deterministic']){calls.length=0;const mod=()=>slide.addShape('rect',{x:.5,y:.5,w:.3,h:.3,fill:{color:'2563EB'}});mod.kind='cover';mod.presentation_copy={headline:'Authored'};const registry=new Registry();R.renderPage({slide,tokens,registry,n:1,presentationCopy:[],designMode:mode},mod);results.push(calls.length);}console.log(JSON.stringify([results,H.contentArea(tokens,'cover'),H.safeArea(10,5.625,tokens,{reserveTitle:true})]));")
+        self.assertEqual(out[0],[1,1,1])
         self.assertEqual(out[1],{'x':0,'y':0,'w':10,'h':5.625})
         self.assertEqual(out[2],out[1])
 

@@ -32,6 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--json", action="store_true", help="Emit JSON result")
     parser.add_argument("--strict", action="store_true", help="Exit non-zero when required tools are missing")
     parser.add_argument("--project-root", type=Path, help="Override the active Claude project root")
+    parser.add_argument("--image-fetch-report", type=Path, help="Read an existing fetch-images-report.json; does not contact providers")
     parser.add_argument(
         "--mode",
         choices=("all", "outline", "review", "create", "edit_ooxml", "rebuild_from_source"),
@@ -90,54 +91,19 @@ def npm_global_root(npm: str | None) -> Path | None:
 
 def resolve_pptxgenjs(project: Path, module: str = "pptxgenjs") -> dict[str, Any]:
     node = command_path("node")
-    npm = command_path("npm")
     if not node:
         return {"ok": False, "module_source": None, "detail": "node is not available"}
 
-    candidates: list[tuple[str, Path]] = [
-        ("project", project),
-        ("plugin", ROOT),
-    ]
-    global_root = npm_global_root(npm)
-    if global_root:
-        candidates.append(("global", global_root))
-
-    probe = (
-        "const fs=require('node:fs'),p=require('node:path');"
-        "const modulePath=require.resolve('pptxgenjs',{paths:[process.argv[1]]});"
-        "let dir=p.dirname(modulePath),pkgPath=null;"
-        "while(dir!==p.dirname(dir)){"
-        "const candidate=p.join(dir,'package.json');"
-        "if(fs.existsSync(candidate)){"
-        "const pkg=JSON.parse(fs.readFileSync(candidate,'utf8'));"
-        "if(pkg.name==='pptxgenjs'){pkgPath=candidate;break;}}"
-        "dir=p.dirname(dir);}"
-        "if(!pkgPath)throw new Error('pptxgenjs package.json not found');"
-        "const pkg=JSON.parse(fs.readFileSync(pkgPath,'utf8'));"
-        "console.log(JSON.stringify({path:modulePath,version:pkg.version}));"
-    )
-    attempts: list[dict[str, str]] = []
-    probe = probe.replace("pptxgenjs", module)
-    for source, base in candidates:
-        ok, output = run_probe([node, "-e", probe, str(base)])
-        if ok:
-            data = json.loads(output.splitlines()[-1])
-            return {
-                "ok": True,
-                "module_source": source,
-                "module_root": str(base),
-                "module_path": data["path"],
-                "module_version": data["version"],
-                "attempts": attempts,
-            }
-        attempts.append({"source": source, "root": str(base), "detail": output})
-    return {
-        "ok": False,
-        "module_source": None,
-        "module_version": None,
-        "attempts": attempts,
-        "detail": "pptxgenjs was not resolvable from project, plugin, or global npm roots",
-    }
+    ok, output = run_probe([node, str(ROOT / "scripts" / "pptx-runtime-paths.js"), module, str(project)])
+    try:
+        data = json.loads(output.splitlines()[-1])
+    except (ValueError, IndexError):
+        return {"ok": False, "module_source": None, "detail": output}
+    if not ok or not data.get("ok"):
+        return {"ok": False, "module_source": None, **data}
+    return {"ok": True, "module_source": data["source"], "module_root": data["moduleRoot"],
+            "module_path": data["modulePath"], "module_version": data["version"],
+            "child_load_verified": data["childLoadVerified"], "attempts": data["attempts"]}
 
 
 IMAGE_SOURCE_CONFIG_NAME = image_capability.IMAGE_SOURCE_CONFIG_NAME
@@ -145,7 +111,7 @@ image_source_config_path = image_capability.image_source_config_path
 resolve_image_sources = image_capability.resolve_image_sources
 
 
-def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[str, Any]:
+def inspect_environment(project: Path | None = None, mode: str = "all", image_fetch_report: Path | None = None) -> dict[str, Any]:
     active_project = (project or project_root()).resolve()
     runtime_probe = run_probe(
         [sys.executable, "-B", str(ROOT / "scripts" / "pptx_tool.py"), "--help"],
@@ -165,7 +131,7 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
             openxml_detail = str(build_openxml_validator())
         except RuntimeError as exc:
             openxml_detail = str(exc)
-    image_sources = resolve_image_sources(active_project)
+    image_sources = resolve_image_sources(active_project, image_fetch_report) if image_fetch_report else resolve_image_sources(active_project)
     if not image_sources["configured"]:
         external_image_generation: dict[str, Any] = {
             "ok": None,
@@ -286,6 +252,8 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
         "pdf_export_ready": checks["LibreOffice"]["ok"],
         "image_search_ready": image_sources["search_ready"],
         "image_generation_ready": image_sources["generation_ready"],
+        "image_readiness_scope": image_sources["readiness_scope"],
+        "image_fetch_evidence": image_sources["fetch_evidence"],
         "user_assets_ready": image_sources["user_assets_ready"],
     }
     return {
@@ -313,7 +281,7 @@ def inspect_environment(project: Path | None = None, mode: str = "all") -> dict[
 
 def main() -> None:
     args = parse_args()
-    result = inspect_environment(args.project_root, args.mode)
+    result = inspect_environment(args.project_root, args.mode, args.image_fetch_report)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
