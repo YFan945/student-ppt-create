@@ -32,6 +32,16 @@ class ExpressionReviewTests(unittest.TestCase):
         self.assertFalse(result['findings'])
         self.assertIn('未登记', result['limitation'])
 
+    def test_planned_wording_is_info_and_author_invented_is_advisory(self):
+        planned = '问题不是没有机会，而是没有被看见'
+        spec = {'slides': [{'semantic_requirements': {'must_convey': [{'id': 'a', 'text': planned}]},
+                            'content': ['学院拥有科研平台']}]}
+        actual = {'slides': [{'text_runs': [planned, '由此可见，这项工作意义重大'], 'speaker_notes': ''}]}
+        result = review_expression(spec, actual)
+        by_excerpt = {item['excerpt']: item for item in result['findings']}
+        self.assertEqual(by_excerpt['不是没有机会，而是']['severity'], 'info')
+        self.assertEqual(by_excerpt['由此可见']['severity'], 'advisory')
+
     def node(self, code):
         result = subprocess.run(['node', '-e', code, str(ROOT)], cwd=ROOT, capture_output=True,
                                 text=True, encoding='utf-8', check=True)

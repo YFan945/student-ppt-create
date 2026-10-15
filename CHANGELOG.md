@@ -7,6 +7,8 @@
 - 新增 `ppt_pipeline.py measure`：不构建不渲染，按真实页面代码一次测量全部文本块，报告所有溢出与余量偏紧项并写 `_tmp/measure-report.json`。
 - authoring 绑定只收作者源码：工作目录第一级以 `_` 或 `.` 开头的路径（如 `_tmp/` 探测脚本）不参与绑定与变更检测；`pages/` 内共享模块（如 `pages/_shared.js`）不受影响。
 - 文档补齐隐性契约：`--art-direction` 的 `typography` 整套字体定制通道（含 `<a:ea>` 映射）、scaffold marker 冻结语义、文本度量契约（行高＝行内最大字号×1.18/72、块高按行累计）、CJK＋数字混排自动定位的触发条件与事实绑定单对象要求、intake 前允许一次环境检查、`must_show_exact` 条目自动豁免表达检查发现。
+- 表达检查发现分级：命中规划或用户提供文本（must_convey/content/标题等）标记 `info`，确认展示意图即可；作者自撰文字标记 `advisory`，按行文规范处理；`must_show_exact` 条目仍不产生发现。
+- 文档补充 decorative 与 element_overlap 的对应：面板之上刻意叠加的强调条等装饰元素标记 `decorative: true`，不产生重叠警告。
 
 ## 0.30.7 — 2026-10-15 · 同材料视觉案例、关系工具与确定性检查修复
 

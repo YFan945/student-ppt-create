@@ -56,4 +56,4 @@ New plans freeze `meta.output_dir`, project-relative or absolute inside project 
 
 Review content roles against `../../../references/content-to-visual.md`, not shape quotas. Full final pages and the latest overview must reflect the last changes. Check unsupported comparisons/guarantees/causality in notes as well as visible text. Do not claim a target viewer or projector was tested unless it was actually used.
 
-`check_summary.expression_findings`汇总实际正文/备注的行文风险与已登记图标的跨页复用，不改变technical ok，不自动删除引文或判断美观。对应详情在现有production-check.json的expression_review。查看提醒涉及的页，按content-to-visual检查主体与整套布局；未登记的图标仍需看图。允许的提示词占位按image-sourcing登记prompt_visible，必须能在对应页回读提示词。工具不会为本次规则更新修改既有PPT。
+`check_summary.expression_findings`汇总实际正文/备注的行文风险与已登记图标的跨页复用，不改变technical ok，不自动删除引文或判断美观。每条发现带 severity：`info` 命中规划或用户提供的文本（含 `must_convey`/`content`/标题等），确认展示意图即可；`advisory` 为作者自撰文字，需按行文规范处理；`must_show_exact` 条目不产生发现。对应详情在现有production-check.json的expression_review。查看提醒涉及的页，按content-to-visual检查主体与整套布局；未登记的图标仍需看图。允许的提示词占位按image-sourcing登记prompt_visible，必须能在对应页回读提示词。工具不会为本次规则更新修改既有PPT。
