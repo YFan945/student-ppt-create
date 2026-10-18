@@ -483,7 +483,20 @@ def main(argv: list[str] | None = None) -> int:
     from research_task_binding import apply_task
     apply_task(verdict, pack, args.pack.resolve().parent)
     if args.slide_spec and verdict.get("delivery_status") == "insufficient":
-        print(f"research_pack_to_evidence: missing core claims {verdict['core_gaps']}", file=sys.stderr)
+        gaps = verdict["core_gaps"]
+        print(
+            "research_pack_to_evidence: Research Pack delivery_status=insufficient — "
+            f"以下 core claim 未收口: {gaps}\n"
+            "三条出路（任选其一）：\n"
+            f"  (a) 授权研究员做一轮定向补检：向研究员给出明确 claim 清单 {gaps} "
+            "与候选来源，补齐核验后再编译；\n"
+            "  (b) 若 Slide Spec 不再断言该维度，把 claim 从 core 降为 supporting，"
+            "并用 `research_control.py --work-dir <wd> --rebind --reason \"<具体收敛了什么>\"` "
+            "收敛绑定后重跑；\n"
+            "  (c) 用户提供材料后按 D 类导入。\n"
+            "禁止：不得把未经核验的数字/结论写进 spec 冒充已收口。",
+            file=sys.stderr,
+        )
         return 2
     if not verdict["ok"]:
         print(

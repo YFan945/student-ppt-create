@@ -36,7 +36,8 @@ research-pack.json, research-pack-validation.json, and research/ audit artifacts
 2. Copy task claims verbatim into must_verify with their ids. Choose the task's
    depth band; bands are guidance, not search count quotas. Search per claim,
    the smallest answerable unit per query. Batch independent calls into one turn;
-   reuse fetched URLs and switch channel when a route fails.
+   reuse fetched URLs and switch channel when a route fails. Never echo a number
+   you already hold into a query — the validator flags `query_echoes_known_value`.
 3. Apply the failure table in research-workflow §七. `unknown_payload` means
    the format is unrecognised, not proof of an outage. `backend_not_executed`
    requires structured runtime metadata: prose cannot prove a search never executed.
@@ -59,7 +60,11 @@ research-pack.json, research-pack-validation.json, and research/ audit artifacts
    passage per usable F/D/Q (entity_id, source_id, excerpt, text_path, text_sha256,
    locator, support_note); file hashes alone do not establish semantic support. Keep numbers and direct quotes verbatim; search text
    only locates sources. Default ordinary facts to medium; respect task importance
-   and verification. text requires year/unit/region/metric; context_excerpt may
+   and verification. Never write excerpts from memory: produce every binding with
+   `scripts/research_excerpt.py` (or equivalent scripted windowing over the fetched
+   text_path) BEFORE writing it into the pack — the validator rejects excerpts that
+   do not match the file verbatim, and repairing memory-written excerpts afterwards
+   is the most expensive write-validate loop in this role. text requires year/unit/region/metric; context_excerpt may
    cite a table header from the same file. cross_check needs independent origins.
    text-bound-v1 is opt-in strict mode. Link entities with matching claim_id.
    Record origin_id for republications of one report/data-set.

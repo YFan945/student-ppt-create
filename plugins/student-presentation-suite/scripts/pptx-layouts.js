@@ -901,7 +901,8 @@ function _renderOnLayout(ctx, request, layoutId, area) {
         `slide ${n}: claim does not fit archetype "${selection.id}" body zone — shorten the claim`,
       );
     }
-    const claimNeeded = (claimFit.lines * claimFit.fontSize * 1.18) / 72 / 0.85;
+    const claimNeeded =
+      (claimFit.requiredH ?? (claimFit.lines * claimFit.fontSize * 1.18) / 72) / 0.85;
     const withBody = bodyItems.length > 0;
     if (withBody && claimNeeded + gap + 0.5 > zones.body.h + 0.01) {
       throw _fitError(

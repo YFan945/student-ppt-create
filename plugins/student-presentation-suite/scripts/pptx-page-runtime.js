@@ -124,7 +124,7 @@ function captureSlide(ctx) {
             `Slide ${ctx.n}: text_overflow ${text.slice(0, 30)} in ${options.w}x${options.h}in at ${policy.fontSize}pt`,
           );
         if (
-          options.positionMixedText !== false &&
+          options.positionMixedText === true &&
           /[\u3400-\u9fff\uff01-\uff60]/u.test(text) &&
           /[A-Za-z0-9]/.test(text)
         ) {
@@ -143,8 +143,9 @@ function captureSlide(ctx) {
         options._textLayout = { sourceText: text, ...layout };
         options.fontSize = layout.fontSize;
         options.fontFace = policy.fontFace;
+        options.cjkFontFace = options.cjkFontFace || policy.cjkFontFace;
         options.margin = layout.margin;
-        options.lineSpacing = layout.fontSize * 1.18;
+        options.lineSpacing = layout.lineHeightPt ?? layout.fontSize * 1.18;
         options.valign ??= 'top';
       }
       const isLine = method === 'addShape' && args[0] === 'line';
@@ -161,6 +162,36 @@ function captureSlide(ctx) {
                   .map((run) => run.options?.color || options.color)
               : [options.color]
             : undefined,
+        textSizes:
+          type === 'text'
+            ? Array.isArray(args[0])
+              ? args[0]
+                  .filter((run) => String(run.text || '').trim())
+                  .map((run) => run.options?.fontSize ?? options.fontSize)
+              : [options.fontSize]
+            : undefined,
+        textFonts:
+          type === 'text'
+            ? Array.isArray(args[0])
+              ? args[0]
+                  .filter((run) => String(run.text || '').trim())
+                  .map((run) => run.options?.fontFace || options.fontFace)
+              : [options.fontFace]
+            : undefined,
+        // Whether each collected run carries letters/digits/CJK (symbol-only
+        // runs are excluded from font-mix counting downstream).
+        textScriptFlags:
+          type === 'text'
+            ? Array.isArray(args[0])
+              ? args[0]
+                  .filter((run) => String(run.text || '').trim())
+                  .map((run) => /[A-Za-z0-9぀-ヿ㐀-鿿豈-﫿]/u.test(String(run.text || '')))
+              : [/[A-Za-z0-9぀-ヿ㐀-鿿豈-﫿]/u.test(text)]
+            : undefined,
+        // Role metadata for role-aware warnings; explicit textRole wins, bare
+        // role (addFittedText channel) next, otherwise unknown. Never reaches
+        // pptxgenjs — stripped from the forwarded options below.
+        textRole: type === 'text' ? options.textRole || options.role || 'unknown' : undefined,
         decorative: Boolean(
           (type !== 'text' && (options.decorative || options.allowOverlap)) ||
           options._background ||
@@ -196,6 +227,7 @@ function captureSlide(ctx) {
         'decorative',
         'allowOverlap',
         'role',
+        'textRole',
         'logicalGroup',
         'logicalText',
         'logicalBox',

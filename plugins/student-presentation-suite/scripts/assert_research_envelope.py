@@ -43,15 +43,6 @@ def check_text(text: str) -> list[str]:
     return problems
 
 
-def check_main_transcript(text: str) -> list[str]:
-    """Main-flow isolation: raw retrieval tools must not appear in the parent chat."""
-    problems: list[str] = []
-    for marker in ("WebSearch", "WebFetch"):
-        if marker in text:
-            problems.append(f"main transcript contains {marker} (CD-5)")
-    return problems
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", help="file path; default stdin")

@@ -548,6 +548,61 @@ class RetrievalAuditTests(unittest.TestCase):
         }
         self.assertIn("over_broad_query", self.codes(pack, search_log=log))
 
+    def test_query_echoing_a_recorded_value_is_flagged(self) -> None:
+        # 里约事故形态：把已拿到并记录的数值原样塞回检索框。
+        pack = base_pack()
+        pack["data_points"].append(
+            {
+                "id": "D02",
+                "value": "8.87亿千瓦",
+                "meaning": "全国发电装机容量",
+                "year": 2025,
+                "confidence": "high",
+                "source_ids": ["S01", "S02"],
+            }
+        )
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "全国发电装机 8.87亿千瓦 数据来源", "status": "ok"},
+                {"n": 2, "query": "38% 的幻觉率 还有别的统计吗", "status": "ok"},
+            ]
+        }
+        codes = self.codes(pack, search_log=log)
+        self.assertIn("query_echoes_known_value", codes)
+        report = self.module.validate(pack, search_log=log)
+        self.assertTrue(report["ok"], report["problems"])
+
+    def test_query_echo_matches_after_normalization(self) -> None:
+        pack = base_pack()
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "幻觉率 38 % 出处", "status": "ok"},
+            ]
+        }
+        self.assertIn("query_echoes_known_value", self.codes(pack, search_log=log))
+
+    def test_year_only_numbers_in_queries_are_not_echoes(self) -> None:
+        pack = base_pack()
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "2025年 LVLM 幻觉率 统计口径", "status": "ok"},
+            ]
+        }
+        self.assertNotIn("query_echoes_known_value", self.codes(pack, search_log=log))
+
+    def test_a_failed_query_echoing_a_value_is_not_counted(self) -> None:
+        pack = base_pack()
+        log = {
+            "search_executions": [
+                {"n": 1, "query": "38% 的幻觉率", "status": "failed"},
+            ]
+        }
+        self.assertNotIn("query_echoes_known_value", self.codes(pack, search_log=log))
+
+    def test_no_search_log_means_no_echo_flag(self) -> None:
+        pack = self._pack_with_queries()
+        self.assertNotIn("query_echoes_known_value", self.codes(pack, search_log=None))
+
     def test_result_page_fetches_are_flagged(self) -> None:
         report = {"records": [{"url": "https://www.so.com/s?q=x", "host_class": "search_engine", "ok": True}]}
         self.assertIn("result_page_fetched", self.codes(base_pack(), fetch_report=report))
@@ -671,6 +726,7 @@ class RetrievalAuditTests(unittest.TestCase):
             "duplicate_query",
             "reworded_retry",
             "over_broad_query",
+            "query_echoes_known_value",
             "result_page_fetched",
             "degenerate_channel",
             "search_backend_not_executed",

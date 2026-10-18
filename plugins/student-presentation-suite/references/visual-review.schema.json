@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://student-presentation-suite.local/visual-review.schema.json",
   "title": "Visual Review",
-  "description": "visual-critic 唯一交付物 visual-review.json 的 canonical 形状。来源：2026-09-17 live 会话中 critic 首轮按旧示例交了 issues 顶层结构、QA 门要 slides 数组，主会话此后每次 spawn 手贴 1.5KB schema——本文件消灭该漂移。分数与结构词汇必须与 pptx_quality_gate_v071.py 的 SCORE_FIELDS / REPETITIVE_STRUCTURES 对齐；语义规则见 skills/sp-deck/references/pptx-visual-critic.md。required 只含 QA 门真正消费的最小集（否则 critic 每轮要补写无人读取的字段，漏一个就返工——那正是本批要消灭的失败模式）；其余属性是推荐的完整形状，缺失不影响门通过，一旦出现即受类型约束。",
+  "description": "visual-critic 唯一交付物 visual-review.json 的 canonical 形状。来源：2026-09-17 live 会话中 critic 首轮按旧示例交了 issues 顶层结构、QA 门要 slides 数组，主会话此后每次 spawn 手贴 1.5KB schema——本文件消灭该漂移。分数与结构词汇必须与 pptx_quality_gate_v071.py 的 SCORE_FIELDS / REPETITIVE_STRUCTURES 对齐；语义规则由本 schema 自身与 pptx_quality_gate_v071.py 消费方对齐。required 只含 QA 门真正消费的最小集（否则 critic 每轮要补写无人读取的字段，漏一个就返工——那正是本批要消灭的失败模式）；其余属性是推荐的完整形状，缺失不影响门通过，一旦出现即受类型约束。",
   "type": "object",
   "required": [
     "pptx_sha256",

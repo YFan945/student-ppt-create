@@ -43,7 +43,9 @@ Do not run environment, generation, rendering or delivery commands in intake_pen
 
 ## Production Summary
 
-Show the full summary including assumptions, existing-deck preservation, planned output directory, exact deliverables, imagery permissions and allowed placeholders. Use AskUserQuestion to obtain an affirmative reply (confirm / adjust). Only approval of this summary moves intake_pending to intake_confirmed. Do not re-confirm a summary already approved in the current task. A prior authorization applies to its stated scope; changes to facts, deliverables or permissions must remain within it.
+Show the full summary including assumptions, existing-deck preservation, planned output directory, exact deliverables, imagery permissions and allowed placeholders. The summary must state the research scope decision (the A/B/C/D letter with a one-line rationale) and the interaction/rehearsal position, even when they are assumptions. Use AskUserQuestion to obtain an affirmative reply (confirm / adjust). Only approval of this summary moves intake_pending to intake_confirmed. Do not re-confirm a summary already approved in the current task. A prior authorization applies to its stated scope; changes to facts, deliverables or permissions must remain within it.
+
+Persist the approved summary **verbatim**: the file hashed by `workflow_guard.py confirm` must be exactly what the user approved. Post-approval additions or edits — a scope letter, a changed output_dir, different deliverables — are a new summary: show the revised version and obtain approval again before confirming.
 
 Example: “中文课程汇报，老师与同学，5分钟约8页，个人；使用已给材料，不外查；沿用蓝灰参考的层级并按内容变化构图；优先本地图片和可编辑图解，允许已确认的素材占位；正文保留支撑，备注讲重点；交付PPTX到outputs/course-report。” Ask only about consequential missing choices before this final approval.
 

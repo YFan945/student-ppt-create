@@ -4,8 +4,7 @@
 This is an execution-integrity gate inside a trusted local Claude session, not a
 sandbox against a user/process able to rewrite the hook and its evidence files.
 
-Receipt artifacts (research-pack.json / visual-review.json / the calibration
-visual review) are credited through
+Receipt artifacts (research-pack.json) are credited through
 hash snapshots taken at SubagentStart and refreshed after every child tool call,
 so script writes (e.g. ``python json.dump``) count the same as Write-tool writes.
 """
@@ -28,7 +27,6 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-import critic_preview  # noqa: E402
 import pipeline_context  # noqa: E402
 from hook_events import read_event  # noqa: E402
 
@@ -42,13 +40,12 @@ from shared.retrieval_trail import (  # noqa: E402
 )
 
 RESEARCHER = pipeline_context.RESEARCHER
-CRITIC = pipeline_context.CRITIC
 PIPELINE_SKILLS = pipeline_context.PIPELINE_SKILLS
 LOCK_STALE_SECONDS = 30.0
-EVIDENCE_NAME_RE = re.compile(r"research|critic", re.I)
+EVIDENCE_NAME_RE = re.compile(r"research", re.I)
 NAMED_TEAMMATE_REFUSAL = (
-    "Do not create or message named researcher/critic teammates. Evidence work must use "
-    "the isolated presentation-researcher or visual-critic subagent directly from the MAIN "
+    "Do not create or message named researcher teammates. Evidence work must use "
+    "the isolated presentation-researcher subagent directly from the MAIN "
     "session, without `name`."
 )
 NAMED_SPAWN_REFUSAL = (
@@ -60,8 +57,8 @@ NAMED_SPAWN_REFUSAL = (
     "burned 0.86M tokens and ran 0 searches)."
 )
 NESTED_SPAWN_REFUSAL = (
-    "Do not nest presentation-researcher or visual-critic inside another "
-    "agent. Only the main session may spawn them, once, without "
+    "Do not nest presentation-researcher inside another "
+    "agent. Only the main session may spawn it, once, without "
     "`name`. If you are a teammate whose WebSearch was blocked, stop — the "
     "main session must respawn the plugin agent correctly."
 )
@@ -102,10 +99,6 @@ SEARCH_PAYLOADS_NAME = "search-payloads.json"
 _BODY_DUMP_RE = re.compile(
     r"\b(grep|cat|head|tail|less|more|Get-Content)\b|\bprint\s*\(|\bopen\s*\(|\bread_text\s*\(",
     re.IGNORECASE,
-)
-CRITIC_WORKDIR_REFUSAL = (
-    "visual-critic spawn must include the absolute outputs/.pptx-work/<work-id> path "
-    "in its prompt so the hook can materialize hash-bound compressed previews."
 )
 
 
@@ -178,17 +171,11 @@ def artifact_snapshot(root: Path) -> dict[str, str]:
     snap: dict[str, str] = {}
     if not root.is_dir():
         return snap
-    patterns = (
-        "*/research-pack.json",
-        "*/visual-review.json",
-        "*/calibration/calibration-visual-review.json",
-    )
-    for pattern in patterns:
-        for path in root.glob(pattern):
-            try:
-                snap[str(path)] = digest(path)
-            except OSError:
-                continue
+    for path in root.glob("*/research-pack.json"):
+        try:
+            snap[str(path)] = digest(path)
+        except OSError:
+            continue
     return snap
 
 
@@ -232,7 +219,7 @@ def _strings(value):
             yield from _strings(item)
 
 
-def _critic_work_dir(inputs: dict, root: Path) -> Path | None:
+def _agent_work_dir(inputs: dict, root: Path) -> Path | None:
     """Find exactly one absolute work-dir explicitly passed in the Agent input."""
     if not root.is_dir():
         return None
@@ -257,27 +244,6 @@ def _critic_work_dir(inputs: dict, root: Path) -> Path | None:
         if candidate.is_dir():
             named.add(candidate.resolve())
     return named.pop().resolve() if len(named) == 1 else None
-
-
-def _hook_owned_preview_path(path: Path, root: Path) -> bool:
-    if not path.is_relative_to(root):
-        return False
-    if path.name == critic_preview.MAP_NAME:
-        return True
-    return critic_preview.PREVIEW_DIR_NAME in path.parts
-
-
-def _critic_review_target(path: Path, root: Path) -> tuple[Path, Path] | None:
-    """Return (work-dir, receipt path) for an allowed critic report location."""
-    if path.name == "visual-review.json" and path.parent.parent == root:
-        return path.parent, path.parent / "critic-execution.json"
-    if (
-        path.name == "calibration-visual-review.json"
-        and path.parent.name == "calibration"
-        and path.parent.parent.parent == root
-    ):
-        return path.parent.parent, path.parent / "calibration-critic-execution.json"
-    return None
 
 
 def _is_researcher(event: dict) -> bool:
@@ -659,17 +625,14 @@ def handle(event: dict) -> int:
             if path.is_relative_to(root) and (
                 path.name in {
                     "research-execution.json",
-                    "critic-execution.json",
-                    "calibration-critic-execution.json",
                     SEARCH_PAYLOADS_NAME,
                     "research-task-binding.json",
                     "research-control.json",
                 }
                 or path.is_relative_to(root / ".guard")
-                or _hook_owned_preview_path(path, root)
             ):
                 print(
-                    "Runtime receipts, critic previews and event ledgers are hook-owned; models cannot write them.",
+                    "Runtime receipts and event ledgers are hook-owned; models cannot write them.",
                     file=sys.stderr,
                 )
                 return 2
@@ -690,67 +653,48 @@ def handle(event: dict) -> int:
             ):
                 print(NAMED_TEAMMATE_REFUSAL, file=sys.stderr)
                 return 2
-        if tool == "Agent" and inputs.get("subagent_type") in {RESEARCHER, CRITIC}:
+        if tool == "Agent" and inputs.get("subagent_type") == RESEARCHER:
             if inputs.get("name"):
                 print(NAMED_SPAWN_REFUSAL, file=sys.stderr)
                 return 2
             if child:
                 print(NESTED_SPAWN_REFUSAL, file=sys.stderr)
                 return 2
-            if inputs.get("subagent_type") == RESEARCHER:
-                researcher_work = _critic_work_dir(inputs, root)
-                if researcher_work and (researcher_work / "research-task.json").is_file():
-                    from validate_research_task import validate_task
+            researcher_work = _agent_work_dir(inputs, root)
+            if researcher_work and (researcher_work / "research-task.json").is_file():
+                from validate_research_task import validate_task
 
-                    from shared.research_io import atomic_json
-                    task_path = researcher_work / "research-task.json"
-                    try:
-                        errors = validate_task(json.loads(task_path.read_text(encoding="utf-8")), task_path)
-                    except (OSError, ValueError, TypeError) as exc:
-                        errors = [str(exc)]
-                    if errors:
-                        print("Invalid researcher task: " + "; ".join(errors), file=sys.stderr)
-                        return 2
-                    prior = read_json(researcher_work / "research-task-binding.json")
-                    if prior.get("session_id") == event.get("session_id") and prior.get("session_id"):
-                        print("This session already spawned this research task. Return its saved pack and gaps; do not autonomously restart or respawn it.", file=sys.stderr)
-                        return 2
-                    atomic_json(researcher_work / "research-task-binding.json", {
-                        "path": str(task_path.resolve()),
-                        "session_id": event.get("session_id"),
-                        "sha256": hashlib.sha256(task_path.read_bytes()).hexdigest(),
-                    })
-                    from shared.research_control import status
-                    status(researcher_work)
-                pipeline_context.mark_research_active(
-                    project, event,
-                    work_ids=[researcher_work.name] if researcher_work else None,
-                )
-            else:
-                work_dir = _critic_work_dir(inputs, root)
-                if work_dir is None:
-                    print(CRITIC_WORKDIR_REFUSAL, file=sys.stderr)
-                    return 2
-                # A deck may legitimately skip external research. Its critic
-                # spawn still identifies the exact work-id owned by this main
-                # session, so record it before arming/refreshing scope. This
-                # prevents an unrelated historical incomplete deck from keeping
-                # WebSearch blocked after the current deck completes.
-                pipeline_context.mark_research_active(
-                    project, event, work_ids=[work_dir.name]
-                )
+                from shared.research_io import atomic_json
+                task_path = researcher_work / "research-task.json"
                 try:
-                    critic_preview.materialize(work_dir)
-                except (OSError, ValueError, RuntimeError, json.JSONDecodeError) as exc:
-                    print(f"visual-critic preview preparation failed: {exc}", file=sys.stderr)
+                    errors = validate_task(json.loads(task_path.read_text(encoding="utf-8")), task_path)
+                except (OSError, ValueError, TypeError) as exc:
+                    errors = [str(exc)]
+                if errors:
+                    print("Invalid researcher task: " + "; ".join(errors), file=sys.stderr)
                     return 2
+                prior = read_json(researcher_work / "research-task-binding.json")
+                if prior.get("session_id") == event.get("session_id") and prior.get("session_id"):
+                    print("This session already spawned this research task. Return its saved pack and gaps; do not autonomously restart or respawn it.", file=sys.stderr)
+                    return 2
+                atomic_json(researcher_work / "research-task-binding.json", {
+                    "path": str(task_path.resolve()),
+                    "session_id": event.get("session_id"),
+                    "sha256": hashlib.sha256(task_path.read_bytes()).hexdigest(),
+                })
+                from shared.research_control import status
+                status(researcher_work)
+            pipeline_context.mark_research_active(
+                project, event,
+                work_ids=[researcher_work.name] if researcher_work else None,
+            )
         if tool in {"WebSearch", "WebFetch"}:
             if child:
                 # Batch 6.1: only THIS plugin's subagents are pipeline-scoped.
-                # The isolated researcher owns retrieval; the builder and critic
-                # have no retrieval mandate. Subagents from other plugins or user
-                # workflows are out of scope entirely and pass through — the old
-                # `or child` condition refused every subagent on the machine.
+                # The isolated researcher owns retrieval. Subagents from other
+                # plugins or user workflows are out of scope entirely and pass
+                # through — the old `or child` condition refused every subagent
+                # on the machine.
                 if agent != RESEARCHER and str(agent or "").startswith(pipeline_context.PLUGIN_PREFIX):
                     print(WEB_REFUSAL, file=sys.stderr)
                     return 2
@@ -764,17 +708,6 @@ def handle(event: dict) -> int:
                     # releases it as soon as all work-ids are delivered.
                     print(WEB_REFUSAL, file=sys.stderr)
                     return 2
-        if agent == CRITIC and tool in {"Write", "Edit"}:
-            path = Path(inputs.get("file_path") or "").resolve()
-            target = _critic_review_target(path, root)
-            allowed = None if target is None else critic_preview.assigned_review_output(target[0])
-            if allowed is None or path != allowed:
-                print(
-                    "visual-critic may only write the current review_output declared by "
-                    "the hook-owned critic-preview-map.json",
-                    file=sys.stderr,
-                )
-                return 2
         return 0
     if kind == "PostToolUse" and tool == "WebSearch" and _is_researcher(event) and child:
         _record_search_payload(project, event)
@@ -791,7 +724,7 @@ def handle(event: dict) -> int:
             work_name = Path(work_match.group(1)).resolve().name
             if work_name and work_name != ".pptx-work":
                 pipeline_context.mark_research_active(project, event, work_ids=[work_name])
-    if agent not in {RESEARCHER, CRITIC} or not child:
+    if agent != RESEARCHER or not child:
         return 0
     key = re.sub(r"[^A-Za-z0-9_-]", "_", str(event.get("session_id")) + "-" + str(child))
     ledger = root / ".guard" / f"agent-{key}.json"
@@ -825,11 +758,6 @@ def handle(event: dict) -> int:
         if path.is_file() and path.is_relative_to(root):
             target = data["reads" if tool == "Read" else "writes"]
             target[str(path)] = digest(path)
-            if agent == CRITIC and tool == "Read" and path.parent.name == critic_preview.PREVIEW_DIR_NAME:
-                source = critic_preview.source_binding_for_preview(path.parent.parent, path)
-                if source is not None:
-                    source_path, source_sha = source
-                    data["reads"][source_path] = source_sha
         record_artifact_changes(data, root)
     elif kind == "PostToolUse" and tool in {"Bash", "PowerShell"}:
         record_artifact_changes(data, root)
@@ -852,14 +780,6 @@ def handle(event: dict) -> int:
                     continue
                 work_dir = artifact.parent
                 target = work_dir / "research-execution.json"
-            else:
-                critic_target = _critic_review_target(artifact, root)
-                if critic_target is None:
-                    continue
-                work_dir, target = critic_target
-                allowed = critic_preview.assigned_review_output(work_dir)
-                if allowed is None or artifact.resolve() != allowed:
-                    continue
             if not artifact.is_file() or digest(artifact) != sha:
                 continue
             receipt = {
@@ -876,7 +796,7 @@ def handle(event: dict) -> int:
 
 if __name__ == "__main__":
     event = read_event()
-    if (_is_researcher(event) or event.get("agent_type") == CRITIC) and event.get("hook_event_name") != "PreToolUse":
+    if _is_researcher(event) and event.get("hook_event_name") != "PreToolUse":
         with event_lock(event):
             code = handle(event)
     else:

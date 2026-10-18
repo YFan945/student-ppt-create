@@ -48,7 +48,7 @@
         "cjk_title_font": "SimHei",
         "cjk_body_font": "SimSun",
         "title_font": "Cambria",
-        "body_font": "Calibri"
+        "body_font": "Cambria"
       }
     },
     "data-driven": {
@@ -78,7 +78,7 @@
         "cjk_title_font": "Microsoft YaHei",
         "cjk_body_font": "DengXian",
         "title_font": "Arial",
-        "body_font": "Calibri"
+        "body_font": "DengXian"
       }
     },
     "modern-minimal": {
@@ -108,7 +108,7 @@
         "cjk_title_font": "DengXian",
         "cjk_body_font": "Microsoft YaHei",
         "title_font": "Calibri",
-        "body_font": "Arial"
+        "body_font": "Microsoft YaHei"
       }
     },
     "charcoal-editorial": {
@@ -168,7 +168,7 @@
         "cjk_title_font": "Microsoft YaHei",
         "cjk_body_font": "Microsoft YaHei",
         "title_font": "Cambria",
-        "body_font": "Arial"
+        "body_font": "Microsoft YaHei"
       }
     },
     "ocean-tech": {
@@ -198,7 +198,7 @@
         "cjk_title_font": "Microsoft YaHei",
         "cjk_body_font": "DengXian",
         "title_font": "Arial",
-        "body_font": "Arial"
+        "body_font": "DengXian"
       }
     },
     "teal-trust": {
@@ -228,7 +228,7 @@
         "cjk_title_font": "Microsoft YaHei",
         "cjk_body_font": "Microsoft YaHei",
         "title_font": "Bookman Old Style",
-        "body_font": "Calibri"
+        "body_font": "Microsoft YaHei"
       }
     },
     "cherry-bold": {
@@ -258,7 +258,7 @@
         "cjk_title_font": "SimHei",
         "cjk_body_font": "Microsoft YaHei",
         "title_font": "Times New Roman",
-        "body_font": "Calibri"
+        "body_font": "Microsoft YaHei"
       }
     },
     "creative-student": {
@@ -288,7 +288,7 @@
         "cjk_title_font": "Microsoft YaHei",
         "cjk_body_font": "Microsoft YaHei",
         "title_font": "Century Schoolbook",
-        "body_font": "Calibri"
+        "body_font": "Microsoft YaHei"
       }
     },
     "coral-energy": {
@@ -318,7 +318,7 @@
         "cjk_title_font": "Microsoft YaHei",
         "cjk_body_font": "Microsoft YaHei",
         "title_font": "Calibri",
-        "body_font": "Cambria"
+        "body_font": "Microsoft YaHei"
       }
     },
     "forest-moss": {
@@ -348,7 +348,7 @@
         "cjk_title_font": "Microsoft YaHei",
         "cjk_body_font": "DengXian",
         "title_font": "Bookman Old Style",
-        "body_font": "Times New Roman"
+        "body_font": "DengXian"
       }
     },
     "warm-terracotta": {
@@ -378,7 +378,7 @@
         "cjk_title_font": "KaiTi",
         "cjk_body_font": "DengXian",
         "title_font": "Cambria",
-        "body_font": "Times New Roman"
+        "body_font": "DengXian"
       }
     }
   }

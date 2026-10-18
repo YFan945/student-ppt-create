@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.30.9 — 2026-10-19 · 排版可读性（字体配对/行距段距/角色化告警）、隐藏门禁显形与研究纪律修复
+
+- 文档与仓库清理：删除零引用的 0.13.0 历史验收记录（`references/verification-0.13.0.md`）；修正根 README 失效的 workflow-state-recovery 锚点、成本/spawn 守卫空指针与输出文件清单（按 `complete` 当前实际交付物重写）；golden-sample 注明为历史 v0.8 管线展示；修正根 AGENTS.md 中 `scripts/live_prompts/` 路径、补齐 `commands/sp-check-env.md` 与示例目录清单；删除 sp-review 残留的字数上限与 sp-cost-report 中已移除的 CD 编号引用；修正 sp-research 中 validate_research_task.py 的插件内路径。
+- 删除 visual-critic 残留死代码（0.27 移除 critic 子代理后的遗留）：hook 中不可达的 critic spawn/写守卫与回执逻辑、`scripts/critic_preview.py`、`skills/sp-deck/references/pptx-visual-critic.md`、`pipeline_context` 无消费者的 resolve/agent_role、相应 critic 测试用例；`visual-review.json` 格式与 schema 保留（仍被交付检查消费）。修复 research-workflow.md 三处文档漂移：删除与代码矛盾的停滞/总时长计时器表述、校验脚本自动发现 search-log/fetch-report 的口径、spawn 绑定按会话拒绝重派的措辞；政策文件中的历次 live 事故叙事迁入 `scripts/live_prompts/FINDINGS.md` 第九节；删除 assert_research_envelope.py 无调用方的 check_main_transcript。执行者界面（SKILL/研究员契约/spawn 模板）对失败签名关键短语的重复保留——ContractSyncTests 将其钉为防隔离子代理失锚的故意设计。
+- 生产事故修复（pv-wind-carbon 会话复盘，详见 live_prompts/FINDINGS.md 第十节）：
+  - **混排拆分改为显式开启**：`addFittedText`/页面运行时的 `positionMixedText` 从默认拆分（opt-out）改为 `=== true` 才拆分（opt-in），box 层开关兼容读取——此前作者把 `positionMixedText: false` 放在不被读取的实参层被静默忽略，中西文混排被拆成 sps-line 片段，Latin 数字渲染成"下标"且换行后与邻行重叠；默认路径现为单框多 run（行内强调的正道），readback 的 sps-line 重拼保留兼容历史 deck。
+  - **行高模型改用真实字体度量**：行高 = `(ascent − descent + lineGap) / unitsPerEm`（fontkit），无度量时回退 ×1.18——模型行距小于真实 CJK 行高是渲染层重叠而几何 QA 失明的根因。
+  - **registry 新增 `text_size_review` 警告**：按角色分档提示过小文字（body/list <12pt、caption/source/reference <9pt、其他 <10pt，不阻断），配合设计文档新增的投影可读性参考（正文 14–18pt、注释 10–12pt）与"每页必须有视觉重点"的强调规则（关键数字/关键词加粗、重点色或放大，单对象多 run 实现）。
+  - **intake 摘要一致性**：`workflow_guard.py confirm` 新增摘要五组必备字段（场景/受众/篇幅/研究范围/输出交付）机械检查；intake 政策明确批准的摘要必须原样落盘、批准后改动需重新展示并获批——修复"批准 A 版、哈希 B 版"的授权漂移。
+  - **隐藏门禁显形**：`research_pack_to_evidence` 的 missing core claims 报错扩写为含三条出路（定向补检 / core 降 supporting 并 rebind / D 类导入）的可执行说明，并写入 main-session-production 文档；addTable 表头自动取色（首行 bold 即 header、默认 primary_accent 底）与 `headerFill`/`headerColor` 写入 authoring-quickstart；`measure` 输出如实声明只覆盖文本溢出/偏紧（对比度/重叠/对齐由 run 检查）。
+  - **研究员浪费收敛**：研究员契约新增"先用 research_excerpt.py 脚本开窗抽取、后写绑定"的硬顺序（凭记忆写摘录被打回补救是写包-校验循环最大浪费）与"回显已获数字"禁令；校验器新增 minor advisory `query_echoes_known_value`，机械识别把已入库数字原样塞回检索框的查询。
+- 排版可读性（课堂投影反馈；按角色收窄后落地）：
+  - **字体配对**：design-tokens 保留各风格的标题中西文配对，正文/数字默认与 CJK 正文同族（`body_font=cjk_body_font`；SimSun 正文用 Cambria/Times New Roman 配对），消除正文里雅黑/Calibri/Arial 穿插的割裂感，同时不一刀切抹平风格差异；修复 atoms() 对不可解析字体名静默改写为 Arial 的泄漏（run 写出保持请求名，替换关系记入 substitutions）。
+  - **行距段距**：行高改用真实字体度量；body/list 保持 1.3× 下限，表格、KPI、图注、页脚等其他角色不强制。body/list 多自然段默认在**段落末尾**加 0.4×字号段后间距（修复了折行长段把间距挂到段内第一行的 bug），显式 `paraSpaceAfter`（含 0）优先，测量与写出一致。
+  - **层级纪律**：registry 告警按角色收窄——`text_size_review`（body/list <12pt、caption/source/reference <9pt、其他 <10pt）、`text_size_tiers`（一页主要文字档 >4，KPI/stat/label/node 不计）、`font_family_mix`（同一角色内混用字体配对才报，标题/正文不同配对合法，纯符号 run 不计）；均不阻断。设计文档的投影参考更新为正文 14–18pt、注释 10–12pt、每页四档主要文字层级，深色背景小号文字需更亮更粗补偿。
+
 ## 0.30.8 — 2026-10-16 · 定位行回读修复、逐页错误收集与文本度量命令
 
 - 修复定位行回读：同名 `sps-line:` 定位片段按共享名称重拼为一条逻辑行，不再受基线对齐高差与语言片段间距影响；事实绑定（fact_bindings）支持混排混字号的单逻辑行，构建期内容检查与 OOXML 回读规则一致。

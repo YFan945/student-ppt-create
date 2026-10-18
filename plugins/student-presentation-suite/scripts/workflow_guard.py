@@ -73,6 +73,30 @@ def transition_allowed(before: str, after: str) -> bool:
     return SEQUENCE.index(after) == SEQUENCE.index(before) + 1
 
 
+# Production Summary 必备字段组（owner 事故修复 2026-10-16）：一次真实事故中，
+# 聊天里批准的摘要 A 版与被 confirm 哈希的 approved-summary.md B 版不一致
+# （scope/output_dir 批准后变更，交付到了用户没见过的目录）。哈希只能证明
+# "confirm 的是这份文件"，证明不了"这份文件覆盖了用户批准的维度"——所以
+# confirm 除了哈希还必须做内容存在性检查。每组任一 alias 命中即算覆盖。
+SUMMARY_REQUIRED_GROUPS: dict[str, frozenset[str]] = {
+    "场景": frozenset({"场景", "scenario"}),
+    "受众": frozenset({"受众", "听众", "观众", "audience"}),
+    "篇幅": frozenset({"页", "slide", "时长", "duration", "分钟", "min"}),
+    "研究范围/证据": frozenset({"研究范围", "scope", "证据", "evidence", "来源"}),
+    "输出/交付": frozenset({"输出", "output", "交付", "deliverable"}),
+}
+
+
+def summary_missing_groups(text: str) -> list[str]:
+    """大小写不敏感的子串匹配；返回未覆盖的字段组名（有序）。"""
+    lowered = text.lower()
+    return [
+        name
+        for name, aliases in SUMMARY_REQUIRED_GROUPS.items()
+        if not any(alias in lowered for alias in aliases)
+    ]
+
+
 
 
 def count_slides(pptx: Path) -> int | None:
@@ -309,6 +333,21 @@ def state_command(args: argparse.Namespace) -> int:
                 f"摘要文件不存在: {args.summary_file}\n"
                 f"请提供有效的 Production Summary 文件路径。"
             )
+        try:
+            summary_text: str | None = args.summary_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            summary_text = None  # 读取失败保持现有行为：不新增门禁，哈希照旧
+        if summary_text is not None:
+            missing_groups = summary_missing_groups(summary_text)
+            if missing_groups:
+                print(
+                    "Production Summary 缺少必备字段组: "
+                    + ", ".join(missing_groups)
+                    + "\nProduction Summary 必须覆盖场景/受众/篇幅/研究范围/输出交付，"
+                    "且须与用户批准的版本一致。",
+                    file=sys.stderr,
+                )
+                raise SystemExit(2)
         summary_hash = hashlib.sha256(args.summary_file.read_bytes()).hexdigest()
         base = current or {"workflow_version": "1.0", "topic": args.topic}
         base["work_id"] = work_id

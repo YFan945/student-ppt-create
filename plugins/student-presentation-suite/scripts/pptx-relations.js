@@ -37,7 +37,11 @@ function metric(ctx, fact, box, options) {
     });
   // One real rich-text object binds label and quantity, even when visually
   // separated by line breaks. Keep editable type and exact readback together.
-  return text(ctx, runs, box, { ...options, positionMixedText: false });
+  // The positioned split is opt-in only; never let a caller's flag re-enable it
+  // here and scatter a bound metric across fragments.
+  const rest = { ...options };
+  delete rest.positionMixedText;
+  return text(ctx, runs, box, rest);
 }
 
 function evidenceRows(ctx, rows, box, options) {

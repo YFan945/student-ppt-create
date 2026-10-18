@@ -21,7 +21,8 @@ an editable PPTX, review an existing deck, or produce a separate improved copy.
 
 A reproducible
 [golden sample](plugins/student-presentation-suite/examples/golden-sample/README.md)
-runs the full v0.8 pipeline end-to-end and reaches `status: complete`.
+showcases the historical v0.8 pipeline end-to-end (current production no longer
+uses its composition-candidate and critic-receipt machinery).
 
 Plugin install ID:
 
@@ -178,8 +179,9 @@ slide count, rubric, sources, visual style, and deliverables. Production starts
 only after you confirm it.
 
 Production is gated by a confirmed Production Summary (`workflow_guard.py` /
-`ppt_pipeline.py`). Cost and spawn guards are documented in the
-[plugin README](plugins/student-presentation-suite/README.md).
+`ppt_pipeline.py`). Cost discipline and research spawn isolation live in
+[`references/cost-discipline.md`](plugins/student-presentation-suite/references/cost-discipline.md)
+and [`references/spawn-templates.md`](plugins/student-presentation-suite/references/spawn-templates.md).
 
 Deliverables are written to the active project's `outputs/` directory, never
 to the plugin installation. Existing source decks are never overwritten.
@@ -255,28 +257,29 @@ creates a separate PPTX and change summary.
 
 ## Output Files
 
-Depending on the request, `outputs/` may contain:
+Depending on the request and selected deliverables, `outputs/` may contain:
 
 ```text
 <topic>-outline.md
 <topic>-presentation.pptx
-<topic>-speaker-notes.md
-<topic>-preview.png
-<topic>-presentation-package-report.json
-<topic>-actual-content-report.json
-<topic>-visual-review.json
-<topic>-quality-report.json
-<topic>-delivery-report.json
-<topic>-change-summary.md
 <topic>-presentation.pdf
+<topic>-slide-spec.yaml
+<topic>-quality-report.json
+<topic>-contact-sheet.png
+<topic>-slides/slide-01.png … (per-page renders)
+<topic>-preview.json
+<topic>-speaker-notes.md
+<topic>-full-script.md
 <topic>-teleprompter.html
 <topic>-training-cards.md
+<topic>-references.md
+<topic>-change-summary.md
 <topic>-revision-manifest.json
 ```
 
 The final response reports each absolute file path, slide count, rendered QA
-result, and status: `complete`, `incomplete`, or `blocked`. Visual system, QA
-DAG, and local render matrix: [plugin README](plugins/student-presentation-suite/README.md).
+result, and status: `complete`, `incomplete`, or `blocked`. Visual system and
+production/QA commands: [sp-deck production reference](plugins/student-presentation-suite/skills/sp-deck/references/main-session-production.md).
 
 ## Update And Uninstall
 
@@ -322,8 +325,9 @@ delivery; candidate PPTX generation can run without them.
 ### Workflow State Is Stuck
 
 If QA found a blocker, do **not** reset — repair through the pipeline rework
-edge. The repair / complete / unblock commands and their semantics are owned by
-the [plugin README](plugins/student-presentation-suite/README.md#workflow-state-recovery).
+edge. The repair / complete / unblock commands and their semantics live in the
+[sp-deck production reference](plugins/student-presentation-suite/skills/sp-deck/references/main-session-production.md)
+and `scripts/workflow_guard.py`.
 
 ### Where Are Generated Files?
 

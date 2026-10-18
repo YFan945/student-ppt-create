@@ -2,7 +2,7 @@
 """Shared PPT-pipeline scope resolution for the plugin's PreToolUse guards.
 
 Batch 6.1 — Hook Scope Isolation. The guards used to decide "is this a PPT
-production call?" implicitly and inconsistently: cost_guard applied PPT cost
+production call?" implicitly and inconsistently: one guard applied PPT cost
 discipline to every session in every repository, and runtime_evidence refused
 WebSearch/WebFetch for *any* subagent, plugin-owned or not. This module owns
 that decision in one place, on deterministic signals only:
@@ -17,7 +17,7 @@ that decision in one place, on deterministic signals only:
 Natural-language intent ("the user mentioned PPT") is deliberately NOT a
 signal: "check the PPT plugin's code" is plugin maintenance, not production.
 `session_id` separates concurrent tasks, the work-dir path separates parallel
-decks, and `agent_id`/`agent_type` separate builder authority — each has one
+decks, and `agent_id`/`agent_type` separate subagent authority — each has one
 job and none substitutes for another.
 """
 
@@ -28,28 +28,21 @@ import os
 import re
 import time
 from contextlib import suppress
-from dataclasses import dataclass
 from pathlib import Path
 
 PLUGIN_PREFIX = "student-presentation-suite:"
 RESEARCHER = PLUGIN_PREFIX + "presentation-researcher"
-BUILDER = PLUGIN_PREFIX + "presentation-builder"
-CRITIC = PLUGIN_PREFIX + "visual-critic"
 
 # Skills whose activation puts a session into managed production scope.
 PIPELINE_SKILLS = {"sp-research", "sp-deck", "sp-outline"}
-
-PLUGIN_ROLES = frozenset({"researcher", "builder", "critic", "plugin-agent"})
 
 # A crash (or a runtime that never delivers Stop) must not leave research
 # scope armed for the rest of a session's life. Generous by design: research
 # phases run hours, false "inactive" would defeat the isolation.
 RESEARCH_ACTIVE_TTL_SECONDS = 6 * 3600
 
-# Public ppt_pipeline.py actions. Single source shared by runtime_evidence
-# (PostToolUse arming), cost_guard (run recognition) and production_entry_guard
-# (direct-Bash allow-list) — three copies of this list drifted once already
-# (cost_guard lacked `doctor`).
+# Public ppt_pipeline.py actions recognized by is_pipeline_invocation
+# (runtime_evidence arms research scope from PostToolUse Bash).
 PIPELINE_ACTIONS = frozenset(
     {
         "plan", "run", "build", "render", "qa", "repair", "complete",
@@ -85,22 +78,6 @@ def project_root(event: dict) -> Path:
         or str(event.get("cwd") or "")
         or Path.cwd()
     ).resolve()
-
-
-def agent_role(event: dict) -> str:
-    """One of researcher / builder / critic / plugin-agent / subagent / main."""
-    agent = str(event.get("agent_type") or "")
-    if agent == RESEARCHER:
-        return "researcher"
-    if agent == BUILDER:
-        return "builder"
-    if agent == CRITIC:
-        return "critic"
-    if agent.startswith(PLUGIN_PREFIX):
-        return "plugin-agent"
-    if event.get("agent_id"):
-        return "subagent"
-    return "main"
 
 
 def is_child(event: dict) -> bool:
@@ -179,8 +156,8 @@ def research_active(project: Path, event: dict, *, now: float | None = None) -> 
     if age > RESEARCH_ACTIVE_TTL_SECONDS or age < -5:
         clear_research_active(project, event)
         return False
-    # Delivered scope is inactive for EVERY consumer (WebSearch refusal,
-    # cost_guard's managed flag, resolve()) — not only the WebSearch path
+    # Delivered scope is inactive for EVERY consumer (the WebSearch refusal
+    # and the named-teammate guard) — not only the WebSearch path
     # (2026-09-20 review: a completed deck still counted as managed, so a
     # reference re-read could be blocked after delivery).
     return not release_if_production_complete(project, event)
@@ -229,29 +206,3 @@ def session_work_ids(project: Path, event: dict) -> list[str]:
         return []
     ids = data.get("work_ids") if isinstance(data, dict) else None
     return [str(item) for item in ids] if isinstance(ids, list) else []
-
-
-@dataclass(frozen=True)
-class PipelineContext:
-    """Resolved scope of one hook event.
-
-    `managed` means the call happens inside a recognized PPT production task:
-    a plugin subagent, or a main session with fresh research/production scope
-    armed. Everything else is an ordinary session and must not be constrained
-    by PPT-only rules.
-    """
-
-    role: str
-    child: bool
-    managed: bool
-    project: Path
-    session: str
-
-
-def resolve(event: dict) -> PipelineContext:
-    project = project_root(event)
-    role = agent_role(event)
-    child = is_child(event)
-    session = session_id(event)
-    managed = role in PLUGIN_ROLES or (role == "main" and research_active(project, event))
-    return PipelineContext(role=role, child=child, managed=managed, project=project, session=session)

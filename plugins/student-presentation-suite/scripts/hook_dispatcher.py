@@ -8,11 +8,6 @@ from hook_events import read_event
 
 
 def dispatch(event: dict) -> int:
-    if event.get("agent_type") in {
-        "student-presentation-suite:presentation-builder",
-        "student-presentation-suite:visual-critic",
-    }:
-        return 0
     inputs = event.get("tool_input") or {}
     if event.get("tool_name") in {"Bash", "PowerShell"} and pipeline_context.is_pipeline_invocation(inputs.get("command", "")):
         return 0

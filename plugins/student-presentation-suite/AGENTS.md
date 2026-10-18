@@ -8,7 +8,7 @@ disagree on install/publish, the root file wins.
 
 | File | Job |
 | --- | --- |
-| `README.md` / `README-zh.md` | What the installed plugin does: pipeline, skills, intake, handoff, outputs, visual system, gates, runtime CLI. Point install/update at `../../README.md`. |
+| `README.md` / `README-zh.md` | What the installed plugin does: pipeline, skills, intake, handoff, outputs, visual system. Point install/update at `../../README.md`. Production and QA commands live in `skills/sp-deck/references/main-session-production.md`. |
 | `skills/*/SKILL.md` | Trigger, responsibility, state steps, output contract. Keep short; do not paste README chapters. |
 | `references/*.md` and schemas | Canonical policy (intake, brief, Slide Spec, research, cost, images). |
 | `examples/*/README.md` | How to run that example, nothing else. |

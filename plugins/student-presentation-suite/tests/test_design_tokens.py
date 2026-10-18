@@ -174,27 +174,34 @@ class DesignTokenTests(unittest.TestCase):
                 # The cover/section/closing scheme must be stated in every style file.
                 self.assertIn(tokens["dark_palette"]["canvas"], text)
 
-    def test_every_style_has_a_distinct_font_pairing(self) -> None:
+    def test_style_font_contract_title_keeps_pairing_body_unifies(self) -> None:
+        # Final font contract (user feedback round 2026-10): title keeps the
+        # style's original latin/cjk pairing; body unifies body_font with
+        # cjk_body_font, except the two serif-body styles which pair SimSun
+        # with a latin serif instead.
+        safe_title = {
+            "Cambria",
+            "Bookman Old Style",
+            "Century Schoolbook",
+            "Times New Roman",
+            "Arial",
+            "Calibri",
+            "Courier New",
+        }
         cjk_title = {"Microsoft YaHei", "SimHei", "DengXian", "KaiTi"}
         cjk_body = {"Microsoft YaHei", "DengXian", "DengXian Light", "SimSun", "FangSong", "KaiTi"}
-        pairings = set()
+        serif_body = {"academic-rigorous": "Cambria", "charcoal-editorial": "Times New Roman"}
         for style in STYLES:
             with self.subTest(style=style):
-                typography = resolve_design_tokens(style)["typography"]
-                self.assertTrue(typography["title_font"])
-                self.assertTrue(typography["body_font"])
+                tokens = resolve_design_tokens(style)
+                typography = tokens["typography"]
+                self.assertIn(typography["title_font"], safe_title)
                 self.assertIn(typography["cjk_title_font"], cjk_title)
                 self.assertIn(typography["cjk_body_font"], cjk_body)
-                pairings.add(
-                    (
-                        typography["title_font"],
-                        typography["body_font"],
-                        typography["cjk_title_font"],
-                        typography["cjk_body_font"],
-                    )
+                expected_latin_body = serif_body.get(
+                    tokens["style_key"], typography["cjk_body_font"]
                 )
-        # Font personality must differ across styles; no two share a full pairing.
-        self.assertEqual(len(STYLES), len(pairings))
+                self.assertEqual(expected_latin_body, typography["body_font"])
 
     def test_cjk_font_postprocessor_writes_ea_typeface(self) -> None:
         from pptx import Presentation

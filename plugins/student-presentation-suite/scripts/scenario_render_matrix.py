@@ -376,7 +376,7 @@ def exercise_cross_workflow_contracts(
     completed.append("review-static-only")
 
     summary = work / "review-to-deck-summary.md"
-    summary.write_text("# Production Summary\n\nReview findings will be applied to a new output.", encoding="utf-8")
+    summary.write_text("# Production Summary\n\n场景：课程 review-to-deck 演练；受众：同班同学；篇幅：2 页 slides；研究范围 scope：沿用 review findings 证据；输出 output：交付 deliverable 新 deck。", encoding="utf-8")
     state = work / "review-to-deck-state.json"
     guard = ROOT / "scripts" / "workflow_guard.py"
     run_checked([sys.executable, str(guard), "init", "--state-file", str(state)], "review-to-deck: init")

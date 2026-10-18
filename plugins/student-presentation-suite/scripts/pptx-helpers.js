@@ -858,12 +858,13 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
     );
   }
   const shortReadingText = ['body', 'list'].includes(policy.role) && fit.fillRatio <= 0.45;
-  // Multiline mixed paragraphs are susceptible to viewer-added East Asian/Latin
-  // spacing. Place measured language spans so the viewer cannot rewrap the line.
+  // Mixed paragraphs split into positioned fragments only on explicit opt-in:
+  // the default single-frame rich-text path keeps one editable text object, and
+  // a box-level switch is honored for callers that pass placement in the box.
   const plain = plainText(text);
   if (
     policy.measured &&
-    options.positionMixedText !== false &&
+    (options.positionMixedText === true || box.positionMixedText === true) &&
     /[\u3400-\u9fff\uff01-\uff60]/u.test(plain) &&
     /[A-Za-z0-9]/.test(plain)
   ) {
@@ -892,6 +893,11 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
     delete pptxOptions[key];
   }
   delete pptxOptions.lineSpacingMultiple;
+  // pptxgenjs only knows `paraSpaceAfter` (points); accept the explicit Pt
+  // alias and map it for the writer. An explicit value (including 0) always
+  // wins over the multi-paragraph default that layoutText measures.
+  if (pptxOptions.paraSpaceAfterPt !== undefined && pptxOptions.paraSpaceAfter === undefined)
+    pptxOptions.paraSpaceAfter = Number(pptxOptions.paraSpaceAfterPt);
   const factor =
     Number.isFinite(Number(pptxOptions.lineSpacing)) && Number(pptxOptions.lineSpacing) <= 4
       ? Number(pptxOptions.lineSpacing)
@@ -899,9 +905,16 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
   const lineSpacingPt =
     Number.isFinite(Number(pptxOptions.lineSpacing)) && Number(pptxOptions.lineSpacing) > 4
       ? Number(pptxOptions.lineSpacing)
-      : Number((fit.fontSize * factor).toFixed(2));
+      : Number((fit.lineHeightPt ?? fit.fontSize * factor).toFixed(2));
   return slide.addText(policy.measured ? fit.richText : text, {
     ...pptxOptions,
+    // Carry the resolved role for the capture wrapper: it re-measures with the
+    // same role (role-aware defaults) and registers textRole for the registry.
+    // The wrapper strips `role` before the real pptxgenjs call — never leaked.
+    role: policy.role,
+    // Same for the east-asian face: the wrapper skips _textLayout elements, so
+    // without this the registry would see no ea face for these elements.
+    cjkFontFace: pptxOptions.cjkFontFace || policy.cjkFontFace,
     x: textBox.x,
     y: textBox.y,
     w: textBox.w,
@@ -945,6 +958,7 @@ function addPositionedText(slide, text, box, tokens, lang, role, options = {}) {
         ...options,
         color: options.color || color(tokens, options.colorRole || 'primary_text'),
         ...fragment.options,
+        role,
         x,
         y,
         w: fragment.w + 0.01,

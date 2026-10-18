@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.30.8
+version: 0.30.9
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
@@ -17,7 +17,7 @@ arguments: [work_id, brief_path, scope, materials_path]
 1. 将 work_id、brief_path、scope、materials_path、背景及逐条 claim/id/验收要求
    并设置 semantic_review_required=true，写入 `<work-dir>/research-task.json`（schema：`../../references/research-task.schema.json`）。
    work-dir 必须是当前项目 outputs/.pptx-work/<work-id> 的绝对路径，所有输入路径也用绝对路径。
-2. 调用 `scripts/validate_research_task.py <task>`；失败就补齐输入，不开始检索。
+2. 调用 `${CLAUDE_PLUGIN_ROOT}/scripts/validate_research_task.py <task>`；失败就补齐输入，不开始检索。
 3. 按 `../../references/spawn-templates.md` 显式调用 Agent，subagent_type 为
    `student-presentation-suite:presentation-researcher`，不传 name，不嵌套 spawn。
    prompt 只传 task 路径和 work-dir；不得转抄 claim/标题/数字。
@@ -51,7 +51,7 @@ D 默认用 import_user_materials.py 确定性导入；仅用户点名研究员�
 - 原始报告/数据集用 origin_id，并组转载来源；来源等级仅标注，观点类来源仍为 minor 提示。
 - 每条 claim usable、verified 或 unresolved 收口；缺口记录 reason/impact 和已获得来源。
   继续前必须能指出新增证据收益，无收益则结束；有效部分包可以交付。
-- validate_research_pack.py 校验必须带 --task、--search-log、--fetch-report。报告 ok:true 且绑定当前 pack；
+- validate_research_pack.py 自动发现 pack 旁的 task、search-log 与 fetch-report（显式标志仅用于覆盖路径）。报告 ok:true 且绑定当前 pack；
   审计 advisory（含 degenerate_channel、search_backend_not_executed）必须阅读并处理。
 
 输出仅放 `<work-dir>`：research-pack.json、research-pack-validation.json、research/ 审计文件。

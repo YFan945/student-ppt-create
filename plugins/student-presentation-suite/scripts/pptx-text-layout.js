@@ -121,6 +121,35 @@ function measure(text, size, face, options = {}) {
   return widths.get(key);
 }
 
+// Real line height from fontkit metrics: font.descent is negative and
+// lineGap may be 0/undefined. Factor 1.18 stays the fallback for faces that
+// resolveFont cannot measure. Body/list copy keeps a 1.3 floor for classroom
+// projection; display roles (title, caption, stat, ...) use the font's own
+// metrics so tight display settings are not forced open.
+function naturalLineHeightPt(piece, fallbackPt, relaxed = false) {
+  let height = fallbackPt;
+  try {
+    const font = resolveFont(
+      piece.fontFace,
+      Boolean(piece.options.bold),
+      Boolean(piece.options.italic),
+    );
+    const { ascent, descent, unitsPerEm } = font;
+    if (
+      Number.isFinite(ascent) &&
+      Number.isFinite(descent) &&
+      Number.isFinite(unitsPerEm) &&
+      unitsPerEm > 0
+    ) {
+      const gap = Number.isFinite(font.lineGap) ? font.lineGap : 0;
+      height = ((ascent - descent + gap) / unitsPerEm) * piece.fontSize;
+    }
+  } catch {
+    /* unresolved face — keep the factor fallback */
+  }
+  return relaxed ? height : Math.max(height, piece.fontSize * 1.3);
+}
+
 function sourceRuns(input, policy) {
   const values = Array.isArray(input) ? input : [{ text: String(input ?? ''), options: {} }];
   return values.flatMap((value) => {
@@ -210,12 +239,16 @@ function atoms(input, policy) {
             });
             font = replacement;
           }
-          const face = font.familyName;
+          // Emit the REQUESTED face, never the resolved file's familyName:
+          // resolveFont silently falls back to arial.ttf/msyh.ttc for
+          // uninstalled names, and writing the resolved name would leak
+          // "Arial" into the deliverable where the author/tokens named
+          // another family. Measurement still goes through resolveFont.
           pieces.push({
             text: part,
             options: { ...run.options },
             fontSize: run.fontSize,
-            fontFace: face,
+            fontFace: requested,
           });
         }
       }
@@ -296,6 +329,35 @@ function layoutText(input, box, policy) {
   }
   let y = (box.y || 0) + (margins[0] || 0) / 72;
   const rich = [];
+  // Paragraph spacing. pptxgenjs writes text-level `paraSpaceAfter` into every
+  // paragraph it emits — and each wrapped line is one of its paragraphs — so an
+  // explicit caller value applies per wrapped line (measure the same way).
+  // Without an explicit value, multi-paragraph body/list blocks get a
+  // 0.4× paragraph-size space after each real (explicit-\n) paragraph; display
+  // roles stay untouched. The value rides on the LAST run of the paragraph's
+  // LAST visual line, so spcAft lands at the real paragraph end — never after
+  // a wrapped line inside it. Measurement folds the same space into the line
+  // height and y progression, keeping requiredH identical to what is written.
+  const relaxedRole = !['body', 'list'].includes(policy.role);
+  const contentFlags = lines.map((entry) => entry.atoms.length > 0);
+  const explicitSpace = policy.paraSpaceAfter ?? policy.paraSpaceAfterPt;
+  const hasExplicit = Number.isFinite(Number(explicitSpace));
+  const paraEnds = lines.map((entry, index) => {
+    // A trailing empty line emits no run, hence no pptxgenjs paragraph/space.
+    if (index === lines.length - 1 && !contentFlags[index] && !entry.explicit) return false;
+    if (hasExplicit) return true;
+    if (entry.explicit) return true;
+    return index === lines.length - 1;
+  });
+  const paragraphCount = paraEnds.filter(Boolean).length;
+  const lineSizes = lines.map((entry) =>
+    Math.max(size, ...entry.atoms.flatMap((atom) => atom.pieces).map((piece) => piece.fontSize)),
+  );
+  const spaceAfterPt = paraEnds.map((endsParagraph, index) => {
+    if (!endsParagraph) return 0;
+    if (hasExplicit) return Number(explicitSpace);
+    return paragraphCount >= 2 && !relaxedRole ? 0.4 * lineSizes[index] : 0;
+  });
   const geometry = lines.map((entry, index) => {
     const pieces = [];
     for (const piece of entry.atoms.flatMap((atom) => atom.pieces)) {
@@ -310,7 +372,19 @@ function layoutText(input, box, policy) {
       else pieces.push({ ...piece });
     }
     const lineSize = Math.max(size, ...pieces.map((piece) => piece.fontSize));
-    const lineHeight = (policy.lineSpacing > 4 ? policy.lineSpacing : lineSize * 1.18) / 72;
+    const lineHeightPt =
+      policy.lineSpacing > 4
+        ? policy.lineSpacing
+        : pieces.length
+          ? Math.max(
+              ...pieces.map((piece) => naturalLineHeightPt(piece, lineSize * 1.18, relaxedRole)),
+            )
+          : relaxedRole
+            ? lineSize * 1.18
+            : Math.max(lineSize * 1.18, lineSize * 1.3);
+    const lineHeight = lineHeightPt / 72;
+    const trailingSpacePt = spaceAfterPt[index];
+    const annotateSpace = !hasExplicit && trailingSpacePt > 0;
     pieces.forEach((piece, position) =>
       rich.push({
         text: piece.text,
@@ -319,11 +393,20 @@ function layoutText(input, box, policy) {
           fontFace: piece.fontFace,
           fontSize: piece.fontSize,
           breakLine: position === pieces.length - 1 && index < lines.length - 1,
+          ...(annotateSpace && position === pieces.length - 1
+            ? { paraSpaceAfter: trailingSpacePt }
+            : {}),
         },
       }),
     );
     if (!pieces.length && index < lines.length - 1)
-      rich.push({ text: '', options: { breakLine: true } });
+      rich.push({
+        text: '',
+        options: {
+          breakLine: true,
+          ...(annotateSpace ? { paraSpaceAfter: trailingSpacePt } : {}),
+        },
+      });
     const result = {
       text: pieces.map((piece) => piece.text).join(''),
       x:
@@ -336,13 +419,13 @@ function layoutText(input, box, policy) {
             : 0),
       y,
       w: lineWidth(entry.atoms),
-      h: lineHeight,
+      h: lineHeight + trailingSpacePt / 72,
       fragments: pieces.map((piece) => ({
         ...piece,
         w: measure(piece.text, piece.fontSize, piece.fontFace, piece.options),
       })),
     };
-    y += lineHeight;
+    y += lineHeight + trailingSpacePt / 72;
     return result;
   });
   const requiredH = geometry.reduce((sum, entry) => sum + entry.h, 0);
@@ -351,6 +434,11 @@ function layoutText(input, box, policy) {
     lines: geometry.length,
     lineGeometry: geometry,
     requiredH,
+    // Line pitch only — paragraph spaces ride inside each line's h and must
+    // not inflate the lineSpacing we write back to the text object.
+    lineHeightPt: geometry.length
+      ? Math.max(...geometry.map((entry, index) => entry.h - spaceAfterPt[index] / 72)) * 72
+      : 0,
     fontSize: size,
     margin: margins,
     fillRatio: requiredH / height,

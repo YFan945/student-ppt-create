@@ -63,7 +63,7 @@ Inside the plugin package:
   No page/critic agents, calibration, packets, sharding or production receipts.
 - `scripts/hook_dispatcher.py`: research-only hook routing from hooks/hooks.json;
   page authoring and preview inspection have no Builder/cost/production-entry guards.
-- `commands/sp-cost-report.md`: `/sp-cost-report` entrypoint for `scripts/session_cost.py`.
+- `commands/sp-cost-report.md` / `commands/sp-check-env.md`: `/sp-cost-report` and `/sp-check-env` entrypoints (`scripts/session_cost.py`, `scripts/check_claude_pptx_env.py`).
 - `shared/`: reusable Python implementation.
 - `tests/`: behavioral, schema, runtime, and delivery contracts.
 - `examples/`: routing and interaction examples.
@@ -77,7 +77,7 @@ Keep **one owner per fact**. Copy-paste across READMEs is how `claude-code` vs
 | Topic | Canonical file | Update together | Do not put it in |
 | --- | --- | --- | --- |
 | Install, marketplace add, migrate, verify, update, uninstall | root `README.md` | root `README-zh.md` | plugin README (link the root file) |
-| Four skills, intake, handoff, visual system, gates, plugin CLI | `plugins/student-presentation-suite/README.md` | plugin `README-zh.md` | root README beyond a one-line pointer |
+| Four skills, intake, handoff, visual system | `plugins/student-presentation-suite/README.md` | plugin `README-zh.md` | root README beyond a one-line pointer; production/QA commands live in `skills/sp-deck/references/main-session-production.md`, not the README |
 | Routing / quality / Slide Spec / research / cost rules | the matching `plugins/.../references/*.md` | `SKILL.md` only if trigger or workflow steps change | README prose restating the whole policy |
 | Skill trigger, state transition, output contract | `skills/*/SKILL.md` | examples if routing examples change | `CLAUDE.md` |
 | Publish source, validation commands, release, version bump | **this file** (`AGENTS.md`) | `CONTRIBUTING.md` if contributor steps change; `CHANGELOG.md` for user-visible releases | READMEs except “see AGENTS.md” |
@@ -88,8 +88,8 @@ Always:
 
 - English and Chinese README pairs stay in sync. Never update only one language.
 - `CHANGELOG.md`: add `## Unreleased` (or the version section) for release-worthy doc or behavior changes.
-- Nested READMEs (`examples/golden-sample/`, `examples/visual-template-gallery/`, `scripts/live_prompts/`) describe **that directory only**.
-- Historical notes (`CHANGELOG` past versions, `scripts/live_prompts/FINDINGS.md`) are not current install instructions.
+- Nested READMEs (`plugins/student-presentation-suite/examples/golden-sample/`, `plugins/student-presentation-suite/examples/visual-template-gallery/`, `plugins/student-presentation-suite/examples/main-session-visuals/`, `plugins/student-presentation-suite/examples/design-benchmarks/`, `plugins/student-presentation-suite/scripts/live_prompts/`) describe **that directory only**.
+- Historical notes (`CHANGELOG` past versions, `plugins/student-presentation-suite/scripts/live_prompts/FINDINGS.md`) are not current install instructions.
 
 ## Architecture And Ownership
 

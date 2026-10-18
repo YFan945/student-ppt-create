@@ -62,6 +62,8 @@ function isDecorative(el) {
   return Boolean(el.decorative || el.allowOverlap || el.type === 'background');
 }
 
+const SIZE_TIER_EXCLUDED_ROLES = new Set(['kpi', 'stat', 'label', 'node']);
+
 function solidColor(fill) {
   if (!fill || fill.type === 'none' || Number(fill.transparency || 0) !== 0) return null;
   const value = typeof fill === 'string' ? fill : fill.color;
@@ -299,6 +301,8 @@ class SlideElementRegistry {
       }
     }
 
+    const tierSizes = new Set();
+    const pairsByRole = new Map();
     for (const el of elements) {
       if (el.type === 'line') continue;
       const box = bboxOf(el);
@@ -347,6 +351,52 @@ class SlideElementRegistry {
         });
       }
       if (el.type === 'text') {
+        const sizes = (
+          Array.isArray(el.textSizes) && el.textSizes.length ? el.textSizes : [el.fontSize]
+        ).filter((value) => finite(value));
+        const role = typeof el.textRole === 'string' && el.textRole ? el.textRole : 'unknown';
+        if (sizes.length && !isDecorative(el)) {
+          const minSize = Math.min(...sizes);
+          // Role-tiered floors: reading text (body/list) warns below 12pt;
+          // small-print roles (caption/source/reference) exist for fine print
+          // and only warn below 9pt; every other role keeps the 10pt gate.
+          // Message names role and threshold for review context.
+          const threshold =
+            role === 'body' || role === 'list'
+              ? 12
+              : ['caption', 'source', 'reference'].includes(role)
+                ? 9
+                : 10;
+          if (minSize < threshold) {
+            warnings.push({
+              code: 'text_size_review',
+              element: el.id,
+              role,
+              minSize,
+              threshold,
+              message: `Text element ${el.id} (${role}) has a run at ${minSize}pt; ${role} text below ${threshold}pt needs a readability review.`,
+            });
+          }
+          // kpi/stat/label/node have intentional standalone sizes; excluding
+          // them stops headline numerals from flooding the tier count.
+          // unknown stays in so legacy pages cannot bypass the gate.
+          if (!SIZE_TIER_EXCLUDED_ROLES.has(role)) for (const value of sizes) tierSizes.add(value);
+          const eaFace = typeof el.cjkFontFace === 'string' ? el.cjkFontFace : '';
+          const latinFaces = (
+            Array.isArray(el.textFonts) && el.textFonts.length ? el.textFonts : [el.fontFace]
+          ).filter((value) => typeof value === 'string' && value);
+          // Runs without letters/digits/CJK (pure symbols/icons) say nothing
+          // about the font pairing — exclude them from the mix count.
+          const scriptFlags =
+            Array.isArray(el.textScriptFlags) && el.textScriptFlags.length
+              ? el.textScriptFlags
+              : latinFaces.map(() => true);
+          if (!pairsByRole.has(role)) pairsByRole.set(role, new Set());
+          const rolePairs = pairsByRole.get(role);
+          latinFaces.forEach((latin, index) => {
+            if (scriptFlags[index]) rolePairs.add(`${latin}|${eaFace}`);
+          });
+        }
         const fit = estimateTextFit(el);
         if (!fit.ok) {
           const severe =
@@ -359,6 +409,27 @@ class SlideElementRegistry {
           (severe ? errors : warnings).push(issue);
         }
       }
+    }
+    if (tierSizes.size > 4) {
+      const tiers = [...tierSizes].sort((a, b) => a - b);
+      warnings.push({
+        code: 'text_size_tiers',
+        tiers,
+        message: `Slide uses ${tiers.length} distinct run sizes in primary text roles (${tiers.join(', ')}); more than four tiers dilute hierarchy — consolidate around the style's size scale.`,
+      });
+    }
+    // Mixing pairs across roles is legal (title vs body); within one role it is
+    // font soup. Legacy pages without role metadata keep the old >2 fallback.
+    for (const [role, pairs] of pairsByRole) {
+      const limit = role === 'unknown' ? 2 : 1;
+      if (pairs.size <= limit) continue;
+      const sorted = [...pairs].sort();
+      warnings.push({
+        code: 'font_family_mix',
+        role,
+        pairs: sorted.map((pair) => pair.split('|')),
+        message: `Role "${role}" mixes ${sorted.length} latin/east-asian font pairs (${sorted.join(' / ')}); keep one pairing per role.`,
+      });
     }
 
     const boxes = elements
@@ -409,7 +480,11 @@ class SlideElementRegistry {
     }
 
     const textBoxes = boxes.filter((x) => x.el.type === 'text');
-    for (const line of elements.filter((el) => el.type === 'line' && !el.allowTextCrossing)) {
+    // Decorative rules (table hairlines, divider strokes) cross text rows by
+    // design — only author-intended content lines should be checked.
+    for (const line of elements.filter(
+      (el) => el.type === 'line' && !el.allowTextCrossing && !isDecorative(el),
+    )) {
       for (const text of textBoxes) {
         const regions =
           this.options.capture && text.el.lineGeometry?.length

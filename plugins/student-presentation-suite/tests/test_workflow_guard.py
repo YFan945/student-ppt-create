@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
+import io
 import json
 import tempfile
 import unittest
@@ -13,6 +15,17 @@ from test_helpers import load_module
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "workflow_guard.py"
+
+# confirm 必备字段组的完整摘要 fixture：五组字段（场景/受众/篇幅/研究范围/输出交付）
+# 全覆盖，供 confirm 成功路径的用例使用。
+FULL_SUMMARY = (
+    "# Production Summary\n\n"
+    "## 场景\n课堂展示 scenario：课程报告。\n\n"
+    "## 受众\n受众：同班同学与任课老师（audience）。\n\n"
+    "## 篇幅\n篇幅：8 页 slides，时长 10 分钟（duration 10 min）。\n\n"
+    "## 研究范围/证据\n研究范围 scope：evidence 与来源均已确认。\n\n"
+    "## 输出/交付\n输出 output：交付 deliverable 到 outputs 目录。\n"
+)
 
 
 class StateTransitionTests(unittest.TestCase):
@@ -481,7 +494,7 @@ class StateTransitionTests(unittest.TestCase):
             root = Path(tmp)
             state = root / "state.json"
             summary = root / "summary.md"
-            summary.write_text("revised", encoding="utf-8")
+            summary.write_text(FULL_SUMMARY, encoding="utf-8")
             module.save_state(
                 state,
                 {
@@ -512,7 +525,7 @@ class StateTransitionTests(unittest.TestCase):
             root = Path(tmp)
             state = root / "state.json"
             summary = root / "summary.md"
-            summary.write_text("revised", encoding="utf-8")
+            summary.write_text(FULL_SUMMARY, encoding="utf-8")
             module.save_state(
                 state,
                 {"workflow_version": "1.0", "state": "producing", "topic": "t"},
@@ -521,6 +534,47 @@ class StateTransitionTests(unittest.TestCase):
                 module.state_command(
                     self._ns("confirm", state_file=state, summary_file=summary)
                 )
+
+    def test_confirm_rejects_summary_missing_required_groups(self) -> None:
+        """必备字段组缺一即拒（exit 2）：防止批准后被换成缺维度的摘要。"""
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state = root / "state.json"
+            summary = root / "summary.md"
+            # 覆盖场景/受众/篇幅/输出交付，唯独缺"研究范围/证据"组。
+            summary.write_text(
+                "Production Summary：场景已定，受众已知，篇幅 8 页，输出到 outputs。",
+                encoding="utf-8",
+            )
+            buffer = io.StringIO()
+            with contextlib.redirect_stderr(buffer):
+                with self.assertRaises(SystemExit) as raised:
+                    module.state_command(
+                        self._ns("confirm", state_file=state, summary_file=summary)
+                    )
+            self.assertEqual(2, raised.exception.code)
+            self.assertIn("研究范围/证据", buffer.getvalue())
+            self.assertIn("且须与用户批准的版本一致", buffer.getvalue())
+            self.assertIsNone(module.load_state(state), "被拒后不应写入状态")
+
+    def test_confirm_accepts_full_summary(self) -> None:
+        """五组字段齐全的摘要正常 confirm，状态与哈希照常落盘。"""
+        module = self.module
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state = root / "state.json"
+            summary = root / "summary.md"
+            summary.write_text(FULL_SUMMARY, encoding="utf-8")
+            module.state_command(
+                self._ns("confirm", state_file=state, summary_file=summary)
+            )
+            after = module.load_state(state)
+            self.assertEqual("intake_confirmed", after["state"])
+            self.assertEqual(
+                hashlib.sha256(summary.read_bytes()).hexdigest(),
+                after["summary_sha256"],
+            )
 
 
 class ProjectRootTests(unittest.TestCase):

@@ -17,7 +17,8 @@
 
 仓库内含一个可复现的
 [黄金样例](plugins/student-presentation-suite/examples/golden-sample/README.md)，
-端到端跑通 v0.8 管线并达到 `status: complete`。
+端到端展示历史 v0.8 管线并达到 `status: complete`（现行生产已不再使用其
+composition candidate 与评审回执机制）。
 
 插件安装 ID：
 
@@ -172,8 +173,9 @@ claude
 后才会开始生成。这样可避免在关键信息不完整时直接产出错误文件。
 
 生产由确认后的 Production Summary 门禁（`workflow_guard.py` /
-`ppt_pipeline.py`）。成本与 spawn 守卫见
-[插件 README](plugins/student-presentation-suite/README-zh.md)。
+`ppt_pipeline.py`）。成本纪律与检索 spawn 隔离见
+[`references/cost-discipline.md`](plugins/student-presentation-suite/references/cost-discipline.md)与
+[`references/spawn-templates.md`](plugins/student-presentation-suite/references/spawn-templates.md)。
 
 生成结果默认写入当前项目的 `outputs/` 目录，不会写进插件安装目录。修改已有
 PPT 时也不会覆盖原文件。
@@ -242,28 +244,29 @@ PPTX，控制在 10 分钟。重点突出研究问题、方法、实验结果、
 
 ## 输出文件
 
-根据任务不同，`outputs/` 中可能包含：
+根据任务与勾选的交付物，`outputs/` 中可能包含：
 
 ```text
 <topic>-outline.md
 <topic>-presentation.pptx
-<topic>-speaker-notes.md
-<topic>-preview.png
-<topic>-presentation-package-report.json
-<topic>-actual-content-report.json
-<topic>-visual-review.json
-<topic>-quality-report.json
-<topic>-delivery-report.json
-<topic>-change-summary.md
 <topic>-presentation.pdf
+<topic>-slide-spec.yaml
+<topic>-quality-report.json
+<topic>-contact-sheet.png
+<topic>-slides/slide-01.png …（逐页渲染图）
+<topic>-preview.json
+<topic>-speaker-notes.md
+<topic>-full-script.md
 <topic>-teleprompter.html
 <topic>-training-cards.md
+<topic>-references.md
+<topic>-change-summary.md
 <topic>-revision-manifest.json
 ```
 
 最终回复会说明文件绝对路径、页数、渲染检查结果，以及任务状态：
-`complete`、`incomplete` 或 `blocked`。视觉系统、QA 顺序和本地渲染矩阵见
-[插件 README](plugins/student-presentation-suite/README-zh.md)。
+`complete`、`incomplete` 或 `blocked`。视觉系统与生产/QA 命令见
+[sp-deck 生产参考](plugins/student-presentation-suite/skills/sp-deck/references/main-session-production.md)。
 
 ## 更新与卸载
 
@@ -307,7 +310,8 @@ python .\scripts\check_installed_version.py --json
 ### 工作流状态卡住
 
 如果 QA 发现 blocker，**不要 reset**——走管线返工边修复。repair / complete /
-unblock 命令及其语义由[插件 README](plugins/student-presentation-suite/README-zh.md#工作流状态恢复)维护。
+unblock 命令及其语义见 [sp-deck 生产参考](plugins/student-presentation-suite/skills/sp-deck/references/main-session-production.md)与
+`scripts/workflow_guard.py`。
 
 ### 生成文件在哪里
 

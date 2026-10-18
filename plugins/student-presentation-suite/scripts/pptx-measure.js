@@ -116,12 +116,15 @@ const report = {
   overflow,
   tight,
   build_error: buildError,
+  coverage:
+    'text overflow/tight only; color contrast, overlap and alignment are checked only by run',
 };
 fs.mkdirSync(path.dirname(reportPath), { recursive: true });
 fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
 
 const lines = [
   `measured ${blocks.length} text block(s): ${overflow.length} overflow, ${tight.length} tight`,
+  'coverage: text overflow/tight only; color contrast, overlap and alignment are checked only by run',
 ];
 for (const block of overflow)
   lines.push(

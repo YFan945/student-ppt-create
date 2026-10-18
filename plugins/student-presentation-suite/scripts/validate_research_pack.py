@@ -667,6 +667,70 @@ def _is_broad_shape(query: str) -> bool:
     return len(query) > 60 or len(query.split()) > 6
 
 
+# 检索词回显已记录数值（owner 事故修复 2026-10-16）：里约实战中 83 次搜索有 10 次把
+# 已拿到的数字原样塞回检索框（"8.87亿千瓦""0.043""146GW"），政策明文禁止却没有机械
+# 检测。token 提取覆盖小数、% 与亿/万/GW/MW/kWh 等单位粘连形式；归一化（去空格/逗号/
+# 大小写）之后才做 4 位年份豁免。
+_ECHO_TOKEN = re.compile(
+    r"\d+(?:,\d{3})*(?:\.\d+)?\s*"
+    r"(?:千瓦时|兆瓦时|亿千瓦|万千瓦|千瓦|兆瓦|kwh|mwh|kw|gw|mw|kv|度|%|％|亿|万)?",
+    re.IGNORECASE,
+)
+_ECHO_YEAR = re.compile(r"(?:19|20)\d{2}")
+_ECHO_MAX_PAIRS = 10
+
+
+def _echo_normalize(token: str) -> str:
+    return re.sub(r"[\s,]+", "", token).lower()
+
+
+def _echo_tokens(text: str) -> frozenset[str]:
+    out = set()
+    for match in _ECHO_TOKEN.finditer(str(text or "")):
+        normalized = _echo_normalize(match.group(0))
+        if not _ECHO_YEAR.fullmatch(normalized):
+            out.add(normalized)
+    return frozenset(out)
+
+
+def _recorded_values(pack: dict[str, Any]) -> frozenset[str]:
+    """data_points.value 与 findings.claim 里已记录数值的归一化 token。"""
+    recorded: set[str] = set()
+    for entry in items(pack, "data_points"):
+        recorded |= _echo_tokens(str(entry.get("value") or ""))
+    for entry in items(pack, "findings"):
+        recorded |= _echo_tokens(str(entry.get("claim") or ""))
+    return frozenset(recorded)
+
+
+def _query_value_echoes(
+    pack: dict[str, Any], executions: list[dict[str, Any]]
+) -> list[tuple[str, str]]:
+    """(query, value) pairs where a successful search pasted a number the pack
+    already holds back into the search box. Each pair is reported once; the
+    total is capped so a degenerate log cannot flood the report."""
+    recorded = _recorded_values(pack)
+    if not recorded:
+        return []
+    echoes: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in executions:
+        if str(entry.get("status") or "") != "ok":
+            continue  # 只有执行成功的查询才算；失败的重试不构成回显证据
+        query = str(entry.get("query") or "")
+        for token in sorted(_echo_tokens(query)):
+            if token not in recorded:
+                continue
+            pair = (query, token)
+            if pair in seen:
+                continue
+            seen.add(pair)
+            echoes.append(pair)
+            if len(echoes) >= _ECHO_MAX_PAIRS:
+                return echoes
+    return echoes
+
+
 def _coerce_trail(source: Any, label: str) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
     """Accept a parsed mapping or a path to one — an unreadable trail is an advisory,
     never a crash. The audit is advisory by contract, and `validate()` is a public
@@ -861,6 +925,20 @@ def retrieval_audit_issues(
             verdict_rows = payload_rows if payload_rows is not None else executions
             if search_backend_never_executed(verdict_rows):
                 out.append(_backend_not_executed_issue(verdict_rows))
+            echoes = _query_value_echoes(pack, executions)
+            if echoes:
+                echoed_query, echoed_value = echoes[0]
+                out.append(
+                    issue(
+                        "minor",
+                        "query_echoes_known_value",
+                        f"{len(echoes)} (query, value) pair(s) where a successful search pasted "
+                        f"a number the pack already holds back into the search box "
+                        f"(first: {echoed_query[:60]!r} echoes {echoed_value!r}) — "
+                        "检索是提问不是复读：已记录的数值直接引用，别再拿去检索 "
+                        "(research-workflow §七)",
+                    )
+                )
     if fetch_report is not None:
         records = fetch_report.get("records") or []
         serp = [str(record.get("url") or "") for record in records if record.get("host_class") == "search_engine"]
@@ -968,6 +1046,7 @@ RETRIEVAL_ADVISORY_CODES = frozenset(
         "duplicate_query",
         "reworded_retry",
         "over_broad_query",
+        "query_echoes_known_value",
         "result_page_fetched",
         "retrieval_log_unreadable",
         "degenerate_channel",

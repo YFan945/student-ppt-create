@@ -5,11 +5,9 @@ import os
 import tempfile
 import time
 import unittest
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import patch
 
-from PIL import Image
 from test_helpers import load_module
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,7 +28,7 @@ class RuntimeEvidenceTests(unittest.TestCase):
             "cwd": str(self.project),
             "session_id": "parent",
             "agent_id": "child",
-            "agent_type": runtime.CRITIC,
+            "agent_type": runtime.RESEARCHER,
         }
 
     def event_call(self, event, **extra):
@@ -218,89 +216,6 @@ class RuntimeEvidenceTests(unittest.TestCase):
             self.event_call("PreToolUse", tool_name="Write", tool_input={"file_path": str(path)}),
         )
 
-    def prepare_render(self, page_count: int = 2) -> tuple[Path, list[Path]]:
-        render_dir = self.work / "render"
-        render_dir.mkdir(parents=True, exist_ok=True)
-        pages: list[Path] = []
-        for index in range(1, page_count + 1):
-            page = render_dir / f"slide-{index}.png"
-            Image.new("RGB", (1920, 1080), "white").save(page)
-            pages.append(page)
-        contact = self.work / "contact-sheet.png"
-        Image.new("RGB", (1440, 810), "white").save(contact)
-        manifest = {
-            "work_id": self.work.name,
-            "render": {
-                "pptx_sha256": "pptx-test-sha",
-                "contact_sheet": {"path": str(contact), "sha256": runtime.digest(contact)},
-                "pages": [
-                    {"path": str(page), "sha256": runtime.digest(page)} for page in pages
-                ],
-            },
-        }
-        (self.work / "build-manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-        return contact, pages
-
-    def prepare_calibration(self, slides: tuple[int, ...] = (1, 7, 9)) -> list[Path]:
-        calibration = self.work / "calibration"
-        render_dir = calibration / "render"
-        render_dir.mkdir(parents=True, exist_ok=True)
-        pptx = calibration / "calibration.pptx"
-        pptx.write_bytes(b"calibration-pptx")
-        pages: list[Path] = []
-        bindings: list[dict] = []
-        for index, slide in enumerate(slides, 1):
-            page = render_dir / f"calibration-{index}.png"
-            Image.new("RGB", (1920, 1080), "white").save(page)
-            pages.append(page)
-            bindings.append(
-                {"slide": slide, "path": str(page.resolve()), "sha256": runtime.digest(page)}
-            )
-        manifest = {
-            "version": "1.0",
-            "slides": list(slides),
-            "pptx": {"path": str(pptx.resolve()), "sha256": runtime.digest(pptx)},
-            "render": bindings,
-        }
-        (calibration / "calibration-manifest.json").write_text(
-            json.dumps(manifest), encoding="utf-8"
-        )
-        return pages
-
-    def critic_spawn(self, *, prompt: str | None = None, **extra) -> int:
-        tool_input = {
-            "subagent_type": runtime.CRITIC,
-            "prompt": prompt if prompt is not None else f"Review work directory {self.work.resolve()}",
-            **extra,
-        }
-        return runtime.handle(
-            {
-                "cwd": str(self.project),
-                "session_id": "parent",
-                "hook_event_name": "PreToolUse",
-                "tool_name": "Agent",
-                "tool_input": tool_input,
-            }
-        )
-
-    def test_receipt_requires_start_successful_read_and_write(self):
-        review = self.work / "visual-review.json"
-        review.write_text("{}")
-        self.event_call("SubagentStop")
-        self.assertFalse((self.work / "critic-execution.json").exists())
-        self.prepare_render()
-        self.assertEqual(self.critic_spawn(), 0)
-        self.event_call("SubagentStart")
-        page = self.work / "slide-1.png"
-        page.write_bytes(b"test-image")
-        self.event_call("PostToolUse", tool_name="Read", tool_input={"file_path": str(page)})
-        self.event_call("PostToolUse", tool_name="Write", tool_input={"file_path": str(review)})
-        self.event_call("SubagentStop")
-        receipt = json.loads((self.work / "critic-execution.json").read_text())
-        self.assertEqual(receipt["reads"][str(page)], runtime.digest(page))
-        self.assertEqual(receipt["artifact"]["sha256"], runtime.digest(review))
-        self.assertEqual(receipt["agent_id"], "child")
-
     def test_bash_script_writes_are_receipted_via_snapshot(self):
         """2026-09-17: json.dump edits bypassed Write-tool receipts and plan refused a healthy pack."""
         work = self.project / "outputs/.pptx-work/research-job"
@@ -336,73 +251,7 @@ class RuntimeEvidenceTests(unittest.TestCase):
         call("SubagentStop")
         self.assertFalse((work / "research-execution.json").exists())
 
-    def test_critic_cannot_write_generator_or_other_work_area(self):
-        self.prepare_render()
-        self.assertEqual(self.critic_spawn(), 0)
-        self.assertEqual(
-            self.event_call("PreToolUse", tool_name="Write", tool_input={"file_path": str(self.work / "deck.js")}),
-            2,
-        )
-        self.assertEqual(
-            self.event_call(
-                "PreToolUse",
-                tool_name="Write",
-                tool_input={"file_path": str(self.work / "visual-review.json")},
-            ),
-            0,
-        )
-
-    def test_calibration_critic_spawn_and_receipt_use_calibration_evidence(self):
-        pages = self.prepare_calibration()
-        self.assertEqual(self.critic_spawn(), 0)
-        mapping = json.loads((self.work / runtime.critic_preview.MAP_NAME).read_text())
-        self.assertEqual("calibration", mapping["scope"])
-        self.assertEqual(3, len(mapping["entries"]))
-        self.assertFalse(any(entry["kind"] == "overview" for entry in mapping["entries"]))
-        review = self.work / "calibration" / "calibration-visual-review.json"
-        self.assertEqual(
-            0,
-            self.event_call(
-                "PreToolUse", tool_name="Write", tool_input={"file_path": str(review)}
-            ),
-        )
-        self.assertEqual(
-            2,
-            self.event_call(
-                "PreToolUse",
-                tool_name="Write",
-                tool_input={"file_path": str(self.work / "visual-review.json")},
-            ),
-        )
-
-        self.event_call("SubagentStart")
-        for entry in mapping["entries"]:
-            self.event_call(
-                "PostToolUse",
-                tool_name="Read",
-                tool_input={"file_path": entry["preview_path"]},
-            )
-        review.write_text('{"pptx_sha256":"calibration"}', encoding="utf-8")
-        self.event_call(
-            "PostToolUse", tool_name="Write", tool_input={"file_path": str(review)}
-        )
-        self.event_call("SubagentStop")
-
-        receipt = json.loads(
-            (self.work / "calibration" / "calibration-critic-execution.json").read_text()
-        )
-        self.assertEqual(self.work.name, receipt["work_id"])
-        self.assertEqual(runtime.digest(review), receipt["artifact"]["sha256"])
-        for page in pages:
-            self.assertEqual(runtime.digest(page), receipt["reads"][str(page.resolve())])
-
-    def test_calibration_critic_spawn_rejects_stale_render_binding(self):
-        pages = self.prepare_calibration(slides=(1, 7))
-        pages[0].write_bytes(b"changed")
-        self.assertEqual(self.critic_spawn(), 2)
-        self.assertFalse((self.work / runtime.critic_preview.MAP_NAME).exists())
-
-    def test_critic_spawn_prompt_reference_resolves_ambiguous_root(self):
+    def test_spawn_prompt_reference_resolves_ambiguous_root(self):
         """ZCode 等环境下 root/cwd 推导可能落空：提示词显式写了 .pptx-work/<id>
         时以其为准；命名了多个或零个仍拒绝（2026-09-29 live：0.21.12 下 spawn
         三连拒，离线复现同 input 却成功——root 推导的环境差异）。"""
@@ -410,111 +259,16 @@ class RuntimeEvidenceTests(unittest.TestCase):
         (self.work / "demo-b").mkdir(exist_ok=True)
         inputs = {
             "prompt": (
-                "work-dir（绝对路径）：E:\\proj\\outputs\\.pptx-work\\demo-a\n只评审 demo-a。"
+                "work-dir（绝对路径）：E:\\proj\\outputs\\.pptx-work\\demo-a\n只研究 demo-a。"
             ),
-            "description": "校准稿复核",
-            "subagent_type": "student-presentation-suite:visual-critic",
+            "description": "demo-a 检索",
+            "subagent_type": runtime.RESEARCHER,
         }
-        result = runtime._critic_work_dir(inputs, self.work)
+        result = runtime._agent_work_dir(inputs, self.work)
         self.assertIsNotNone(result)
         self.assertEqual("demo-a", result.name)
         inputs.pop("prompt")
-        self.assertIsNone(runtime._critic_work_dir(inputs, self.work))
-
-    def test_preview_map_carries_the_delivery_tier(self):
-        """The critic reads quality_level from the map, never from the frozen spec."""
-        self.prepare_render()
-        manifest_path = self.work / "build-manifest.json"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest["quality_level"] = "rigorous"
-        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-        payload = runtime.critic_preview.materialize(self.work)
-        self.assertEqual("rigorous", payload["quality_level"])
-        self.assertEqual("production", payload["scope"])
-
-    def test_unchanged_preview_is_reused_and_corruption_is_reencoded(self):
-        self.prepare_render()
-        module = runtime.critic_preview
-        first = module.materialize(self.work)
-        map_path = self.work / module.MAP_NAME
-        stamp = map_path.stat().st_mtime_ns
-        with patch.object(module, "_jpeg_preview", wraps=module._jpeg_preview) as encode:
-            self.assertEqual(first, module.materialize(self.work))
-            encode.assert_not_called()
-            self.assertEqual(stamp, map_path.stat().st_mtime_ns)
-            Path(first["entries"][0]["preview_path"]).write_bytes(b"corrupt")
-            module.materialize(self.work)
-            self.assertEqual(1, encode.call_count)
-
-    def test_preview_settings_invalidate_cached_images(self):
-        self.prepare_render()
-        module = runtime.critic_preview
-        first = module.materialize(self.work)
-        with patch.object(module, "_jpeg_preview", wraps=module._jpeg_preview) as encode:
-            module.materialize(self.work, long_edge=512)
-            self.assertEqual(len(first["entries"]), encode.call_count)
-
-    def test_preview_map_carries_every_reference_path_the_critic_needs(self):
-        """critic 只有 Read/Write、不能列目录：schema/参考文档/art-direction 的绝对
-        路径必须由 hook 写进 map，解析自**已安装插件根**（2026-09-28 live：critic 为找
-        schema 空试 20+ 次后从 marketplace 检出副本读到了错误版本）。"""
-        (self.work / "art-direction.yaml").write_text("style_seed: Modern Minimal\n", encoding="utf-8")
-        self.prepare_render()
-        payload = runtime.critic_preview.materialize(self.work)
-        plugin_root = runtime.critic_preview.ROOT
-        self.assertTrue(payload["schema_path"])
-        self.assertTrue(Path(payload["schema_path"]).is_file())
-        self.assertEqual(
-            Path(payload["schema_path"]), (plugin_root / "references/visual-review.schema.json").resolve()
-        )
-        self.assertTrue(Path(payload["reference_path"]).is_file())
-        self.assertEqual(
-            Path(payload["reference_path"]),
-            (plugin_root / "skills/sp-deck/references/pptx-visual-critic.md").resolve(),
-        )
-        self.assertEqual(
-            Path(payload["art_direction"]), (self.work / "art-direction.yaml").resolve()
-        )
-
-    def test_critic_preview_artifacts_are_hook_owned(self):
-        preview = self.work / runtime.critic_preview.PREVIEW_DIR_NAME / "p01.jpg"
-        preview.parent.mkdir(parents=True)
-        preview.write_bytes(b"preview")
-        mapping = self.work / runtime.critic_preview.MAP_NAME
-        mapping.write_text("{}")
-        for path in (preview, mapping):
-            with self.subTest(path=path.name):
-                self.assertEqual(
-                    self.event_call(
-                        "PreToolUse", tool_name="Write", tool_input={"file_path": str(path)}
-                    ),
-                    2,
-                )
-
-    def test_critic_spawn_materializes_hash_bound_previews(self):
-        contact, pages = self.prepare_render()
-        self.assertEqual(self.critic_spawn(), 0)
-        mapping = json.loads((self.work / runtime.critic_preview.MAP_NAME).read_text())
-        self.assertEqual(mapping["work_id"], self.work.name)
-        self.assertEqual(len(mapping["entries"]), 3)
-        page_entries = [entry for entry in mapping["entries"] if entry["kind"] == "page"]
-        self.assertEqual(
-            [entry["source_sha256"] for entry in page_entries],
-            [runtime.digest(page) for page in pages],
-        )
-        overview = next(entry for entry in mapping["entries"] if entry["kind"] == "overview")
-        self.assertEqual(overview["source_sha256"], runtime.digest(contact))
-        for entry in mapping["entries"]:
-            preview = Path(entry["preview_path"])
-            self.assertTrue(preview.is_file())
-            self.assertEqual(runtime.digest(preview), entry["preview_sha256"])
-
-    def test_critic_spawn_records_work_id_without_researcher(self):
-        self.prepare_render()
-        self.assertEqual(self.critic_spawn(), 0)
-        active = runtime.pipeline_context.research_active_path(self.project, "parent")
-        data = json.loads(active.read_text(encoding="utf-8"))
-        self.assertEqual(data.get("work_ids"), [self.work.name])
+        self.assertIsNone(runtime._agent_work_dir(inputs, self.work))
 
     def test_pipeline_bash_records_work_id_without_any_spawn(self):
         """A researcher-less deck (D import / scope-C) still owns its work-id."""
@@ -550,29 +304,6 @@ class RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(0, code)
         active = runtime.pipeline_context.research_active_path(self.project, "parent")
         self.assertFalse(active.exists())
-
-    def test_critic_spawn_without_absolute_work_dir_is_refused(self):
-        self.prepare_render()
-        self.assertEqual(self.critic_spawn(prompt="Review the current deck"), 2)
-        self.assertFalse((self.work / runtime.critic_preview.MAP_NAME).exists())
-
-    def test_critic_preview_read_is_credited_to_current_source_render(self):
-        _contact, pages = self.prepare_render(page_count=1)
-        self.assertEqual(self.critic_spawn(), 0)
-        mapping = json.loads((self.work / runtime.critic_preview.MAP_NAME).read_text())
-        preview_entry = next(entry for entry in mapping["entries"] if entry["kind"] == "page")
-        preview = Path(preview_entry["preview_path"])
-
-        self.event_call("SubagentStart")
-        self.event_call("PostToolUse", tool_name="Read", tool_input={"file_path": str(preview)})
-        review = self.work / "visual-review.json"
-        review.write_text("{}")
-        self.event_call("PostToolUse", tool_name="Write", tool_input={"file_path": str(review)})
-        self.event_call("SubagentStop")
-
-        receipt = json.loads((self.work / "critic-execution.json").read_text())
-        self.assertEqual(receipt["reads"][str(preview.resolve())], runtime.digest(preview))
-        self.assertEqual(receipt["reads"][str(pages[0].resolve())], runtime.digest(pages[0]))
 
     def test_research_scope_blocks_parent_web_but_not_unrelated_sessions(self):
         base = {"cwd": str(self.project), "session_id": "parent", "hook_event_name": "PreToolUse"}
@@ -625,23 +356,18 @@ class RuntimeEvidenceTests(unittest.TestCase):
         )
 
     def test_named_evidence_agent_spawn_is_blocked(self):
-        self.prepare_render()
         base = {"cwd": str(self.project), "session_id": "parent", "hook_event_name": "PreToolUse"}
-        for agent_type in (runtime.RESEARCHER, runtime.CRITIC):
-            valid_input = {"subagent_type": agent_type}
-            if agent_type == runtime.CRITIC:
-                valid_input["prompt"] = f"Review {self.work.resolve()}"
-            with self.subTest(agent=agent_type):
-                rc = runtime.handle(
-                    {
-                        **base,
-                        "tool_name": "Agent",
-                        "tool_input": {**valid_input, "name": f"named-{agent_type}"},
-                    }
-                )
-                self.assertEqual(2, rc)
-                rc = runtime.handle({**base, "tool_name": "Agent", "tool_input": valid_input})
-                self.assertEqual(0, rc)
+        valid_input = {"subagent_type": runtime.RESEARCHER}
+        rc = runtime.handle(
+            {
+                **base,
+                "tool_name": "Agent",
+                "tool_input": {**valid_input, "name": "named-researcher"},
+            }
+        )
+        self.assertEqual(2, rc)
+        rc = runtime.handle({**base, "tool_name": "Agent", "tool_input": valid_input})
+        self.assertEqual(0, rc)
 
     def test_nested_evidence_agent_spawn_is_blocked(self):
         base = {
@@ -676,27 +402,6 @@ class RuntimeEvidenceTests(unittest.TestCase):
             ),
             0,
         )
-
-    def test_parallel_image_events_do_not_lose_read_hashes(self):
-        self.prepare_render()
-        self.assertEqual(self.critic_spawn(), 0)
-        self.event_call("SubagentStart")
-        paths = [self.work / f"page-{index}.png" for index in range(8)]
-        for path in paths:
-            path.write_bytes(path.name.encode())
-
-        def record(path):
-            with runtime.event_lock(self.event):
-                self.event_call("PostToolUse", tool_name="Read", tool_input={"file_path": str(path)})
-
-        with ThreadPoolExecutor(max_workers=8) as pool:
-            list(pool.map(record, paths))
-        review = self.work / "visual-review.json"
-        review.write_text("{}")
-        self.event_call("PostToolUse", tool_name="Write", tool_input={"file_path": str(review)})
-        self.event_call("SubagentStop")
-        receipt = json.loads((self.work / "critic-execution.json").read_text())
-        self.assertEqual(receipt["reads"], {str(path): runtime.digest(path) for path in paths})
 
     def test_windows_delete_pending_open_is_retried_not_raised(self):
         """Windows delete-pending: after unlink, exists() reports False while open()
@@ -802,7 +507,7 @@ class ResearchActiveReleaseTests(unittest.TestCase):
 
     def researcher_spawn_records_work_id(self):
         """A researcher spawn whose prompt names one work-dir records it (same
-        single-path detection the critic spawn uses)."""
+        single-path detection as the Agent spawn guard)."""
         work = self.project / "outputs/.pptx-work/test"
         work.mkdir(parents=True, exist_ok=True)
         prompt = f"work-dir (only write location): {work.resolve()}"
@@ -838,7 +543,7 @@ class ResearchActiveReleaseTests(unittest.TestCase):
 
     def test_research_active_releases_at_complete_for_all_consumers(self):
         """2026-09-20 review: the release lives inside research_active, so
-        cost_guard's managed flag (CD-3 reference re-reads) also sees a
+        every consumer (WebSearch refusal, named-teammate guard) also sees a
         delivered deck as inactive — not just the WebSearch path."""
         runtime.pipeline_context.mark_research_active(self.project, {"session_id": "parent"})
         self.write_manifest("test", "complete")
