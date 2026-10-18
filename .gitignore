@@ -13,3 +13,5 @@
 **/openxml_validator/bin/
 **/openxml_validator/obj/
 /tmp_cost_analysis/
+**/.zcode/
+**/.zcodeignore

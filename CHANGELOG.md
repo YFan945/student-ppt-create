@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.30.10 — 2026-10-19 · 仓库卫生
+
+- `.zcode/` 本地会话数据与 `.zcodeignore` 纳入 `.gitignore`，不再出现在未跟踪清单中。
+
 ## 0.30.9 — 2026-10-19 · 排版可读性（字体配对/行距段距/角色化告警）、隐藏门禁显形与研究纪律修复
 
 - 文档与仓库清理：删除零引用的 0.13.0 历史验收记录（`references/verification-0.13.0.md`）；修正根 README 失效的 workflow-state-recovery 锚点、成本/spawn 守卫空指针与输出文件清单（按 `complete` 当前实际交付物重写）；golden-sample 注明为历史 v0.8 管线展示；修正根 AGENTS.md 中 `scripts/live_prompts/` 路径、补齐 `commands/sp-check-env.md` 与示例目录清单；删除 sp-review 残留的字数上限与 sp-cost-report 中已移除的 CD 编号引用；修正 sp-research 中 validate_research_task.py 的插件内路径。
