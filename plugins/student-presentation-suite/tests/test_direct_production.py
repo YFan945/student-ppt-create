@@ -194,6 +194,40 @@ module.exports.notes={json.dumps(notes)};
         self.assertEqual(manifest["state"], "producing")
         self.assertEqual(manifest["attempts"], 8)
 
+    def test_failed_build_preserves_geometry_sidecar_at_fixed_diagnostic_path(self):
+        """2026-10-19 audit: a failed build deleted the staging sidecar reports
+        with the TemporaryDirectory. The registry report must survive at a fixed
+        path and be pointed to from last_error; a fresh attempt clears it."""
+        production.plan(self.args)
+        self.author()
+        diagnostic = self.work / "last-build-report.json"
+
+        def fail_with_report(command, cwd):
+            staging = Path(command[command.index("--output") + 1])
+            Path(str(staging) + ".registry-report.json").write_text(
+                json.dumps({"ok": False, "errors": [{"id": "overlap", "message": "box overlap 12%"}]}),
+                encoding="utf-8")
+            raise production.ProductionError("assertSafe failed: 1 geometry error")
+
+        with patch.object(production, "execute", side_effect=fail_with_report):
+            with self.assertRaisesRegex(production.ProductionError, "last-build-report.json"):
+                production.run(self.args)
+        self.assertTrue(diagnostic.is_file())
+        self.assertIn("overlap", diagnostic.read_text(encoding="utf-8"))
+        manifest = production.load(self.work / "build-manifest.json")
+        self.assertEqual(str(diagnostic), manifest["last_build_report"])
+        self.assertIn("last-build-report.json", manifest["last_error"])
+
+        # A new attempt clears the stale diagnostic when the build fails before
+        # the sidecar is written again.
+        with patch.object(production, "execute", side_effect=production.ProductionError("node crashed")):
+            with self.assertRaisesRegex(production.ProductionError, "node crashed"):
+                production.run(self.args)
+        self.assertFalse(diagnostic.exists())
+        manifest = production.load(self.work / "build-manifest.json")
+        self.assertNotIn("last_build_report", manifest)
+        self.assertNotIn("last-build-report.json", manifest["last_error"])
+
     def test_typography_alias_is_used_for_sentences_and_unknown_keys_are_named(self):
         code = """
 const H=require('./plugins/student-presentation-suite/scripts/pptx-helpers.js');

@@ -247,10 +247,24 @@ def semantic_errors(data: Any) -> list[dict[str, str]]:
         ids = [item["id"] for item in requirements]
         if len(ids) != len(set(ids)):
             errors.append({"path": f".slides.{index}.semantic_requirements", "message": "requirement ids must be unique per page"})
-        known = {item["id"] for item in data.get("evidence_ledger", [])}
+        # Same two-level contract as slide-level evidence_refs above: without a
+        # top-level evidence_ledger the refs are Research Pack F/D/Q (or D-pack
+        # source) ids awaiting --research-pack compilation, so existence is only
+        # checkable once the spec carries its own ledger.
+        ledger_present = isinstance(evidence, list)
+        known = (
+            {item.get("id") for item in evidence if isinstance(item, dict) and isinstance(item.get("id"), str)}
+            if ledger_present
+            else set()
+        )
         for item in requirements:
-            if set(item.get("evidence_refs", [])) - known:
-                errors.append({"path": f".slides.{index}.semantic_requirements", "message": "unknown semantic evidence refs"})
+            if ledger_present:
+                unknown = sorted({str(ref) for ref in item.get("evidence_refs", []) if ref not in known})
+                if unknown:
+                    errors.append({
+                        "path": f".slides.{index}.semantic_requirements.must_convey",
+                        "message": "unknown semantic evidence refs: " + ", ".join(unknown),
+                    })
             if item.get("placement") == "notes" and meta.get("include_speaker_notes") is False:
                 errors.append({"path": f".slides.{index}.semantic_requirements", "message": "notes requirements require speaker notes"})
 

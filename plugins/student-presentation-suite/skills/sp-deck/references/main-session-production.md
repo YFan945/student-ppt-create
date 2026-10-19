@@ -14,18 +14,22 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" measure --
 # measure 只覆盖文本溢出/偏紧；颜色对比度、元素重叠与对齐由 run 检查。
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" run --work-dir <wd>
 # 主会话查看返回的预览、实际文本和讲稿；有问题直接改，再 run。
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" run --work-dir <wd> --no-render
+# 只构建+全检、跳过渲染：迭代读 check_summary/geometry 报告用，不产出预览；complete 前仍需一次完整 run。
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete --work-dir <wd>
 ```
 
 `run` 的构建按页收集错误：多页同时溢出/失败时一次列出全部页面，不再在第一页中止。页面源码运行所需的环境变量由 pipeline 自行注入（`PPTX_HELPERS_DIR` 指向插件 `scripts/`）；作者手写调用页面代码的脚本时，需自行设置 `PPTX_HELPERS_DIR` 并经 `pptx-runtime-paths.js` 的 `installSearchPaths` 注册 pptxgenjs/fontkit——此类探测脚本属于 `_tmp/`。
 
-`plan` 自动验证 Spec 并生成源码；`--art-direction <file.yaml|json>` 可选，接受 `style_seed`/`visual_style`、`visual_style_custom`、`topic_accent` 与 `typography`。`typography` 是整套字体定制的受支持通道：覆盖 `title_font`、`body_font`、`cjk_title_font`、`cjk_body_font` 等 `*_font` 键，合入内联 TOKENS 并驱动构建期的 Latin→CJK `<a:ea>` 映射。需要整套换字体（如 CJK 用 Microsoft YaHei）时走这里，不要在每个文本调用上单独指定 `cjkFontFace`——那不进入字体映射。研究任务可提供 `--research-pack`，工具批量编译证据。无需先调用多个验证或状态推进命令。
+`plan` 自动验证 Spec 并生成源码；`--art-direction <file.yaml|json>` 可选，接受的键（含深色 `palette_mode`）与类型见 [pptx-art-direction.md](pptx-art-direction.md)。`typography` 是整套字体定制的受支持通道：覆盖 `title_font`、`body_font`、`cjk_title_font`、`cjk_body_font` 等 `*_font` 键，合入内联 TOKENS 并驱动构建期的 Latin→CJK `<a:ea>` 映射。需要整套换字体（如 CJK 用 Microsoft YaHei）时走这里，不要在每个文本调用上单独指定 `cjkFontFace`——那不进入字体映射。研究任务可提供 `--research-pack`，工具批量编译证据。无需先调用多个验证或状态推进命令。
 
 `plan` 编译研究证据时，Research Pack `delivery_status=insufficient`（core claim 未收口）会被拒绝并列出缺口 claim。按报错给出的出路处理：授权研究员定向补检这些 claim；spec 不再断言该维度时把 claim 从 core 降为 supporting 并用 `research_control.py --rebind` 收敛绑定；或用户提供材料后按 D 类导入。不得把未经核验的数字写进 spec 冒充已收口。
 
 重新执行 `plan` 时，已含作者实现的 `pages/pNN-*.js` 不会被覆盖；`deck.js` 只在仍带脚手架 marker 注释行时才会被重写——手工调整 deck.js（配色、字体等）后删除该 marker 注释行即冻结。测量脚本等临时文件放在工作目录的 `_tmp/` 下：第一级以 `_` 或 `.` 开头的路径不参与 authoring 绑定与变更检测，可随时删除；`pages/` 内部的共享模块（如 `pages/_shared.js`）正常参与绑定，散放在工作目录根的其他 `.js` 也会被绑定进 manifest。
 
 `run` 执行构建、字体处理、事实精确项、包与作者几何报告检查和全页渲染，返回 `technical_checks`、`geometry`、`review_required` 及当前页面路径。`ok` 只表示列出的技术检查通过，不代表审美、核心语义或逐页看图已经验收。几何 warning 和字体替换供作者对照完整渲染判断；合理的装饰覆盖不按数量阻断。不以金额、token 或修复次数阻断当前工作。当前文件与预览绑定一致时可复用渲染。
+
+检查按阶段暴露：几何 preflight 在构建期最先运行，先于事实精确项、包校验与内容门禁——preflight 失败时构建中止，内容检查结果尚不可见，先按报错（含元素 id 与 ratio/高度等细节）修几何，再次 run 才看得到后续门禁。迭代节奏：先用 `measure` 一次排掉全部文本溢出，再 `run`；只想读检查报告时用 `run --no-render`（构建+全部检查、跳过渲染，返回 `check_summary`、`geometry` 与 sidecar 路径，标记 `render_skipped`），`complete` 前仍需一次完整 run 出预览。
 
 `complete` 绑定当前产物并生成已确认的辅助文件。主会话在调用前完成看图和核心语义自检；工具不假装替作者做独立视觉评审。`status` 可以读取历史 manifest，旧管线任务须保留原件后以新 work-id 继续。
 

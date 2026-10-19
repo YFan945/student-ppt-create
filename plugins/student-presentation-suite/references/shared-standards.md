@@ -42,7 +42,7 @@ When the target remains genuinely ambiguous, ask one routing question: research/
 
 ## Cross-Skill Handoff
 
-- Research Pack + passing validation is the only evidence handoff into outline or deck. Outline writes draft Slide Spec `evidence_refs` with Research Pack `F`/`D`/`Q` ids; `sp-deck` compiles those into E ids. C-only work skips research and must not invent an empty pack.
+- Research Pack + passing validation is the only evidence handoff into outline or deck. Outline writes draft Slide Spec `evidence_refs` — slide level and `must_convey[].evidence_refs` alike — with Research Pack `F`/`D`/`Q` ids; D-class packs define no `F`/`D`/`Q` entities, so their refs cite pack source ids (`S01`…) directly. `sp-deck`'s `--research-pack` compilation resolves both shapes into the top-level Evidence Ledger's `E` ids (D-class cited sources become source-level ledger entries). Existence is validated only against a spec that already carries its top-level ledger; a draft without one defers resolution to compile time. C-only work skips research and must not invent an empty pack.
 - Outline-only work never creates or claims to create a PPTX.
 - A file-generation request goes directly to `sp-deck`; planning happens inside that workflow.
 - “看看问题” means review only.

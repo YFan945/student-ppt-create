@@ -84,6 +84,14 @@ For one helper, use `node "${CLAUDE_PLUGIN_ROOT}/scripts/pptx-helpers.js" --desc
 
 Implemented page functions may retain a provenance comment; empty functions remain unfinished, and runtime checks require real drawn objects. Mixed-size inline number/unit runs inside one rich-text object keep a single logical line with measured geometry and shared baselines. Never split one logical line into separate positioned boxes to style its parts — separate boxes have independent baselines and line pitch, and hand-compensating their offsets misaligns the line.
 
+## Diagnosing preflight failures
+
+The geometry preflight error is self-contained: each line reads `slide N: code (elementId) [ratio=…, requiredH=…in boxH=…in] — message`, carrying the contrast ratio and background, measured-vs-required height, overlap ratio or alignment delta that makes the failure actionable. Fix from the throw; do not re-derive it from registry source.
+
+- Full detail (warnings, contrast scope, per-element geometry) lives in `<pptx>.registry-report.json` next to the built file. The sidecar is written even when the preflight fails — `writeReport` runs before `assertSafe` — so a failed build still leaves the report on disk next to the output path.
+- Trace an element by id: the error line's `elementId` matches `slides[].elements[].id` in the sidecar, which lists the element's `x/y/w/h`, `fontSize`, `role` and measured `lineGeometry`; compare those numbers with the box in the page source to locate the drift.
+- Warnings (decorative stripes, size tiers, family mixes) never block the build; they are inspection signals in the same sidecar, not reasons to reverse-engineer the registry.
+
 ## Relationships, numeric facts and visual safety
 
 For an optional relationship helper, require `${CLAUDE_PLUGIN_ROOT}/scripts/pptx-relations.js`. Supply actual supported content, box and fontSize; there is no global size or layout recipe:

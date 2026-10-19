@@ -297,6 +297,32 @@ class DesignTokenTests(unittest.TestCase):
         untouched = apply_topic_accent(seed, "not-a-color")
         self.assertEqual(seed["palette"]["primary_accent"], untouched["palette"]["primary_accent"])
 
+    def test_apply_palette_mode_dark_promotes_dark_companion(self) -> None:
+        """palette_mode: "dark" must make the style's dark_palette the deck palette.
+
+        Chart/category colors adapted onto dark_palette travel with the
+        promotion; dark_palette itself stays for per-page paletteMode(tokens,'dark')."""
+        from shared.design_tokens import apply_palette_mode
+
+        tokens = resolve_design_tokens("Ocean Tech")
+        dark = apply_palette_mode(tokens, "dark")
+        self.assertEqual("dark", dark["palette_mode"])
+        for role, value in tokens["dark_palette"].items():
+            self.assertEqual(value, dark["palette"][role])
+        self.assertEqual(tokens["dark_palette"], dark["dark_palette"])
+        for role in tokens["palette"]:
+            self.assertIn(role, dark["palette"])
+        self.assertNotEqual(tokens["palette"]["canvas"], dark["palette"]["canvas"])
+
+    def test_apply_palette_mode_default_is_byte_identical(self) -> None:
+        """Default light behavior: unknown/empty/missing values change nothing."""
+        from shared.design_tokens import apply_palette_mode
+
+        tokens = resolve_design_tokens("Ocean Tech")
+        for mode in (None, "", "light", "LIGHT", "drak"):
+            with self.subTest(mode=mode):
+                self.assertIs(apply_palette_mode(tokens, mode), tokens)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -190,6 +190,114 @@ console.log(JSON.stringify(registry.analyzeDeck()));
             {item["code"] for item in report["issues"]},
         )
 
+    def test_must_convey_evidence_refs_defer_to_compile_without_ledger(self) -> None:
+        """Draft specs cite Research Pack F/D/Q ids; only --research-pack compilation
+        can resolve them, so existence must not be judged against an absent ledger."""
+        data = {
+            "schema_version": "2.1",
+            "slides": [
+                {
+                    "id": 1,
+                    "title": "Findings",
+                    "semantic_requirements": {
+                        "must_convey": [
+                            {"id": "c1", "text": "2030 年风光总装机目标 1200GW", "evidence_refs": ["F01", "D01"]}
+                        ],
+                        "must_show_exact": ["1200GW"],
+                    },
+                }
+            ],
+        }
+        errors = self.slide_validation.semantic_errors(data)
+        self.assertEqual([], [item for item in errors if "evidence" in item["path"]])
+
+    def test_notes_placement_check_still_runs_without_a_ledger(self) -> None:
+        """The ledger guard must only gate evidence-ref existence, not the
+        placement/notes check that shares the same requirement loop."""
+        data = {
+            "schema_version": "2.1",
+            "meta": {"include_speaker_notes": False},
+            "slides": [
+                {
+                    "id": 1,
+                    "title": "Findings",
+                    "semantic_requirements": {
+                        "must_convey": [
+                            {"id": "c1", "text": "口头补充", "placement": "notes", "evidence_refs": ["F01"]}
+                        ],
+                        "must_show_exact": [],
+                    },
+                }
+            ],
+        }
+        errors = self.slide_validation.semantic_errors(data)
+        self.assertIn(
+            "notes requirements require speaker notes",
+            [item["message"] for item in errors if item["path"] == ".slides.0.semantic_requirements"],
+        )
+
+    def test_must_convey_unknown_evidence_refs_are_listed(self) -> None:
+        data = {
+            "schema_version": "2.1",
+            "evidence_ledger": [
+                {
+                    "id": "E01",
+                    "title": "IRENA costs",
+                    "source_type": "paper",
+                    "locator": "irena.org",
+                    "confidence": "high",
+                    "used_on_slides": [1],
+                }
+            ],
+            "slides": [
+                {
+                    "id": 1,
+                    "title": "Findings",
+                    "semantic_requirements": {
+                        "must_convey": [
+                            {"id": "c1", "text": "目标 1200GW", "evidence_refs": ["E01", "F01", "D99"]}
+                        ],
+                        "must_show_exact": [],
+                    },
+                }
+            ],
+        }
+        errors = self.slide_validation.semantic_errors(data)
+        evidence_errors = [item for item in errors if item["path"] == ".slides.0.semantic_requirements.must_convey"]
+        self.assertEqual(1, len(evidence_errors))
+        self.assertIn("F01", evidence_errors[0]["message"])
+        self.assertIn("D99", evidence_errors[0]["message"])
+        self.assertNotIn("E01", evidence_errors[0]["message"].split(": ", 1)[1])
+
+    def test_planned_requirements_record_where_each_number_came_from(self) -> None:
+        """must_convey numbers become exact on-screen checks without any spec-stage
+        notice; the report must show the author which field fed each token."""
+        spec = {
+            "slides": [
+                {
+                    "id": 1,
+                    "title": "消纳",
+                    "semantic_requirements": {
+                        "must_convey": [
+                            {"id": "k1", "text": "整体保持 95% 以上"},
+                            {"id": "k2", "text": "讲稿里的 12% 不计上屏", "placement": "notes"},
+                        ],
+                        "must_show_exact": ["233人参与"],
+                        "fact_bindings": [],
+                    },
+                }
+            ]
+        }
+        requirements = self.actual.planned_requirements(spec["slides"][0])
+        self.assertEqual(["233", "95%"], requirements["numbers"])
+        self.assertEqual(["must_show_exact: 233人参与"], requirements["number_sources"]["233"])
+        self.assertEqual(["must_convey[k1]: 整体保持 95% 以上"], requirements["number_sources"]["95%"])
+        report = self.actual.check(spec, ["消纳\n233人参与"])
+        self.assertFalse(report["ok"])
+        issues = [item for item in report["issues"] if item["code"] == "planned_numbers_missing"]
+        self.assertEqual(1, len(issues))
+        self.assertEqual({"95%": ["must_convey[k1]: 整体保持 95% 以上"]}, issues[0]["sources"])
+
     def test_delivery_rejects_stale_actual_content_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

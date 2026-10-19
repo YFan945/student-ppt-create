@@ -78,7 +78,7 @@ Optional top-level fields for existing deck improvement:
 
 ## New 2.1 slide semantics
 
-Each slide has `semantic_requirements.must_convey` with stable id/text and optional placement/evidence_refs, plus `must_show_exact`. Core meaning defaults to visible placement; supplementary oral requirements can use notes. A concise note may omit non-spoken slide detail without losing visible coverage. `title`, `content`, `slide_copy`, `visual` and notes are authoring material; actual wording is recorded in `presentation_copy` on the page module, never as a spec field. `claim` is optional planning input, not a required second visible conclusion or fixed band. Register every user-mandated verbatim string in `must_show_exact`: it is checked by exact readback and exempted from expression findings (defensive-phrasing patterns), so style rules never rewrite required wording.
+Each slide has `semantic_requirements.must_convey` with stable id/text and optional placement/evidence_refs, plus `must_show_exact`. At both the slide level and on each `must_convey` item, `evidence_refs` may cite Research Pack `F`/`D`/`Q` ids in a draft; `sp-deck`'s `--research-pack` compilation resolves them into the top-level Evidence Ledger's `E` ids, and existence is validated only when the spec already carries that ledger. Core meaning defaults to visible placement; supplementary oral requirements can use notes. A concise note may omit non-spoken slide detail without losing visible coverage. `title`, `content`, `slide_copy`, `visual` and notes are authoring material; actual wording is recorded in `presentation_copy` on the page module, never as a spec field. `claim` is optional planning input, not a required second visible conclusion or fixed band. Register every user-mandated verbatim string in `must_show_exact`: it is checked by exact readback and exempted from expression findings (defensive-phrasing patterns), so style rules never rewrite required wording.
 
 ## Legacy 1.0/2.0 copy compatibility
 
@@ -108,7 +108,7 @@ Optional legacy v2 slide fields:
   `is not valid under any of the given schemas`; flatten it to a list instead.
 - `speaker_notes`: speakable explanation rather than an essay
 - `key_line`: optional memorable sentence
-- `evidence_refs`: ids from the top-level Evidence Ledger
+- `evidence_refs`: ids from the top-level Evidence Ledger, or Research Pack `F`/`D`/`Q` ids in a draft awaiting `--research-pack` compilation (existence validated only when the spec carries its own ledger)
 - `locked` and `lock_reason`: prevent later optimization from changing approved content
 
 Optional v2 top-level fields:
@@ -235,5 +235,9 @@ New production accepts `meta.output_dir` inside the active project outputs tree 
 ```
 
 Each binding has a unique page-local `id`, nonempty `label`, numeric string `value`, optional `unit` and optional exact `context` (e.g. date/population). One actual OOXML text object or one named positioned line must contain `label[:]? value unit` or `value unit label`; line wrapping is allowed. Context must occur in that same block. Separate arbitrary boxes/table cells are never concatenated to pass. A native editable rich-text object can style its label and value separately; the optional `metric` helper demonstrates it. Do not freeze an entire explanatory sentence merely to check a number. The bridge and scaffold preserve these bindings, and readback reports `fact_binding_missing_or_changed` on mismatch. Empty bindings do not certify semantic correspondence.
+
+Bindings require one clean `label` + exact `value` (+`unit`) triple: a single fixed number under one label. Ranges ("0.25—0.33") and approximate wordings ("超过 1 亿", "25% 左右") cannot be bound — register the page's verbatim wording in `must_show_exact` instead and reserve bindings for the exact quantities the page states.
+
+Matching tolerates whitespace only, and only as follows. `title`/`claim`/`slide_copy` and speaker-notes/`text_runs` comparisons strip all whitespace (spaces and line breaks), fold case and normalize curly quotes, and runs inside one text object read as continuous text — wrapping and run splits never block them. `must_show_exact`, planned numbers and bindings tolerate whitespace (including line breaks) but are case- and punctuation-sensitive, and numbers must surface as whole tokens (CJK-adjacent is fine). A binding keeps label and value+unit inside one actual text object or one named `sps-line:` line; a number rendered only as a chart data label is never matched.
 
 Caution: text mixing CJK with digits/Latin stays one rich-text object by default; the legacy anti-rewrap split into positioned fragments is opt-in (`positionMixedText: true`) and scatters label and value across shapes. Fragments of one positioned line re-join in readback only through their shared `sps-line:` name; hand-built rich text whose fragments land in separate plain objects fails the binding. For bound facts use the `metric` helper, which keeps label, value and unit in one text object.

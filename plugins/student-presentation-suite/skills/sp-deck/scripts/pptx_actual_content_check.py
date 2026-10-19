@@ -57,6 +57,12 @@ def normalize(text: str) -> str:
     return text.casefold()
 
 
+def _preview(text: str, limit: int = 80) -> str:
+    """Single-line, length-capped excerpt for issue messages."""
+    compact = " ".join(str(text or "").split())
+    return compact if len(compact) <= limit else compact[: limit - 1] + "…"
+
+
 def extract_pptx_text(pptx: Path) -> list[str]:
     slides: list[tuple[int, str]] = []
     with zipfile.ZipFile(pptx) as zf:
@@ -168,11 +174,25 @@ def planned_requirements(planned: dict[str, Any]) -> dict[str, Any]:
     semantic = semantic_requirements(planned)
     if semantic is not None:
         exact = list(semantic.get("must_show_exact", []))
-        numeric_facts = {number for requirement in semantic.get("must_convey", []) if requirement.get("placement", "slide") == "slide" for number in numbers(requirement["text"])}
-        exact.extend(sorted(numeric_facts - set(exact)))
+        number_sources: dict[str, list[str]] = {}
+        for text in exact:
+            for number in numbers(text):
+                number_sources.setdefault(number, []).append(f"must_show_exact: {text}")
+        conveyed: dict[str, str] = {}
+        for requirement in semantic.get("must_convey", []):
+            if requirement.get("placement", "slide") != "slide":
+                continue
+            text = str(requirement.get("text") or "")
+            for number in numbers(text):
+                conveyed.setdefault(number, f"must_convey[{requirement.get('id')}]: {text}")
+        for number in sorted(conveyed):
+            if number not in number_sources:
+                number_sources[number] = [conveyed[number]]
+        exact.extend(sorted(set(conveyed) - set(exact)))
         return {
             "title": "", "claim": "", "copy_fragments": [],
             "numbers": sorted({n for text in exact for n in numbers(text)}),
+            "number_sources": number_sources,
             "must_show_exact": exact, "must_convey": semantic.get("must_convey", []),
             "fact_bindings": semantic.get("fact_bindings", []),
             "copy_policy": "semantic",
@@ -181,11 +201,16 @@ def planned_requirements(planned: dict[str, Any]) -> dict[str, Any]:
     claim = str(planned.get("claim") or planned.get("key_line") or "").strip()
     copy_fragments = compact_fragments(planned.get("slide_copy"))
     numeric_values = numbers(" ".join([title, claim, *copy_fragments]))
+    number_sources: dict[str, list[str]] = {}
+    for field, text in [("title", title), ("claim", claim), *[("slide_copy", fragment) for fragment in copy_fragments]]:
+        for number in numbers(text):
+            number_sources.setdefault(number, []).append(f"{field}: {text}")
     return {
         "title": title,
         "claim": claim,
         "copy_fragments": copy_fragments,
         "numbers": numeric_values,
+        "number_sources": number_sources,
     }
 
 
@@ -236,7 +261,13 @@ def check(spec: dict[str, Any], actual: list[str], fact_blocks: list[list[str]] 
         numeric_claims = requirements["numbers"]
         missing_numbers = sorted({n for n in numeric_claims if not exact_present(n, actual_text)})
         if missing_numbers:
-            slide_issues.append({"severity": "major", "code": "planned_numbers_missing", "missing": missing_numbers})
+            sources_map = requirements.get("number_sources", {})
+            slide_issues.append({
+                "severity": "major",
+                "code": "planned_numbers_missing",
+                "missing": missing_numbers,
+                "sources": {number: sources_map.get(number, []) for number in missing_numbers},
+            })
 
         per_slide.append({
             "slide": index,
@@ -293,18 +324,60 @@ def run(args: argparse.Namespace) -> int:
                 if not isinstance(entry, dict):
                     entry = {}
                 notes_copy = str(entry.get("speaker_notes") or "")
-                metadata_valid = (
-                    entry.get("slide") == index
-                    and isinstance(entry.get("headline"), str)
-                    and bool(entry["headline"].strip())
-                    and isinstance(entry.get("visual_labels"), list)
-                )
-                text_valid = index <= len(actual) and all(exact_present(text, actual[index - 1]) for text in compact_fragments(entry.get("headline")) + compact_fragments(entry.get("visual_labels")))
-                notes_valid = isinstance(entry.get("speaker_notes"), str) and normalize(notes_copy) == normalize(actual_notes.get(index, ""))
+                actual_text = actual[index - 1] if index <= len(actual) else ""
+
+                metadata_problems: list[str] = []
+                if entry.get("slide") != index:
+                    metadata_problems.append(f"slide index is {entry.get('slide')!r}, expected {index}")
+                if not (isinstance(entry.get("headline"), str) and entry["headline"].strip()):
+                    metadata_problems.append("headline is missing or empty")
+                if not isinstance(entry.get("visual_labels"), list):
+                    metadata_problems.append("visual_labels is not a list")
+
+                unmatched: dict[str, list[str]] = {}
+                missing_headline = [text for text in compact_fragments(entry.get("headline")) if not exact_present(text, actual_text)]
+                if missing_headline:
+                    unmatched["headline"] = missing_headline[:8]
+                missing_labels = [text for text in compact_fragments(entry.get("visual_labels")) if not exact_present(text, actual_text)]
+                if missing_labels:
+                    unmatched["visual_labels"] = missing_labels[:8]
+
+                notes_problems: list[str] = []
+                if not isinstance(entry.get("speaker_notes"), str):
+                    notes_problems.append("speaker_notes is not a string")
+                elif normalize(notes_copy) != normalize(actual_notes.get(index, "")):
+                    notes_problems.append(
+                        "speaker_notes do not match the PPTX notes pane "
+                        f"(copy: {_preview(notes_copy)!r}; actual: {_preview(actual_notes.get(index, ''))!r})"
+                    )
+
                 runs = entry.get("text_runs")
-                runs_valid = isinstance(runs, list) and all(isinstance(text, str) for text in runs) and index <= len(actual) and normalize("".join(runs)) == normalize(actual[index - 1])
-                if not (metadata_valid and text_valid and notes_valid and runs_valid):
-                    report["issues"].append({"slide": index, "severity": "major", "code": "presentation_copy_unbound"})
+                runs_problems: list[str] = []
+                if not isinstance(runs, list) or not all(isinstance(text, str) for text in runs):
+                    runs_problems.append("text_runs is not a list of strings")
+                elif normalize("".join(runs)) != normalize(actual_text):
+                    runs_problems.append(
+                        "text_runs do not reconstruct the slide text "
+                        f"(runs: {_preview(''.join(runs))!r}; actual: {_preview(actual_text)!r})"
+                    )
+
+                fields = (
+                    (["metadata"] if metadata_problems else [])
+                    + list(unmatched)
+                    + (["speaker_notes"] if notes_problems else [])
+                    + (["text_runs"] if runs_problems else [])
+                )
+                if fields:
+                    issue: dict[str, Any] = {"slide": index, "severity": "major", "code": "presentation_copy_unbound", "fields": fields}
+                    if metadata_problems:
+                        issue["metadata_problems"] = metadata_problems
+                    if unmatched:
+                        issue["unmatched_texts"] = unmatched
+                    if notes_problems:
+                        issue["speaker_notes_problems"] = notes_problems
+                    if runs_problems:
+                        issue["text_runs_problems"] = runs_problems
+                    report["issues"].append(issue)
                     report["blocker_count"] += 1
                     report["issue_count"] += 1
                     report["ok"] = False

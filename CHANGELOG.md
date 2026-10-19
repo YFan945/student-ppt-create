@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.30.11 — 2026-10-20 · 可诊断性
+
+- 构建期几何 preflight 报错自包含细节（2026-10-19 会话审计）：`assertSafe()` 抛出的每条错误摘要现带 `message` 及 ratio/background、requiredH/boxH、overlap、delta、footerTop 等诊断值（紧凑单行），overlap/crossing 类无 message 的错误用数值字段补足——失败不再丢失可操作细节、不再需要逆向 registry 源码。
+- scaffold 生成的 deck.js 改为先 `writeReport` 后 `assertSafe`：preflight 失败时 `<pptx>.registry-report.json` sidecar 也落盘（`render_visual_cases.py` 同步修正顺序）；`run --no-render` 新增：构建+全部检查但跳过 LibreOffice 渲染，供只读检查报告的迭代使用（清空 render 绑定，complete 拒绝交付直到一次完整 run）。
+- `plan --research-pack` 路径不存在且为相对路径时，报错说明解析基准（工具自身 cwd 而非调用 shell）并建议使用绝对路径。
+- authoring-quickstart 新增"Diagnosing preflight failures"一节；main-session-production 写明检查的分阶段暴露顺序（几何 preflight 先于内容门禁）与"先 measure 再 run、`run --no-render` 读报告"的迭代节奏。
+- 研究员中断恢复规则改为分场景（2026-10-19 会话审计）：基础设施故障（API 错误、连接中断、宿主终止等非内容原因）导致研究员在写出可解析 Research Pack 前终止、且检索证据已落盘时，主流程可用宿主 Agent 工具的 resume 能力恢复同一 agent 恰好一次——只许基于已落盘证据写出/补全 pack，不得重新检索、不得新增来源，恢复事实先经 `research_control.py --resume --reason "recovered_from: crash: ..."` 记入研究轨迹；unknown_payload 或校验失败的 pack 维持现状（记 blocked，不自行 resume/重派，等待用户明确补检指令）。同一会话只派一次的 spawn 约束不变。research-workflow.md、sp-research SKILL.md、spawn-templates.md（新增 researcher-resume 恢复模板）与 research-task.schema.json（scope A/B/C/D 各补 description）同步，ContractSyncTests 钉住新契约短语。
+- Art Direction 深色通道（2026-10-19 会话审计）：`--art-direction` 新增 token 键 `palette_mode: "light"|"dark"`（默认 `light`，浅色行为逐字不变）；`"dark"` 时 scaffold 把该风格解析后的 `dark_palette`（含按深色表面适配的 chart 分类色）提升为 deck.js TOKENS 的 `palette` 并记录 `palette_mode`，`art_direction_check` 对未知值以 major 阻断、不再静默回落浅色。`pptx-art-direction.md` 重写为完整键契约（token 键 + v0.8 设计语言键两层，与 golden-sample 结构对齐），main-session-production 的 art-direction 键清单收敛为一行指针。
+- `run` 构建失败保留诊断报告：staging 的几何 preflight sidecar（若已落盘）在临时目录删除前复制到 `<work>/last-build-report.json`，报错的 `last_error` 与 manifest 的 `last_build_report` 指向它；每次 `run` 入口清理陈旧诊断，成功路径同步清除。
+- 数字边界澄清（content-workflow.md 为唯一口径）：同一来源（或各自注明来源）数字的简单算术（比值/求和/差值）允许，但须注明由哪些数字推出；无来源支撑的比例/换算仍禁止。结论页/汇总表对前页关键数字的归纳性重提是合法综合，无信息增量的跨页机械重复视为填充。main-session-visual-examples 仅留指针，不复制政策。
+- shared-standards 的 Research Pack 交接措辞对齐 research-workflow 实际语义：D 类 pack 无 `F`/`D`/`Q` 实体，draft Slide Spec 的 `evidence_refs` 直接引用来源 id（`S01`…）；`--research-pack` 编译把两类引用都落成 Evidence Ledger 的 `E` id（D 类被引来源为 source 级条目）。
+- evidence_refs 两级契约矛盾修复（2026-10-19 会话审计）：`must_convey[].evidence_refs` 此前在编译前无条件对照（必然为空的）顶层 ledger 校验，写 Research Pack 的 F/D/Q id 恒报 "unknown semantic evidence refs" 且报错不列 id——作者唯一出路是删除语义层引用、出处链从 spec 丢失。现与 slide 级行为对齐：无顶层 `evidence_ledger` 时跳过（留给 `--research-pack` 编译期解析），有 ledger 才校验且报错列出具体 unknown id；slide-spec.md / shared-standards.md / slide-spec.schema.json 三处口径统一。
+- 内容门禁可诊断性（2026-10-19 会话审计）：planned numbers 报告新增 `number_sources` 来源标注（must_show_exact / must_convey 及所在页），`planned_numbers_missing` 带 sources 字段——作者在 plan 期即可见"哪些数字将按精确匹配上屏校验"，不再到 run 阶段才被静默抽取的数字硬拦；`presentation_copy_unbound` 报错新增 `fields`（失配字段）与 `unmatched_texts`（未命中文本，notes/runs 附对比预览），不再四字段混报一个 code 让作者连猜。
+
 ## 0.30.10 — 2026-10-19 · 仓库卫生
 
 - `.zcode/` 本地会话数据与 `.zcodeignore` 纳入 `.gitignore`，不再出现在未跟踪清单中。

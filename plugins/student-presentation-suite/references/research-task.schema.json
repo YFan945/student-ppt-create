@@ -26,11 +26,23 @@
       "minLength": 1
     },
     "scope": {
-      "enum": [
-        "A",
-        "B",
-        "C",
-        "D"
+      "oneOf": [
+        {
+          "const": "A",
+          "description": "必须查：时效性内容（最新数据、最新政策、最新版本、最新榜单、机构最新预测、产品现状）；必须联网，查不到进 unresolved，不得用模型记忆冒充（research-workflow.md §一）。"
+        },
+        {
+          "const": "B",
+          "description": "最好查：模型大概率知道但结论会被打分的内容（课程答辩、论文汇报、竞赛、正式提交）；查，拿不到降级为模型常识并在页面标注无来源（research-workflow.md §一）。"
+        },
+        {
+          "const": "C",
+          "description": "不用查：与外部事实无关的任务（过渡页、概括已有材料、重排用户结构）；不产生检索（research-workflow.md §一）。"
+        },
+        {
+          "const": "D",
+          "description": "禁止查：用户明确限定范围（只用上传论文/课程 PPT/不用外部资料）；禁止联网，import_user_materials.py 确定性导入用户材料，queries 为空（research-workflow.md §一）。"
+        }
       ]
     },
     "materials_path": {

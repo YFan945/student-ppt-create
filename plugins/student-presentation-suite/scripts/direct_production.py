@@ -318,6 +318,12 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     # Research evidence remains a separate skill. Compile existing evidence in
     # this command rather than asking the model to hand-copy facts or references.
     pack = args.research_pack or work / "research-pack.json"
+    if args.research_pack is not None and not pack.is_file():
+        message = f"Research Pack does not exist: {pack}"
+        if not pack.is_absolute():
+            message += (f" (relative paths resolve against the tool's own working directory"
+                        f" {Path.cwd()}, not the calling shell's; pass an absolute path)")
+        raise ProductionError(message)
     scope = spec.get("research_scope", "C")
     external = any(item.get("source_type") not in {"user-file", "experiment", "interview", "survey"}
                    for item in spec.get("evidence_ledger", []))
@@ -502,31 +508,42 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     save(work, manifest, "producing")
     start = time.monotonic()
     pptx = work / "deck.pptx"
+    diagnostic = work / "last-build-report.json"
+    # 每次新尝试先清掉上一次的失败诊断，避免陈旧报告误导本次定位。
+    diagnostic.unlink(missing_ok=True)
     try:
         with tempfile.TemporaryDirectory(prefix="build-", dir=work) as directory:
             staging = Path(directory) / "raw.pptx"
-            if manifest["mode"] == "edit_ooxml":
-                pack_directory(work / "ooxml", staging)
-            else:
-                entry = work / "deck.js"
-                remaining = generator_scaffold.scaffolded_pages(generator_scaffold.listed_page_files(work / "pages"))
-                if remaining:
-                    raise ProductionError("unfinished pages: " + ", ".join(remaining) +
-                                          "; implement their empty page functions using authoring-quickstart.md")
-                execute(["node", str(ROOT / "scripts" / "run_with_pptxgenjs.js"), "--output", str(staging), str(entry)], work)
-            # The Node wrapper already normalizes XML and injects CJK fonts.
-            # OOXML editing packs directly to preserve untouched source parts.
-            replace_build(staging, pptx)
-            for suffix in (".registry-report.json", ".layout-report.json"):
-                sidecar = Path(str(staging) + suffix)
-                if sidecar.is_file():
-                    shutil.copy2(sidecar, Path(str(pptx) + suffix))
-                    if suffix == ".registry-report.json":
-                        report = load(Path(str(pptx) + suffix))
-                        report.update(pptx=str(pptx), pptx_sha256=file_sha256(pptx))
-                        write(Path(str(pptx) + suffix), report)
+            try:
+                if manifest["mode"] == "edit_ooxml":
+                    pack_directory(work / "ooxml", staging)
                 else:
-                    Path(str(pptx) + suffix).unlink(missing_ok=True)
+                    entry = work / "deck.js"
+                    remaining = generator_scaffold.scaffolded_pages(generator_scaffold.listed_page_files(work / "pages"))
+                    if remaining:
+                        raise ProductionError("unfinished pages: " + ", ".join(remaining) +
+                                              "; implement their empty page functions using authoring-quickstart.md")
+                    execute(["node", str(ROOT / "scripts" / "run_with_pptxgenjs.js"), "--output", str(staging), str(entry)], work)
+                # The Node wrapper already normalizes XML and injects CJK fonts.
+                # OOXML editing packs directly to preserve untouched source parts.
+                replace_build(staging, pptx)
+                for suffix in (".registry-report.json", ".layout-report.json"):
+                    sidecar = Path(str(staging) + suffix)
+                    if sidecar.is_file():
+                        shutil.copy2(sidecar, Path(str(pptx) + suffix))
+                        if suffix == ".registry-report.json":
+                            report = load(Path(str(pptx) + suffix))
+                            report.update(pptx=str(pptx), pptx_sha256=file_sha256(pptx))
+                            write(Path(str(pptx) + suffix), report)
+                    else:
+                        Path(str(pptx) + suffix).unlink(missing_ok=True)
+            except (ProductionError, OSError, ValueError):
+                # staging 目录随下面的 TemporaryDirectory 一起删除；构建期几何
+                # preflight sidecar（若已落盘）复制到固定诊断路径，失败报告里指向它。
+                report = Path(str(staging) + ".registry-report.json")
+                if report.is_file():
+                    shutil.copy2(report, diagnostic)
+                raise
         manifest["build"] = {"pptx": bind(pptx), "seconds": round(time.monotonic() - start, 3)}
         # 只绑定作者源码：第一级以 `_`/`.` 开头的路径（如 _tmp/ 探测脚本）不参与绑定；
         # pages/ 内部的共享模块（如 pages/_shared.js）正常参与绑定与变更检测。
@@ -537,12 +554,19 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         manifest["check"] = {"ok": checked["ok"], "report": bind(work / "production-check.json")}
         if (work / "presentation-copy.json").is_file():
             manifest["check"]["presentation_copy"] = bind(work / "presentation-copy.json")
-        render_start = time.monotonic()
-        manifest["render"] = render(work, manifest, pptx)
-        manifest["render"]["seconds"] = round(time.monotonic() - render_start, 3)
-        if len(manifest["render"]["pages"]) != checked["content"]["actual_slide_count"]:
-            raise ProductionError("rendered page count differs from the PPTX")
+        no_render = bool(getattr(args, "no_render", False))
+        if no_render:
+            # 只拿检查报告的迭代：构建+全检后跳过渲染。清空 render 绑定，
+            # complete 会因缺少当前预览拒绝交付，不会拿旧预览蒙混。
+            manifest["render"] = {}
+        else:
+            render_start = time.monotonic()
+            manifest["render"] = render(work, manifest, pptx)
+            manifest["render"]["seconds"] = round(time.monotonic() - render_start, 3)
+            if len(manifest["render"]["pages"]) != checked["content"]["actual_slide_count"]:
+                raise ProductionError("rendered page count differs from the PPTX")
         manifest.pop("last_error", None)
+        manifest.pop("last_build_report", None)
         save(work, manifest, "qa")
         changed_pages = [index for index, page in enumerate(manifest["render"]["pages"], 1)
                          if index > len(previous_pages) or page["sha256"] != previous_pages[index - 1]["sha256"]]
@@ -554,18 +578,32 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                                                        for path in source_changes)
         if shared_changed:
             changed_pages = list(range(1, len(manifest["render"]["pages"]) + 1))
-        return {"ok": checked["ok"], "action": "inspect_and_fix" if not checked["ok"] else "inspect_previews",
-                "previews": manifest["render"], "check_report": manifest["check"]["report"],
-                "technical_checks": checked["check_scope"], "geometry": checked["geometry"],
-                "review_required": checked["review_required"],
-                "asset_placeholders": checked["assets"]["placeholders"],
-                "changed_pages": changed_pages, "shared_source_changed": shared_changed,
-                "check_summary": check_summary(checked),
-                "must_convey": checked["must_convey"], "semantic_verification": "main-session-self-check"}
+        if not checked["ok"]:
+            action = "inspect_and_fix"
+        elif no_render:
+            action = "inspect_check_report"
+        else:
+            action = "inspect_previews"
+        result = {"ok": checked["ok"], "action": action,
+                  "previews": manifest["render"], "check_report": manifest["check"]["report"],
+                  "technical_checks": checked["check_scope"], "geometry": checked["geometry"],
+                  "review_required": checked["review_required"],
+                  "asset_placeholders": checked["assets"]["placeholders"],
+                  "changed_pages": changed_pages, "shared_source_changed": shared_changed,
+                  "check_summary": check_summary(checked),
+                  "must_convey": checked["must_convey"], "semantic_verification": "main-session-self-check"}
+        if no_render:
+            result["render_skipped"] = True
+        return result
     except (ProductionError, OSError, ValueError) as exc:
-        manifest["last_error"] = str(exc)
+        message = str(exc)
+        manifest.pop("last_build_report", None)
+        if diagnostic.is_file():
+            manifest["last_build_report"] = str(diagnostic)
+            message += f" (geometry/preflight report preserved at {diagnostic})"
+        manifest["last_error"] = message
         save(work, manifest, "producing")
-        raise
+        raise ProductionError(message) from exc
 
 
 def complete(args: argparse.Namespace) -> dict[str, Any]:
@@ -722,6 +760,10 @@ def main() -> int:
     for name, handler in (("run", run), ("complete", complete)):
         command = commands.add_parser(name)
         command.add_argument("--work-dir", type=Path, required=True)
+        if name == "run":
+            command.add_argument("--no-render", action="store_true",
+                                 help="build and run all checks but skip LibreOffice rendering; "
+                                      "for report-only iteration without previews")
         if name == "complete":
             command.add_argument("--review-note", help="Record actual author inspection/findings in the existing quality report; not independent verification")
         command.set_defaults(handler=handler)

@@ -92,6 +92,30 @@ class ScaffoldContractTests(unittest.TestCase):
             self.assertIn('kind: "cover"', stub)
             self.assertIn("dark: true", stub)
 
+    def test_art_direction_palette_mode_dark_reaches_deck_tokens(self) -> None:
+        """2026-10-19 audit: a 'dark tech' intake still scaffolded light TOKENS,
+        forcing hand palette rewrites. art-direction palette_mode: dark must
+        promote the style's dark_palette into deck.js TOKENS."""
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            spec = work / "spec.json"
+            spec.write_text(
+                json.dumps({
+                    "meta": {"visual_style": "Ocean Tech"},
+                    "slides": [{"id": 1, "title": "封面", "kind": "cover"}],
+                }),
+                encoding="utf-8",
+            )
+            art = work / "art-direction.yaml"
+            art.write_text("style_seed: Ocean Tech\npalette_mode: dark\n", encoding="utf-8")
+            self.scaffold.scaffold_generator(work, spec, art)
+            deck = (work / "deck.js").read_text(encoding="utf-8")
+            start = deck.index("const TOKENS = ") + len("const TOKENS = ")
+            tokens = json.loads(deck[start:deck.index(";\n", start)])
+            self.assertEqual("dark", tokens["palette_mode"])
+            self.assertEqual(tokens["dark_palette"]["canvas"], tokens["palette"]["canvas"])
+            self.assertNotEqual("F4F9FC", tokens["palette"]["canvas"])
+
     def test_deck_writes_the_cjk_map_sidecar(self) -> None:
         """deck.js 必须把 Latin→CJK 映射交给构建器，normalize 同步注入 <a:ea>。
 

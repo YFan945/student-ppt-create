@@ -81,6 +81,37 @@ def _lightness_for_contrast(hue: float, saturation: float, background: str, targ
     return _from_hls(hue, min(1.0, high + 0.02), saturation)
 
 
+PALETTE_MODES = ("light", "dark")
+
+
+def normalize_palette_mode(value: Any) -> str:
+    """Canonicalize an art-direction ``palette_mode`` value; anything unknown is 'light'."""
+    mode = str(value or "").strip().lower()
+    return mode if mode in PALETTE_MODES else "light"
+
+
+def apply_palette_mode(tokens: dict[str, Any], mode: Any) -> dict[str, Any]:
+    """Promote the resolved dark companion onto ``palette`` for a deck-wide dark mode.
+
+    The default (``light``, or any unknown/empty value) returns ``tokens``
+    unchanged. ``dark`` replaces ``palette`` with the resolved ``dark_palette``
+    — which already carries the adapted chart/category colors — and records
+    ``palette_mode: "dark"`` on the tokens. ``dark_palette`` stays in place so
+    cover/section/closing pages keep working through ``paletteMode(tokens,
+    'dark')`` while content pages resolve dark roles through the default
+    palette.
+    """
+    if normalize_palette_mode(mode) != "dark":
+        return tokens
+    dark = tokens.get("dark_palette")
+    if not isinstance(dark, dict) or not dark:
+        return tokens
+    updated = copy.deepcopy(tokens)
+    updated["palette"] = copy.deepcopy(dark)
+    updated["palette_mode"] = "dark"
+    return updated
+
+
 def apply_topic_accent(tokens: dict[str, Any], topic_accent: str | None) -> dict[str, Any]:
     """Move primary_accent onto the topic hue. Seed lightness stays, so contrast holds.
 

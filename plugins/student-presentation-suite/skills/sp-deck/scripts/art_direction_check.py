@@ -180,6 +180,19 @@ def validate_art_direction(
     if concept and len(concept) < 16:
         issues.append(issue("minor", "weak_visual_thesis", "Art Direction concept is too vague to guide composition."))
 
+    from shared.design_tokens import PALETTE_MODES  # noqa: PLC0415
+
+    palette_mode = str(data.get("palette_mode") or "").strip().lower()
+    if palette_mode and palette_mode not in PALETTE_MODES:
+        issues.append(
+            issue(
+                "major",
+                "invalid_palette_mode",
+                f"palette_mode must be one of {list(PALETTE_MODES)}; got {data.get('palette_mode')!r}. "
+                "An unrecognised value silently falls back to the light palette.",
+            )
+        )
+
     color = data.get("color_system") if isinstance(data.get("color_system"), dict) else {}
     dominant = number(color.get("dominant_share_pct"))
     if dominant is None:

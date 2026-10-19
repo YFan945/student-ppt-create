@@ -304,6 +304,37 @@ class ContractSyncTests(unittest.TestCase):
         self.assertIn("通道关闭之后", SPAWN.read_text(encoding="utf-8"))
         self.assertIn("closed for WebSearch only", AGENT.read_text(encoding="utf-8"))
 
+    def test_an_infra_crash_may_resume_the_same_agent_exactly_once(self) -> None:
+        """2026-10-19 audit: a researcher killed by an API error after its evidence
+        was already on disk had no sanctioned recovery — the absolute no-resume rule
+        collided with the host Agent tool's own resume capability, forcing a choice
+        between violating the contract and interrupting the user. Terminations are
+        now split: an infrastructure failure (non-content cause) before a parseable
+        pack, with retrieval evidence on disk, may resume the same agent exactly once
+        from disk evidence only; an unknown_payload or validation-failed pack stays
+        blocked with no self-resume. The one-spawn-per-session rule is unchanged.
+        """
+        workflow = WORKFLOW.read_text(encoding="utf-8")
+        self.assertIn("基础设施故障", workflow)
+        self.assertIn("恰好一次", workflow)
+        self.assertIn("recovered_from: crash", workflow)
+        self.assertIn("不得重新检索", workflow)
+        self.assertIn("不得新增来源", workflow)
+        self.assertIn("不是重新 spawn", workflow)
+        self.assertIn("resumes 记录", workflow)
+        self.assertIn("unknown_payload 或校验失败的 pack", workflow)
+        skill = SKILL.read_text(encoding="utf-8")
+        self.assertIn("唯一例外", skill)
+        self.assertIn("恰好一次", skill)
+        self.assertIn("recovered_from: crash", skill)
+        self.assertIn("不自行 resume", skill)
+        spawn = SPAWN.read_text(encoding="utf-8")
+        self.assertIn("researcher-resume", spawn)
+        self.assertIn("恰好恢复一次", spawn)
+        self.assertIn("不得重新检索", spawn)
+        self.assertIn("校验契约不变", spawn)
+        self.assertIn("recovered_from: crash", spawn)
+
 
 if __name__ == "__main__":
     unittest.main()

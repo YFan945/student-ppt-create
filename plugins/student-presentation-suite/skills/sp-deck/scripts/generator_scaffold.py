@@ -76,10 +76,11 @@ function main() {{
     for (const line of pageErrors) console.error(`- ${{line}}`);
     process.exit(1);
   }}
+  // 完整几何分析（含 warning）写 sidecar，供主会话对照当前渲染检查。
+  // 必须先于 assertSafe 落盘：preflight 失败时错误细节也留在输出旁的 sidecar 里。
+  registry.writeReport(out);
   registry.assertSafe();
   if (TOKENS.model_led) require('node:fs').writeFileSync(path.join(__dirname, 'presentation-copy.json'), JSON.stringify({{ slides: presentationCopy }}, null, 2));
-  // 完整几何分析（含 warning）写 sidecar，供主会话对照当前渲染检查。
-  registry.writeReport(out);
   require('node:fs').writeFileSync(
     `${{out}}.layout-report.json`,
     `${{JSON.stringify(layoutReport, null, 2)}}\\n`,
@@ -404,11 +405,16 @@ def inline_tokens_json(spec: dict[str, Any], art_direction: Path | None) -> str:
     ).resolve()
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
-    from shared.design_tokens import apply_topic_accent, resolve_design_tokens  # noqa: PLC0415
+    from shared.design_tokens import (  # noqa: PLC0415
+        apply_palette_mode,
+        apply_topic_accent,
+        resolve_design_tokens,
+    )
 
     meta = spec.get("meta") if isinstance(spec.get("meta"), dict) else {}
     style = meta.get("visual_style")
     custom = meta.get("visual_style_custom")
+    palette_mode = None
     ad: dict[str, Any] = {}
     if art_direction is not None and Path(art_direction).is_file():
         try:
@@ -419,6 +425,7 @@ def inline_tokens_json(spec: dict[str, Any], art_direction: Path | None) -> str:
             ad = loaded
         style = ad.get("style_seed") or ad.get("visual_style") or style
         custom = ad.get("visual_style_custom") or custom
+        palette_mode = ad.get("palette_mode")
     from shared.design_policy import design_mode, model_led
 
     try:
@@ -428,6 +435,9 @@ def inline_tokens_json(spec: dict[str, Any], art_direction: Path | None) -> str:
             authoring=model_led(spec),
         )
         tokens = apply_topic_accent(tokens, ad.get("topic_accent") if isinstance(ad, dict) else None)
+        # palette_mode: "dark" promotes the style's dark_palette onto palette so
+        # a "深色" intake choice reaches deck.js without hand-editing TOKENS.
+        tokens = apply_palette_mode(tokens, palette_mode)
     except (OSError, ValueError, KeyError, TypeError):
         tokens = {"palette": {"canvas": "FFFFFF"}}
     if model_led(spec):

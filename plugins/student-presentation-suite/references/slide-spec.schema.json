@@ -419,7 +419,8 @@
         "B",
         "C",
         "D"
-      ]
+      ],
+      "description": "External-knowledge scope per references/research-workflow.md: A = must search (time-sensitive facts; web retrieval required), B = should search (gradable claims the model likely knows; degrade to explicitly unsourced model knowledge when retrieval fails), C = no external facts needed (no retrieval), D = search forbidden (user-provided materials only, imported deterministically). A/B/D require a validated Research Pack; C skips research."
     },
     "source_deck": {
       "type": "string",
@@ -758,7 +759,8 @@
               "type": "string",
               "minLength": 1
             },
-            "uniqueItems": true
+            "uniqueItems": true,
+            "description": "Evidence ids backing this page: E ids of the top-level evidence_ledger. In a draft awaiting --research-pack compilation these may instead be Research Pack F/D/Q ids (D-class packs: source S ids); compilation rewrites them to E ids. Existence is validated only when the spec already carries its top-level evidence_ledger."
           },
           "locked": {
             "type": "boolean"
@@ -884,7 +886,8 @@
                       "items": {
                         "type": "string",
                         "minLength": 1
-                      }
+                      },
+                      "description": "Evidence ids backing this requirement, same two-level contract as the slide-level evidence_refs: E ids of the top-level evidence_ledger, or Research Pack F/D/Q ids (D-class packs: source S ids) in a draft awaiting --research-pack compilation. Existence is validated only when the spec already carries its top-level evidence_ledger."
                     }
                   }
                 }

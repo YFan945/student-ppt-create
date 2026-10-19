@@ -164,6 +164,28 @@ function lineIntersectsBox(line, box) {
   return true;
 }
 
+/**
+ * 单行 preflight 错误摘要。只拼 `code (elementId)` 会把错误对象里已有的诊断
+ * 细节（message/ratio/background/requiredH/overlapRatio/delta 等）全部丢掉，
+ * 调用方只能去翻 sidecar 或逆向 registry 源码。这里把可用细节压进一行，
+ * 保持抛错紧凑可读。overlap/crossing 类错误没有 message，用数值字段补足。
+ */
+function formatPreflightError(e) {
+  const subject = e.element || (e.a && e.b ? `${e.a}/${e.b}` : e.line || 'deck');
+  let line = `slide ${e.slide}: ${e.code} (${subject})`;
+  const details = [];
+  if (finite(e.ratio)) details.push(`ratio=${e.ratio}`);
+  if (typeof e.background === 'string' && e.background) details.push(`background=#${e.background}`);
+  if (finite(e.requiredH) && finite(e.boxH))
+    details.push(`requiredH=${e.requiredH.toFixed(2)}in boxH=${e.boxH.toFixed(2)}in`);
+  if (finite(e.overlapRatio)) details.push(`overlap=${e.overlapRatio.toFixed(3)}`);
+  if (finite(e.delta)) details.push(`delta=${e.delta}in`);
+  if (finite(e.footerTop)) details.push(`footerTop=${e.footerTop}in`);
+  if (details.length) line += ` [${details.join(', ')}]`;
+  if (e.message) line += ` — ${e.message}`;
+  return line;
+}
+
 class SlideElementRegistry {
   constructor(options = {}) {
     this.options = { ...DEFAULTS, ...options };
@@ -666,9 +688,7 @@ class SlideElementRegistry {
   assertSafe() {
     const report = this.analyzeDeck();
     if (!report.ok) {
-      const summary = report.errors
-        .map((e) => `slide ${e.slide}: ${e.code} (${e.element || `${e.a}/${e.b}`})`)
-        .join('\n');
+      const summary = report.errors.map((e) => formatPreflightError(e)).join('\n');
       throw new Error(`Actual slide geometry preflight failed:\n${summary}`);
     }
     return report;

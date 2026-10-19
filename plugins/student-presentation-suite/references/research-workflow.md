@@ -466,9 +466,21 @@ usable/medium 且必须在实体 notes 和 limitations 保留限制；若原 cla
 不能靠一句限制把不成立的 claim 洗成成立。旧任务默认关闭新字段以保留兼容。
 复读仍由同一研究员完成，不能称为独立评审；校验不会自动证明自然语言语义正确。
 
-同一会话每个 research-task 只派一次研究员，由 spawn binding 的 session_id 机械约束。
-不足时返回现有成果与缺口，主流程不得因为 unknown_payload 自行 reset/resume/重派。
-续做需用户明确补检指令或提供新材料，在新的研究运行中进行，不能把旧的失败响应冒充环境变化。
+### 研究员终止与恢复
+
+同一会话每个 research-task 只派一次研究员，由 spawn binding 的 session_id 机械约束，这条不变。
+研究员中途终止按原因分两类，恢复权限不同：
+
+- **基础设施故障**（API 错误、连接中断、宿主终止等非内容原因）：研究员在写出可解析的
+  Research Pack 之前被终止，且检索证据已落盘——主流程可以恢复（resume）同一 agent **恰好一次**。
+  恢复走的是宿主 Agent 工具的 resume 能力（宿主明确支持继续同一 agent），不是重新 spawn，
+  "只派一次"的 spawn 约束不受影响。恢复提示词用 spawn-templates.md 的恢复模板：要求它
+  只基于已落盘证据直接写出/补全 pack，不得重新检索、不得新增来源。恢复前主流程先运行
+  `research_control.py --work-dir <wd> --resume --reason "recovered_from: crash: <具体错误>"`，
+  把恢复事实记入研究轨迹（research-control.json 的 resumes 记录），handoff 与审计据此核验。
+- **unknown_payload 或校验失败的 pack**（内容原因）：维持现状——不足时返回现有成果与缺口，
+  记 blocked，主流程不得因为 unknown_payload 自行 reset/resume/重派，也不再 spawn；
+  续做需用户明确补检指令或提供新材料，在新的研究运行中进行，不能把旧的失败响应冒充环境变化。
 真实验收见 scripts/live_prompts/README.md；宿主 timeout 会保留逐事件流并终止该验收子进程树。
 
 精确多行摘录用 scripts/research_excerpt.py --text <text_path> --start <字面起点> --end <字面终点>，

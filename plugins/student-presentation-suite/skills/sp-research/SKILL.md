@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a clearly student-owned academic context when a deck needs external facts, current data, statistics, or citations that must not be invented, or when the user restricts sourcing to their own material. Collects, grades, and cross-checks sources into a Research Pack. Does not design slides, write speaker notes, or produce PPTX.
-version: 0.30.10
+version: 0.30.11
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
@@ -24,7 +24,13 @@ arguments: [work_id, brief_path, scope, materials_path]
    隔离不依赖 context: fork（claude -p 下曾内联 skill）；输入绑定不自动传给子代理。
 4. 主流程等待 RESEARCH_DONE 或 RESEARCH_BLOCKED；无可解析信封或有效校验报告时记 blocked，
    同一会话只允许派一次该任务，不自行 resume，不再 spawn 同一任务。
-   unknown_payload 不是环境变化；交付不足时报告缺口，等待用户提供新材料或明确补检指令。主会话不执行 WebSearch/WebFetch。
+   唯一例外是基础设施故障（API 错误等非内容原因）：研究员在写出可解析 pack 前被终止、
+   且检索证据已落盘时，主流程可用宿主 Agent 工具的 resume 能力恢复同一 agent 恰好一次
+   （这不是新的 spawn，spawn 一次的限制不变）；恢复模板见 spawn-templates.md，只许基于
+   已落盘证据写出/补全 pack，不得重新检索、不得新增来源，恢复前用
+   `research_control.py --resume --reason "recovered_from: crash: <具体错误>"` 记入轨迹。
+   unknown_payload 或校验失败的 pack 不适用此例外：unknown_payload 不是环境变化；
+   交付不足时报告缺口，等待用户提供新材料或明确补检指令。主会话不执行 WebSearch/WebFetch。
    收到信封后只运行一次：
    `python "${CLAUDE_PLUGIN_ROOT}/scripts/research_handoff.py" --work-dir <work-dir>`。
    命令核验当前 pack、validation、task 和真实执行回执，只返回路径/状态/统计/缺口。

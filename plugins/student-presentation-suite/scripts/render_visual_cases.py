@@ -62,7 +62,7 @@ const slide=pptx.addSlide(); n++;
 const ctx={pptx,slide,n,H,tokens,registry,presentationCopy,exampleAsset:{path:ASSET,width:1200,height:800}};
 R.renderPage(ctx,page); presentationCopy.at(-1).headline=registry._slide(n).find(e=>e.type==='text').text;
 }
-registry.assertSafe(); registry.writeReport(process.argv[2]); H.writeCjkMap(process.argv[2],tokens);
+registry.writeReport(process.argv[2]); registry.assertSafe(); H.writeCjkMap(process.argv[2],tokens);
 require('node:fs').writeFileSync(path.join(__dirname,'presentation-copy.json'),JSON.stringify({slides:presentationCopy},null,2));
 pptx.writeFile({fileName:process.argv[2]});
 '''.replace('ROOT', json.dumps(str(ROOT))).replace('TOKENS', json.dumps(tokens)).replace('SELECTED', json.dumps(selected)).replace('ASSET', json.dumps(str(asset))), encoding='utf-8')

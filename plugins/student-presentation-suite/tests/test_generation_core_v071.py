@@ -650,6 +650,64 @@ class GenerationCoreV071Tests(unittest.TestCase):
             extracted = self.actual.extract_pptx_notes(pptx)
             self.assertEqual(extracted, {1: "备注区讲稿\n第二段"})
 
+    def test_presentation_copy_unbound_names_the_field_and_unmatched_texts(self) -> None:
+        """2026 live: the model guessed three rounds because the code only said
+        presentation_copy_unbound — the chart series name lived in visual_labels."""
+        import argparse
+        import io
+        from contextlib import redirect_stdout
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            pptx = root / "deck.pptx"
+            slide = (
+                '<?xml version="1.0"?><p:sld xmlns:p="http://schemas.openxmlformats.org/'
+                'presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/'
+                'drawingml/2006/main"><a:p><a:r><a:t>标题文本</a:t></a:r></a:p></p:sld>'
+            )
+            with zipfile.ZipFile(pptx, "w") as zf:
+                zf.writestr("ppt/slides/slide1.xml", slide)
+            spec = root / "slide-spec.yaml"
+            spec.write_text(
+                "schema_version: '2.1'\n"
+                "slides:\n"
+                "  - id: 1\n"
+                "    title: 标题文本\n"
+                "    content: 正文\n"
+                "    timing_sec: 30\n"
+                "    owner: Individual\n",
+                encoding="utf-8",
+            )
+            copy = {
+                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
+                "slides": [
+                    {
+                        "slide": 1,
+                        "headline": "标题文本",
+                        "visual_labels": ["图表系列名"],
+                        "speaker_notes": "",
+                        "text_runs": ["标题文本"],
+                    }
+                ],
+            }
+            (root / "presentation-copy.json").write_text(
+                json.dumps(copy, ensure_ascii=False), encoding="utf-8"
+            )
+            args = argparse.Namespace(pptx=pptx, slide_spec=spec, output=None, json=False, strict=False)
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                exit_code = self.actual.run(args)
+            self.assertEqual(0, exit_code)
+            report = json.loads(buffer.getvalue())
+            self.assertFalse(report["ok"])
+            issues = [item for item in report["issues"] if item["code"] == "presentation_copy_unbound"]
+            self.assertEqual(1, len(issues))
+            self.assertEqual(["visual_labels"], issues[0]["fields"])
+            self.assertEqual({"visual_labels": ["图表系列名"]}, issues[0]["unmatched_texts"])
+            self.assertNotIn("metadata", issues[0]["fields"])
+            self.assertNotIn("speaker_notes", issues[0]["fields"])
+            self.assertNotIn("text_runs", issues[0]["fields"])
+
     def test_delivery_quality_report_rejects_stale_pptx(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

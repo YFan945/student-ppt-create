@@ -20,6 +20,8 @@ Preserve useful detail without duplicating claims or inventing filler. Different
 
 Editorial expansion must preserve the strength and scope of the material: “record original, source and version separately” does not imply “never store them together”; retaining raw boundaries/indexes does not establish a blanket guarantee that every representation is unchanged. Label interpretations as such when needed and avoid adding unsupported prohibitions or guarantees to fill a rich page.
 
+Numbers follow the same evidence rule. Simple arithmetic over figures from the same source — or from sources each named on the slide — is allowed: a ratio, share, sum or difference the audience can recompute from figures already shown. State which figures it derives from (in the sentence, label or caption); a derived number without that trail reads as a new fact. What is forbidden is a proportion or conversion rate no source supports. Re-stating key figures from earlier pages on a conclusion or summary page is legitimate synthesis; repeating the same numbers across pages with no information gain is filler, not reinforcement.
+
 Labels must match depicted categories: describe documents as materials and cameras/recorders as devices. A familiar icon arrangement does not supply evidence for a new object category or process relationship.
 
 For sparse materials, identify the actual missing information and inspect the supplied files or request it. Expand only with supported explanations, worked examples, meaningful relationships or authorized evidence. Do not invent outcomes, quotes, photographs or numbers to fill a page.

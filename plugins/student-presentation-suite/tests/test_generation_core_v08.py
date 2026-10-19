@@ -122,6 +122,18 @@ class GenerationCoreV08Tests(unittest.TestCase):
         self.assertTrue(result["ok"], result["issues"])
         self.assertEqual([1, 2, 5], result["high_leverage_slides"])
 
+    def test_art_direction_rejects_unknown_palette_mode(self) -> None:
+        """palette_mode typos must fail closed at the freeze gate, not silently
+        fall back to a light palette (2026-10-19 intake audit)."""
+        data = self.good_art_direction()
+        data["palette_mode"] = "drak"
+        result = self.art.validate_art_direction(data, high_score=True)
+        self.assertFalse(result["ok"])
+        self.assertIn("invalid_palette_mode", {item["code"] for item in result["issues"]})
+        data["palette_mode"] = "dark"
+        result = self.art.validate_art_direction(data, high_score=True)
+        self.assertTrue(result["ok"], result["issues"])
+
     def test_art_direction_blocks_weak_type_hierarchy(self) -> None:
         data = self.good_art_direction()
         data["typography"]["slide_title_pt"] = 24
