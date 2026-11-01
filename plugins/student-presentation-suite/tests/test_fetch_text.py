@@ -16,6 +16,7 @@ import sys
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -175,6 +176,30 @@ class ExtractionTests(unittest.TestCase):
             )
             self.assertTrue(record["ok"], record)
             self.assertEqual(payload.decode(), Path(record["text_path"]).read_text(encoding="utf-8").strip())
+
+    def test_pdf_magic_is_extracted_when_the_content_type_is_generic(self) -> None:
+        with TemporaryDirectory() as tmp, patch.object(fetch_text, "_pdf_text", return_value=("立方定律", "")) as pdf:
+            record = fetch_text.fetch_one(
+                "https://example.org/wind.pdf",
+                Path(tmp),
+                scope="A",
+                getter=body_response(b"%PDF-1.4 not really", "application/octet-stream"),
+            )
+            pdf.assert_called_once()
+            self.assertTrue(record["ok"], record)
+            self.assertIn("立方定律", Path(record["text_path"]).read_text(encoding="utf-8"))
+
+    def test_pdf_readers_fall_through_when_markitdown_returns_nothing(self) -> None:
+        with (
+            patch.object(fetch_text, "_pdf_via_markitdown", return_value=""),
+            patch.object(fetch_text, "_pdf_via_pdfminer", side_effect=ModuleNotFoundError),
+            patch.object(fetch_text, "_pdf_via_pypdf", return_value="功率与风速三次方成正比"),
+            patch.object(fetch_text, "_pdf_via_pymupdf") as pymupdf,
+        ):
+            text, note = fetch_text._pdf_text(b"%PDF-1.4")
+        self.assertEqual("功率与风速三次方成正比", text)
+        self.assertEqual("", note)
+        pymupdf.assert_not_called()
 
     def test_binary_content_types_are_refused_not_decoded(self) -> None:
         with TemporaryDirectory() as tmp:

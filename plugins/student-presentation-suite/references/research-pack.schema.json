@@ -12,10 +12,16 @@
     },
     "evidence": {
       "type": "array",
+      "description": "来源绑定。有正文时 excerpt、text_path、text_sha256 三者一起出现。source-backed-v1 且 verification=source 时，若 fetch-text 只留下原始字节、没有抽出文本，可以只保留 locator 与 support_note。",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["entity_id", "source_id", "excerpt", "text_path", "text_sha256", "locator", "support_note"],
+        "required": ["entity_id", "source_id", "locator", "support_note"],
+        "dependentRequired": {
+          "excerpt": ["text_path", "text_sha256"],
+          "text_path": ["excerpt", "text_sha256"],
+          "text_sha256": ["excerpt", "text_path"]
+        },
         "properties": {
           "entity_id": {"type": "string", "pattern": "^(F|D|Q)[0-9]{2,}$"},
           "source_id": {"type": "string"},

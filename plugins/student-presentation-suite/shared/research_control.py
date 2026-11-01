@@ -50,6 +50,10 @@ def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> 
                     for binding in content.get("evidence", []):
                         if binding.get("entity_id") != eid:
                             continue
+                        if not str(binding.get("text_path", "")).strip():
+                            token = [claim["id"], claim["status"], "source-level"]
+                            useful.add(json.dumps(token, ensure_ascii=False))
+                            continue
                         evidence_path = Path(binding.get("text_path", ""))
                         evidence_path = evidence_path if evidence_path.is_absolute() else work / evidence_path
                         try:

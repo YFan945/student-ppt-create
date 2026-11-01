@@ -51,6 +51,8 @@ D 默认用 import_user_materials.py 确定性导入；仅用户点名研究员�
   `degenerate_channels` 表示重复不作答端点；通道按类判定一次，不按次数累加。
 - 原文用 fetch-text，整轮同一个 --out-dir；数字/引文绑定原文片段与文件 sha256。
   新 A/B 包默认 source-backed-v1，普通论断单源 medium 即可；text-bound-v1 为严格模式。
+  fetch-text 抽不出正文时，source-backed-v1 接受绑到同一原始字节的本地 UTF-8 文本；
+  verification=source 且没有成功抽出的文本时，可以只用来源定位，不附片段。口径见 research-workflow。
   verified/usable 经 entity_ids/claim_id 绑定；task 指定 core/supporting 与 source/text/cross_check；状态及停止规则见 research-workflow。
   每轮有效进展保存 pack 并校验，读取 research-progress.json 续做缺口；主流程按
   ready/partial/insufficient 交接，located/unresolved 不入事实账本。
