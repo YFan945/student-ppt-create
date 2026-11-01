@@ -1,7 +1,7 @@
 ---
 name: sp-outline
 description: Use only for a clearly student-owned academic context when the user explicitly requests a PPT or slide outline, not an editable deck. Do not use for generic presentations, standalone scripts, Q&A-only work, or non-student tasks.
-version: 0.31.1
+version: 0.31.2
 ---
 
 # Student Presentation
@@ -40,7 +40,7 @@ version: 0.31.1
 8. 新手模式下解释关键结构/布局选择。用 `analyze_presentation_spec.py` 做结构/证据/密度风险检查；需要训练卡、Q&A、词汇表、提词版或修订元数据时运行 `build_support_outputs.py`。
 9. 如需文件输出并转 PPTX：若走过 Research Gate，写 `outputs/<topic>-brief.yaml` 与 **draft** `outputs/<topic>-slide-spec.yaml`，将 Brief、draft spec、Research Pack、research validation 一并交给 `sp-deck`；若是 C-only，则按普通无 research 流程交接。最终冻结的是 `sp-deck` 编译/验证后的 Slide Spec，而不是研究型 draft。交给 `sp-deck` 时仍保留**完整 intake 门禁**，outline 阶段不能替代其 Production Summary 确认。
 
-提供模板库或转PPTX需设计参考时，按 `../../references/template-workflow.md` 选择适合各页内容的参考，记录template_sources与template_refs；沿用现有规划明确问题/回答、支撑组、主体和讲述顺序，允许多色与多套模板协调。仅做大纲时不运行PPTX组装/渲染。
+转PPTX需设计参考时，按 `../../references/template-workflow.md` 默认检索内置参考库；用户提供的模板优先。查看预览与结构配方后选择适合各页内容的参考，记录template_sources与template_refs；沿用现有规划明确问题/回答、支撑组、主体和讲述顺序，允许多色与多套模板协调。仅做大纲时不运行PPTX组装/渲染。
 
 ## 输出契约
 

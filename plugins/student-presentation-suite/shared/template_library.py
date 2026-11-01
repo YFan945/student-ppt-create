@@ -99,6 +99,8 @@ def search_catalog(catalog: dict[str, Any], query: str, role: str | None, limit:
     matches = []
     for entry in catalog.get("templates", []):
         for page in entry["slides"]:
+            if not terms and entry.get("recommended_pages") and page["slide"] not in entry["recommended_pages"]:
+                continue
             if role and role not in page["roles"]:
                 continue
             haystack = (entry["name"] + " " + page["text"]).casefold()
@@ -106,10 +108,12 @@ def search_catalog(catalog: dict[str, Any], query: str, role: str | None, limit:
             if terms and not score:
                 continue
             matches.append({"source_id": entry["id"], "path": entry["path"], "name": entry["name"],
-                            "preview": entry.get("preview"), "slide": page["slide"], "score": score,
+                            "preview": page.get("preview") or entry.get("preview"), "slide": page["slide"], "score": score,
+                            "availability": entry.get("availability", "original-pptx"),
+                            "recipe_command": f"template_library.py recipe {entry['id']} --slide {page['slide']}" if entry["path"].startswith("builtin:") else None,
                             "roles": page["roles"], "text": page["text"][:500],
                             "pictures": page["pictures"], "tables": page["tables"]})
-    return sorted(matches, key=lambda item: (-item["score"], item["name"], item["slide"]))[:limit]
+    return sorted(matches, key=lambda item: (-item["score"], item["source_id"] != "award-blue", item["name"], item["slide"]))[:limit]
 
 
 def assemble(selection: list[dict[str, Any]], output: Path) -> dict[str, Any]:

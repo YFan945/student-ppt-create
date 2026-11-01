@@ -412,7 +412,8 @@
           },
           "path": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Original PPTX path, or portable builtin:<id> reference URI with use=inspiration."
           },
           "use": {
             "enum": [

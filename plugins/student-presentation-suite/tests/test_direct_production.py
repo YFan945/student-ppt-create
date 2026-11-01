@@ -73,6 +73,8 @@ module.exports.notes={json.dumps(notes)};
         result = production.plan(self.args)
         self.assertEqual(result["action"], "author_pages")
         self.assertEqual(len(result["pages"]), 2)
+        self.assertTrue(result["reference_library"]["candidates"])
+        self.assertTrue(Path(result["reference_library"]["catalog"]).is_file())
         for name in ("builder-packets", "calibration", "critic-execution.json", "visual-review.json"):
             self.assertFalse((self.work / name).exists())
         self.assertEqual(production.load(self.work / "build-manifest.json")["semantic_verification"], "main-session-self-check")
@@ -95,6 +97,19 @@ module.exports.notes={json.dumps(notes)};
         source.write_bytes(source.read_bytes() + b"changed")
         with self.assertRaisesRegex(production.ProductionError, "template source changed"):
             production.authorized(self.work)
+
+    def test_plan_accepts_a_bundled_recipe_without_an_original_pptx(self):
+        spec = production.load(self.spec)
+        spec["template_sources"] = [{"id": "award", "path": "builtin:award-blue", "use": "inspiration"}]
+        spec["slides"][0]["template_refs"] = [{"source_id": "award", "slide": 7, "reason": "指标与表格的支撑关系"}]
+        production.write(self.spec, spec)
+        result = production.plan(self.args)
+        source = result["template_sources"][0]
+        self.assertEqual(source["selected_slides"][0]["slide"], 7)
+        self.assertTrue(source["file"]["path"].endswith(".json.gz"))
+        self.assertIn("recipe award-blue", source["recipe_command"])
+        self.assertTrue(source["reference_assets"])
+        production.authorized(self.work)
 
     def test_final_outline_uses_actual_title_and_visible_support_without_old_claim(self):
         spec = {'slides': [{'title': '旧标题', 'claim': '过时的结论', 'role': 'method'},

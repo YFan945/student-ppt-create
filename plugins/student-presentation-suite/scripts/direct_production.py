@@ -232,6 +232,8 @@ def authorized(work: Path) -> dict[str, Any]:
     for source in manifest.get("template_sources", []):
         if not current(source["file"]):
             raise ProductionError("template source changed after planning; preserve the reference or start a new plan")
+        if not all(current(item) for item in source.get("reference_assets", [])):
+            raise ProductionError("bundled template reference changed after planning; start a new plan")
     return manifest
 
 
@@ -346,20 +348,31 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         if errors:
             raise ProductionError("compiled Slide Spec is invalid: " + json.dumps(errors, ensure_ascii=False))
     meta = spec.get("meta") or {}
+    from shared.bundled_templates import catalog_path, metadata, suggestions
     from shared.student_design_review import planning_review
     from shared.template_library import inspect_template
 
     templates = []
     for entry in spec.get("template_sources", []):
-        path = (spec_path.parent / entry["path"]).resolve()
-        inspected = inspect_template(path)
+        builtin = entry["path"].startswith("builtin:")
+        if builtin:
+            if entry["use"] != "inspiration":
+                raise ProductionError("built-in references are preview/layout recipes; choose inspiration to rebuild editable objects, or supply an original PPTX for strict reuse")
+            inspected = metadata(entry["path"])
+            path = Path(inspected.get("recipe") or catalog_path())
+        else:
+            path = (spec_path.parent / entry["path"]).resolve()
+            inspected = inspect_template(path)
         selected = [ref["slide"] for slide in spec["slides"] for ref in slide.get("template_refs", [])
                     if ref["source_id"] == entry["id"]]
         if any(number > inspected["slide_count"] for number in selected):
             raise ProductionError(f"template page out of range: {entry['id']}")
+        previews = [page.get("preview") or inspected.get("preview") for page in inspected["slides"] if page["slide"] in selected] if builtin else []
         templates.append({"id": entry["id"], "use": entry["use"], "file": bind(path),
+                          "reference_assets": [bind(Path(asset)) for asset in sorted({str(catalog_path()), *[p for p in previews if p]})] if builtin else [],
+                          "recipe_command": f"template_library.py recipe {inspected['id']} --slide <source-page>" if builtin else None,
                           "selected_slides": [page for page in inspected["slides"] if page["slide"] in selected],
-                          "size_emu": inspected["size_emu"]})
+                          "size_emu": inspected.get("size_emu")})
     scaffold = {} if mode == "edit_ooxml" else generator_scaffold.scaffold_generator(work, spec_path, art)
     if mode == "edit_ooxml":
         from shared.pptx_runtime import safe_extract_package
@@ -381,6 +394,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     }
     save(work, manifest, "planned")
     return {"ok": True, "action": "author_pages", "work_dir": str(work), "assets": measured_assets(work),
+            "reference_library": suggestions(spec),
             "student_design": planning_review(spec), "template_sources": templates,
             "delivery_dir": str(output), "authoring_guide": str(ROOT / "skills/sp-deck/references/authoring-quickstart.md"),
             "pages": [str(work / "pages" / name) for name in scaffold.get("pages", [])],

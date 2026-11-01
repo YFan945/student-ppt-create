@@ -80,4 +80,4 @@ Current production protects opaque text occlusion and checks contrast on known s
 
 ## Templates and student presentation design
 
-Local catalogs support page-role search, per-slide source references and editable slide assembly from several templates. Adapt photos, tables, charts and diagrams to content with rich coordinated colors and deliberate text hierarchy. Planning and review return core-information, support and speaking-path questions. See [template workflow](references/template-workflow.md).
+The plugin carries a portable [design-reference library](assets/template-library/README.md) of previews and object-layout recipes. New-page design searches it by default, inspects relevant pages and reconstructs editable objects from task content; another computer needs no original source folders. User templates take priority. Local catalogs still support page-role search, per-slide source references and editable slide assembly from original PPTX files. Adapt photos, tables, charts and diagrams with rich coordinated colors and deliberate text hierarchy. See [template workflow](references/template-workflow.md).

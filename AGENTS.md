@@ -143,6 +143,7 @@ Canonical ownership:
 - `references/image-sourcing.md` plus `image-sources.schema.json`: explicit image search/generation capability declaration, permission gate, and provenance recording.
 - `shared/image_capability.py`: whether this session can actually obtain imagery, resolved once for both readers — `check_claude_pptx_env.py` (environment status) and `art_direction_check.py` (refuses an `asset_plan` whose image visuals cannot be delivered).
 - `references/design-tokens.json`: style colors and font families only. `shared/design_tokens.py` owns color resolution; `shared/legacy_design_tokens.json` supplies historical component parameters. New page source receives no legacy geometry, typography bounds or background recipes.
+- `assets/template-library/`: owner-authorized portable reference JPEGs, compressed object-layout recipes and their catalog; contents/provenance belong to its README. `shared/bundled_templates.py` resolves installation-relative assets; `references/template-workflow.md` owns default lookup and adaptation. These reference assets are not generated user deliverables. Do not add original template PPTX/font/media packages.
 - PPTX skill references: production mechanics and visual style controls.
 
 Keep each `SKILL.md` compact. Entry files should define trigger, responsibility,

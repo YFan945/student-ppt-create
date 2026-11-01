@@ -43,7 +43,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete -
 
 ## Minimal reference path
 
-常规创建按顺序只读当前SKILL、content-workflow的规划要求、authoring-quickstart的接口及本文件的执行要求。结构选择只读slide-structures中适合当前任务的方法；语言查shared-standards。已经读过的规则不重复加载。其他参考按当前操作选择：模板/封面查cover-and-template，丰富视觉或松散问题查content-to-visual，获取图片查image-sourcing，具体API疑问查单函数帮助。不要在创作前遍历全部规范、示例或运行时实现。各文件保持自身所有权，入口仅链接，不复制整份政策。
+常规创建按顺序只读当前SKILL、content-workflow的规划要求、template-workflow的默认参考检索、authoring-quickstart的接口及本文件的执行要求。plan返回reference_library候选，创作前查看适合的预览及单页配方，采用后按真实内容重建；用户指定模板优先。结构选择只读slide-structures中适合当前任务的方法；语言查shared-standards。已经读过的规则不重复加载。其他参考按当前操作选择：严格保留模板/封面查cover-and-template，丰富视觉或松散问题查content-to-visual，获取图片查image-sourcing，具体API疑问查单函数帮助。不要在创作前遍历全部规范、示例或运行时实现。各文件保持自身所有权，入口仅链接，不复制整份政策。
 
 用户要求“充实/丰富”、提供参考件或诊断松散时，content-to-visual属于本次必要参考，不能只读通用接口后把文字排进矩形就算完成。diagram-only仅限定素材类型，仍需表达主题对象与关系。对照材料逐句检查新增解释的依据：不能把“缺少持续跟进”扩写为已观察到“无人维护联系、参与停在一次活动”。在真实主会话看图发现这些问题后直接修复；自述检查记录不能替代修复。
 

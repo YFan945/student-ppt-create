@@ -18,7 +18,7 @@ The shell runs in the active project; confirmed work lives in outputs/.pptx-work
 
 ## Design before drawing
 
-Use the existing handoff plan for this page’s question/answer, visible supporting groups, main subject and speaking order. Choose rich coordinated colors and intentional text hierarchy; role defaults distinguish title/body/caption but remain fully overridable. Read `../../../references/template-workflow.md` when sources or a local library are supplied: search actual pages, record optional template_sources/template_refs, and adapt editable objects across sources. Keep template achievements as examples until replaced by real task content.
+Use the existing handoff plan for this page’s question/answer, visible supporting groups, main subject and speaking order. Choose rich coordinated colors and intentional text hierarchy; role defaults distinguish title/body/caption but remain fully overridable. Read `../../../references/template-workflow.md`: default search uses the shipped reference library; user templates take priority. Inspect candidate previews and selected-page recipes, then reconstruct editable objects with actual task content. `plan.reference_library` supplies a shortlist even without configured template sources. Record adopted references through template_sources/template_refs; keep example achievements out of task facts.
 
 ## Minimal planning input
 

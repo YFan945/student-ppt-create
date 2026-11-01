@@ -13,10 +13,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = ROOT.parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 REQUIRED_FILES = [
     ".claude-plugin/plugin.json",
     "README.md",
     "README-zh.md",
+    "assets/template-library/README.md",
+    "assets/template-library/catalog.json",
+    "scripts/template_library.py",
+    "scripts/build_template_references.py",
+    "shared/bundled_templates.py",
+    "tests/test_bundled_templates.py",
     "requirements.txt",
     "requirements-claude-pptx.txt",
     "python-constraints.txt",
@@ -307,7 +315,9 @@ def check_embedded_runtime(errors: list[str]) -> None:
 def check_tracked_files(errors: list[str], *, allow_untracked: bool = False) -> None:
     files = tracked_files(errors)
     tracked = set(files)
-    for rel in REQUIRED_FILES:
+    reference_files = [path.relative_to(ROOT).as_posix()
+                       for path in (ROOT / "assets/template-library").rglob("*") if path.is_file()]
+    for rel in sorted(set(REQUIRED_FILES + reference_files)):
         repository_path = f"plugins/student-presentation-suite/{rel}"
         if repository_path not in tracked and not (
             allow_untracked and (ROOT / rel).is_file()
@@ -413,6 +423,13 @@ def main() -> None:
     reference_graph = check_script_reference_graph(errors)
     check_runtime_contract(errors)
     check_embedded_runtime(errors)
+    from shared.bundled_templates import validate_bundle
+    try:
+        reference_bundle = validate_bundle()
+        errors.extend(reference_bundle["errors"])
+    except (OSError, ValueError, KeyError) as exc:
+        reference_bundle = {"ok": False, "error": str(exc)}
+        errors.append(f"bundled template references invalid: {exc}")
     check_tracked_files(errors, allow_untracked=args.allow_untracked)
     # Last, so a broken package fails in under a second instead of after the suite.
     tests = check_test_suite(errors)
@@ -421,6 +438,7 @@ def main() -> None:
         "error_count": len(errors),
         "errors": errors,
         "script_reference_graph": reference_graph,
+        "reference_bundle": reference_bundle,
         "allow_untracked": args.allow_untracked,
         "tests": tests,
     }
