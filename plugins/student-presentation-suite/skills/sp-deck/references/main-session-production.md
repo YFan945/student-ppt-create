@@ -37,6 +37,10 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete -
 
 `outline` 导出使用最终可回读正文及已核验的作者标题，保留规划中的页面作用，不再仅导出旧标题和一句claim。导入OOXML标题沿用规划标题，避免误把任意模板文字猜作标题；冻结Spec独立保留。
 
+## Student-content inspection
+
+`plan` and `run` return student_design, including each page’s core information, visible support, main visual/template choices and speaking-order questions. Use these alongside the full renders: point to the main answer, show how evidence/diagrams explain it, and repair missing support or competing emphasis. Readability warnings are returned beside these questions. In the existing --review-note describe concrete page findings and changes in focus, supporting content, speaking order, rich color and template adaptation, rather than listing technical checks alone. Do not manufacture a note or claim automated aesthetic approval.
+
 ## Minimal reference path
 
 常规创建按顺序只读当前SKILL、content-workflow的规划要求、authoring-quickstart的接口及本文件的执行要求。结构选择只读slide-structures中适合当前任务的方法；语言查shared-standards。已经读过的规则不重复加载。其他参考按当前操作选择：模板/封面查cover-and-template，丰富视觉或松散问题查content-to-visual，获取图片查image-sourcing，具体API疑问查单函数帮助。不要在创作前遍历全部规范、示例或运行时实现。各文件保持自身所有权，入口仅链接，不复制整份政策。

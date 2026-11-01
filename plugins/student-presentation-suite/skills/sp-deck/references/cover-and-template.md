@@ -14,6 +14,11 @@ Check the actual cover for reading order, title breaks, visual balance, text/ima
 
 ## Supplied reference
 
+For local-library search, several sources, editable slide assembly and color/font
+coordination, read `../../../references/template-workflow.md`. Choose pages by
+content capacity and speaking order; preserve useful multi-color and image-rich
+treatment when adapting.
+
 Distinguish strict template reuse, visual inspiration and content-only input. A deck supplied for content does not automatically dictate the design.
 
 For strict reuse, inspect all relevant original slides before choosing layouts. Keep dimensions, masters, layouts, theme fonts, spacing, image treatment, navigation, headers, footers and required logos. Reuse source objects and useful placeholders on a copy; map the new material to fitting template layouts. Remove whole unused groups so empty icons/images do not remain. Do not cover the original with a newly drawn generic design.

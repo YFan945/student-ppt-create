@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.30.11
+version: 0.31.0
 ---
 
 # Student Presentation PPT
@@ -17,6 +17,8 @@ version: 0.30.11
 按 references/main-session-production.md 的 Minimal reference path 加载当前任务所需规则，读过的不重读。规划归属在已有handoff-plan.md简表中记录；看图后的具体发现可通过complete的--review-note留在已有质量报告，不新增独立门禁。
 
 ## Workflow
+
+学生展示需内容充实、自然讲述、每页重点明确、观点标题和丰富协调的配色。按content-workflow在现有规划作出问题/回答、支撑组、主体和讲述顺序的选择。提供模板/模板库时先读 `../../references/template-workflow.md`，检索并查看相关真实页；可组合多套模板，记录template_sources与逐页template_refs，保留对象级结构并协调视觉。不能仅取模板颜色后重画成整套通用文字框。
 
 1. 先区分当前要求与粘贴的历史过程记录，读材料并发现缺失/矛盾后，按 `../../references/presentation-intake.md` 集中完成必要澄清、Production Summary 与确认；仅用户尚未授权的事项需要询问。产物放在项目 `outputs/`，保留源 PPTX。
 2. 汇总冻结事实、精确文字、数字、来源和用户品牌要求。先按 `../../references/content-workflow.md` 规划整套信息递进，选择拆解方法、组织充分正文和证据/解释组，检查跨页论点重复，不能只排标题和一句用途。新 Slide Spec 用 2.1，展示文案可重写或视觉化，保留必要解释与支撑；旧 1.0/2.0 保留文案匹配契约。外部事实检索按 `sp-research` 使用研究员，不把图片构图委派出去。

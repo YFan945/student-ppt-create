@@ -92,3 +92,7 @@ python "${CLAUDE_PLUGIN_ROOT}/scripts/validate_presentation_brief.py" brief.yaml
 ```
 
 `output_dir` selects a delivery directory inside the active project outputs tree; carry it to Slide Spec `meta.output_dir`. New production defaults to `outputs/<work-id>`. Preview exports all slides, while contact-sheet is the overview.
+
+## Optional template sources
+
+Top-level `template_sources` is a list of `{id,path,use}`; use is `inspiration` or `reuse`. Brief and Spec sources stay in sync. Slide Spec pages may add `template_refs: [{source_id,slide,reason}]` (one-based presentation order). Unknown/duplicate ids are rejected; production checks source files/page ranges and binds hashes. Relative paths use the Spec directory. These are design references, not evidence of task facts. See [template-workflow.md](template-workflow.md) for selection, multi-source coordination and editable assembly. Existing records need no migration.

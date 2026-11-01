@@ -232,18 +232,12 @@ def _on_screen_block(planned: dict[str, Any]) -> str:
         lines.append(f"   claim:   {_comment_safe(required['claim'])}")
     if required["numbers"]:
         lines.append("   numbers: " + " · ".join(_comment_safe(item) for item in required["numbers"]))
-    for fragment in required["copy_fragments"][:6]:
+    for fragment in required["copy_fragments"]:
         lines.append(f"   copy:    {_comment_safe(fragment)}")
     if required["numbers"]:
-        # One carrier per number. Repeating a required number in a second visible place
-        # (bar label, big centred figure, second bullet) reads as triple-encoding to the
-        # critic; dropping the chart's direct label for a number the text already states
-        # is not a defect. 2026-09-17 live: rounds 5-7 oscillated between these two
-        # readings, and the last one broke the actual-content gate undoing the other.
         lines.append(
-            "   Each number above takes exactly ONE text carrier; do not restate it in a chart "
-            "data label or a second bullet, and a bar whose value is already in text needs no "
-            "direct label."
+            "   Each required number needs a real text carrier for readback. Direct chart labels, "
+            "nearby explanation and supported summary reuse are allowed when they help understanding."
         )
     lines.append("*/")
     return "\n".join(lines)
@@ -520,7 +514,7 @@ def scaffold_generator(
             source_input = {"requirements": actual_check.planned_requirements(slide),
                             "material": {key: slide[key] for key in
                                           ("title", "claim", "slide_copy", "content", "speaker_notes", "evidence_refs",
-                                           "kind", "role", "visual", "timing_sec", "owner", "transition", "note_goal",
+                                           "kind", "role", "visual", "template_refs", "timing_sec", "owner", "transition", "note_goal",
                                            "supporting_points", "key_line")
                                          if key in slide}}
             exact = json.dumps(source_input, ensure_ascii=False)

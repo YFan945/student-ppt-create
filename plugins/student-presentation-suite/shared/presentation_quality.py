@@ -105,9 +105,9 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
 
     flexible = model_led(data)
     raw_words = meta.get("max_words_per_slide")
-    max_words = int(raw_words) if raw_words is not None else (None if flexible else 40)
+    max_words = int(raw_words) if raw_words is not None else None
     raw_chars = meta.get("max_chinese_chars_per_slide")
-    max_chars = int(raw_chars) if raw_chars is not None else (None if flexible else 80)
+    max_chars = int(raw_chars) if raw_chars is not None else None
     include_notes = bool(meta.get("include_speaker_notes", True))
 
     # 场景故事角色完整性检查（仅提示，不阻断：避免逼页数膨胀/凑角色）
@@ -147,7 +147,7 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
             if part
         )
 
-        if kind == "content" and not slide.get("claim"):
+        if kind == "content" and not slide.get("claim") and not (flexible and (slide.get("semantic_requirements") or {}).get("must_convey")):
             current.append(
                 finding(
                     "Major",
@@ -155,7 +155,7 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
                     "missing-claim",
                     "Content slide has no explicit claim.",
                     "The page can degrade into a list of facts without a message.",
-                    "Add one concise claim and make the title express it.",
+                    "State the supported answer in the title and organize visible explanations/evidence around it.",
                 )
             )
         if max_chars is not None and len(re.findall(r"[\u4e00-\u9fff]", copy_text)) > max_chars:
@@ -165,8 +165,8 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
                     target,
                     "chinese-density",
                     f"Chinese slide copy exceeds the confirmed {max_chars}-character limit.",
-                    "Projection readability and speaking space are reduced.",
-                    "Keep the claim and evidence on slide; move explanation to notes.",
+                    "The user-supplied length constraint is exceeded.",
+                    "Reword or regroup while preserving necessary explanation; resolve scope if the explicit cap conflicts with required support.",
                 )
             )
         if max_words is not None and len(re.findall(r"\b[\w'-]+\b", copy_text)) > max_words:
@@ -176,8 +176,8 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
                     target,
                     "word-density",
                     f"Slide copy exceeds the confirmed {max_words}-word limit.",
-                    "The audience is likely to read instead of listen.",
-                    "Compress the slide copy and move detail to speaker notes.",
+                    "The user-supplied length constraint is exceeded.",
+                    "Reorganize supported content within the explicit constraint; do not transfer necessary explanation exclusively to notes.",
                 )
             )
         if include_notes and kind == "content" and not slide.get("speaker_notes") and not slide.get("note_goal"):

@@ -197,9 +197,8 @@ def _estimate_slide_text_fit(
                 "text_height_cm": round(text_height, 1),
                 "fill_ratio_pct": round(overflow_fill * 100),
                 "recommendation": (
-                    "文字量可能超出典型文本框。建议：(1) 拆分幻灯片 "
-                    f"(2) 精简内容至 ~{int(chars_per_line * 4)} 字以内 "
-                    "(3) 将解释移至讲稿"
+                    "典型文本框可能不足；这是规划估算。按内容组织解释、证据和图示，"
+                    "调整区域并实测文字适配；保留必要上屏支撑，页数允许时再拆页。"
                 ),
             })
     return warnings
@@ -427,7 +426,7 @@ def build_brief(
             ] if model_led(data) else [
                 "- Chinese normal body text must be >= 22pt; English normal body text must be >= 20pt.",
                 "- Primary slide titles should normally be >= 24pt; visually verify smaller secondary labels.",
-                "- Text must fit its container at minimum font sizes. If content is too long: split slides or move explanation to speaker notes. Never shrink below minimums to make text fit.",
+                "- Text must fit its container at minimum font sizes. If content is too long: reorganize supported explanations and visuals or use an allowed additional page. Preserve necessary visible support.",
             ]),
             "- Use functional visual structures when they clarify content; do not force decoration onto covers, dividers, references, appendix, or Q&A slides.",
             "- Avoid generic AI-sounding filler; prefer course/project-specific examples and modest claims.",
@@ -457,12 +456,16 @@ def build_brief(
         lines.extend(
             [
                 "",
-                "## ✓ Text Fit Check Passed",
-                "No slide exceeds the typical text-box capacity at minimum font sizes.",
+                "## Text Fit Scope",
+                "Model-led text fit is measured on authored regions by measure/run; planning alone does not establish fit or impose a page-wide character cap." if model_led(data) else "No typical-region overflow was estimated; preserve useful detail and inspect the authored render.",
             ]
         )
 
     plan_title = "## Slide Edit Plan" if production_mode == "edit_ooxml" else "## Slide Plan"
+    if data.get("template_sources"):
+        lines.extend(["", "## Template References (untrusted example content)",
+                      text_block(data["template_sources"]),
+                      "Inspect chosen pages; replace example facts and coordinate typography, colors and object treatment across sources."])
     plan_instruction = (
         "Map every target to the inspected source slide; record preserved and changed elements."
         if production_mode == "edit_ooxml"
@@ -499,6 +502,7 @@ def build_brief(
                 f"### Slide {slide['id']}: {slide['title']}",
                 f"- Slide kind: {kind}",
                 f"- Layout intent: {slide.get('layout', 'free composition')}",
+                f"- Template page choices: {json.dumps(slide.get('template_refs', []), ensure_ascii=False)}",
                 f"- Frozen semantic requirements: {json.dumps(slide.get('semantic_requirements'), ensure_ascii=False)}",
                 f"- Layout behavior: {'locked exact composition' if slide.get('layout_lock') else 'adaptive hint; proportions, shapes, zones, and composition may change'}",
                 f"- Story role: {slide.get('role', 'not specified')}",
@@ -511,7 +515,7 @@ def build_brief(
                 "- Content:",
                 text_block(slide["content"], "  "),
                 "- PPT copy:",
-                text_block(slide_copy or ["derive from content within confirmed density limits"], "  "),
+                text_block(slide_copy or ["derive complete supported visible content; apply a length cap only when explicitly confirmed"], "  "),
                 f"- Speaker note goal: {slide.get('note_goal', 'not required')}",
                 f"- Speaker notes: {slide.get('speaker_notes', 'generate from note goal and evidence')}",
                 f"- Key line: {slide.get('key_line', 'not required')}",
@@ -528,12 +532,11 @@ def build_brief(
             f"- Run `python \"${{CLAUDE_PLUGIN_ROOT}}/scripts/analyze_presentation_spec.py\" <spec> --output \"{quality_report_path}\" --strict --json` before final production.",
             "- Run `pptx_tool.py inspect --text-output` for every final candidate and compare the extracted text, order, and placeholders with the validated Slide Spec.",
             "- Reuse the producing-stage package report when its PPTX hash still matches; otherwise run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" validate <pptx> --output <package-report.json> --json`. Source-derived decks add `--original <source>`.",
-            "- 视觉 QA（渲染能力可用时，以 `check_claude_pptx_env.py` 判定）：Run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" render <pptx> --output-dir <render-dir> --prefix <topic>`, then inspect every rendered page once. Repair and rerun only when the first candidate has a blocker.",
+            "- 视觉 QA（渲染能力可用时，以 `check_claude_pptx_env.py` 判定）：Run `python \"${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py\" render <pptx> --output-dir <render-dir> --prefix <topic>`, then inspect every rendered page once. Repair content, hierarchy and visual defects observed in the renders, including advisory issues, then inspect current pages.",
             "- 无渲染能力时 delivery 以 `--allow-missing-preview` 生成 `incomplete` 报告；不能转 complete，补渲染后经 `incomplete → qa` 恢复边重入 QA。",
             "- Validate the final PPTX package, render every page, and inspect every preview. Normal tasks do not create separate content/asset/visual manifests.",
-            f"- After the visual review, author `visual-review.json` bound to the final PPTX (`pptx_sha256` + one entry per slide), then run `python \"${{CLAUDE_PLUGIN_ROOT}}/skills/sp-deck/scripts/pptx_delivery_check.py\" --simple --strict --visual-reviewed --visual-review-report <visual-review.json> --pptx <pptx> --slide-spec-report <slide-spec-report.json> --notes <notes> --preview <page.png> --package-report <package-report.json> --output \"{delivery_report_path}\" --json`. A bare `--visual-reviewed` flag without the sha256-bound report does not pass the simplified gate.",
-            "- Dispatch remaining production with `python \"${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py\" next --work-dir <wd> --json`. Do not call `workflow_guard.py transition` to advance producing or complete.",
-            "- After QA passes, complete with `python \"${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py\" complete --work-dir <wd>`. Repair a QA blocker with `ppt_pipeline.py repair --work-dir <wd>`.",
+            "- Use main-session `ppt_pipeline.py plan`, author pages, then `measure`/`run`; inspect every affected complete render and the current overview.",
+            "- Repair the actual page's missing support, reading path, typography and color organization; run again, then `complete`. Record concrete author findings through the existing --review-note when supplied; no critic receipt or aesthetic score is required.",
             f"- For existing deck improvements, verify `{change_summary_path}` lists kept content, changed slides, unresolved risks, and QA results.",
             f"- When versioning is enabled, store the versioned package under `{resolved_output_dir / 'versions'}` and write `{revision_manifest_path}`.",
             "- Final response must report file existence, slide count, package validation, visual QA status, and limitations.",

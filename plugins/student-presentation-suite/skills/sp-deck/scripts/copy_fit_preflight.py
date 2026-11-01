@@ -354,8 +354,6 @@ def preflight(
     flexible = model_led(spec)
     if max_chars is None:
         max_chars = (spec.get("meta") or {}).get("max_chinese_chars_per_slide")
-        if max_chars is None and not flexible:
-            max_chars = 80
     typo = (art_direction or {}).get("typography") or {}
     title_pt = float(typo.get("slide_title_pt") or 32)
     body_pt = float(typo.get("body_pt") or 22)
@@ -450,7 +448,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--verbose", action="store_true", help="also list minor density findings")
     parser.add_argument("--max-items", type=int, default=12)
-    parser.add_argument("--max-chars", type=int, help="explicit Chinese character cap; otherwise use confirmed meta, or legacy 80")
+    parser.add_argument("--max-chars", type=int, help="explicit Chinese character cap; otherwise use confirmed meta; omitted means uncapped")
     parser.add_argument("--slide-w", type=float, default=DEFAULT_SLIDE_W)
     parser.add_argument("--margin", type=float, default=DEFAULT_MARGIN)
     parser.add_argument("--title-h", type=float, default=DEFAULT_REGIONS["title_h"])

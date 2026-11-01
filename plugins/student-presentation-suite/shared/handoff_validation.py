@@ -18,6 +18,8 @@ def handoff_errors(brief: Any, spec: Any) -> list[dict[str, str]]:
         return [_error(".meta", "Slide Spec meta must be an object")]
 
     errors: list[dict[str, str]] = []
+    if "template_sources" in brief and brief["template_sources"] != spec.get("template_sources", []):
+        errors.append(_error(".template_sources", "does not match Presentation Brief template sources"))
     scalar_map = {
         "topic": "topic",
         "scenario": "scenario",

@@ -50,14 +50,19 @@ class DensityContractTests(unittest.TestCase):
         findings = analyze_spec(spec)["findings"]
         self.assertFalse(any(item["code"] in {"chinese-density", "word-density"} for item in findings))
 
-    def test_explicit_and_legacy_limits_remain_effective(self):
-        for spec, expected in [(self.spec(cap=60), 60), (self.spec(model=False), 80)]:
+    def test_explicit_and_recorded_legacy_limits_remain_effective(self):
+        for spec, expected in [(self.spec(cap=60), 60), (self.spec(model=False, cap=80), 80)]:
             with self.subTest(expected=expected):
                 report = self.preflight(spec)
                 self.assertEqual(report["max_chars"], expected)
                 self.assertIn("density", [item["field"] for item in report["problems"]])
                 self.assertTrue(any(item["code"] == "chinese-density" for item in analyze_spec(spec)["findings"]))
         self.assertEqual(self.preflight(self.spec(cap=60), 90)["max_chars"], 90)
+
+    def test_unrecorded_legacy_cap_is_not_invented(self):
+        spec = self.spec(model=False)
+        self.assertIsNone(self.preflight(spec)["max_chars"])
+        self.assertFalse(any(item["code"] == "chinese-density" for item in analyze_spec(spec)["findings"]))
 
     def test_brief_accepts_omitted_caps_but_validates_explicit_values(self):
         schema = json.loads((ROOT / "references" / "presentation-brief.schema.json").read_text(encoding="utf-8"))

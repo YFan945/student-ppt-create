@@ -1,7 +1,7 @@
 ---
 name: sp-outline
 description: Use only for a clearly student-owned academic context when the user explicitly requests a PPT or slide outline, not an editable deck. Do not use for generic presentations, standalone scripts, Q&A-only work, or non-student tasks.
-version: 0.30.11
+version: 0.31.0
 ---
 
 # Student Presentation
@@ -39,6 +39,8 @@ version: 0.30.11
 7. 新建交接使用 schema_version: "2.1" 和 meta.design_freedom（默认 auto），每页提供 semantic_requirements：must_convey 的稳定 id/text/placement/evidence_refs，以及 must_show_exact 的精确文字和关键数字。核心信息默认上屏，补充内容才可指定 notes；规划 prose 不再作为逐字展示要求。不得自动迁移用户已有的旧 spec。每页内容幻灯片提供故事角色、核心信息、完整展示文案、可选视觉、证据引用、讲稿、时间、归属、转场。研究支持的 **draft Slide Spec** 在 `evidence_refs` 中直接使用 Research Pack 的 `F/D/Q` id；不要生成 `E<n>`、不要手写 Research Evidence Ledger。`confidence: low` 或 conflict 条目必须写成区间/限定语。`sp-deck` 后续由 `research_pack_to_evidence.py` 机械编译为 E ids、ledger 与 `used_on_slides`。
 8. 新手模式下解释关键结构/布局选择。用 `analyze_presentation_spec.py` 做结构/证据/密度风险检查；需要训练卡、Q&A、词汇表、提词版或修订元数据时运行 `build_support_outputs.py`。
 9. 如需文件输出并转 PPTX：若走过 Research Gate，写 `outputs/<topic>-brief.yaml` 与 **draft** `outputs/<topic>-slide-spec.yaml`，将 Brief、draft spec、Research Pack、research validation 一并交给 `sp-deck`；若是 C-only，则按普通无 research 流程交接。最终冻结的是 `sp-deck` 编译/验证后的 Slide Spec，而不是研究型 draft。交给 `sp-deck` 时仍保留**完整 intake 门禁**，outline 阶段不能替代其 Production Summary 确认。
+
+提供模板库或转PPTX需设计参考时，按 `../../references/template-workflow.md` 选择适合各页内容的参考，记录template_sources与template_refs；沿用现有规划明确问题/回答、支撑组、主体和讲述顺序，允许多色与多套模板协调。仅做大纲时不运行PPTX组装/渲染。
 
 ## 输出契约
 

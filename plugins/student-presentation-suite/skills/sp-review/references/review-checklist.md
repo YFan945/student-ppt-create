@@ -193,10 +193,10 @@ When two versions are provided:
 
 For `.pptx` files, run `python "${CLAUDE_PLUGIN_ROOT}/skills/sp-review/scripts/pptx_static_check.py" <deck.pptx> --json` to scan static XML risks:
 - font size below threshold
-- high text density
+- actual text overflow and unreadable geometry
 - small text boxes
-- paragraph-heavy text
-- excessive color complexity
+- paragraph grouping and rendered readability
+- foreground/background contrast and meaningful color grouping
 
 Use `--strict` to fail on unreadable or corrupt input; static risk findings remain warnings. Treat script output as risk evidence, not absolute proof. `font-size-not-explicit` often means the script could not resolve inherited theme or master styles, not that the deck is definitely unreadable. True overflow and projection readability still need rendered previews or manual inspection.
 
@@ -213,3 +213,5 @@ Use ../../../references/content-to-visual.md to compare visible evidence, subjec
 For loose or empty pages, identify the actual weak grouping, missing support, undersized subject, misplaced labels or unnecessary gap; apply the spatial repair guidance in content-to-visual.md. Read shared-standards.md for direct expression: diagnose defensive self-positioning in titles, body, captions and notes by its purpose, not a blanket keyword ban.
 
 Check primary media and substantive supporting groups before praising cleanliness. A glyph added to each one-sentence card is still thin support. Inspect deck-wide icon repetition and body composition separately from consistent fonts/colors/navigation. Read expression_findings when present; unregistered icons and layout variation require visual inspection. For approved prompt placeholders, check the prompt is usable and visible in the image region; do not treat it as a generated or factual image.
+
+Long paragraphs, rich supporting detail and several coordinated colors are allowed. Do not flag a page solely for its character count or number of colors. Diagnose a specific rendered reading problem before recommending reorganization; preserve necessary explanation and evidence on the slide.

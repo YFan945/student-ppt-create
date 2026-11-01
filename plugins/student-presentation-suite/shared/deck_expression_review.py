@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Any
 
 PATTERNS = (
+    ("production_meta_copy", re.compile(r"(?:缺出处的数字就不写|生态与碳排先留白|本次检索未|预算内没有|本页只保留讨论维度|写不上的数字|留白是证据纪律|请输入(?:大)?标题|单击此处添加|点击此处添加)")),
     ("defensive_contrast", re.compile(r"不是[^。！？\n]{1,60}?而是")),
     ("defensive_disclaimer", re.compile(r"(?:仅供参考|仅作为[^。！？\n]{0,40}?参考|不(?:是|能作为|代表)[^。！？\n]{0,30}?(?:真实|依据|证据))")),
     ("generic_inference", re.compile(r"(?:由此可见|需要说明的是|本页旨在)")),
@@ -50,7 +51,7 @@ def review_expression(spec: dict[str, Any], actual: dict[str, Any]) -> dict[str,
                 for match in pattern.finditer(value):
                     if any(match.group() in str(text) for text in frozen):
                         continue  # User-frozen quotations are not silently rewritten.
-                    if any(match.group() in text for text in planned_texts):
+                    if code != "production_meta_copy" and any(match.group() in text for text in planned_texts):
                         findings.append({"code": code, "slide": number, "field": field,
                                          "excerpt": match.group(), "severity": "info",
                                          "action": "源自规划或用户提供的文本，确认展示意图即可"})

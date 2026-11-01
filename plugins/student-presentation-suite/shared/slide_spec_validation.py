@@ -152,6 +152,14 @@ def semantic_errors(data: Any) -> list[dict[str, str]]:
     errors: list[dict[str, str]] = []
     meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
     slides = data.get("slides") if isinstance(data.get("slides"), list) else []
+    sources = data.get("template_sources") or []
+    source_ids = [item["id"] for item in sources]
+    if len(source_ids) != len(set(source_ids)):
+        errors.append({"path": ".template_sources", "message": "template source ids must be unique"})
+    for index, slide in enumerate(slides):
+        for ref in slide.get("template_refs", []):
+            if ref["source_id"] not in source_ids:
+                errors.append({"path": f".slides.{index}.template_refs", "message": f"unknown template source: {ref['source_id']}"})
 
     if slides:
         ids = [slide.get("id") for slide in slides if isinstance(slide, dict)]

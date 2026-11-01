@@ -189,6 +189,7 @@ def check_summary(report: dict[str, Any]) -> dict[str, Any]:
             "geometry_warnings": (report.get("geometry") or {}).get("warnings", []),
             "asset_errors": (report.get("assets") or {}).get("errors", []),
             "expression_findings": (report.get("expression_review") or {}).get("findings", []),
+            "student_design": report.get("student_design_review"),
             "missing_notes": report.get("missing_notes")}
 
 
@@ -228,6 +229,9 @@ def authorized(work: Path) -> dict[str, Any]:
             raise ProductionError(f"{name} changed after planning; preserve frozen inputs and start a new plan")
     if workflow.get("summary_sha256") != manifest["summary"]["sha256"]:
         raise ProductionError("Production Summary authorization changed")
+    for source in manifest.get("template_sources", []):
+        if not current(source["file"]):
+            raise ProductionError("template source changed after planning; preserve the reference or start a new plan")
     return manifest
 
 
@@ -342,6 +346,20 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         if errors:
             raise ProductionError("compiled Slide Spec is invalid: " + json.dumps(errors, ensure_ascii=False))
     meta = spec.get("meta") or {}
+    from shared.student_design_review import planning_review
+    from shared.template_library import inspect_template
+
+    templates = []
+    for entry in spec.get("template_sources", []):
+        path = (spec_path.parent / entry["path"]).resolve()
+        inspected = inspect_template(path)
+        selected = [ref["slide"] for slide in spec["slides"] for ref in slide.get("template_refs", [])
+                    if ref["source_id"] == entry["id"]]
+        if any(number > inspected["slide_count"] for number in selected):
+            raise ProductionError(f"template page out of range: {entry['id']}")
+        templates.append({"id": entry["id"], "use": entry["use"], "file": bind(path),
+                          "selected_slides": [page for page in inspected["slides"] if page["slide"] in selected],
+                          "size_emu": inspected["size_emu"]})
     scaffold = {} if mode == "edit_ooxml" else generator_scaffold.scaffold_generator(work, spec_path, art)
     if mode == "edit_ooxml":
         from shared.pptx_runtime import safe_extract_package
@@ -358,10 +376,12 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         "attempts": 0,
         "research": research,
         "scaffold": scaffold, "build": {}, "render": {}, "check": {},
+        "template_sources": templates,
         "semantic_verification": "main-session-self-check",
     }
     save(work, manifest, "planned")
     return {"ok": True, "action": "author_pages", "work_dir": str(work), "assets": measured_assets(work),
+            "student_design": planning_review(spec), "template_sources": templates,
             "delivery_dir": str(output), "authoring_guide": str(ROOT / "skills/sp-deck/references/authoring-quickstart.md"),
             "pages": [str(work / "pages" / name) for name in scaffold.get("pages", [])],
             "source_directory": str(work / "ooxml") if mode == "edit_ooxml" else None,
@@ -447,6 +467,8 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
         "slides": [{"slide": index, "text_runs": [text], "speaker_notes": notes.get(index, "")}
                    for index, text in enumerate(content.extract_pptx_text(pptx), 1)]}
     report["expression_review"] = review_expression(spec, actual)
+    from shared.student_design_review import review_actual
+    report["student_design_review"] = review_actual(spec, actual, geometry)
     write(work / "production-check.json", report)
     return report
 

@@ -25,9 +25,6 @@ NS = {
 EMU_PER_CM = 360_000
 SMALL_TEXT_BOX_WIDTH_EMU = 900_000
 SMALL_TEXT_BOX_HEIGHT_EMU = 250_000
-TEXT_CHARS_PER_CM_LIMIT = 18
-CHINESE_PARAGRAPH_LIMIT = 160
-LATIN_PARAGRAPH_LIMIT = 220
 
 # 垂直溢出预估常量。字宽与 pptx-helpers.js / copy_fit_preflight.py 对齐
 # （1.0 em CJK ≈ 字号 × 0.035cm；0.58 em 拉丁 ≈ 字号 × 0.021cm）。
@@ -723,9 +720,6 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                         risk.append("text-box-padding-below-16pt")
                     if bounds:
                         bounded_items.append((idx, bounds))
-                        width_cm = max(bounds["cx"] / EMU_PER_CM, 0.1)
-                        if chars / width_cm > TEXT_CHARS_PER_CM_LIMIT:
-                            risk.append("high-text-density-overflow-risk")
                         if bounds["cx"] < SMALL_TEXT_BOX_WIDTH_EMU or bounds["cy"] < SMALL_TEXT_BOX_HEIGHT_EMU:
                             risk.append("small-text-box-risk")
                         # 垂直溢出预估：优先用 OOXML 行距，缺省才回落到 1.18。
@@ -764,10 +758,6 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                             risk.append("title-outside-title-zone")
                         if not is_footer_shape(container) and bounds["y"] + bounds["cy"] > footer_start:
                             risk.append("footer-zone-invasion")
-                    paragraph_limit = CHINESE_PARAGRAPH_LIMIT if is_cjk else LATIN_PARAGRAPH_LIMIT
-                    if chars > paragraph_limit:
-                        risk.append("paragraph-heavy-slide-text")
-                    colors = fill_colors(container)
                     background_color = solid_fill_color(container)
                     foreground_colors = text_colors(container)
                     if background_color:
@@ -777,8 +767,6 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                                 break
                     faces = font_families(container)
                     detected_fonts.update(faces)
-                    if len(set(colors)) >= 6:
-                        risk.append("many-colors-in-shape")
                     if any(face.casefold() not in PORTABLE_FONT_FAMILIES for face in faces):
                         risk.append("font-compatibility-review-required")
                     if risk:
@@ -1015,9 +1003,7 @@ def summarize_static_risks(static_result: dict[str, object]) -> dict[str, object
         "注释",
     )
     blocker_risks = {
-        "high-text-density-overflow-risk",
         "text-vertical-overflow",
-        "paragraph-heavy-slide-text",
         "heading-font-size-below-24pt",
         "shape-outside-slide",
         "low-whitespace-risk",

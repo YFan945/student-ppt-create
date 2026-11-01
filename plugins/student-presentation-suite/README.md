@@ -77,3 +77,7 @@ Content planning now includes substantive support and main-media choices before 
 ### Visual audit repairs
 
 Current production protects opaque text occlusion and checks contrast on known solid surfaces, while explicitly leaving image/gradient cases for rendered inspection. Optional Slide Spec 2.1 metric bindings keep labels, values and units together. Intake uses one complete summary, optional Brief reuse and run-based repair. Full same-material visual examples and relationship tools support authoring without layout quotas or new aesthetic gates. See the owning intake, Slide Spec, authoring quickstart and visual-examples references.
+
+## Templates and student presentation design
+
+Local catalogs support page-role search, per-slide source references and editable slide assembly from several templates. Adapt photos, tables, charts and diagrams to content with rich coordinated colors and deliberate text hierarchy. Planning and review return core-information, support and speaking-path questions. See [template workflow](references/template-workflow.md).

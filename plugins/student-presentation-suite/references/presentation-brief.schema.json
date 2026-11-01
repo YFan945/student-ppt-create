@@ -393,6 +393,35 @@
       "type": "string",
       "minLength": 1,
       "description": "Delivery directory inside the active project outputs tree; relative paths are project-relative. New plans default to outputs/<work-id>."
+    },
+    "template_sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "path",
+          "use"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "use": {
+            "enum": [
+              "inspiration",
+              "reuse"
+            ]
+          }
+        }
+      }
     }
   },
   "allOf": [

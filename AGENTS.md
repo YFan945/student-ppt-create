@@ -57,6 +57,7 @@ Inside the plugin package:
 - `references/`: shared intake, standards, cost discipline, image policy, and Slide Spec contracts.
 - `scripts/`: environment checks, schema bridge, validation, session cost review, Research Pack
   validation, and PPTX smoke tooling.
+- `scripts/template_library.py` + `shared/template_library.py`: local template catalogs, page search and editable selection across source decks; references/template-workflow.md owns adaptation and multi-source coordination.
 - `scripts/direct_production.py`: main-session production tools; the existing
   `skills/sp-deck/scripts/ppt_pipeline.py` path exposes plan, run, complete, status
   and measure (text-fit measurement without building).

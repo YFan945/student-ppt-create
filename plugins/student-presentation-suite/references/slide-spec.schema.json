@@ -256,11 +256,13 @@
         },
         "max_words_per_slide": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "description": "Optional user-confirmed limit only. Omit unless explicitly requested; never infer from speaking duration or template slots."
         },
         "max_chinese_chars_per_slide": {
           "type": "integer",
-          "minimum": 1
+          "minimum": 1,
+          "description": "Optional user-confirmed limit only. Omit unless explicitly requested; never infer from speaking duration or template slots."
         },
         "visual_text_ratio": {
           "enum": [
@@ -935,6 +937,33 @@
                 }
               }
             }
+          },
+          "template_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "source_id",
+                "slide",
+                "reason"
+              ],
+              "properties": {
+                "source_id": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "slide": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "reason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
           }
         },
         "allOf": [
@@ -953,6 +982,35 @@
             }
           }
         ]
+      }
+    },
+    "template_sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "path",
+          "use"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "use": {
+            "enum": [
+              "inspiration",
+              "reuse"
+            ]
+          }
+        }
       }
     }
   },

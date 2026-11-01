@@ -125,8 +125,13 @@ def prepare(case: dict, directory: Path, mode: str) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     save(directory / "case.json", case)
     spec = {"schema_version": "2.1", "research_scope": "C", "meta": {"topic": case["topic"], "language": "Chinese", "visual_style": case.get('visual_style', 'Academic Rigorous'), "quality_level": case.get('quality_level', 'standard'), "design_freedom": mode, "citation_style": "none", "include_speaker_notes": True, "duration_min": len(case['pages']), "slide_count": len(case['pages'])}, "slides": []}
+    if case.get("template_sources"):
+        spec["template_sources"] = case["template_sources"]
     for index, page in enumerate(case["pages"], 1):
         spec["slides"].append({"id": index, "title": page["title"], "claim": page["fact"], "content": page.get('content', [page["fact"]]), "kind": page.get('kind', 'cover' if index == 1 else 'content'), "timing_sec": 60, "owner": "speaker", "semantic_requirements": {"must_convey": [{"id": f"fact-{index}", "text": page["fact"], "placement": "slide"}], "must_show_exact": page["exact"], 'fact_bindings': page.get('fact_bindings', [])}, 'visual': page.get('visual', {'type': 'auto', 'purpose': 'Choose expression from the supplied content'})})
+    for page, slide in zip(case["pages"], spec["slides"], strict=True):
+        if page.get("template_refs"):
+            slide["template_refs"] = page["template_refs"]
     path = directory / "slide-spec.json"
     save(path, spec)
     if case["image"]:
@@ -234,6 +239,7 @@ def live_case(case: dict, directory: Path, mode: str, resume_existing: bool = Fa
 请制作{len(case.get('pages', [])) or 6}页中文课程展示，work-id={work_id}，研究范围C，只使用本地case.json与figure.png（若有）。所有成果和论文数字均是合成演示，不得声称是真实发表或真实个人成果。
 听众为本科教师与同学，每页约1分钟，16:9，沿用本地Spec的quality_level，design_freedom={mode}，新Slide Spec必须为2.1并逐页保留case.json中的核心信息和精确项。模型可重写标题与表达，充分组织已有正文、视觉关系和素材。要求PPTX、讲稿、逐页预览。
 将本地slide-spec.json复制到work-dir，原样保留semantic_requirements与meta.design_freedom；只可补充缺少的meta。图片来源已在image-sources.json声明（若有）；图片需完整保留流程。Art Direction可选。主会话直接创作、看图和修改，不派发页面或评审子代理。修复真实问题并重新渲染；不得把自检称为独立语义核验。
+学生汇报需颜色丰富且协调，内容充实，每页有明确问题/回答、可见支撑与自然讲述顺序。若本地Spec含template_sources/template_refs，先查看相关模板真实页，按template-workflow保留有用图文组织并适配，不复制示例人物成果；在已有质量报告记录具体自检发现与修复。
 本回合只准备完整Production Summary和intake文件，然后停止；不要提前生成或渲染。路径：{directory}。请自行选择可合理默认的细节。
 """
     (directory / "prompt.md").write_text(prompt, encoding="utf-8")

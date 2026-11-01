@@ -99,15 +99,15 @@ function fontSizeScale(tokens, lang) {
   const t = tokens.typography || {};
   if (tokens.model_led) {
     const body = t.body_pt ?? 18;
-    const title = t.title_pt ?? t.slide_title_pt ?? body;
+    const title = t.title_pt ?? t.slide_title_pt ?? body * (5 / 3);
     return {
       title,
-      subtitle: t.subtitle_pt ?? body,
+      subtitle: t.subtitle_pt ?? body * (11 / 9),
       body,
       titleMax: title,
       bodyMax: body,
-      label: t.label_pt ?? body,
-      caption: t.caption_pt ?? body,
+      label: t.label_pt ?? body * (7 / 9),
+      caption: t.caption_pt ?? body * (5 / 9),
     };
   }
   const isCJK = lang === 'chinese' || lang === 'bilingual';
@@ -696,8 +696,9 @@ function rolePolicy(tokens, lang, role, options = {}) {
         tokens.typography?.[`${normalized}_pt`] ??
         (normalized === 'statement' ? tokens.typography?.key_statement_pt : undefined) ??
         options.max ??
-        tokens.typography?.body_pt ??
-        18,
+        (normalized === 'statement' ? sizes.subtitle : sizes[normalized]) ??
+        (['source', 'reference'].includes(normalized) ? sizes.caption : undefined) ??
+        sizes.body,
     );
     if (!Number.isFinite(chosen) || chosen <= 0)
       throw new RangeError('fontSize must be a finite positive number');

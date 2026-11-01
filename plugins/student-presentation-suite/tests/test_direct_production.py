@@ -77,6 +77,25 @@ module.exports.notes={json.dumps(notes)};
             self.assertFalse((self.work / name).exists())
         self.assertEqual(production.load(self.work / "build-manifest.json")["semantic_verification"], "main-session-self-check")
 
+    def test_template_pages_are_resolved_bound_and_passed_to_author(self):
+        from pptx import Presentation
+
+        source = self.work / "reference.pptx"
+        deck = Presentation()
+        deck.slides.add_slide(deck.slide_layouts[6])
+        deck.save(source)
+        spec = production.load(self.spec)
+        spec["template_sources"] = [{"id": "ref", "path": "reference.pptx", "use": "inspiration"}]
+        spec["slides"][0]["template_refs"] = [{"source_id": "ref", "slide": 1, "reason": "visible subject and explanation"}]
+        production.write(self.spec, spec)
+        result = production.plan(self.args)
+        self.assertEqual(result["template_sources"][0]["selected_slides"][0]["slide"], 1)
+        self.assertIn("template_refs", Path(result["pages"][0]).read_text(encoding="utf-8"))
+        self.assertIn("student_design", result)
+        source.write_bytes(source.read_bytes() + b"changed")
+        with self.assertRaisesRegex(production.ProductionError, "template source changed"):
+            production.authorized(self.work)
+
     def test_final_outline_uses_actual_title_and_visible_support_without_old_claim(self):
         spec = {'slides': [{'title': '旧标题', 'claim': '过时的结论', 'role': 'method'},
                            {'title': '导入页面', 'claim': '旧摘要'}]}
