@@ -424,9 +424,9 @@ def build_brief(
                 "- Preserve required evidence on the slide. Use multicolor grouping, relevant images, semantic icons, diagrams and editable tables/charts where they explain the content.",
                 "- Word/character caps apply only when explicitly supplied. Reword or rearrange crowded content and inspect full-size renders.",
             ] if model_led(data) else [
-                "- Chinese normal body text must be >= 22pt; English normal body text must be >= 20pt.",
-                "- Primary slide titles should normally be >= 24pt; visually verify smaller secondary labels.",
-                "- Text must fit its container at minimum font sizes. If content is too long: reorganize supported explanations and visuals or use an allowed additional page. Preserve necessary visible support.",
+                "- Respect explicit typography requirements recorded by the user; do not invent a global font floor.",
+                "- Select title/body/caption hierarchy for the material, source template and actual viewing scale.",
+                "- Text must fit its authored container at the chosen typography. If content is too long: reorganize supported explanations and visuals or use an allowed additional page. Preserve necessary visible support.",
             ]),
             "- Use functional visual structures when they clarify content; do not force decoration onto covers, dividers, references, appendix, or Q&A slides.",
             "- Avoid generic AI-sounding filler; prefer course/project-specific examples and modest claims.",
@@ -435,7 +435,7 @@ def build_brief(
     )
 
     # 文字适配预警
-    overflow_warnings = [] if model_led(data) else _estimate_slide_text_fit(slides, meta)
+    overflow_warnings = []  # Planning has no authored text regions to measure.
     if overflow_warnings:
         lines.extend(
             [
@@ -457,7 +457,7 @@ def build_brief(
             [
                 "",
                 "## Text Fit Scope",
-                "Model-led text fit is measured on authored regions by measure/run; planning alone does not establish fit or impose a page-wide character cap." if model_led(data) else "No typical-region overflow was estimated; preserve useful detail and inspect the authored render.",
+                "Text fit is measured on authored regions by measure/run; planning alone does not establish fit or impose a page-wide character cap.",
             ]
         )
 

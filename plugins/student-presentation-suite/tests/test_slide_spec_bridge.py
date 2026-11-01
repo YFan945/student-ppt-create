@@ -185,7 +185,7 @@ class SlideSpecBridgeTests(unittest.TestCase):
         self.assertIn("writes a pptxgenjs `deck.js`", brief)
         self.assertIn("Do not overwrite the source deck", brief)
 
-    def test_long_text_warning_builds_without_key_error(self) -> None:
+    def test_long_text_is_preserved_until_authored_geometry_can_be_measured(self) -> None:
         bridge = load_bridge_module()
         data = {
             "meta": {"output_prefix": "long-copy"},
@@ -196,8 +196,9 @@ class SlideSpecBridgeTests(unittest.TestCase):
             }],
         }
         brief = bridge.build_brief(data, Path("input.yaml"))
-        self.assertIn("Text Fit Warnings", brief)
-        self.assertIn("盒高", brief)
+        self.assertNotIn("Text Fit Warnings", brief)
+        self.assertIn("Text Fit Scope", brief)
+        self.assertIn(data["slides"][0]["content"]["bullets"][0], brief)
 
     def test_script_writes_output_file(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

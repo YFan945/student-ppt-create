@@ -85,7 +85,7 @@ class DensityContractTests(unittest.TestCase):
             self.assertIn("no global font floor", brief)
             legacy = self.spec(model=False)
             legacy["slides"][0]["content"] = legacy["slides"][0]["slide_copy"]
-            self.assertIn("must be >= 22pt", build_brief(legacy, output / "old.json", output))
+            self.assertNotIn("must be >= 22pt", build_brief(legacy, output / "old.json", output))
 
     def test_english_word_cap_is_only_implied_for_legacy_work(self):
         spec = self.spec()

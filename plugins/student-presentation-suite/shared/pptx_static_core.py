@@ -667,8 +667,8 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                             if chart_root.find(".//c:title", NS) is None:
                                 chart_risk.append("chart-missing-title-risk")
                             chart_sizes = font_sizes(chart_root)
-                            if chart_sizes and min(chart_sizes) < 18:
-                                chart_risk.append("chart-label-font-size-below-18pt")
+                            if chart_sizes and min(chart_sizes) < 9:
+                                chart_risk.append("small-chart-label-readability-review")
                             if chart_risk:
                                 findings.append(
                                     {
@@ -710,12 +710,9 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                     risk = []
                     if min_size is None:
                         risk.append("font-size-not-explicit")
-                    elif min_size < 20:
-                        risk.append("font-size-below-20pt")
-                    elif is_cjk and min_size < 22:
-                        risk.append("chinese-font-size-below-22pt")
-                    if primary_title and min_size is not None and min_size < 24:
-                        risk.append("heading-font-size-below-24pt")
+                    elif min_size < 10:
+                        # Inspection advisory, never a global typography floor.
+                        risk.append("small-text-readability-review")
                     if container_type == "shape" and text_box_padding_risk(container):
                         risk.append("text-box-padding-below-16pt")
                     if bounds:
@@ -1004,7 +1001,6 @@ def summarize_static_risks(static_result: dict[str, object]) -> dict[str, object
     )
     blocker_risks = {
         "text-vertical-overflow",
-        "heading-font-size-below-24pt",
         "shape-outside-slide",
         "low-whitespace-risk",
         "unexpected-object-overlap-risk",
@@ -1016,7 +1012,6 @@ def summarize_static_risks(static_result: dict[str, object]) -> dict[str, object
         "low-foreground-background-contrast",
         "connector-crosses-object-risk",
         "chart-missing-title-risk",
-        "chart-label-font-size-below-18pt",
         "text-box-padding-below-16pt",
         "alignment-tolerance-risk",
     }

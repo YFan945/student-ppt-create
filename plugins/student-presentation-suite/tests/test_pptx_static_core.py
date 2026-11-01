@@ -268,11 +268,11 @@ class PptxStaticCoreTests(unittest.TestCase):
                     <Relationship Id='rIdChart' Type='http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart' Target='../charts/chart1.xml'/>
                     </Relationships>""")
                     archive.writestr("ppt/charts/chart1.xml", """<c:chartSpace xmlns:c='http://schemas.openxmlformats.org/drawingml/2006/chart'
-                    xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'><c:chart><c:plotArea><a:p><a:r><a:rPr sz='1400'/><a:t>Small label</a:t></a:r></a:p></c:plotArea></c:chart></c:chartSpace>""")
+                    xmlns:a='http://schemas.openxmlformats.org/drawingml/2006/main'><c:chart><c:plotArea><a:p><a:r><a:rPr sz='800'/><a:t>Small label</a:t></a:r></a:p></c:plotArea></c:chart></c:chartSpace>""")
             result = core.inspect_pptx(pptx)
         risks = [risk for finding in result["findings"] for risk in finding["risk"]]
         self.assertIn("chart-missing-title-risk", risks)
-        self.assertIn("chart-label-font-size-below-18pt", risks)
+        self.assertIn("small-chart-label-readability-review", risks)
 
     def test_flags_explicit_text_padding_below_token(self) -> None:
         slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
@@ -307,30 +307,30 @@ class PptxStaticCoreTests(unittest.TestCase):
             self.write_pptx(
                 pptx,
                 [slide_xml("Body text from layout", ph_type="body")],
-                layout_body_sz="1800",
+                layout_body_sz="800",
                 master_body_sz="2600",
             )
 
             result = core.inspect_pptx(pptx)
 
-        self.assertEqual(result["findings"][0]["min_font_pt"], 18)
+        self.assertEqual(result["findings"][0]["min_font_pt"], 8)
         self.assertEqual(result["findings"][0]["font_size_source"], "layout-style")
-        self.assertIn("font-size-below-20pt", result["findings"][0]["risk"])
+        self.assertIn("small-text-readability-review", result["findings"][0]["risk"])
 
     def test_explicit_font_size_overrides_inherited_style(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             pptx = Path(tmp) / "explicit-size.pptx"
             self.write_pptx(
                 pptx,
-                [slide_xml("Explicit small title", explicit_sz="1800")],
+                [slide_xml("Explicit small title", explicit_sz="800")],
                 master_title_sz="3200",
             )
 
             result = core.inspect_pptx(pptx)
 
-        self.assertEqual(result["findings"][0]["min_font_pt"], 18)
+        self.assertEqual(result["findings"][0]["min_font_pt"], 8)
         self.assertEqual(result["findings"][0]["font_size_source"], "explicit")
-        self.assertIn("heading-font-size-below-24pt", result["findings"][0]["risk"])
+        self.assertIn("small-text-readability-review", result["findings"][0]["risk"])
 
     def test_subtitle_below_24pt_is_not_treated_as_primary_title(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -344,6 +344,16 @@ class PptxStaticCoreTests(unittest.TestCase):
 
         risks = result["findings"][0]["risk"] if result["findings"] else []
         self.assertNotIn("heading-font-size-below-24pt", risks)
+
+    def test_readable_body_and_title_are_not_forced_up_to_legacy_font_floors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            pptx = Path(tmp) / "content-hierarchy.pptx"
+            self.write_pptx(pptx, [
+                slide_xml("Visible explanation and evidence", ph_type="body", explicit_sz="1400"),
+                slide_xml("The diagram explains the result", explicit_sz="1800"),
+            ])
+            result = core.inspect_pptx(pptx)
+        self.assertEqual(result["findings"], [])
 
     def test_flags_outside_geometry_and_uncommon_font(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -47,7 +47,7 @@ Meta field rules:
 - `format`: `"individual" | "group"`
 - `duration_min`: number of minutes
 - `slide_count`: integer target slide count
-- `max_words_per_slide` / `max_chinese_chars_per_slide`: optional confirmed positive-integer limits, without arbitrary upper bounds; omit for new tasks with no user cap. Explicit values remain binding; legacy defaults remain supported.
+- `max_words_per_slide` / `max_chinese_chars_per_slide`: optional confirmed positive-integer limits, without arbitrary upper bounds; omit for new tasks with no user cap. Explicitly recorded values remain binding, including old tasks; missing values never imply a cap.
 - `image_source`: `"user-assets" | "web-search" | "generated" | "hybrid-adaptive" | "diagram-only" | "text-only" | "ask-before-web-search"`
 - `source_material`: a short evidence-boundary description or a list of supplied sources
 - `visual_style`: one of the 12 formal style names, `Other`, or a legacy style name
