@@ -7,6 +7,62 @@ import re
 from pathlib import Path
 from typing import Any
 
+_LOCATORS = {"search_engine", "listing"}
+
+
+def _research_root(work_dir: Path) -> Path:
+    return (work_dir / "research").resolve()
+
+
+def _resolve_research_file(work_dir: Path, raw: object) -> Path | None:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    path = Path(raw)
+    resolved = (path if path.is_absolute() else work_dir / path).resolve()
+    try:
+        if not resolved.is_relative_to(_research_root(work_dir)):
+            return None
+    except (OSError, ValueError):
+        return None
+    return resolved
+
+
+def _sha256(path: Path) -> str | None:
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return None
+
+
+def _url_records(records: list, url: object) -> list[dict]:
+    return [row for row in records if isinstance(row, dict) and row.get("url") == url]
+
+
+def _raw_intact(record: dict, work_dir: Path) -> bool:
+    digest = record.get("raw_sha256")
+    path = _resolve_research_file(work_dir, record.get("raw_path"))
+    return isinstance(digest, str) and path is not None and _sha256(path) == digest
+
+
+def _text_intact(record: dict, work_dir: Path) -> bool:
+    """True when fetch-text's own text file is still the bytes named in the report."""
+    digest = record.get("text_sha256")
+    path = _resolve_research_file(work_dir, record.get("text_path"))
+    return bool(record.get("ok")) and isinstance(digest, str) and path is not None and _sha256(path) == digest
+
+
+def _same_text(record: dict, work_dir: Path, path: Path, digest: str) -> bool:
+    recorded = _resolve_research_file(work_dir, record.get("text_path"))
+    return bool(record.get("ok")) and record.get("text_sha256") == digest and recorded == path
+
+
+def _document_record(candidates: list[dict]) -> dict | None:
+    """Prefer a non-locator row. A locator-only set is returned so the caller can reject it."""
+    documents = [row for row in candidates if row.get("host_class") not in _LOCATORS]
+    if documents:
+        return documents[0]
+    return candidates[0] if candidates else None
+
 
 def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> list[dict]:
     out: list[dict] = []
@@ -56,6 +112,50 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
         if sid not in refs:
             fail("evidence_unlinked_source", "Binding source is not used by the entity.", eid)
             continue
+        url_rows = _url_records(records, sources[sid].get("url"))
+        # source-backed + verification=source may cite a fetched document when no
+        # reader produced text. text-bound-v1, quotes, and verification=text still
+        # need a passage. A successful extraction on disk closes this fallback.
+        source_level = (
+            balanced
+            and key != "quotes"
+            and entity.get("verification", "source") == "source"
+            and not str(binding.get("text_path", "")).strip()
+        )
+        if source_level:
+            if sources[sid].get("type") == "user-file":
+                fail("evidence_text_unreadable", "A user file still needs a readable passage under work-dir/research.", eid)
+                continue
+            intact = [row for row in url_rows if _text_intact(row, work_dir) and row.get("host_class") not in _LOCATORS]
+            produced = [row for row in url_rows if row.get("ok") and row.get("host_class") not in _LOCATORS]
+            if intact or produced:
+                fail(
+                    "evidence_text_available",
+                    "fetch-text already extracted this URL. Bind that text file, or bind a local UTF-8 extraction of the saved raw bytes.",
+                    eid,
+                )
+                continue
+            record = _document_record([row for row in url_rows if _raw_intact(row, work_dir)])
+            if record is None:
+                fail("evidence_fetch_binding_missing", "No fetched document backs this source URL.", eid)
+                continue
+            if record.get("host_class") in _LOCATORS:
+                fail("evidence_locator_as_source", "Locator pages cannot substantiate a claim.", eid)
+                continue
+            fail(
+                "evidence_source_unquoted",
+                "Source-level binding: the document was fetched, but this claim is not tied to a verbatim passage. Numbers are not mechanically checked.",
+                eid,
+                severity="minor",
+            )
+            covered.add((eid, sid))
+            continue
+        if not str(binding.get("text_path", "")).strip():
+            if key == "quotes":
+                fail("evidence_quote_mismatch", "A quote requires a verbatim excerpt from the bound text.", eid)
+            else:
+                fail("evidence_text_unreadable", "Bound text is missing or is not UTF-8.", eid)
+            continue
         path = Path(str(binding.get("text_path", "")))
         path = (path if path.is_absolute() else work_dir / path).resolve()
         if not path.is_relative_to(allowed):
@@ -73,18 +173,27 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
         if binding.get("text_sha256") != digest:
             fail("evidence_hash_mismatch", "Evidence hash does not match the file bytes.", eid)
             continue
-        record = next((r for r in records if isinstance(r, dict) and r.get("ok")
-                       and r.get("url") == sources[sid].get("url")
-                       and r.get("text_sha256") == digest
-                       and r.get("text_path") and
-                       (Path(r["text_path"]) if Path(r["text_path"]).is_absolute()
-                        else work_dir / r["text_path"]).resolve() == path), None)
+        record = next((row for row in url_rows if _same_text(row, work_dir, path, digest)), None)
+        local = False
+        # Do not let a hand-written file replace a fetch-text extraction that still
+        # matches its record. Local text is only the fallback for a saved raw body.
+        fetched_text_intact = any(_text_intact(row, work_dir) for row in url_rows)
+        if record is None and balanced and sources[sid].get("type") != "user-file" and not fetched_text_intact:
+            record = _document_record([row for row in url_rows if _raw_intact(row, work_dir)])
+            local = record is not None and record.get("host_class") not in _LOCATORS
         if sources[sid].get("type") != "user-file" and record is None:
             fail("evidence_fetch_binding_missing", "No successful fetch binds this source URL to this text.", eid)
             continue
-        if record and record.get("host_class") in {"search_engine", "listing"}:
+        if record and record.get("host_class") in _LOCATORS:
             fail("evidence_locator_as_source", "Locator pages cannot substantiate a claim.", eid)
             continue
+        if local:
+            fail(
+                "evidence_local_extraction",
+                "Text was extracted locally and bound to the fetched raw bytes. fetch-text did not produce this text file.",
+                eid,
+                severity="minor",
+            )
         excerpt = str(binding.get("excerpt", ""))
         if not excerpt or excerpt not in text:
             fail("evidence_excerpt_mismatch", "The verbatim excerpt is absent from the bound text.", eid)

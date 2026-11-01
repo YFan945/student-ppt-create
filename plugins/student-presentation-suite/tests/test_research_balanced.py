@@ -1,6 +1,7 @@
 """Behavioral regression tests for usable-first research and continuation."""
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
@@ -104,6 +105,99 @@ class BalancedEvidenceTests(unittest.TestCase):
     def test_source_mode_still_rejects_fabricated_numbers(self):
         self.pack["data_points"][0]["value"] = "83%"
         self.assertFalse(self.verdict()["ok"])
+
+    def _s01_record(self):
+        url = self.pack["sources"][0]["url"]
+        return next(row for row in self.fixture.report["records"] if row["url"] == url)
+
+    def _keep_raw_only(self):
+        """A fetched PDF whose reader saved bytes and extracted nothing."""
+        record = self._s01_record()
+        raw_path = self.fixture.fetched / "source.raw"
+        raw = b"%PDF-1.4 wind power is proportional to the cube of wind speed"
+        raw_path.write_bytes(raw)
+        record.update({
+            "ok": False,
+            "reason": "not_extractable",
+            "raw_path": str(raw_path),
+            "raw_sha256": hashlib.sha256(raw).hexdigest(),
+            "host_class": "public",
+        })
+        record.pop("text_path", None)
+        record.pop("text_sha256", None)
+        return record
+
+    def test_local_utf8_binds_when_fetch_text_could_not_extract(self):
+        self._keep_raw_only()
+        report = self.verdict()
+        codes = [item["code"] for item in report["problems"]]
+        self.assertTrue(report["ok"], report["problems"])
+        self.assertIn("evidence_local_extraction", codes)
+        self.assertTrue(all(item["severity"] == "minor" for item in report["problems"]))
+
+    def test_local_text_still_rejects_a_fabricated_excerpt(self):
+        self._keep_raw_only()
+        self.pack["evidence"][0]["excerpt"] = "原文没有说过的话"
+        self.assertIn("evidence_excerpt_mismatch", [item["code"] for item in self.verdict()["problems"]])
+
+    def test_tampered_raw_bytes_do_not_authorize_local_text(self):
+        record = self._keep_raw_only()
+        Path(record["raw_path"]).write_bytes(b"%PDF-1.4 tampered")
+        self.assertIn("evidence_fetch_binding_missing", [item["code"] for item in self.verdict()["problems"]])
+
+    def test_local_text_cannot_replace_a_successful_extraction(self):
+        other = self.fixture.fetched / "other.txt"
+        other.write_bytes("2026年某基准上的幻觉率为38%。对象幻觉是另一份文本。\n".encode())
+        digest = hashlib.sha256(other.read_bytes()).hexdigest()
+        for binding in self.pack["evidence"]:
+            binding["text_path"] = str(other)
+            binding["text_sha256"] = digest
+            binding["excerpt"] = other.read_text(encoding="utf-8").strip()
+        self.assertIn("evidence_fetch_binding_missing", [item["code"] for item in self.verdict()["problems"]])
+
+    def test_text_bound_contract_still_requires_the_fetch_text_file(self):
+        self._keep_raw_only()
+        self.pack["evidence_contract"] = "text-bound-v1"
+        self.assertIn("evidence_fetch_binding_missing", [item["code"] for item in self.verdict()["problems"]])
+
+    def test_listing_bytes_do_not_authorize_local_text(self):
+        record = self._keep_raw_only()
+        record["host_class"] = "listing"
+        self.assertIn("evidence_locator_as_source", [item["code"] for item in self.verdict()["problems"]])
+
+    def test_source_verification_can_cite_a_fetched_document_without_a_passage(self):
+        self._keep_raw_only()
+        for binding in self.pack["evidence"]:
+            for key in ("excerpt", "text_path", "text_sha256", "year", "unit", "region", "metric"):
+                binding.pop(key, None)
+        self.pack["data_points"][0]["value"] = "83%"
+        report = self.verdict()
+        self.assertTrue(report["ok"], report["problems"])
+        self.assertIn("evidence_source_unquoted", [item["code"] for item in report["problems"]])
+        self.assertNotIn("evidence_value_mismatch", [item["code"] for item in report["problems"]])
+
+    def test_source_level_citation_is_refused_when_text_was_extracted(self):
+        for binding in self.pack["evidence"]:
+            for key in ("excerpt", "text_path", "text_sha256"):
+                binding.pop(key, None)
+        report = self.verdict()
+        self.assertFalse(report["ok"])
+        self.assertIn("evidence_text_available", [item["code"] for item in report["problems"]])
+
+    def test_text_verification_still_needs_a_passage_when_only_raw_bytes_exist(self):
+        self._keep_raw_only()
+        for entity in self.pack["findings"] + self.pack["data_points"]:
+            entity["verification"] = "text"
+        for binding in self.pack["evidence"]:
+            for key in ("excerpt", "text_path", "text_sha256"):
+                binding.pop(key, None)
+        self.assertIn("evidence_text_unreadable", [item["code"] for item in self.verdict()["problems"]])
+
+    def test_a_quote_cannot_skip_the_passage(self):
+        self._keep_raw_only()
+        self.pack["quotes"] = [{"id": "Q01", "text": "对象幻觉是 LVLM 最常见的幻觉类型之一", "source_id": "S01"}]
+        self.pack["evidence"].append({"entity_id": "Q01", "source_id": "S01", "locator": "第1段", "support_note": "引语需要原文"})
+        self.assertIn("evidence_quote_mismatch", [item["code"] for item in self.verdict()["problems"]])
 
     def test_optional_gap_is_partial_and_core_gap_is_insufficient(self):
         path = self.task()

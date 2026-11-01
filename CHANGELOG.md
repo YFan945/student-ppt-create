@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- 放宽 source-backed-v1 的正文绑定：fetch-text 已保存原始字节但抽不出文本时（常见于 PDF），可以绑定自行抽出并放在 work-dir/research 下的 UTF-8 文本，只要 raw_sha256 仍与抓取文件一致；校验记 minor `evidence_local_extraction`。已成功且仍匹配的 fetch-text 文本不能被另一份文件替换。
+- verification=source 且该 URL 没有成功抽出的文本时，可用 locator + support_note 引用已抓取的文档，不强制逐字片段；校验记 minor `evidence_source_unquoted`，数字不做逐字校验。引语、verification=text、cross_check 与 text-bound-v1 仍要求 fetch-text 自己的文本绑定。
+- PDF 抽取依次尝试 markitdown、pdfminer、pypdf、pymupdf（后三者装了才用），并识别以 `%PDF` 开头但 Content-Type 不是 application/pdf 的响应。
+
 ## 0.31.2 — 2026-11-02 · 可携带的模板设计参考库
 
 - 随插件携带可跨电脑复用的设计参考库：预览、配色、文字层级、对象位置、表格/图片槽位与母版继承结构；不内置约1.5GB原始PPTX或字体包。

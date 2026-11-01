@@ -271,14 +271,28 @@ validate_research_task.py 后显式 spawn；prompt 只给 task 和 work-dir 的�
 背景、scope、档位、输入文件与 claims 的 id/原文/acceptance 都在 task，避免转抄漂移。
 例子见 examples/research-task.json。校验 pack 自动发现 task（也可传 --task），所有任务 claim 必须逐字保留并收口。
 
-新 A/B 包默认启用 evidence_contract=source-backed-v1：每个可用 F/D/Q 至少有一个可读取的
-来源片段绑定 entity_id → source_id → excerpt + text_path + text_sha256 + locator + support_note。
-绑定必须先从 fetched 原文用脚本开窗抽取（`research_excerpt.py`），再写进 pack；凭记忆写
+新 A/B 包默认启用 evidence_contract=source-backed-v1。fetch-text 抽出了正文时，每个可用
+F/D/Q 绑定一条可读片段：entity_id → source_id → excerpt + text_path + text_sha256 + locator +
+support_note。绑定必须先从该文本用脚本开窗抽取（`research_excerpt.py`），再写进 pack；凭记忆写
 摘录、被逐字校验打回后再补救，是写包-校验循环里最大的一笔浪费。
 一个直接来源即可支持普通论断，默认 medium；不为所有辅助来源重复建立绑定。
-数字仍须在片段中直接出现，直接引语必须逐字一致；搜索摘要只能用于定位，不能作为事实账本。
-正文路径必须在 work-dir/research 下；web 来源需成功的 fetch-report 将 URL 与同一文本绑定。
-support_note 解释语义支持关系，机器不宣称自动证明语义。
+有片段时，数字仍须在片段中直接出现，直接引语必须逐字一致；搜索摘要只能用于定位，不能作为事实账本。
+正文路径必须在 work-dir/research 下，text_sha256 必须与文件字节一致。
+
+web 来源的正文不要求一定由 fetch-text 自己抽出。两条放宽只对 source-backed-v1 生效，text-bound-v1
+仍要求成功的 fetch-report 把 URL 绑到同一文本文件：
+
+- **本地抽出**：fetch-text 已保存原始字节（`raw_path` / `raw_sha256` 仍与文件一致），但文本抽取失败
+  （常见于 PDF，markitdown 未装 PDF 依赖或页面抽不出字）。用其他阅读器把 UTF-8 文本写到
+  work-dir/research 下，再按普通片段绑定。校验接受这份本地文本，并记 minor `evidence_local_extraction`。
+  已有且仍然匹配的 fetch-text 文本不能被另一份手写文件替换。
+- **来源级引用**：verification=source（默认）且该 URL 没有任何成功抽出的文本时，绑定可以只有
+  locator + support_note，不附片段。文档必须已经被 fetch 保存（原始字节哈希仍匹配）。校验记 minor
+  `evidence_source_unquoted`：论断可以引用这份已取得的文档，但数字不做逐字校验。引语、verification=text
+  和 cross_check 不能走这条。若 fetch-text 已经抽出文本，必须改绑片段（`evidence_text_available`）。
+
+support_note 解释语义支持关系，机器不宣称自动证明语义。定位页（搜索结果、目录）即使字节已保存，
+也不能充当来源。
 
 claims 新增 importance=core|supporting（默认 core）、verification=source|text|cross_check（默认 source）。
 关键数字指定 text，要求 year/unit/region/metric 与原文对应；可用 context_excerpt 引用同一

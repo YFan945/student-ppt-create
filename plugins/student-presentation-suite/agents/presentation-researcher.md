@@ -54,19 +54,33 @@ research-pack.json, research-pack-validation.json, and research/ audit artifacts
    --start <literal> --end <literal> (at most 2000 chars); add --pack <pack>
    --entity-id <id> --source-id <id> to update one existing binding with metadata-only stdout.
    Do not implement custom Python grab/find functions that print dynamic page ranges.
+   Saving a UTF-8 extraction of an already fetched file under research/ is allowed.
    Do not dump whole page bodies into the context. The report accumulates and
    `degenerate_channels` closes repeated non-answering endpoints (`channel_closed`).
-5. Default new A/B packs to evidence_contract=source-backed-v1. Bind one readable
-   passage per usable F/D/Q (entity_id, source_id, excerpt, text_path, text_sha256,
-   locator, support_note); file hashes alone do not establish semantic support. Keep numbers and direct quotes verbatim; search text
-   only locates sources. Default ordinary facts to medium; respect task importance
-   and verification. Never write excerpts from memory: produce every binding with
-   `scripts/research_excerpt.py` (or equivalent scripted windowing over the fetched
-   text_path) BEFORE writing it into the pack — the validator rejects excerpts that
-   do not match the file verbatim, and repairing memory-written excerpts afterwards
-   is the most expensive write-validate loop in this role. text requires year/unit/region/metric; context_excerpt may
+5. Default new A/B packs to evidence_contract=source-backed-v1. When fetch-text
+   writes a text file, bind one readable passage per usable F/D/Q (entity_id,
+   source_id, excerpt, text_path, text_sha256, locator, support_note); file hashes alone do not establish semantic support.
+   If fetch-text saved the raw bytes but
+   could not extract them (PDF readers often return not_extractable), write a UTF-8
+   extraction under work-dir/research and bind that file's text_sha256. The
+   source-backed validator accepts it when raw_sha256 still matches the fetched
+   bytes and records evidence_local_extraction. Do not replace a fetch-text file
+   that still matches its record. For verification=source only, when that URL has
+   no successful extraction, a locator + support_note with no passage is enough
+   (evidence_source_unquoted); numbers in that binding are not checked verbatim.
+   Quotes still need a verbatim passage, including one taken from a local
+   extraction. verification=text and cross_check still need that passage.
+   text-bound-v1 still requires the fetch-report text file. Keep numbers and
+   direct quotes verbatim when a passage is bound; search text only locates sources. Default ordinary facts to
+   medium; respect task importance and verification. Never write excerpts from
+   memory: produce every passage binding with `scripts/research_excerpt.py` (or
+   equivalent scripted windowing over the text file) BEFORE writing it into the
+   pack — the validator rejects excerpts that do not match the file verbatim, and
+   repairing memory-written excerpts afterwards is the most expensive write-validate
+   loop in this role. text requires year/unit/region/metric; context_excerpt may
    cite a table header from the same file. cross_check needs independent origins.
-   text-bound-v1 is opt-in strict mode. Link entities with matching claim_id.
+   text-bound-v1 is opt-in strict mode and still requires the fetch-report text
+   file. Link entities with matching claim_id.
    Record origin_id for republications of one report/data-set.
    Keep one concise evidence entity per claim where possible; put scope exceptions in notes.
    Do not create extra entities that inherit cross_check but only have one origin. If validation
@@ -102,7 +116,8 @@ Before final validation, re-read support from a counterexample perspective. For 
    For simple/source tasks, leave quotes and visual_candidates empty unless explicitly
    requested. Once one direct passage meets the claim and validation
    is ready, return immediately. Do not generate extra visual candidates or seek
-   more origins unless the task requests them. Use fetch-text's text_sha256 directly;
+   more origins unless the task requests them. Use fetch-text's text_sha256 when it
+   extracted the text, otherwise the sha256 of the local UTF-8 file;
    batch metadata/excerpt checks and write the pack once per useful evidence update.
 
 ## Handoff

@@ -42,6 +42,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import html
+import io
 import ipaddress
 import json
 import re
@@ -225,23 +226,69 @@ def _default_getter(url: str, timeout: int) -> tuple[int, dict[str, str], bytes]
         return int(getattr(response, "status", 200) or 200), headers, response.read()
 
 
-def _pdf_text(raw: bytes) -> tuple[str | None, str]:
-    """Convert a PDF body with markitdown when it is installed; never guess."""
-    try:
-        import markitdown  # noqa: PLC0415 - optional runtime dependency
-    except ModuleNotFoundError:
-        return None, "pdf text extraction requires markitdown"
+def _pdf_via_markitdown(raw: bytes) -> str:
     import tempfile  # noqa: PLC0415 - only needed on the PDF path
+
+    import markitdown  # noqa: PLC0415 - optional runtime dependency
 
     with tempfile.TemporaryDirectory() as tmp:
         target = Path(tmp) / "source.pdf"
         target.write_bytes(raw)
+        result = markitdown.MarkItDown().convert(str(target))
+    return str(getattr(result, "text_content", "") or "")
+
+
+def _pdf_via_pdfminer(raw: bytes) -> str:
+    from pdfminer.high_level import extract_text  # noqa: PLC0415 - optional PDF reader
+
+    return extract_text(io.BytesIO(raw)) or ""
+
+
+def _pdf_via_pypdf(raw: bytes) -> str:
+    from pypdf import PdfReader  # noqa: PLC0415 - optional PDF reader
+
+    reader = PdfReader(io.BytesIO(raw))
+    return "\n".join(page.extract_text() or "" for page in reader.pages)
+
+
+def _pdf_via_pymupdf(raw: bytes) -> str:
+    import fitz  # noqa: PLC0415 - optional PDF reader
+
+    document = fitz.open(stream=raw, filetype="pdf")
+    try:
+        return "\n".join(page.get_text() or "" for page in document)
+    finally:
+        document.close()
+
+
+def _pdf_text(raw: bytes) -> tuple[str | None, str]:
+    """Extract PDF text without treating one reader as mandatory.
+
+    markitdown (often installed without its PDF extra) is tried first. pdfminer,
+    pypdf, and pymupdf are used when they happen to be installed. A missing
+    library or an empty result does not stop the next reader. The note names
+    every attempt so a not_extractable record says why.
+    """
+    notes: list[str] = []
+    for name, attempt in (
+        ("markitdown", _pdf_via_markitdown),
+        ("pdfminer", _pdf_via_pdfminer),
+        ("pypdf", _pdf_via_pypdf),
+        ("pymupdf", _pdf_via_pymupdf),
+    ):
         try:
-            result = markitdown.MarkItDown().convert(str(target))
-        except Exception as exc:  # markitdown raises a wide range; report, never crash
-            return None, f"markitdown failed: {type(exc).__name__}"
-    text = str(getattr(result, "text_content", "") or "").strip()
-    return (text or None), "" if text else "markitdown returned no text"
+            extracted = attempt(raw)
+        except (ModuleNotFoundError, ImportError):
+            notes.append(f"{name} unavailable")
+            continue
+        except Exception as exc:  # readers raise widely; record the failure, keep going
+            notes.append(f"{name} failed: {type(exc).__name__}")
+            continue
+        text = str(extracted or "").strip()
+        if text:
+            return text, ""
+        notes.append(f"{name} returned no text")
+    return None, "; ".join(notes) or "pdf text extraction produced no text"
 
 
 def _artifact_name(url: str, raw: bytes, _out_dir: Path) -> str:
@@ -315,7 +362,8 @@ def fetch_one(
     record["raw_path"] = str(raw_path)
 
     note = ""
-    if any(kind in content_type.lower() for kind in _PDF_TYPES):
+    # Some hosts send application/octet-stream for a PDF. The magic bytes are enough.
+    if raw.startswith(b"%PDF") or any(kind in content_type.lower() for kind in _PDF_TYPES):
         text, note = _pdf_text(raw)
         record["pdf"] = True
     elif any(kind in content_type.lower() for kind in _TEXT_TYPES):
