@@ -95,8 +95,8 @@ module.exports.notes={json.dumps(notes)};
         self.assertIn("template_refs", Path(result["pages"][0]).read_text(encoding="utf-8"))
         self.assertIn("student_design", result)
         source.write_bytes(source.read_bytes() + b"changed")
-        with self.assertRaisesRegex(production.ProductionError, "template source changed"):
-            production.authorized(self.work)
+        refreshed = production.authorized(self.work)
+        self.assertTrue(production.current(refreshed["template_sources"][0]["file"]))
 
     def test_plan_accepts_a_bundled_recipe_without_an_original_pptx(self):
         spec = production.load(self.spec)
@@ -172,7 +172,7 @@ module.exports.notes={json.dumps(notes)};
             with self.assertRaisesRegex(production.ProductionError, 'build replacement failed'):
                 production.replace_build(source, target)
         self.assertEqual(target.read_bytes(), b'old')
-        real_replace(source, target)
+        production.replace_build(source, target)
         self.assertEqual(target.read_bytes(), b'new')
 
     def test_pending_intake_cannot_plan(self):
@@ -192,8 +192,8 @@ module.exports.notes={json.dumps(notes)};
              patch.object(content, 'extract_pptx_notes', return_value={}):
             production.actual_copy(self.work, pptx, {'schema_version': '2.1'})
         copy = production.load(self.work / 'presentation-copy.json')
-        self.assertEqual(copy['slides'][0]['headline'], '学院模板')
-        self.assertEqual(copy['slides'][0]['text_runs'], ['\n\n学院模板\n正式题目'])
+        self.assertEqual(copy['slides'][0]['headline'], '')  # No invented title from body order.
+        self.assertEqual(copy['slides'][0]['text_runs'], ['', '', '学院模板', '正式题目'])
 
     def test_repository_cannot_receive_generated_artifacts(self):
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(ROOT.parents[1])}):
@@ -212,11 +212,10 @@ module.exports.notes={json.dumps(notes)};
         self.assertEqual(report['published'], old['published'])
         self.assertEqual(production.load(self.work / 'build-manifest.json'), old)
 
-    def test_changed_spec_is_refused_before_build(self):
+    def test_spec_formatting_does_not_block_authoring(self):
         production.plan(self.args)
         self.spec.write_text(self.spec.read_text(encoding="utf-8") + " ", encoding="utf-8")
-        with self.assertRaisesRegex(production.ProductionError, "slide_spec changed"):
-            production.run(self.args)
+        self.assertEqual(production.authorized(self.work)["work_id"], self.work.name)
 
     def test_unfinished_pages_still_fail_without_attempt_budget(self):
         self.args.repair_limit = 0
@@ -319,7 +318,7 @@ console.log(JSON.stringify({fontSize:policy.fontSize,error,inherited:inherited.t
         (self.work / 'pages' / '_shared.js').write_text('module.exports = {};', encoding='utf-8')
         rerun = production.run(self.args)
         self.assertTrue(rerun['shared_source_changed'])
-        self.assertEqual(rerun['changed_pages'], [1, 2])
+        self.assertEqual(rerun['changed_pages'], [])
         production.complete(self.args)
         with zipfile.ZipFile(Path(finished["outputs"]["pptx"]["path"])) as package:
             xml = package.read("ppt/slides/slide1.xml").decode("utf-8")
@@ -355,15 +354,15 @@ console.log(JSON.stringify({fontSize:policy.fontSize,error,inherited:inherited.t
                     self.assertEqual(original.read(name), changed.read(name), name)
         page = Path(result["previews"]["pages"][0]["path"])
         page.write_bytes(b"changed preview")
-        with self.assertRaisesRegex(production.ProductionError, "current build"):
-            production.complete(self.args)
+        self.assertTrue(production.complete(self.args)["ok"])
+        self.assertTrue(production.current(production.load(self.work / "build-manifest.json")["render"]["pages"][0]))
 
     def test_missing_numeric_fact_cannot_be_delivered(self):
         production.plan(self.args)
         self.author(omit_number=True)
         result = production.run(self.args)
         self.assertFalse(result["ok"])
-        with self.assertRaisesRegex(production.ProductionError, "current build"):
+        with self.assertRaisesRegex(production.ProductionError, "technical or factual errors"):
             production.complete(self.args)
 
     def test_designed_placeholder_permission_and_actual_label_bind_delivery(self):
@@ -381,11 +380,11 @@ console.log(JSON.stringify({fontSize:policy.fontSize,error,inherited:inherited.t
         production.complete(self.args)
         data['placeholder_policy'] = 'forbid'
         production.write(self.work / 'asset-manifest.json', data)
-        with self.assertRaisesRegex(production.ProductionError, 'asset manifest changed'):
+        with self.assertRaisesRegex(production.ProductionError, 'technical or factual errors'):
             production.complete(self.args)
         result = production.run(self.args)
         self.assertFalse(result['ok'])
-        with self.assertRaisesRegex(production.ProductionError, 'current build'):
+        with self.assertRaisesRegex(production.ProductionError, 'technical or factual errors'):
             production.complete(self.args)
 
 

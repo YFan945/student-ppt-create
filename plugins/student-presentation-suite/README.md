@@ -34,7 +34,7 @@ New work defaults to `design_freedom: auto`: free coordinates and shared drawing
 
 Images, editable charts and diagrams should explain the content. There are no fixed image quotas, global font floors, required color ratios or gallery imitation. User-specified branding, templates, logos and preserved content remain binding. Art Direction is optional.
 
-Slide Spec 2.1 freezes core meaning, exact facts, numbers and sources while allowing presentation wording to change. Actual copy is captured from the final artifact. Meaning and visual quality are checked by the author in the main conversation; this is **self-check, not independent semantic review**. Old 1.0/2.0 copy matching remains supported.
+Slide Spec 2.1 freezes core meaning, exact facts, numbers and sources while allowing presentation wording to change. Actual copy is captured from the final artifact; optional author metadata never substitutes for readback. Predictive layout findings guide rendered inspection, and current plans can be revised without a new work-id. See the production contract for recovery and delivery checks. Meaning and visual quality are checked by the author in the main conversation; this is **self-check, not independent semantic review**. Old 1.0/2.0 copy matching remains supported.
 
 The tools batch build, font processing, exact-content readback, package validation and rendering. They return concrete problems and current previews. The author looks at those previews before exporting. Production uses `plan → run → complete`; commands and runnable authoring examples are in [main-session-production.md](skills/sp-deck/references/main-session-production.md).
 

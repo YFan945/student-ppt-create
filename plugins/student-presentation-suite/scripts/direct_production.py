@@ -27,6 +27,7 @@ for directory in (ROOT, ROOT / "scripts", HERE):
     if str(directory) not in sys.path:
         sys.path.insert(0, str(directory))
 
+from shared.artifact_fingerprints import content_digest, visual_digest  # noqa: E402
 from shared.hashing import file_sha256  # noqa: E402
 from shared.slide_spec_contract import validate_slide_spec  # noqa: E402
 
@@ -65,14 +66,24 @@ def write(path: Path, value: dict[str, Any]) -> None:
 
 
 def bind(path: Path) -> dict[str, str]:
-    return {"path": str(path.resolve()), "sha256": file_sha256(path)}
+    return {"path": str(path.resolve()), "sha256": file_sha256(path), "content_sha256": content_digest(path)}
 
 
 def current(binding: dict[str, Any] | None) -> bool:
     if not binding or not binding.get("path"):
         return False
     path = Path(binding["path"])
-    return path.is_file() and file_sha256(path) == binding.get("sha256")
+    return path.is_file() and (content_digest(path) == binding["content_sha256"] if binding.get("content_sha256")
+                               else file_sha256(path) == binding.get("sha256"))
+
+
+def preserve_input(work: Path, path: Path) -> dict[str, str]:
+    """Preserve source artifacts without locking unrelated external files."""
+    destination = work / "_inputs" / (file_sha256(path)[:16] + "-" + path.name)
+    destination.parent.mkdir(exist_ok=True)
+    if not destination.exists():
+        shutil.copy2(path, destination)
+    return {**bind(destination), "original_path": str(path.resolve())}
 
 
 def delivery_directory(work: Path, meta: dict[str, Any]) -> Path:
@@ -100,11 +111,15 @@ def replace_build(source: Path, destination: Path) -> None:
 
 def publication_health(published: dict[str, Any]) -> dict[str, Any]:
     stale = []
+    missing = []
     for name, item in published.items():
         for entry in [item, *item.get("pages", [])]:
             if not current(entry):
                 stale.append({"deliverable": name, "path": entry.get("path")})
-    return {"ok": not stale, "stale": stale}
+                if not Path(entry.get("path") or "").is_file():
+                    missing.append(stale[-1])
+    return {"ok": not missing, "stale": stale, "missing": missing,
+            "modified": [entry for entry in stale if entry not in missing]}
 
 
 def status(args: argparse.Namespace) -> dict[str, Any]:
@@ -226,14 +241,37 @@ def authorized(work: Path) -> dict[str, Any]:
     for name in ("summary", "slide_spec", "source", "art_direction"):
         binding = manifest.get(name)
         if binding is not None and not current(binding):
-            raise ProductionError(f"{name} changed after planning; preserve frozen inputs and start a new plan")
-    if workflow.get("summary_sha256") != manifest["summary"]["sha256"]:
-        raise ProductionError("Production Summary authorization changed")
+            path = Path(binding["path"])
+            if not path.is_file():
+                raise ProductionError(f"{name} is missing: {path}; restore or update this plan's input path")
+            if name == "summary" and workflow.get("summary_sha256") != file_sha256(path):
+                raise ProductionError("Production Summary changed; confirm the revised summary for this same work-id")
+            if name == "source":
+                raise ProductionError("preserved source changed; restore the original snapshot before editing")
+            if name == "slide_spec":
+                _, errors, _ = validate_slide_spec(path)
+                if errors:
+                    raise ProductionError("invalid revised Slide Spec: " + json.dumps(errors, ensure_ascii=False))
+            manifest[name] = bind(path)
+            manifest.setdefault("input_changes", []).append(name)
+    if workflow.get("summary_sha256") not in {manifest["summary"]["sha256"], file_sha256(Path(manifest["summary"]["path"]))}:
+        raise ProductionError("Production Summary authorization changed; reconfirm for this work-id")
     for source in manifest.get("template_sources", []):
         if not current(source["file"]):
-            raise ProductionError("template source changed after planning; preserve the reference or start a new plan")
-        if not all(current(item) for item in source.get("reference_assets", [])):
-            raise ProductionError("bundled template reference changed after planning; start a new plan")
+            path = Path(source["file"]["path"])
+            if not path.is_file():
+                raise ProductionError(f"template reference missing: {path}")
+            source["file"] = bind(path)
+            if path.suffix.lower() == ".pptx":
+                from shared.template_library import inspect_template
+                inspected = inspect_template(path)
+                selected = {item["slide"] for item in source.get("selected_slides", [])}
+                if selected and max(selected) > inspected["slide_count"]:
+                    raise ProductionError(f"template page no longer exists: {source['id']}; update references in this plan")
+                source["selected_slides"] = [page for page in inspected["slides"] if page["slide"] in selected]
+            manifest.setdefault("input_changes", []).append("template_sources")
+        source["reference_assets"] = [bind(Path(item["path"])) for item in source.get("reference_assets", [])
+                                      if Path(item["path"]).is_file()]
     return manifest
 
 
@@ -307,7 +345,21 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
 
     work = work_directory(args.work_dir)
     if (work / "build-manifest.json").exists():
-        raise ProductionError("work-id already has a plan; use a new work-id")
+        manifest = authorized(work)
+        if args.slide_spec.resolve() != Path(manifest["slide_spec"]["path"]):
+            _, errors, _ = validate_slide_spec(args.slide_spec)
+            if errors:
+                raise ProductionError("invalid Slide Spec: " + json.dumps(errors, ensure_ascii=False))
+            manifest["slide_spec"] = bind(args.slide_spec)
+        if args.art_direction:
+            manifest["art_direction"] = bind(args.art_direction)
+        if manifest["mode"] != "edit_ooxml":
+            manifest["scaffold"] = generator_scaffold.scaffold_generator(work, Path(manifest["slide_spec"]["path"]),
+                Path(manifest["art_direction"]["path"]) if manifest.get("art_direction") else None)
+        save(work, manifest, "planned")
+        return {"ok": True, "action": "author_pages", "work_dir": str(work),
+                "preserved_authoring": True, "input_changes": manifest.get("input_changes", []),
+                "pages": [str(work / "pages" / name) for name in manifest.get("scaffold", {}).get("pages", [])]}
     workflow = load(work / "workflow-state.json")
     if workflow.get("state") != "intake_confirmed" or workflow.get("work_id") != work.name:
         raise ProductionError("confirm this work-id's Production Summary before planning")
@@ -324,6 +376,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     mode = derive_production_mode(spec, args.production_mode)
     validate_production_source(spec, mode)
     source = Path(spec["source_deck"]) if spec.get("source_deck") else None
+    source_binding = preserve_input(work, source) if source else None
     art = args.art_direction.resolve() if args.art_direction else None
     if art is not None and not art.is_file():
         raise ProductionError(f"Art Direction does not exist: {art}")
@@ -382,13 +435,13 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     scaffold = {} if mode == "edit_ooxml" else generator_scaffold.scaffold_generator(work, spec_path, art)
     if mode == "edit_ooxml":
         from shared.pptx_runtime import safe_extract_package
-        safe_extract_package(source, work / "ooxml")
+        safe_extract_package(Path(source_binding["path"]), work / "ooxml")
     manifest = {
         "manifest_version": MANIFEST_VERSION, "execution_mode": EXECUTION_MODE,
         "work_id": work.name, "work_dir": str(work), "mode": mode,
         "delivery_dir": str(output),
         "summary": bind(summary), "slide_spec": bind(spec_path),
-        "source": bind(source) if source else None,
+        "source": source_binding,
         "art_direction": bind(art) if art else None,
         "quality_level": meta.get("quality_level", "fast"),
         "design_freedom": meta.get("design_freedom", "auto"),
@@ -416,19 +469,26 @@ def actual_copy(work: Path, pptx: Path, spec: dict[str, Any]) -> None:
     # The authored headline/labels must be backed by the actual PPTX. Capture
     # complete text and notes from the artifact, never claim independent review.
     path = work / "presentation-copy.json"
-    authored = load(path) if path.is_file() else {}
+    try:
+        authored = load(path) if path.is_file() else {}
+    except (OSError, ValueError):
+        authored = {}
     texts, notes = content.extract_pptx_text(pptx), content.extract_pptx_notes(pptx)
-    entries = authored.get("slides", [])
-    if not entries and (work / "ooxml").is_dir():
-        entries = [{"headline": next((line.strip() for line in text.splitlines() if line.strip()), ""), "visual_labels": []}
-                   for text in texts]
-        authored["slides"] = entries
-    if len(entries) != len(texts):
-        raise ProductionError("each page must provide presentation_copy with its actual headline and labels")
+    hints = authored.get("slides", [])
+    entries = []
+    for index, text in enumerate(texts):
+        hint = hints[index] if isinstance(hints, list) and index < len(hints) and isinstance(hints[index], dict) else {}
+        headline = hint.get("headline") if isinstance(hint.get("headline"), str) else ""
+        if headline and not content.exact_present(headline, text):
+            headline = ""
+        labels = hint.get("visual_labels") if isinstance(hint.get("visual_labels"), list) else []
+        usage = hint.get("visual_usage") if isinstance(hint.get("visual_usage"), list) else []
+        entries.append({"headline": headline, "visual_labels": [label for label in labels
+                        if isinstance(label, str) and content.exact_present(label, text)],
+                        "visual_usage": [item for item in usage if isinstance(item, dict)]})
+    authored["slides"] = entries
     for index, entry in enumerate(entries, 1):
-        if (work / "ooxml").is_dir() and not str(entry.get("headline") or "").strip():
-            entry["headline"] = next((line.strip() for line in texts[index - 1].splitlines() if line.strip()), "")
-        entry.update(slide=index, speaker_notes=notes.get(index, ""), text_runs=[texts[index - 1]])
+        entry.update(slide=index, speaker_notes=notes.get(index, ""), text_runs=texts[index - 1].splitlines())
     authored["pptx_sha256"] = file_sha256(pptx)
     write(path, authored)
 
@@ -439,7 +499,9 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
     from shared.pptx_runtime import validate_pptx
 
     spec_path = Path(manifest["slide_spec"]["path"])
-    spec, _, _ = validate_slide_spec(spec_path)
+    spec, errors, _ = validate_slide_spec(spec_path)
+    if errors:
+        raise ProductionError("invalid Slide Spec: " + json.dumps(errors, ensure_ascii=False))
     actual_copy(work, pptx, spec)
     package = validate_pptx(pptx, Path(manifest["source"]["path"]) if manifest["source"] else None)
     content_path = work / "content-check.json"
@@ -461,11 +523,17 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
                 "limitation": "No authoring geometry report; inspect rendered pages for layout defects."}
     if geometry_path.is_file():
         authored_geometry = load(geometry_path)
-        if authored_geometry.get("pptx_sha256") != file_sha256(pptx):
-            raise ProductionError("geometry report does not belong to the current PPTX")
-        geometry = {key: authored_geometry.get(key, [] if key in {"errors", "warnings", "font_substitutions"} else 0)
-                    for key in ("ok", "errors", "warnings", "error_count", "warning_count", "font_substitutions")}
-        geometry.update(performed=True, report=bind(geometry_path))
+        if authored_geometry.get("pptx_sha256") == file_sha256(pptx):
+            geometry = {key: authored_geometry.get(key, [] if key in {"errors", "warnings", "font_substitutions"} else 0)
+                        for key in ("ok", "errors", "warnings", "error_count", "warning_count", "font_substitutions")}
+            geometry.update(performed=True, report=bind(geometry_path))
+            predictive = {"text_overlap", "text_overflow", "out_of_canvas", "text_low_contrast", "content_overflow_bottom", "near_miss_alignment"}
+            geometry["warnings"].extend({**item, "severity": "advisory", "requiresRenderedInspection": True}
+                                         for item in geometry["errors"] if item.get("code") in predictive)
+            geometry["errors"] = [item for item in geometry["errors"] if item.get("code") not in predictive]
+            geometry.update(ok=not geometry["errors"], error_count=len(geometry["errors"]), warning_count=len(geometry["warnings"]))
+        else:
+            geometry["warnings"].append({"code": "geometry_cache_stale", "action": "inspect current renders; stale predictions are not used"})
     report = {
         "ok": package["ok"] and content_report["ok"] and not missing_notes and geometry["ok"] and assets["ok"],
         "pptx": bind(pptx), "slide_spec": manifest["slide_spec"],
@@ -494,16 +562,20 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
 
 
 def render(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str, Any]:
-    from PIL import Image, ImageDraw
-
     from shared.pptx_runtime.render import render_pptx
 
     previous = manifest.get("render") or {}
+    visual = visual_digest(pptx)
+    spec, _, _ = validate_slide_spec(Path(manifest["slide_spec"]["path"])) if manifest.get("slide_spec") else ({}, [], "")
+    selected = set((spec.get("meta") or {}).get("deliverables") or (spec.get("meta") or {}).get("export_formats") or ["pptx"])
     if (previous.get("settings") == RENDER_SETTINGS and previous.get("pages")
-            and previous.get("pptx_sha256") == file_sha256(pptx) and all(current(item) for item in [
-        previous.get("pdf"), previous.get("contact_sheet"), *previous.get("pages", []),
-    ])):
-        return previous
+            and (previous.get("visual_sha256") == visual or previous.get("pptx_sha256") == file_sha256(pptx))
+            and all(current(item) for item in previous["pages"])
+            and ("pdf" not in selected or current(previous.get("pdf")))):
+        result = {**previous, "pptx_sha256": file_sha256(pptx), "visual_sha256": visual}
+        if "contact-sheet" in selected and not current(result.get("contact_sheet")):
+            result["contact_sheet"] = bind(make_contact_sheet(work, [Path(page["path"]) for page in result["pages"]]))
+        return result
     # A fresh directory avoids mixing old pages with the current deck.
     with tempfile.TemporaryDirectory(prefix="render-", dir=work) as directory:
         pdf, pages, _ = render_pptx(pptx, Path(directory), "slide", "png", 144)
@@ -520,10 +592,21 @@ def render(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str, Any]:
                 stale.unlink()
         final_pdf = target / "deck.pdf"
         shutil.copy2(pdf, final_pdf)
-    width, height, columns = 480, 300, min(3, len(final_pages))
-    sheet = Image.new("RGB", (columns * width, ((len(final_pages) + columns - 1) // columns) * height), "white")
+    contact = make_contact_sheet(work, final_pages)
+    return {"pptx_sha256": file_sha256(pptx), "visual_sha256": visual, "settings": RENDER_SETTINGS,
+            "pages": [bind(page) for page in final_pages],
+            "pdf": bind(final_pdf), "contact_sheet": bind(contact)}
+
+
+def make_contact_sheet(work: Path, pages: list[Path]) -> Path:
+    from PIL import Image, ImageDraw
+
+    if not pages:
+        raise ProductionError("cannot make a contact sheet without rendered pages")
+    width, height, columns = 480, 300, min(3, len(pages))
+    sheet = Image.new("RGB", (columns * width, ((len(pages) + columns - 1) // columns) * height), "white")
     draw = ImageDraw.Draw(sheet)
-    for index, page in enumerate(final_pages):
+    for index, page in enumerate(pages):
         with Image.open(page) as image:
             image.thumbnail((width - 12, height - 30))
             x, y = index % columns * width + 6, index // columns * height + 24
@@ -531,9 +614,7 @@ def render(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str, Any]:
             draw.text((x, y - 18), str(index + 1), fill="black")
     contact = work / "preview.png"
     sheet.save(contact)
-    return {"pptx_sha256": file_sha256(pptx), "settings": RENDER_SETTINGS,
-            "pages": [bind(page) for page in final_pages],
-            "pdf": bind(final_pdf), "contact_sheet": bind(contact)}
+    return contact
 
 
 def run(args: argparse.Namespace) -> dict[str, Any]:
@@ -543,6 +624,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
 
     work = work_directory(args.work_dir)
     manifest = authorized(work)
+    if manifest["mode"] != "edit_ooxml" and manifest.get("input_changes"):
+        manifest["scaffold"] = generator_scaffold.scaffold_generator(work, Path(manifest["slide_spec"]["path"]),
+            Path(manifest["art_direction"]["path"]) if manifest.get("art_direction") else None)
     previous_pages = (manifest.get("render") or {}).get("pages", [])
     previous_inputs = (manifest.get("build") or {}).get("authoring_inputs", [])
     manifest["attempts"] += 1
@@ -561,7 +645,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                     pack_directory(work / "ooxml", staging)
                 else:
                     entry = work / "deck.js"
-                    remaining = generator_scaffold.scaffolded_pages(generator_scaffold.listed_page_files(work / "pages"))
+                    active_pages = [work / "pages" / name for name in manifest.get("scaffold", {}).get("pages", [])]
+                    remaining = generator_scaffold.scaffolded_pages(active_pages or generator_scaffold.listed_page_files(work / "pages"))
                     if remaining:
                         raise ProductionError("unfinished pages: " + ", ".join(remaining) +
                                               "; implement their empty page functions using authoring-quickstart.md")
@@ -610,7 +695,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         manifest.pop("last_error", None)
         manifest.pop("last_build_report", None)
         save(work, manifest, "qa")
-        changed_pages = [index for index, page in enumerate(manifest["render"]["pages"], 1)
+        changed_pages = [index for index, page in enumerate(manifest["render"].get("pages", []), 1)
                          if index > len(previous_pages) or page["sha256"] != previous_pages[index - 1]["sha256"]]
         previous_paths = {item["path"]: item for item in previous_inputs}
         new_paths = {item["path"]: item for item in manifest["build"]["authoring_inputs"]}
@@ -618,8 +703,6 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                           if previous_paths.get(path) != new_paths.get(path)]
         shared_changed = bool(previous_inputs) and any(not re.match(r"p\d+-", Path(path).name)
                                                        for path in source_changes)
-        if shared_changed:
-            changed_pages = list(range(1, len(manifest["render"]["pages"]) + 1))
         if not checked["ok"]:
             action = "inspect_and_fix"
         elif no_render:
@@ -655,30 +738,26 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
 
     work = work_directory(args.work_dir)
     manifest = authorized(work)
-    checked = manifest.get("check") or {}
-    rendered = manifest.get("render") or {}
-    evidence = [checked.get("report"), (manifest.get("build") or {}).get("pptx"),
-                rendered.get("pdf"), rendered.get("contact_sheet"), *rendered.get("pages", [])]
-    evidence.extend((manifest.get("build") or {}).get("authoring_inputs", []))
-    if checked.get("presentation_copy"):
-        evidence.append(checked["presentation_copy"])
-    if not checked.get("ok") or not all(current(item) for item in evidence):
-        raise ProductionError("current build, checks and rendered previews are required before delivery")
-    pptx = Path(manifest["build"]["pptx"]["path"])
-    if rendered.get("pptx_sha256") != file_sha256(pptx):
-        raise ProductionError("previews do not belong to the current PPTX")
-    report = load(Path(checked["report"]["path"]))
-    assets = report.get("assets") or {}
-    if (work / "asset-manifest.json").is_file() != bool(assets.get("manifest")):
-        raise ProductionError("asset manifest changed; run again before delivery")
-    if assets.get("manifest") and not current(assets["manifest"]):
-        raise ProductionError("asset manifest changed; run again before delivery")
-    if not all(current(item) for item in assets.get("file_bindings", [])):
-        raise ProductionError("asset file changed; run again before delivery")
+    pptx_binding = (manifest.get("build") or {}).get("pptx")
+    if not pptx_binding or not Path(pptx_binding["path"]).is_file():
+        raise ProductionError("build a PPTX before delivery")
+    pptx = Path(pptx_binding["path"])
+    manifest["build"]["pptx"] = bind(pptx)
+    # Re-read the deliverable instead of trusting or requiring old report hashes.
+    report = check_artifact(work, manifest, pptx)
+    checked = {"ok": report["ok"], "report": bind(work / "production-check.json")}
+    if (work / "presentation-copy.json").is_file():
+        checked["presentation_copy"] = bind(work / "presentation-copy.json")
+    manifest["check"] = checked
+    if not report["ok"]:
+        save(work, manifest, "qa")
+        raise ProductionError("current PPTX has technical or factual errors; see production-check.json")
+    # Repair only derived previews; source comments, optional reports, PDF and
+    # contact-sheet caches do not require rebuilding an otherwise valid deck.
+    rendered = render(work, manifest, pptx)
+    manifest["render"] = rendered
     if len(rendered.get("pages", [])) != report["content"]["actual_slide_count"]:
-        raise ProductionError("current build needs one rendered preview per slide")
-    if (report.get("geometry") or {}).get("performed") and not current(report["geometry"].get("report")):
-        raise ProductionError("current geometry report is required before delivery")
+        raise ProductionError("current PPTX needs one rendered preview per slide")
     spec = load_slide_spec(Path(manifest["slide_spec"]["path"]))
     note = getattr(args, "review_note", None)
     if note is not None:
@@ -700,9 +779,8 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
     checked["report"] = bind(Path(checked["report"]["path"]))
     meta = spec.get("meta") or {}
     selected = set(meta.get("deliverables") or meta.get("export_formats") or ["pptx"])
-    output = Path(manifest.get("delivery_dir") or work.parent.parent)
-    if manifest.get("delivery_dir") and output != delivery_directory(work, meta):
-        raise ProductionError("delivery directory changed after planning")
+    output = delivery_directory(work, meta)
+    manifest["delivery_dir"] = str(output)
     output.mkdir(parents=True, exist_ok=True)
     prefix = str(meta.get("output_prefix") or work.name)
     if Path(prefix).name != prefix or any(char in prefix for char in "/\\") or prefix.startswith("."):
@@ -736,15 +814,16 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
             destination = output / f"{prefix}-{suffix}"
             destination.write_text(text, encoding="utf-8")
             published[name] = bind(destination)
-    copies = {"pptx": pptx, "pdf": Path(rendered["pdf"]["path"]),
-              "contact-sheet": Path(rendered["contact_sheet"]["path"]),
+    copies = {"pptx": pptx, **({"pdf": Path(rendered["pdf"]["path"])} if rendered.get("pdf") else {}),
+              **({"contact-sheet": Path(rendered["contact_sheet"]["path"])} if rendered.get("contact_sheet") else {}),
               "slide-spec": Path(manifest["slide_spec"]["path"]),
               "quality-report": Path(checked["report"]["path"])}
     for name in sorted(selected & copies.keys()):
         source = copies[name]
         extra = "" if name in {"pptx", "pdf"} else f"-{name}"
         destination = output / f"{prefix}{extra}{source.suffix}"
-        if manifest.get("source") and destination.resolve() == Path(manifest["source"]["path"]).resolve():
+        if manifest.get("source") and any(destination.resolve() == Path(path).resolve()
+                for path in (manifest["source"]["path"], manifest["source"].get("original_path")) if path):
             raise ProductionError("delivery must preserve the source deck")
         shutil.copy2(source, destination)
         published[name] = bind(destination)

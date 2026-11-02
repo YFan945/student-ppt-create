@@ -845,7 +845,7 @@ function addFittedText(slide, text, box, tokens, lang, role, options = {}) {
   const placement = resolveTextPlacement(text, box, policy);
   const fit = placement.fit;
   const textBox = placement.box;
-  if (!fit.fits) {
+  if (!fit.fits && !tokens.model_led) {
     // 报错必须带证据（文本预览/字数/盒子尺寸）：2026-09-28 live 的
     // "解释焦点 cannot fit at 16pt" 不含任何现场信息，三轮都无法判断是文案超长
     // 还是盒子太小（实为后者：小视觉区在 16pt 下限装不下任何文字）。

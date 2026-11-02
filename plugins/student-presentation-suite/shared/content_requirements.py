@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 # ASCII token boundaries intentionally allow adjoining Chinese characters.
@@ -21,6 +23,24 @@ def semantic_binding(spec_sha256: str, actual: list[str], notes: dict[int, str])
 
 def numbers(text: str) -> list[str]:
     return sorted(set(NUMBER_RE.findall(text)))
+
+
+def numeric_present(expected: str, actual: str) -> bool:
+    """Compare numeric values and percent units without rounding or unit conversion.
+
+    Exact quotations continue to use exact_present. Only numeric requirements
+    and fact bindings accept grouping separators and full-width digits.
+    """
+    def value(token: str) -> tuple[Decimal, bool] | None:
+        token = unicodedata.normalize("NFKC", token).replace(",", "")
+        percent = token.endswith("%")
+        try:
+            return Decimal(token.removesuffix("%")), percent
+        except InvalidOperation:
+            return None
+
+    wanted = value(expected)
+    return wanted is not None and any(value(token) == wanted for token in numbers(unicodedata.normalize("NFKC", actual)))
 
 
 def exact_present(expected: str, actual: str) -> bool:
@@ -46,19 +66,29 @@ def semantic_requirements(slide: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def fact_binding_present(fact: dict[str, str], blocks: list[str]) -> bool:
-    """Match an opted-in metric/value/unit in one actual OOXML text block.
+    """Match an opted-in fact in a text object or a spatially associated region.
 
-    Label before or after value is supported, including wrapping/colon. No
-    inferred synonyms, arithmetic, or union of unrelated text boxes is used.
+    Regions are assembled by the OOXML reader, never by joining a whole slide.
+    A small positive connector vocabulary accepts natural sentences without
+    treating negated, comparative or qualified claims as an exact fact.
     """
-    label = re.sub(r"\s+", "", fact["label"])
-    quantity = fact["value"] + fact.get("unit", "")
+    label = unicodedata.normalize("NFKC", re.sub(r"\s+", "", fact["label"]))
+    unit = re.sub(r"\s+", "", fact.get("unit", ""))
     for block in blocks:
-        normalized = re.sub(r"\s+", "", block).replace("：", ":")
+        normalized = unicodedata.normalize("NFKC", re.sub(r"\s+", "", block))
         if fact.get("context") and not exact_present(fact["context"], block):
             continue
-        for phrase in (label + quantity, label + ":" + quantity, quantity + label):
-            if exact_present(phrase, normalized):
+        for token in NUMBER_RE.finditer(normalized):
+            if not numeric_present(fact["value"], token.group()):
+                continue
+            before, after = normalized[:token.start()], normalized[token.end():]
+            if not after.startswith(unit):
+                continue
+            after = after[len(unit):]
+            if unit and unit[-1].isascii() and unit[-1].isalpha() and after and after[0].isascii() and after[0].isalnum():
+                continue
+            connectors = r"(?:[:=]|为|是|达到|等于)?"
+            if re.search(re.escape(label) + connectors + r"$", before) or after.startswith(label):
                 return True
     return False
 

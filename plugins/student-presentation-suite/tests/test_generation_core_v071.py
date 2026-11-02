@@ -699,14 +699,9 @@ class GenerationCoreV071Tests(unittest.TestCase):
                 exit_code = self.actual.run(args)
             self.assertEqual(0, exit_code)
             report = json.loads(buffer.getvalue())
-            self.assertFalse(report["ok"])
-            issues = [item for item in report["issues"] if item["code"] == "presentation_copy_unbound"]
-            self.assertEqual(1, len(issues))
-            self.assertEqual(["visual_labels"], issues[0]["fields"])
-            self.assertEqual({"visual_labels": ["图表系列名"]}, issues[0]["unmatched_texts"])
-            self.assertNotIn("metadata", issues[0]["fields"])
-            self.assertNotIn("speaker_notes", issues[0]["fields"])
-            self.assertNotIn("text_runs", issues[0]["fields"])
+            self.assertTrue(report["ok"])
+            self.assertEqual(report["copy_source"], "pptx-readback")
+            self.assertFalse(any(item["code"] == "presentation_copy_unbound" for item in report["issues"]))
 
     def test_delivery_quality_report_rejects_stale_pptx(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

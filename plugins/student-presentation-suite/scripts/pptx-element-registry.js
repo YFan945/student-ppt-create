@@ -200,8 +200,7 @@ class SlideElementRegistry {
 
   register(slideIndex, element) {
     if (!Number.isInteger(slideIndex) || slideIndex < 1) throw new Error('slideIndex must be >= 1');
-    if (this.options.capture && element.type === 'text')
-      element = { ...element, decorative: false, allowOverlap: false };
+    // Preserve explicit author intent; it is reported, never aesthetic approval.
     if (this.options.capture) {
       const logical = this._slide(slideIndex).find(
         (item) =>
@@ -348,7 +347,7 @@ class SlideElementRegistry {
           box.y < -safeMargin ||
           box.r > slideW + safeMargin ||
           box.b > slideH + safeMargin) &&
-        !(el.bleed === true && isDecorative(el) && el.type === 'shape')
+        !(el.bleed === true && isDecorative(el) && ['shape', 'image'].includes(el.type))
       ) {
         errors.push({
           code: 'out_of_canvas',
@@ -389,7 +388,7 @@ class SlideElementRegistry {
               : ['caption', 'source', 'reference'].includes(role)
                 ? 9
                 : 10;
-          if (minSize < threshold) {
+          if (this.options.typographyHeuristics === true && minSize < threshold) {
             warnings.push({
               code: 'text_size_review',
               element: el.id,
@@ -432,7 +431,7 @@ class SlideElementRegistry {
         }
       }
     }
-    if (tierSizes.size > 4) {
+    if (this.options.typographyHeuristics === true && tierSizes.size > 4) {
       const tiers = [...tierSizes].sort((a, b) => a - b);
       warnings.push({
         code: 'text_size_tiers',
@@ -444,7 +443,7 @@ class SlideElementRegistry {
     // font soup. Legacy pages without role metadata keep the old >2 fallback.
     for (const [role, pairs] of pairsByRole) {
       const limit = role === 'unknown' ? 2 : 1;
-      if (pairs.size <= limit) continue;
+      if (this.options.typographyHeuristics !== true || pairs.size <= limit) continue;
       const sorted = [...pairs].sort();
       warnings.push({
         code: 'font_family_mix',
@@ -524,12 +523,37 @@ class SlideElementRegistry {
       this._checkDeadZone(boxes, warnings);
     }
 
+    if (this.options.designPreferencesAdvisory) {
+      const predictive = new Set([
+        'text_overflow',
+        'text_overlap',
+        'out_of_canvas',
+        'text_low_contrast',
+        'content_overflow_bottom',
+      ]);
+      for (let index = errors.length - 1; index >= 0; index--) {
+        if (predictive.has(errors[index].code)) {
+          warnings.push({
+            ...errors[index],
+            severity: 'advisory',
+            requiresRenderedInspection: true,
+          });
+          errors.splice(index, 1);
+        }
+      }
+    }
     return {
       slideIndex,
       ok: errors.length === 0,
       errors,
       warnings,
       elementCount: elements.length,
+      typography: {
+        sizes: [...tierSizes].sort((a, b) => a - b),
+        pairsByRole: Object.fromEntries(
+          [...pairsByRole].map(([role, pairs]) => [role, [...pairs]]),
+        ),
+      },
       contrast: {
         checked: contrastChecked,
         unresolved: contrastUnresolved,

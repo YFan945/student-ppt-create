@@ -64,7 +64,12 @@ def review_expression(spec: dict[str, Any], actual: dict[str, Any]) -> dict[str,
                 icons[str(item["key"])].append({"slide": number, "box": item.get("box")})
     for key, uses in icons.items():
         pages = sorted({item["slide"] for item in uses})
-        if len(pages) > 1:
+        # Identity, navigation and shared legends are expected to recur. Only
+        # explicitly registered main visuals are candidates for reuse review.
+        primary_pages = {page.get("slide", index) for index, page in enumerate(actual.get("slides", []), 1)
+                         for item in page.get("visual_usage", []) if item.get("kind") == "icon"
+                         and str(item.get("key")) == key and item.get("role") == "primary"}
+        if len(primary_pages) > 1:
             findings.append({"code": "reused_icon", "key": key, "slides": pages, "occurrences": len(uses),
                              "severity": "advisory",
                              "action": "检查是否把同一小图标当作多页主要视觉；优先改用图片、表格、数据图或具体机制图，必要身份/同义指代可保留"})

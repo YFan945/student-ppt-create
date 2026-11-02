@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a student-owned academic presentation needing external facts, current data, statistics, citations or a user-material Research Pack. Does not design slides or generate PPTX.
-version: 0.32.0
+version: 0.33.0
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---

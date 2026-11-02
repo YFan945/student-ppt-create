@@ -11,7 +11,7 @@ const examples = require(path.join(process.env.CLAUDE_PLUGIN_ROOT,
 module.exports = examples.relationship;
 ```
 
-The examples supply `presentation_copy` and notes for their synthetic teaching content. When adapting, change both to match your facts and final wording. Do not present sample observations as research. Preserve frozen numbers and evidence; rules for derived proportions/conversions and cross-page number reuse live in `../../../references/content-workflow.md`.
+The examples supply optional `presentation_copy` hints and notes for their synthetic teaching content. Hints may be omitted; actual text and notes are read from the final PPTX. When adapting, use your own facts and final wording. Do not present sample observations as research. Preserve frozen numbers and evidence; rules for derived proportions/conversions and cross-page number reuse live in `../../../references/content-workflow.md`.
 
 优先从图片证据、图文解释、原生统计图/表格和具体机制图中选择主体。`subject-visuals.js`中的纸张、双人、勾选和气泡只是小型兼容图标，不是丰富主题图解库，不作为默认无图后备。少量用于明确指代即可；调用会登记icon用法并在run汇总跨页复用提醒，不能把同一图标贴满多页来完成视觉要求。
 

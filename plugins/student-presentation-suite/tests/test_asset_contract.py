@@ -28,7 +28,7 @@ class AssetContractTests(unittest.TestCase):
         self.assertTrue(validate_assets(data, Path.cwd(), ["装置照片区域\n素材待替换"])['ok'])
         self.assertFalse(validate_assets(data, Path.cwd(), ["装置照片区域"])['ok'])
         self.assertFalse(validate_assets(data, Path.cwd(), [])['ok'])
-        self.assertFalse(validate_assets({'deck': 'demo', 'assets': []}, Path.cwd(), ['素材待替换'])['ok'])
+        self.assertTrue(validate_assets({'deck': 'demo', 'assets': []}, Path.cwd(), ['素材待替换'])['warnings'])
 
     def test_legacy_default_and_explicit_prohibition_are_preserved(self):
         for policy in (None, 'forbid'):
@@ -62,7 +62,10 @@ class AssetContractTests(unittest.TestCase):
             asset.update(path='figure.png', width=40, height=20)
             self.assertTrue(validate_assets(data, root)['ok'])
             asset['width'] = 41
-            self.assertFalse(validate_assets(data, root)['ok'])
+            self.assertTrue(validate_assets(data, root)['warnings'])
+            asset.pop('width')
+            asset.pop('height')
+            self.assertEqual(validate_assets(data, root)['measured'][0]['width'], 40)
             asset['width'] = 40
             asset['preserve_region'] = {'x': 0, 'y': 0, 'w': 1, 'h': 1}
             asset['crop'] = {'x': 0, 'y': 0, 'w': 0.5, 'h': 1}

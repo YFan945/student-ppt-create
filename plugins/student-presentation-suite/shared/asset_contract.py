@@ -16,6 +16,8 @@ def validate_assets(data: dict[str, Any], directory: Path, slide_texts: list[str
               for error in Draft202012Validator(schema).iter_errors(data)]
     placeholders = []
     files = []
+    measured = []
+    warnings = []
     if errors:
         return {"ok": False, "errors": errors, "placeholders": placeholders, "files": files}
     for index, asset in enumerate(data["assets"]):
@@ -55,13 +57,13 @@ def validate_assets(data: dict[str, Any], directory: Path, slide_texts: list[str
                 errors.append({"path": f"{prefix}/path", "message": "asset file does not exist"})
             else:
                 files.append(str(path.resolve()))
-                if not asset.get("width") or not asset.get("height"):
-                    errors.append({"path": prefix, "message": "file assets require width and height"})
                 try:
                     from PIL import Image
                     with Image.open(path) as image:
-                        if image.size != (asset.get("width"), asset.get("height")):
-                            errors.append({"path": prefix, "message": "declared dimensions differ from actual image"})
+                        measured.append({"path": str(path.resolve()), "width": image.width, "height": image.height})
+                        if any(asset.get(key) is not None and asset[key] != value for key, value in
+                               (("width", image.width), ("height", image.height))):
+                            warnings.append({"path": prefix, "message": "declared dimensions replaced by actual image dimensions"})
                 except (OSError, ValueError):
                     pass  # Vector assets retain caller-provided dimensions.
         protected, crop = asset.get("preserve_region"), asset.get("crop")
@@ -77,5 +79,6 @@ def validate_assets(data: dict[str, Any], directory: Path, slide_texts: list[str
     if slide_texts is not None:
         for number, text in enumerate(slide_texts, 1):
             if "素材待替换" in "".join(text.split()) and not any(item["slide"] == number for item in placeholders):
-                errors.append({"path": f"slides/{number}", "message": "visible designed placeholder needs its asset record"})
-    return {"ok": not errors, "errors": errors, "placeholders": placeholders, "files": files}
+                warnings.append({"path": f"slides/{number}", "message": "placeholder wording detected; inspect whether it describes content or an actual asset slot"})
+    return {"ok": not errors, "errors": errors, "warnings": warnings,
+            "placeholders": placeholders, "files": files, "measured": measured}

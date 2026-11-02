@@ -69,7 +69,7 @@ intake_pending → intake_confirmed → planned → producing → qa → complet
 - status reads current checks, publication health and historical manifests without rebuilding. Old production manifests are read-only; use a new approved edit task preserving the original to continue them.
 - blocked/incomplete describe real inability to proceed or missing required output; never claim completion while required work is missing. Changes outside approved scope need revised authorization, not an automatic reset for every warning.
 
-Commands and rendering/inspection requirements live in skills/sp-deck/references/main-session-production.md. Do not manually transition production states or move frozen inputs/deliverables after complete.
+Commands and rendering/inspection requirements live in skills/sp-deck/references/main-session-production.md. Tools maintain production states. Revise current planning inputs in the same work-id; reconfirm a materially changed Production Summary. Source originals remain preserved. See the production contract for refreshed checks and export health.
 
 ## Work isolation
 

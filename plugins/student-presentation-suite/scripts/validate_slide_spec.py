@@ -14,6 +14,7 @@ if str(ROOT) not in sys.path:
 
 from shared.handoff_validation import handoff_errors
 from shared.slide_spec_contract import validate_slide_spec
+from shared.slide_spec_validation import planning_warnings
 
 
 def load_optional_dependencies():
@@ -83,6 +84,7 @@ def main() -> None:
         "valid": not errors,
         "error_count": len(errors),
         "errors": errors,
+        "warnings": planning_warnings(data) if not errors else [],
         "slide_spec": str(args.spec.resolve()),
         "slide_spec_sha256": spec_hash,
         "presentation_brief": str(args.brief.resolve()) if args.brief else None,

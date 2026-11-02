@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.32.0
+version: 0.33.0
 ---
 
 # Student Presentation PPT
@@ -42,6 +42,6 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete -
 
 ## Output contract
 
-交付已确认的 PPTX、预览、PDF或辅助文件；不自动增加类型。工作目录为 `outputs/.pptx-work/<work-id>`，其中的报告属于工作记录。编辑须有 `change-summary.md` 并保持源文件。2.1 的 `presentation_copy` 记录实际标题与标签，冻结语义由主会话自检，精确项由 PPTX 回读检查。
+交付已确认的 PPTX、预览、PDF或辅助文件；不自动增加类型。工作目录为 `outputs/.pptx-work/<work-id>`，其中的报告属于工作记录。编辑须有 `change-summary.md` 并保持源文件。正文与备注从 PPTX 回读，`presentation_copy` 仅为可选角色提示；冻结语义由主会话自检，精确项由回读检查。
 
 旧 manifest 可用 `status` 读取，不自动迁移或继续执行已删除的子代理管线。需要继续旧成品时，以保留原件的新编辑任务开始。

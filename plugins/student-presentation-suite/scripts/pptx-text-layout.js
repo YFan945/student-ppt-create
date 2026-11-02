@@ -126,7 +126,7 @@ function measure(text, size, face, options = {}) {
 // resolveFont cannot measure. Body/list copy keeps a 1.3 floor for classroom
 // projection; display roles (title, caption, stat, ...) use the font's own
 // metrics so tight display settings are not forced open.
-function naturalLineHeightPt(piece, fallbackPt, relaxed = false) {
+function naturalLineHeightPt(piece, fallbackPt) {
   let height = fallbackPt;
   try {
     const font = resolveFont(
@@ -147,7 +147,7 @@ function naturalLineHeightPt(piece, fallbackPt, relaxed = false) {
   } catch {
     /* unresolved face — keep the factor fallback */
   }
-  return relaxed ? height : Math.max(height, piece.fontSize * 1.3);
+  return height;
 }
 
 function sourceRuns(input, policy) {
@@ -278,6 +278,7 @@ function layoutText(input, box, policy) {
   const margins = Array.isArray(margin) ? margin : [margin, margin, margin, margin];
   const width = box.w - ((margins[1] || 0) + (margins[3] || 0)) / 72;
   const height = box.h - ((margins[0] || 0) + (margins[2] || 0)) / 72;
+  const wrapWidth = width * (policy.wrapWidthRatio ?? 1);
   const lines = [];
   let line = [];
   let explicit = false;
@@ -293,7 +294,7 @@ function layoutText(input, box, policy) {
       flush();
       continue;
     }
-    if (line.length && lineWidth(line) + atom.width > width * 0.97) {
+    if (line.length && lineWidth(line) + atom.width > wrapWidth) {
       const moved = [];
       while (line.length && (NO_START.test(atom.text) || NO_END.test(line.at(-1).text))) {
         moved.unshift(line.pop());
@@ -321,7 +322,7 @@ function layoutText(input, box, policy) {
       if (
         !CJK.test(moved.text) ||
         NO_START.test(moved.text) ||
-        lineWidth(last.atoms) + moved.width > width * 0.97
+        lineWidth(last.atoms) + moved.width > wrapWidth
       )
         break;
       last.atoms.unshift(before.atoms.pop());

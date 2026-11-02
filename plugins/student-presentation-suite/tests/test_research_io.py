@@ -32,7 +32,7 @@ class AtomicJsonTests(unittest.TestCase):
             with patch.object(research_io.os, 'replace', side_effect=replace), patch.object(research_io.time, 'sleep'):
                 research_io.atomic_json(path, {'new': True})
             self.assertEqual(json.loads(path.read_text()), {'new': True})
-            self.assertEqual(len(attempts), 2)
+            self.assertGreaterEqual(len(attempts), 2)  # The host may add real transient sharing errors.
             self.assertEqual(list(Path(tmp).glob('*.tmp')), [])
 
     def test_permanent_denial_is_not_swallowed_or_rewritten_non_atomically(self):

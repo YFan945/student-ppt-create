@@ -17,7 +17,33 @@ DEFAULT_SCHEMA = Path(__file__).resolve().parents[1] / "references" / "slide-spe
 
 def load_slide_spec(path: Path) -> Any:
     text = path.read_text(encoding="utf-8")
-    return json.loads(text) if path.suffix.casefold() == ".json" else yaml.safe_load(text)
+    data = json.loads(text) if path.suffix.casefold() == ".json" else yaml.safe_load(text)
+    return prepare_spec(data)
+
+
+def prepare_spec(data: Any) -> Any:
+    """Derive optional page bookkeeping without inventing content or approvals."""
+    if not isinstance(data, dict) or not isinstance(data.get("slides"), list):
+        return data
+    slides = data["slides"]
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    duration = meta.get("duration_min")
+    duration = duration if isinstance(duration, (int, float)) else len(slides)
+    estimate = max(1, round(duration * 60 / max(1, len(slides))))
+    # Preserve supplied stable IDs; only missing IDs are derived from position.
+    used = {slide.get("id") for slide in slides if isinstance(slide, dict) and isinstance(slide.get("id"), int)}
+    for index, slide in enumerate(slides, 1):
+        if not isinstance(slide, dict):
+            continue
+        if "id" not in slide:
+            candidate = index
+            while candidate in used:
+                candidate += 1
+            slide["id"] = candidate
+            used.add(candidate)
+        slide.setdefault("owner", "shared")
+        slide.setdefault("timing_sec", estimate)
+    return data
 
 
 def validate_spec_data(
@@ -31,6 +57,7 @@ def validate_spec_data(
     ``slide_spec_to_pptx_brief.py``) call it directly so error shape and the
     slide_copy guidance cannot drift between the two entry points.
     """
+    prepare_spec(data)
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator.check_schema(schema)
     validator = jsonschema.Draft202012Validator(schema)

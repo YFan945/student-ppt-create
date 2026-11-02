@@ -42,7 +42,7 @@ class SemanticTests(unittest.TestCase):
             self.assertEqual(process.returncode, 0, process.stderr)
             self.assertTrue(json.loads(process.stdout)['ok'])
 
-    def test_presentation_copy_must_record_complete_actual_notes(self):
+    def test_optional_copy_does_not_override_actual_notes(self):
         import argparse
         import io
         from contextlib import redirect_stdout
@@ -57,7 +57,7 @@ class SemanticTests(unittest.TestCase):
             args = argparse.Namespace(pptx=pptx, slide_spec=spec, output=directory / 'check.json', json=False, strict=True)
             with patch.object(content, 'extract_pptx_text', return_value=['国家奖学金233']), patch.object(content, 'extract_pptx_notes', return_value={1: '完整讲稿'}), redirect_stdout(io.StringIO()):
                 sidecar.write_text(json.dumps(copy), encoding='utf-8')
-                self.assertEqual(content.run(args), 2)
+                self.assertEqual(content.run(args), 0)
                 copy['slides'][0]['speaker_notes'] = '完整讲稿'
                 sidecar.write_text(json.dumps(copy), encoding='utf-8')
                 self.assertEqual(content.run(args), 0)
@@ -344,7 +344,7 @@ process.stdout.write(JSON.stringify(failures));
         result = self.node("""
 const H=require('./scripts/pptx-helpers.js'),R=require('./scripts/pptx-page-runtime.js'),T=require('./scripts/pptx-text-layout.js');
 const {SlideElementRegistry}=require('./scripts/pptx-element-registry.js');
-const drawn=[];const slide={addText(t,o){drawn.push(o);},addShape(){},addNotes(){},addTable(){throw new Error('unmeasured table');}};
+const drawn=[];const slide={addText(t,o){drawn.push(o);},addShape(){},addNotes(){},addTable(){drawn.push({nativeTable:true});}};
 const tokens={model_led:true,typography:{},palette:{canvas:'FFFFFF',primary_text:'111111',secondary_text:'555555'}};
 const ctx={slide,n:1,H,tokens,registry:new SlideElementRegistry(),presentationCopy:[]};
 const mod=c=>{const fit=H.addPositionedText(slide,'9 分贝',{x:.5,y:.5,w:3,h:1},tokens,'chinese','body',{fontSize:18,align:'center',margin:0});c.firstX=fit.lineGeometry[0].x;slide.addTable([['数据','233']],{x:.5,y:2,w:4,h:1,fontSize:18,margin:0});};
@@ -352,7 +352,7 @@ mod.presentation_copy={headline:'9 分贝',visual_labels:['数据','233']};R.ren
 const rich=T.layoutText([{text:'中文强调',options:{fontFace:'KaiTi',bold:true}}],{x:0,y:0,w:3,h:1},{fontSize:18,fontFace:'Arial',cjkFontFace:'Microsoft YaHei'});
 process.stdout.write(JSON.stringify([Math.abs(drawn[0].x-ctx.firstX)<1e-6,ctx.registry._slide(1).filter(e=>e.type==='text').map(e=>e.text).join(''),rich.richText.every(run=>run.options.fontFace==='KaiTi')]));
 """)
-        self.assertEqual(result[:2], [True, '9 分贝数据233'])
+        self.assertEqual(result[:2], [True, '9 分贝'])
         if os.name == 'nt':
             self.assertTrue(result[2])
 

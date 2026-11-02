@@ -15,12 +15,12 @@ Do not force YAML for simple outline-only requests.
 ## Required Fields
 
 Each slide entry must include:
-- `id`: slide number
+- `id`: stable unique positive identity; missing ids are derived, and list order controls presentation order
 - `title`: choose a direct subject title for definitions, mechanisms, setup and process; use a supported takeaway where the page establishes a finding. Cover, divider and reference titles may be descriptive. Do not force every page into an insight or repeat a conclusion.
 - `layout`: optional composition hint for 2.1; required on legacy input without semantic requirements. A known catalog ID is not locked by default
 - `content`: complete visible authoring material or structured objects, with no automatic length cap
-- `timing_sec`: planned speaking time as an integer number of seconds
-- `owner`: speaker/member, or `Individual`
+- `timing_sec`: optional speaking-time estimate; omission derives a share of the target duration
+- `owner`: optional speaker/member; omission means `shared`, including covers and references
 
 Optional slide fields:
 - `layout_lock`: when `true`, use the named catalog layout exactly; omitted/`false` allows the
@@ -78,7 +78,7 @@ Optional top-level fields for existing deck improvement:
 
 ## New 2.1 slide semantics
 
-Each slide has `semantic_requirements.must_convey` with stable id/text and optional placement/evidence_refs, plus `must_show_exact`. At both the slide level and on each `must_convey` item, `evidence_refs` may cite Research Pack `F`/`D`/`Q` ids in a draft; `sp-deck`'s `--research-pack` compilation resolves them into the top-level Evidence Ledger's `E` ids, and existence is validated only when the spec already carries that ledger. Core meaning defaults to visible placement; supplementary oral requirements can use notes. A concise note may omit non-spoken slide detail without losing visible coverage. `title`, `content`, `slide_copy`, `visual` and notes are authoring material; actual wording is recorded in `presentation_copy` on the page module, never as a spec field. `claim` is optional planning input, not a required second visible conclusion or fixed band. Register every user-mandated verbatim string in `must_show_exact`: it is checked by exact readback and exempted from expression findings (defensive-phrasing patterns), so style rules never rewrite required wording.
+Each slide has `semantic_requirements.must_convey` with stable id/text and optional placement/evidence_refs, plus `must_show_exact`. At both the slide level and on each `must_convey` item, `evidence_refs` may cite Research Pack `F`/`D`/`Q` ids in a draft; `sp-deck`'s `--research-pack` compilation resolves them into the top-level Evidence Ledger's `E` ids, and existence is validated only when the spec already carries that ledger. Core meaning defaults to visible placement; supplementary oral requirements can use notes. A concise note may omit non-spoken slide detail without losing visible coverage. `title`, `content`, `slide_copy`, `visual` and notes are authoring material; actual wording/notes are read from PPTX; optional page-module `presentation_copy` supplies role hints only. Digits in `must_convey` are not literal on-slide requirements. `claim` is optional planning input, not a required second visible conclusion or fixed band. Register every user-mandated verbatim string in `must_show_exact`: it is checked by exact readback and exempted from expression findings (defensive-phrasing patterns), so style rules never rewrite required wording.
 
 ## Legacy 1.0/2.0 copy compatibility
 
@@ -123,7 +123,7 @@ Schema and validation:
 - Validator: `scripts/validate_slide_spec.py`
 - The validator requires `jsonschema` and `PyYAML` from `requirements.txt`.
 - Unknown fields are rejected in `meta`, slides, visuals, and review findings to catch spelling mistakes.
-- Semantic validation also checks contiguous slide ids, `slide_count`, total timing vs `duration_min`, group members/owners, existing-deck combinations, high-score controls, evidence references, and lock semantics.
+- Semantic validation protects unique ids, actual data structure, existing-deck combinations, evidence references and locks. IDs need not be consecutive. Page count is derived by consumers; timing, shared ownership and missing visual-planning detail are non-blocking planning feedback. Free-page visuals need no duplicate purpose/data registry. Chart label/value length mismatches and nonnumeric values remain structural errors.
 - Current `plan` validates the Spec, compiles evidence when needed and prepares source modules; it does not invoke `copy_fit_preflight.py`. That script is an optional legacy preflight. New-page fit and exact-content checks use authored geometry, readback and actual renders, not fixed title/claim bands.
 - **Which file to validate:** for a research-backed deck `plan` compiles your source spec into `slide-spec-compiled.json` and freezes *that* file. Current `plan` validates both source and compiled input itself. When validating by hand, check the source and let `plan` own the compiled input.
 - Scenario-driven story roles（如 `defense` 的 problem/method/result/solution/limitation/qa）是**建议性**的，不再作为硬错误阻断：`validate_slide_spec.py` 不因缺失角色失败，`analyze_presentation_spec.py` 会以 Minor 提示。不要为了凑满角色而硬塞一页。
@@ -234,7 +234,7 @@ New production accepts `meta.output_dir` inside the active project outputs tree 
 {"must_convey":[{"id":"participants","text":"参与人数233人"}],"must_show_exact":["233"],"fact_bindings":[{"id":"participants","label":"参与人数","value":"233","unit":"人"}]}
 ```
 
-Each binding has a unique page-local `id`, nonempty `label`, numeric string `value`, optional `unit` and optional exact `context` (e.g. date/population). One actual OOXML text object or one named positioned line must contain `label[:]? value unit` or `value unit label`; line wrapping is allowed. Context must occur in that same block. Separate arbitrary boxes/table cells are never concatenated to pass. A native editable rich-text object can style its label and value separately; the optional `metric` helper demonstrates it. Do not freeze an entire explanatory sentence merely to check a number. The bridge and scaffold preserve these bindings, and readback reports `fact_binding_missing_or_changed` on mismatch. Empty bindings do not certify semantic correspondence.
+Each binding has a unique page-local `id`, nonempty `label`, numeric string `value`, optional `unit` and optional exact `context`. Numeric comparison accepts grouping separators/full-width digits without rounding or unit conversion. `must_show_exact` remains literal. A fact may occupy a text object, one named positioned line, an unambiguous nearby label/value pair within one container, or an actual two-cell table row. Positive connectors such as 为/达到 are accepted; negation and comparisons do not satisfy an exact binding. Spatial pairing uses mutual nearest neighbours and rejects ambiguous associations; unrelated boxes are never joined. Context must occur in the same associated region. The optional `metric` helper is convenient, not mandatory. Empty bindings do not certify meaning; the author checks charts and ambiguous geometry.
 
 Bindings require one clean `label` + exact `value` (+`unit`) triple: a single fixed number under one label. Ranges ("0.25—0.33") and approximate wordings ("超过 1 亿", "25% 左右") cannot be bound — register the page's verbatim wording in `must_show_exact` instead and reserve bindings for the exact quantities the page states.
 

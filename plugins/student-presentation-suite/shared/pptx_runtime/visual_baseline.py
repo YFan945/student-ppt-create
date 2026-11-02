@@ -1,14 +1,12 @@
-"""Perceptual-hash visual baseline for rendered decks.
+"""Encoding-independent visual change detection, not quality acceptance.
 
-Renders are reduced to 64-bit average hashes. ``record`` stores the baseline;
-``compare`` flags pages whose hash distance exceeds a threshold, giving the
-deck pipeline a reproducible visual-regression defence: any unplanned pixel
-change (palette drift, layout shift, missing panel) shows up as a changed
-page, while re-encodings that keep the picture identical pass silently.
+RGB fingerprints retain color/local changes; legacy average hashes remain
+readable. Differences require inspection and never imply a regression.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -40,12 +38,24 @@ def collect_hashes(render_dir: Path) -> dict[str, str]:
     return hashes
 
 
+def collect_pixels(render_dir: Path) -> dict[str, str]:
+    """Encoding-independent RGB fingerprints retain color and local details."""
+    result = {}
+    for path in sorted(Path(render_dir).glob("*.png")):
+        with Image.open(path) as image:
+            rgb = image.convert("RGB")
+            result[path.name] = hashlib.sha256(str(rgb.size).encode() + rgb.tobytes()).hexdigest()
+    return result
+
+
 def record_baseline(render_dir: Path, baseline_path: Path) -> dict[str, Any]:
     hashes = collect_hashes(render_dir)
     payload = {
         "render_dir": str(render_dir),
         "pages": len(hashes),
         "hashes": hashes,
+        "pixels": collect_pixels(render_dir),
+        "scope": "change detection only; never visual-quality acceptance",
     }
     baseline_path.parent.mkdir(parents=True, exist_ok=True)
     baseline_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -58,6 +68,8 @@ def compare_baseline(
     baseline = json.loads(Path(baseline_path).read_text(encoding="utf-8"))
     baseline_hashes: dict[str, str] = baseline.get("hashes", {})
     current = collect_hashes(render_dir)
+    current_pixels = collect_pixels(render_dir)
+    baseline_pixels = baseline.get("pixels", {})
 
     changed: list[dict[str, Any]] = []
     for name, hash_now in current.items():
@@ -65,12 +77,16 @@ def compare_baseline(
             changed.append({"page": name, "reason": "new page"})
             continue
         distance = hamming_distance(hash_now, baseline_hashes[name])
-        if distance > threshold:
+        if distance > threshold or (name in baseline_pixels and current_pixels[name] != baseline_pixels[name]):
             changed.append({"page": name, "reason": "pixels changed", "distance": distance})
     missing = sorted(set(baseline_hashes) - set(current))
 
     return {
-        "ok": not changed and not missing,
+        "ok": bool(current),
+        "matches": not changed and not missing,
+        "review_required": bool(changed or missing),
+        "scope": "change detection only; differences may be improvements, not defects",
+        "coverage": "RGB pixels and grayscale structure" if baseline_pixels else "legacy grayscale only; record a new baseline for color/detail coverage",
         "pages_current": len(current),
         "pages_baseline": len(baseline_hashes),
         "threshold": threshold,

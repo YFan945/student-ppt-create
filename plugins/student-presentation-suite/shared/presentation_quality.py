@@ -231,7 +231,7 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
         if generic_matches:
             current.append(
                 finding(
-                    "Major",
+                    "Minor",
                     target,
                     "generic-ai-wording",
                     f"Generic or inflated wording detected: {generic_matches[0]}",
@@ -245,10 +245,10 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
                 if min(len(norm), len(earlier_norm)) >= 12 and SequenceMatcher(None, norm, earlier_norm).ratio() >= 0.86:
                     current.append(
                         finding(
-                            "Major",
+                            "Minor",
                             target,
                             "duplicate-slide",
-                            f"Content substantially repeats Slide {earlier_id}.",
+                            f"Text resembles Slide {earlier_id}; inspect whether the conditions or visual argument differ.",
                             "Repeated pages consume time without advancing the argument.",
                             "Merge the pages or give this slide a distinct claim and evidence role.",
                         )
@@ -267,10 +267,10 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
             slide_id, role = previous_roles[idx]
             findings.append(
                 finding(
-                    "Major",
+                    "Minor",
                     f"Slide {slide_id}",
                     "role-order-regression",
-                    f"Story role {role!r} appears after a later-stage role.",
+                    f"Story role {role!r} returns to an earlier stage; previews, recaps and result-first narratives are allowed.",
                     "The argument can jump backward or reveal conclusions before support.",
                     "Reorder the page or explain the deliberate preview/recap structure.",
                 )

@@ -21,8 +21,8 @@ class ExpressionReviewTests(unittest.TestCase):
         ]}
         result = review_expression({"slides": [{}, {}]}, actual)
         codes = {item['code'] for item in result['findings']}
-        self.assertEqual(codes, {'reused_icon', 'defensive_contrast', 'defensive_disclaimer'})
-        self.assertEqual(next(item['slides'] for item in result['findings'] if item['code'] == 'reused_icon'), [1, 2])
+        self.assertEqual(codes, {'defensive_contrast', 'defensive_disclaimer'})
+        self.assertEqual(len(result['icon_usage']), 1)
         self.assertNotIn('ok', result)
 
     def test_frozen_quotation_is_preserved_and_unregistered_icons_are_not_claimed_absent(self):

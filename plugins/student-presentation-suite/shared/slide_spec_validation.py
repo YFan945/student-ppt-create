@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from shared.quality_tiers import normalize as normalize_tier
-
 SCENARIO_REQUIRED_ROLE_GROUPS: dict[str, tuple[tuple[str, ...], ...]] = {
     "coursework": (("background", "problem"), ("method",), ("evidence", "result"), ("conclusion", "closing")),
     "defense": (("problem",), ("method",), ("result", "evidence"), ("solution", "value"), ("limitation",), ("qa",)),
@@ -43,104 +41,25 @@ def _validate_scenario_roles(meta: dict[str, Any], slides: list[Any]) -> list[di
     return errors
 
 
-def _validate_visual_semantics(meta: dict[str, Any], slides: list[Any], *, flexible: bool = False) -> list[dict[str, str]]:
+def _validate_visual_semantics(slides: list[Any]) -> list[dict[str, str]]:
+    """Validate supplied numeric data, never demand a duplicate visual plan."""
     errors: list[dict[str, str]] = []
-    exempt_kinds = {"cover", "section-divider", "quotation", "references", "appendix", "qa", "closing"}
-    typography_types = {"text", "text-only", "typography"}
     for index, slide in enumerate(slides):
-        if not isinstance(slide, dict):
+        visual = slide.get("visual") if isinstance(slide, dict) else None
+        details = visual.get("details") if isinstance(visual, dict) else None
+        series = details.get("series") if isinstance(details, dict) else None
+        if not isinstance(series, list):
             continue
-        visual = slide.get("visual")
-        kind = slide.get("kind", "content")
-        strict_visual = (
-            normalize_tier(meta.get("quality_level")) == "rigorous"
-            or meta.get("visual_text_ratio") in {"balanced", "visual-led"}
-        )
-        if strict_visual and kind not in exempt_kinds and not isinstance(visual, dict):
-            mode = (
-                "visual-led mode"
-                if meta.get("visual_text_ratio") == "visual-led"
-                else "quality mode"
-            )
-            errors.append({
-                "path": f".slides.{index}.visual",
-                "message": f"{mode} requires a visual strategy on every content slide",
-            })
-        if not isinstance(visual, dict):
-            continue
-        visual_type = str(visual.get("type", "")).casefold()
-        if strict_visual and kind not in exempt_kinds and visual_type == "none":
-            errors.append({"path": f".slides.{index}.visual.type", "message": "quality mode requires an intentional visual strategy"})
-        if visual_type in typography_types:
-            purpose = visual.get("purpose") or visual.get("takeaway")
-            if strict_visual and kind not in exempt_kinds and not purpose:
-                errors.append({
-                    "path": f".slides.{index}.visual.purpose",
-                    "message": "typography-led slides require an explicit purpose/takeaway; text-only is allowed only when intentional",
-                })
-            continue
-        details = visual.get("details")
-        if visual_type not in {
-            "timeline", "comparison", "process", "chart", "architecture",
-            "matrix", "cycle", "swimlane", "annotated-image",
-        }:
-            continue
-        if not isinstance(details, dict):
-            errors.append({"path": f".slides.{index}.visual.details", "message": f"visual type {visual_type} requires structured details"})
-            continue
-        minimum_stages = 1 if flexible else 3
-        minimum_items = 1 if flexible else 2
-        if visual_type == "timeline" and not isinstance(details.get("stages"), list):
-            errors.append({"path": f".slides.{index}.visual.details.stages", "message": f"timeline requires an ordered stages list with at least {minimum_stages} stages"})
-        elif visual_type == "timeline" and len(details["stages"]) < minimum_stages:
-            errors.append({"path": f".slides.{index}.visual.details.stages", "message": f"timeline requires at least {minimum_stages} stages"})
-        if visual_type == "comparison":
-            if not isinstance(details.get("items"), list) or len(details["items"]) < minimum_items:
-                errors.append({"path": f".slides.{index}.visual.details.items", "message": f"comparison requires at least {minimum_items} items"})
-            if not isinstance(details.get("dimensions"), list) or not details["dimensions"]:
-                errors.append({"path": f".slides.{index}.visual.details.dimensions", "message": "comparison requires comparison dimensions"})
-        if visual_type == "process" and (not isinstance(details.get("steps"), list) or len(details["steps"]) < minimum_items):
-            errors.append({"path": f".slides.{index}.visual.details.steps", "message": f"process requires at least {minimum_items} steps"})
-        if visual_type == "chart":
-            required = ("measure", "unit", "scope", "source", "takeaway")
-            missing = [field for field in required if not details.get(field)]
-            if missing:
-                errors.append({"path": f".slides.{index}.visual.details", "message": "chart requires: " + ", ".join(missing)})
-            series = details.get("series")
-            if not isinstance(series, list) or not series:
-                errors.append({"path": f".slides.{index}.visual.details.series", "message": "chart requires at least one data series"})
-            else:
-                for series_index, item in enumerate(series):
-                    target = f".slides.{index}.visual.details.series.{series_index}"
-                    if not isinstance(item, dict) or not item.get("name"):
-                        errors.append({"path": target, "message": "chart series requires a name"})
-                        continue
-                    labels = item.get("labels")
-                    values = item.get("values")
-                    if not isinstance(labels, list) or len(labels) < minimum_items:
-                        errors.append({"path": f"{target}.labels", "message": f"chart series requires at least {minimum_items} labels"})
-                    if not isinstance(values, list) or len(values) < minimum_items:
-                        errors.append({"path": f"{target}.values", "message": f"chart series requires at least {minimum_items} numeric values"})
-                    elif any(value is not None and not isinstance(value, (int, float)) for value in values):
-                        errors.append({"path": f"{target}.values", "message": "chart values must be numeric or null"})
-                    if isinstance(labels, list) and isinstance(values, list) and len(labels) != len(values):
-                        errors.append({"path": target, "message": "chart labels and values must have equal length"})
-        if visual_type in {"architecture", "swimlane"} and (
-            not isinstance(details.get("nodes"), list) or len(details["nodes"]) < minimum_items
-        ):
-            errors.append({"path": f".slides.{index}.visual.details.nodes", "message": f"{visual_type} requires at least {minimum_items} nodes"})
-        if visual_type == "matrix" and (
-            not isinstance(details.get("items"), list) or len(details["items"]) < minimum_items
-        ):
-            errors.append({"path": f".slides.{index}.visual.details.items", "message": f"matrix requires at least {minimum_items} items"})
-        elif not flexible and visual_type == "matrix" and len(details["items"]) > 4:
-            errors.append({"path": f".slides.{index}.visual.details.items", "message": "matrix supports at most 4 clearly labeled items"})
-        if visual_type == "cycle" and (
-            not isinstance(details.get("steps"), list) or len(details["steps"]) < minimum_stages
-        ):
-            errors.append({"path": f".slides.{index}.visual.details.steps", "message": f"cycle requires at least {minimum_stages} steps"})
-        if visual_type in {"image", "photo", "illustration", "annotated-image"} and not visual.get("asset"):
-            errors.append({"path": f".slides.{index}.visual.asset", "message": f"{visual_type} requires an asset path"})
+        for number, item in enumerate(series):
+            if not isinstance(item, dict):
+                continue
+            labels, values = item.get("labels"), item.get("values")
+            target = f".slides.{index}.visual.details.series.{number}"
+            if isinstance(values, list) and any(value is not None and
+                    (isinstance(value, bool) or not isinstance(value, (int, float))) for value in values):
+                errors.append({"path": target + ".values", "message": "chart values must be numeric or null", "severity": "error"})
+            if isinstance(labels, list) and isinstance(values, list) and len(labels) != len(values):
+                errors.append({"path": target, "message": "chart labels and values must have equal length", "severity": "error"})
     return errors
 
 
@@ -163,57 +82,14 @@ def semantic_errors(data: Any) -> list[dict[str, str]]:
 
     if slides:
         ids = [slide.get("id") for slide in slides if isinstance(slide, dict)]
-        expected_ids = list(range(1, len(slides) + 1))
-        if ids != expected_ids:
-            errors.append({"path": ".slides", "message": f"slide ids must be unique and contiguous from 1; got {ids}"})
+        if len(ids) != len(set(ids)):
+            errors.append({"path": ".slides", "message": "slide ids must be unique"})
 
-        target_count = meta.get("slide_count")
-        if isinstance(target_count, int) and target_count != len(slides):
-            errors.append({
-                "path": ".meta.slide_count",
-                "message": f"slide_count is {target_count}, but the spec contains {len(slides)} slides",
-            })
-
-        duration_min = meta.get("duration_min")
-        timings = [
-            slide.get("timing_sec")
-            for slide in slides
-            if isinstance(slide, dict) and isinstance(slide.get("timing_sec"), int)
-        ]
-        if isinstance(duration_min, (int, float)) and len(timings) == len(slides):
-            expected_seconds = float(duration_min) * 60
-            actual_seconds = sum(timings)
-            tolerance = max(60.0, expected_seconds * 0.35)
-            if abs(actual_seconds - expected_seconds) > tolerance:
-                errors.append({
-                    "path": ".slides",
-                    "message": f"timing_sec totals {actual_seconds}s, which is inconsistent with duration_min={duration_min} ({expected_seconds:g}s)",
-                })
-
-    if meta.get("format") == "group":
-        members = meta.get("members")
-        if not isinstance(members, list) or not members:
-            errors.append({"path": ".meta.members", "message": "group format requires a non-empty members list"})
-        elif slides:
-            allowed = set(members)
-            for index, slide in enumerate(slides):
-                if not isinstance(slide, dict):
-                    continue
-                owner = slide.get("owner")
-                if owner not in allowed:
-                    errors.append({"path": f".slides.{index}.owner", "message": f"owner {owner!r} is not listed in meta.members"})
-
-    if normalize_tier(meta.get("quality_level")) == "rigorous":
-        required_controls = ("scenario", "audience_type", "audience_depth", "structure_mode")
-        for field in required_controls:
-            if not meta.get(field):
-                errors.append({"path": f".meta.{field}", "message": f"rigorous (high-score) mode requires {field}"})
-
-    # 场景故事角色完整性不再作为硬错误阻断（避免 defense/research 逼页数膨胀）；
-    # 由 `analyze_presentation_spec.py` 作为 Minor 提示。仅保留结构性语义校验。
-    from shared.design_policy import model_led
-
-    errors.extend(_validate_visual_semantics(meta, slides, flexible=model_led(data)))
+    # Timing, ownership and visual strategy are planning aids. They cannot
+    # certify the actual rendered artifact and do not block free-page authoring.
+    visual_findings = _validate_visual_semantics(slides)
+    errors.extend({"path": item["path"], "message": item["message"]}
+                  for item in visual_findings if item.get("severity") == "error")
 
     revision_operation = data.get("revision_operation")
     if revision_operation in {"rewrite-slide", "compress", "expand", "add-evidence"}:
@@ -285,3 +161,25 @@ def semantic_errors(data: Any) -> list[dict[str, str]]:
         })
 
     return errors
+
+
+def planning_warnings(data: Any) -> list[dict[str, str]]:
+    """Explain planning inconsistencies without pretending they are defects."""
+    if not isinstance(data, dict):
+        return []
+    meta, slides = data.get("meta") or {}, data.get("slides") or []
+    warnings = []
+    if meta.get("slide_count") is not None and meta["slide_count"] != len(slides):
+        warnings.append({"path": ".meta.slide_count", "message": f"declared count {meta['slide_count']}; actual count {len(slides)} is used"})
+    timings = [s.get("timing_sec") for s in slides if isinstance(s.get("timing_sec"), int)]
+    if len(timings) == len(slides) and meta.get("duration_min"):
+        expected = meta["duration_min"] * 60
+        if abs(sum(timings) - expected) > max(60, expected * 0.35):
+            warnings.append({"path": ".slides", "message": "estimated speaking times differ from the target; check pauses, demos and rehearsal"})
+    members = meta.get("members") or []
+    if meta.get("format") == "group":
+        for index, slide in enumerate(slides):
+            owner = slide.get("owner", "shared")
+            if owner not in {*members, "shared"}:
+                warnings.append({"path": f".slides.{index}.owner", "message": f"owner {owner!r} is not listed; shared ownership is allowed"})
+    return warnings

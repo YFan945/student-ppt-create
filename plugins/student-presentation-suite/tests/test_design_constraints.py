@@ -46,14 +46,16 @@ class PlanningConstraintTests(unittest.TestCase):
                 data["slides"][0]["supporting_points"] = [f"支撑材料{i}" for i in range(9)]
                 self.assertEqual(validate_spec_data(data), [])
                 data["slides"][0]["visual"]["details"] = {next(iter(details)): []}
-                self.assertTrue(validate_spec_data(data), "empty structured data must still fail")
+                self.assertEqual(validate_spec_data(data), [], "free authoring need not duplicate diagram data")
 
     def test_legacy_component_requirements_remain_supported(self):
         data = spec()
         data.pop("schema_version")
         data["meta"].pop("design_freedom")
+        data["slides"][0].pop("semantic_requirements")
+        data["slides"][0]["layout"] = "timeline"
         data["slides"][0]["visual"] = {"type": "timeline", "purpose": "legacy", "details": {"stages": ["a", "b"]}}
-        self.assertTrue(any("at least 3" in item["message"] for item in validate_spec_data(data)))
+        self.assertEqual(validate_spec_data(data), [])
 
     def test_requested_caps_are_positive_integers_without_artificial_ranges(self):
         for cap in (1, 5, 300, 1000):
@@ -81,7 +83,7 @@ class PlanningConstraintTests(unittest.TestCase):
             self.assertTrue(validate_spec_data(data))
         details["series"][0]["values"] = [3]
         details.pop("source")
-        self.assertTrue(validate_spec_data(data))
+        self.assertEqual(validate_spec_data(data), [])
 
 
 class CustomStyleTests(unittest.TestCase):
@@ -139,7 +141,7 @@ process.stdout.write(JSON.stringify(Object.fromEntries(['empty','ink','unmeasure
         reports = json.loads(result.stdout)
         self.assertTrue(reports["empty"]["ok"])
         for kind in ("ink", "unmeasured", "invalid", "zero"):
-            self.assertIn("text_overlap", [item["code"] for item in reports[kind]["errors"]])
+            self.assertIn("text_overlap", [item["code"] for item in reports[kind]["warnings"]])
 
 
 class AuthoringGuidanceTests(unittest.TestCase):

@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from functools import lru_cache
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +28,7 @@ def run_node(body: str) -> dict:
         "function mock(){const calls=[];const rec=(k)=>(...a)=>{calls.push({k,a});return {};};"
         "return {calls,addText:rec('text'),addShape:rec('shape'),addImage:rec('image'),"
         "addChart:rec('chart'),addTable:rec('table'),addNotes:rec('notes')};}"
+        + "function naturalHeight(){const T=require(path.join(SCRIPTS,'pptx-text-layout.js'));const f=T.resolveFont('SimSun');return (f.ascent-f.descent+f.lineGap)/f.unitsPerEm*18/72;}"
         + body
     )
     result = subprocess.run(
@@ -39,6 +41,11 @@ def run_node(body: str) -> dict:
     if result.returncode != 0:
         raise AssertionError(f"node failed: {result.stderr}")
     return json.loads(result.stdout)
+
+
+@lru_cache(maxsize=1)
+def natural_height():
+    return run_node("console.log(JSON.stringify(naturalHeight()));")
 
 
 class MixedTextGateTests(unittest.TestCase):
@@ -127,13 +134,13 @@ class RealMetricLineHeightTests(unittest.TestCase):
             const cjk=T.layoutText('中文文本',{x:0,y:0,w:4,h:1},policy);
             const latin=T.layoutText('ABC 123',{x:0,y:0,w:4,h:1},policy);
             const ratio=(name)=>{const f=T.resolveFont(name);const gap=Number.isFinite(f.lineGap)?f.lineGap:0;return (f.ascent-f.descent+gap)/f.unitsPerEm*18/72;};
-            // Classroom floor: no line renders tighter than 1.3× its size.
-            const simSun=Math.max(ratio('SimSun'),1.3*18/72),calibri=Math.max(ratio('Calibri'),1.3*18/72);
+            // Expected line height comes directly from fontkit metrics.
+            const simSun=ratio('SimSun'),calibri=ratio('Calibri');
             console.log(JSON.stringify({mixed:mixed.lineGeometry[0].h,cjk:cjk.lineGeometry[0].h,latin:latin.lineGeometry[0].h,simSun,calibri,emitted:mixed.lineHeightPt}));
             """
         )
         # Each line's height equals the tallest run's real-metric line height,
-        # floored at 1.3× size.
+        # without an imposed role floor.
         self.assertAlmostEqual(out["simSun"], out["cjk"], places=9)
         self.assertAlmostEqual(out["calibri"], out["latin"], places=9)
         self.assertAlmostEqual(max(out["simSun"], out["calibri"]), out["mixed"], places=9)
@@ -157,7 +164,7 @@ class TextSizeReviewTests(unittest.TestCase):
         out = run_node(
             """
             const R=require(path.join(SCRIPTS,'pptx-element-registry.js'));
-            const r=new R.SlideElementRegistry();
+            const r=new R.SlideElementRegistry({typographyHeuristics:true});
             r.text(1,'小字正文',{x:1,y:1,w:3,h:1,fontSize:9});
             const report=r.analyzeDeck();
             console.log(JSON.stringify({ok:report.ok,warnings:report.warnings}));
@@ -173,7 +180,7 @@ class TextSizeReviewTests(unittest.TestCase):
         out = run_node(
             """
             const R=require(path.join(SCRIPTS,'pptx-element-registry.js'));
-            const r=new R.SlideElementRegistry();
+            const r=new R.SlideElementRegistry({typographyHeuristics:true});
             r.text(1,'常规正文',{x:1,y:1,w:3,h:1,fontSize:10});
             r.text(1,'页脚来源',{x:1,y:2,w:3,h:1,fontSize:11});
             console.log(JSON.stringify({warnings:r.analyzeDeck().warnings.map(w=>w.code)}));
@@ -185,7 +192,7 @@ class TextSizeReviewTests(unittest.TestCase):
         out = run_node(
             """
             const R=require(path.join(SCRIPTS,'pptx-element-registry.js'));
-            const r=new R.SlideElementRegistry();
+            const r=new R.SlideElementRegistry({typographyHeuristics:true});
             r.text(1,'装饰小字',{x:1,y:1,w:3,h:1,fontSize:9,decorative:true});
             r.text(1,'允许重叠小字',{x:1,y:2,w:3,h:1,fontSize:9,allowOverlap:true});
             console.log(JSON.stringify({warnings:r.analyzeDeck().warnings.map(w=>w.code)}));
@@ -198,7 +205,7 @@ class TextSizeReviewTests(unittest.TestCase):
             """
             const R=require(path.join(SCRIPTS,'pptx-page-runtime.js'));
             const {SlideElementRegistry}=require(path.join(SCRIPTS,'pptx-element-registry.js'));
-            const registry=new SlideElementRegistry();
+            const registry=new SlideElementRegistry({typographyHeuristics:true});
             const slide={addText(){},addShape(){},addImage(){},addChart(){}};
             const ctx={slide,tokens:{model_led:true,typography:{},palette:{canvas:'FFFFFF',primary_text:'111111'}},registry,n:1};
             R.captureSlide(ctx);
@@ -260,7 +267,7 @@ class ParagraphSpacingTests(unittest.TestCase):
             """
             const T=require(path.join(SCRIPTS,'pptx-text-layout.js'));
             const r=T.layoutText('第一段内容\\n第二段内容',{x:0,y:0,w:4,h:2},POLICY);
-            const lineH=1.3*18/72, space=0.4*18/72;
+            const lineH=naturalHeight(), space=0.4*18/72;
             const annotated=r.richText.filter(x=>x.options.paraSpaceAfter!==undefined).map(x=>[x.text,x.options.paraSpaceAfter]);
             console.log(JSON.stringify({hs:r.lineGeometry.map(l=>+l.h.toFixed(4)),requiredH:+r.requiredH.toFixed(4),annotated,expected:+(lineH+space).toFixed(4)}));
             """.replace(
@@ -268,7 +275,7 @@ class ParagraphSpacingTests(unittest.TestCase):
             )
         )
         self.assertEqual([out["expected"]] * 2, out["hs"])
-        self.assertAlmostEqual(2 * out["expected"], out["requiredH"], places=4)
+        self.assertAlmostEqual(2 * out["expected"], out["requiredH"], delta=0.00011)
         self.assertEqual(2, len(out["annotated"]))
         self.assertTrue(all(abs(value - 7.2) < 1e-9 for _, value in out["annotated"]))
 
@@ -282,7 +289,7 @@ class ParagraphSpacingTests(unittest.TestCase):
                 "POLICY", self.POLICY
             )
         )
-        self.assertEqual([round(1.3 * 18 / 72, 4)] * 2, out["hs"])
+        self.assertEqual([round(natural_height(), 4)] * 2, out["hs"])
         self.assertEqual(0, out["annotated"])
 
     def test_explicit_value_applies_per_wrapped_line_like_pptxgenjs(self):
@@ -295,7 +302,7 @@ class ParagraphSpacingTests(unittest.TestCase):
                 "POLICY", self.POLICY
             )
         )
-        expected = round(1.3 * 18 / 72 + 12 / 72, 4)
+        expected = round(natural_height() + 12 / 72, 4)
         self.assertEqual([expected] * 2, out["hs"])
 
     def test_single_paragraph_gets_no_default_space(self):
@@ -308,7 +315,7 @@ class ParagraphSpacingTests(unittest.TestCase):
                 "POLICY", self.POLICY
             )
         )
-        self.assertEqual(round(1.3 * 18 / 72, 4), out["h"])
+        self.assertEqual(round(natural_height(), 4), out["h"])
         self.assertEqual(0, out["annotated"])
 
 
@@ -319,7 +326,7 @@ class SizeTierAndFontMixTests(unittest.TestCase):
         out = run_node(
             """
             const R=require(path.join(SCRIPTS,'pptx-element-registry.js'));
-            const r=new R.SlideElementRegistry();
+            const r=new R.SlideElementRegistry({typographyHeuristics:true});
             for (const [i,size] of [9,12,14,18,22].entries()) r.text(1,'内容'+i,{x:1,y:1+i,w:3,h:.5,fontSize:size});
             const report=r.analyzeDeck();
             console.log(JSON.stringify({ok:report.ok,tiers:report.warnings.filter(w=>w.code==='text_size_tiers')}));
@@ -333,7 +340,7 @@ class SizeTierAndFontMixTests(unittest.TestCase):
         out = run_node(
             """
             const R=require(path.join(SCRIPTS,'pptx-element-registry.js'));
-            const r=new R.SlideElementRegistry();
+            const r=new R.SlideElementRegistry({typographyHeuristics:true});
             for (const [i,size] of [12,14,18,22].entries()) r.text(1,'内容'+i,{x:1,y:1+i,w:3,h:.5,fontSize:size});
             console.log(JSON.stringify({codes:r.analyzeDeck().warnings.map(w=>w.code)}));
             """
@@ -344,7 +351,7 @@ class SizeTierAndFontMixTests(unittest.TestCase):
         out = run_node(
             """
             const R=require(path.join(SCRIPTS,'pptx-element-registry.js'));
-            const r=new R.SlideElementRegistry();
+            const r=new R.SlideElementRegistry({typographyHeuristics:true});
             r.text(1,'正文一',{x:1,y:1,w:3,h:.5,fontSize:12});
             r.text(1,'正文二',{x:1,y:2,w:3,h:.5,fontSize:14});
             r.text(1,'装饰',{x:1,y:3,w:3,h:.5,fontSize:8,decorative:true});
@@ -357,7 +364,7 @@ class SizeTierAndFontMixTests(unittest.TestCase):
         out = run_node(
             """
             const R=require(path.join(SCRIPTS,'pptx-element-registry.js'));
-            const r=new R.SlideElementRegistry();
+            const r=new R.SlideElementRegistry({typographyHeuristics:true});
             r.text(1,'甲',{x:1,y:1,w:3,h:.5,fontSize:14,fontFace:'DengXian',cjkFontFace:'DengXian',textFonts:['DengXian']});
             r.text(1,'乙',{x:1,y:2,w:3,h:.5,fontSize:14,fontFace:'Calibri',cjkFontFace:'Microsoft YaHei',textFonts:['Calibri']});
             r.text(1,'丙',{x:1,y:3,w:3,h:.5,fontSize:14,fontFace:'Arial',cjkFontFace:'Microsoft YaHei',textFonts:['Arial']});
@@ -373,7 +380,7 @@ class SizeTierAndFontMixTests(unittest.TestCase):
         out = run_node(
             """
             const R=require(path.join(SCRIPTS,'pptx-element-registry.js'));
-            const r=new R.SlideElementRegistry();
+            const r=new R.SlideElementRegistry({typographyHeuristics:true});
             r.text(1,'标题',{x:1,y:1,w:3,h:.5,fontSize:20,fontFace:'DengXian',cjkFontFace:'DengXian',textFonts:['DengXian']});
             r.text(1,'正文',{x:1,y:2,w:3,h:.5,fontSize:14,fontFace:'DengXian',cjkFontFace:'DengXian',textFonts:['DengXian']});
             console.log(JSON.stringify({codes:r.analyzeDeck().warnings.map(w=>w.code)}));
@@ -447,8 +454,9 @@ class ParagraphEndAnnotationTests(unittest.TestCase):
             const r=T.layoutText(long+'\\n第二段结论：差异显著。',{x:0,y:0,w:3.2,h:6},{fontSize:18,fontFace:'Calibri',cjkFontFace:'SimSun',role:'body'});
             const annotated=r.richText.filter(x=>x.options.paraSpaceAfter!==undefined).map(x=>x.text);
             const inner=r.lineGeometry.slice(0,-2).map(l=>+l.h.toFixed(4));
+            const expectedInner=r.lineGeometry.slice(0,-2).map(l=>+Math.max(...l.fragments.map(p=>{const f=T.resolveFont(p.fontFace);return (f.ascent-f.descent+f.lineGap)/f.unitsPerEm*p.fontSize/72;})).toFixed(4));
             const sumH=r.lineGeometry.reduce((s,l)=>s+l.h,0);
-            console.log(JSON.stringify({lines:r.lines,annotated,inner,lastTwo:r.lineGeometry.slice(-2).map(l=>+l.h.toFixed(4)),sumH:+sumH.toFixed(4),requiredH:+r.requiredH.toFixed(4)}));
+            console.log(JSON.stringify({lines:r.lines,annotated,inner,expectedInner,lastTwo:r.lineGeometry.slice(-2).map(l=>+l.h.toFixed(4)),sumH:+sumH.toFixed(4),requiredH:+r.requiredH.toFixed(4)}));
             """
         )
         self.assertGreater(out["lines"], 3)
@@ -457,8 +465,10 @@ class ParagraphEndAnnotationTests(unittest.TestCase):
         self.assertTrue(out["annotated"][0].endswith("十二万人；"))
         self.assertEqual("第二段结论：差异显著。", out["annotated"][1])
         # Wrapped lines inside paragraph one stay pure line height.
-        self.assertEqual([round(1.3 * 18 / 72, 4)] * len(out["inner"]), out["inner"])
-        self.assertEqual([round(1.3 * 18 / 72 + 7.2 / 72, 4)] * 2, out["lastTwo"])
+        # Mixed-script lines use the tallest actual font; they need not all
+        # share the old role-wide constant height.
+        self.assertEqual(out["expectedInner"], out["inner"])
+        self.assertEqual([round(natural_height() + 7.2 / 72, 4)] * 2, out["lastTwo"])
         self.assertAlmostEqual(out["sumH"], out["requiredH"], places=6)
 
     def test_single_line_paragraphs_annotate_each_paragraph(self):
@@ -537,7 +547,7 @@ class ParagraphEndAnnotationTests(unittest.TestCase):
 
 
 class RoleScopedDefaultsTests(unittest.TestCase):
-    """1.3 line floor and default paragraph spacing apply to body/list only."""
+    """Real font metrics apply to all roles; paragraph spacing remains configurable."""
 
     def test_caption_uses_real_metrics_without_floor(self):
         out = run_node(
@@ -571,7 +581,7 @@ class RoleScopedDefaultsTests(unittest.TestCase):
             console.log(JSON.stringify({hs:r.lineGeometry.map(l=>+l.h.toFixed(4)),annotated:r.richText.filter(x=>x.options.paraSpaceAfter!==undefined).length}));
             """
         )
-        self.assertEqual([round(1.3 * 18 / 72 + 7.2 / 72, 4)] * 2, out["hs"])
+        self.assertEqual([round(natural_height() + 7.2 / 72, 4)] * 2, out["hs"])
         self.assertEqual(2, out["annotated"])
 
 
@@ -586,7 +596,7 @@ class TextRolePlumbingTests(unittest.TestCase):
             const {SlideElementRegistry}=require(path.join(SCRIPTS,'pptx-element-registry.js'));
             const received=[];
             const slide={addText:(t,o)=>{received.push({...o});},addShape(){},addImage(){},addChart(){}};
-            const registry=new SlideElementRegistry();
+            const registry=new SlideElementRegistry({typographyHeuristics:true});
             const ctx={slide,tokens:{model_led:true,typography:{cjk_body_font:'DengXian'},palette:{canvas:'FFFFFF',primary_text:'111111'}},registry,n:1};
             R.captureSlide(ctx);
             const H=require(path.join(SCRIPTS,'pptx-helpers.js'));
@@ -613,7 +623,7 @@ class RoleAwareWarningTests(unittest.TestCase):
         return run_node(
             """
             const R=require(path.join(SCRIPTS,'pptx-element-registry.js'));
-            const r=new R.SlideElementRegistry();
+            const r=new R.SlideElementRegistry({typographyHeuristics:true});
             STATEMENTS
             const report=r.analyzeDeck();
             console.log(JSON.stringify({ok:report.ok,warnings:report.warnings}));

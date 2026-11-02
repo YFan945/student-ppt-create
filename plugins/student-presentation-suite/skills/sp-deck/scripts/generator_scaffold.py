@@ -145,7 +145,8 @@ def load_spec(path: Path) -> dict[str, Any]:
         value = yaml.safe_load(text)
     if not isinstance(value, dict):
         raise ValueError(f"Slide Spec root must be an object: {path}")
-    return value
+    from shared.slide_spec_contract import prepare_spec
+    return prepare_spec(value)
 
 
 def spec_slides(spec: dict[str, Any]) -> list[dict[str, Any]]:
@@ -160,7 +161,7 @@ def spec_slides(spec: dict[str, Any]) -> list[dict[str, Any]]:
             continue
         if number > 0:
             result.append({**item, "id": number})
-    result.sort(key=lambda item: int(item["id"]))
+    # Presentation order is list order; stable IDs need not be consecutive.
     return result
 
 
@@ -481,7 +482,9 @@ def scaffold_generator(
     reference_guided = 0
     names: list[str] = []
     for slide in slides:
-        name = page_filename(slide)
+        existing = [path for path in listed_page_files(pages_dir)
+                    if int(PAGE_NAME_RE.match(path.name).group(1)) == int(slide["id"])]
+        name = existing[0].name if existing else page_filename(slide)
         names.append(name)
         suggestion = suggestions_by_slide.get(int(slide["id"]))
         if suggestion:

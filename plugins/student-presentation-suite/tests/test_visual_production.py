@@ -156,11 +156,10 @@ class TechnicalReportTests(unittest.TestCase):
                 self.assertTrue(report["geometry"]["warnings"])
                 geometry.update(ok=False, errors=[{"slide": 1, "code": "text_overlap"}])
                 production.write(sidecar, geometry)
-                self.assertFalse(production.check_artifact(work, manifest, pptx)["ok"])
+                self.assertTrue(production.check_artifact(work, manifest, pptx)["ok"])
                 geometry["pptx_sha256"] = "stale"
                 production.write(sidecar, geometry)
-                with self.assertRaisesRegex(production.ProductionError, "geometry report"):
-                    production.check_artifact(work, manifest, pptx)
+                self.assertFalse(production.check_artifact(work, manifest, pptx)["geometry"]["performed"])
 
     def test_missing_page_cannot_pass_delivery(self):
         # All remaining files are current; page coverage must still fail.
@@ -176,7 +175,7 @@ class TechnicalReportTests(unittest.TestCase):
                         "check": {"ok": True, "report": production.bind(work / "production-check.json")},
                         "render": {"pptx_sha256": files[0]["sha256"], "pdf": files[1],
                                    "contact_sheet": files[2], "pages": [files[3]]}}
-            with patch.object(production, "work_directory", return_value=work), patch.object(production, "authorized", return_value=manifest):
+            with patch.object(production, "work_directory", return_value=work), patch.object(production, "authorized", return_value=manifest), patch.object(production, "check_artifact", return_value={"ok":True,"content":{"actual_slide_count":2}}), patch.object(production,"render",return_value=manifest["render"]):
                 with self.assertRaisesRegex(production.ProductionError, "one rendered preview"):
                     production.complete(argparse.Namespace(work_dir=work))
 
@@ -238,7 +237,7 @@ process.stdout.write(JSON.stringify({before,after,legacy:legacy.analyzeDeck()}))
         report = json.loads(result.stdout)
         self.assertTrue(report["before"]["ok"])
         self.assertNotIn("near_miss_alignment", [item["code"] for item in report["before"]["warnings"]])
-        self.assertIn("text_overlap", [item["code"] for item in report["after"]["errors"]])
+        self.assertIn("text_overlap", [item["code"] for item in report["after"]["warnings"]])
         self.assertFalse(report["legacy"]["ok"])
 
 

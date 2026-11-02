@@ -657,9 +657,7 @@
         "required": [
           "id",
           "title",
-          "content",
-          "timing_sec",
-          "owner"
+          "content"
         ],
         "properties": {
           "id": {
@@ -774,8 +772,7 @@
           "visual": {
             "type": "object",
             "required": [
-              "type",
-              "purpose"
+              "type"
             ],
             "additionalProperties": false,
             "properties": {
@@ -841,10 +838,12 @@
             "minLength": 1
           },
           "timing_sec": {
+            "description": "Optional rehearsal estimate; omitted values are derived from the target duration.",
             "type": "integer",
             "minimum": 1
           },
           "owner": {
+            "description": "Optional speaker; shared is valid for jointly owned pages.",
             "type": "string",
             "minLength": 1
           },

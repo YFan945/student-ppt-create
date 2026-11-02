@@ -17,10 +17,6 @@ def planning_review(spec: dict[str, Any]) -> dict[str, Any]:
                       "questions": ["本页回答什么问题，标题给出什么有依据的发现？",
                                     "主要图像/图解/表格怎样解释这个回答，哪些细节必须可见？",
                                     "学生先指哪里、再解释哪里，其他内容怎样支撑重点？"]})
-        if (slide.get("kind", "content") not in {"cover", "section-divider", "closing", "references", "qa"}
-                and not visual.get("purpose") and not visual.get("takeaway")):
-            findings.append({"slide": index, "code": "visual_reason_unrecorded", "severity": "advisory",
-                             "action": "在现有visual.purpose说明主体要解释的关系；仅填流程图/卡片名称不够"})
     return {"scope": "author decisions, not automatic aesthetic acceptance", "pages": pages, "findings": findings}
 
 
@@ -38,7 +34,7 @@ def review_actual(spec: dict[str, Any], actual: dict[str, Any], geometry: dict[s
         title = re.sub(r"\s+", "", str(page.get("headline") or ""))
         planned = spec["slides"][number - 1]
         claim = re.sub(r"\s+", "", str(planned.get("claim") or ""))
-        if title and claim == title:
+        if title and claim == title and sum(re.sub(r"\s+", "", text) == title for text in texts) > 1:
             review["findings"].append({"slide": number, "code": "title_claim_repetition_review", "severity": "advisory",
                                        "action": "检查是否把标题重复画成副标题或结论带；同一句只展示一次即可"})
         if title in {"背景介绍", "研究背景", "实验结果", "总结", "方案介绍"}:

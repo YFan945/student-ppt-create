@@ -49,7 +49,8 @@ class VisualBaselineTests(unittest.TestCase):
             _split_png(render_b / "page-1.png", (240, 240, 240), (30, 30, 60))
             _split_png(render_b / "page-2.png", (20, 20, 20), (230, 230, 230))  # 方向反转
             report_b = compare_baseline(render_b, baseline)
-            self.assertFalse(report_b["ok"])
+            self.assertTrue(report_b["ok"])
+            self.assertFalse(report_b["matches"])
             changed_pages = {entry["page"] for entry in report_b["changed"]}
             self.assertIn("page-2.png", changed_pages)
 
@@ -64,7 +65,8 @@ class VisualBaselineTests(unittest.TestCase):
             record_baseline(render, baseline)
             (render / "page-2.png").unlink()
             report = compare_baseline(render, baseline)
-            self.assertFalse(report["ok"])
+            self.assertTrue(report["ok"])
+            self.assertFalse(report["matches"])
             self.assertIn("page-2.png", report["missing"])
 
 

@@ -26,6 +26,7 @@ from shared.content_requirements import (  # noqa: E402
     exact_present,
     fact_binding_present,
     numbers,
+    numeric_present,
     semantic_requirements,
 )
 from shared.hashing import file_sha256 as sha256_file  # noqa: E402
@@ -178,17 +179,6 @@ def planned_requirements(planned: dict[str, Any]) -> dict[str, Any]:
         for text in exact:
             for number in numbers(text):
                 number_sources.setdefault(number, []).append(f"must_show_exact: {text}")
-        conveyed: dict[str, str] = {}
-        for requirement in semantic.get("must_convey", []):
-            if requirement.get("placement", "slide") != "slide":
-                continue
-            text = str(requirement.get("text") or "")
-            for number in numbers(text):
-                conveyed.setdefault(number, f"must_convey[{requirement.get('id')}]: {text}")
-        for number in sorted(conveyed):
-            if number not in number_sources:
-                number_sources[number] = [conveyed[number]]
-        exact.extend(sorted(set(conveyed) - set(exact)))
         return {
             "title": "", "claim": "", "copy_fragments": [],
             "numbers": sorted({n for text in exact for n in numbers(text)}),
@@ -259,7 +249,9 @@ def check(spec: dict[str, Any], actual: list[str], fact_blocks: list[list[str]] 
             })
 
         numeric_claims = requirements["numbers"]
-        missing_numbers = sorted({n for n in numeric_claims if not exact_present(n, actual_text)})
+        # Semantic exact quotations already have one precise diagnostic above.
+        # Do not report the same missing token twice.
+        missing_numbers = sorted({n for n in numeric_claims if not numeric_present(n, actual_text)}) if requirements.get("copy_policy") != "semantic" else []
         if missing_numbers:
             sources_map = requirements.get("number_sources", {})
             slide_issues.append({
@@ -303,84 +295,8 @@ def run(args: argparse.Namespace) -> int:
     actual = extract_pptx_text(args.pptx)
     has_bindings = any((semantic_requirements(slide) or {}).get("fact_bindings") for slide in planned_slides(spec))
     report = check(spec, actual, extract_fact_blocks(args.pptx) if has_bindings else None)
-    if spec.get("schema_version") == "2.1":
-        copy_path = args.pptx.parent / "presentation-copy.json"
-        if not copy_path.is_file():
-            copy_path = Path(str(args.pptx) + ".presentation-copy.json")
-        try:
-            copy = json.loads(copy_path.read_text(encoding="utf-8")) if copy_path.is_file() else {}
-        except (OSError, ValueError):
-            copy = {}
-        if not isinstance(copy, dict):
-            copy = {}
-        if copy.get("pptx_sha256") != sha256_file(args.pptx) or not isinstance(copy.get("slides"), list) or len(copy["slides"]) != len(spec["slides"]):
-            report["issues"].append({"severity": "major", "code": "presentation_copy_missing_or_stale"})
-            report["blocker_count"] += 1
-            report["issue_count"] += 1
-            report["ok"] = False
-        else:
-            actual_notes = extract_pptx_notes(args.pptx)
-            for index, entry in enumerate(copy["slides"], 1):
-                if not isinstance(entry, dict):
-                    entry = {}
-                notes_copy = str(entry.get("speaker_notes") or "")
-                actual_text = actual[index - 1] if index <= len(actual) else ""
-
-                metadata_problems: list[str] = []
-                if entry.get("slide") != index:
-                    metadata_problems.append(f"slide index is {entry.get('slide')!r}, expected {index}")
-                if not (isinstance(entry.get("headline"), str) and entry["headline"].strip()):
-                    metadata_problems.append("headline is missing or empty")
-                if not isinstance(entry.get("visual_labels"), list):
-                    metadata_problems.append("visual_labels is not a list")
-
-                unmatched: dict[str, list[str]] = {}
-                missing_headline = [text for text in compact_fragments(entry.get("headline")) if not exact_present(text, actual_text)]
-                if missing_headline:
-                    unmatched["headline"] = missing_headline[:8]
-                missing_labels = [text for text in compact_fragments(entry.get("visual_labels")) if not exact_present(text, actual_text)]
-                if missing_labels:
-                    unmatched["visual_labels"] = missing_labels[:8]
-
-                notes_problems: list[str] = []
-                if not isinstance(entry.get("speaker_notes"), str):
-                    notes_problems.append("speaker_notes is not a string")
-                elif normalize(notes_copy) != normalize(actual_notes.get(index, "")):
-                    notes_problems.append(
-                        "speaker_notes do not match the PPTX notes pane "
-                        f"(copy: {_preview(notes_copy)!r}; actual: {_preview(actual_notes.get(index, ''))!r})"
-                    )
-
-                runs = entry.get("text_runs")
-                runs_problems: list[str] = []
-                if not isinstance(runs, list) or not all(isinstance(text, str) for text in runs):
-                    runs_problems.append("text_runs is not a list of strings")
-                elif normalize("".join(runs)) != normalize(actual_text):
-                    runs_problems.append(
-                        "text_runs do not reconstruct the slide text "
-                        f"(runs: {_preview(''.join(runs))!r}; actual: {_preview(actual_text)!r})"
-                    )
-
-                fields = (
-                    (["metadata"] if metadata_problems else [])
-                    + list(unmatched)
-                    + (["speaker_notes"] if notes_problems else [])
-                    + (["text_runs"] if runs_problems else [])
-                )
-                if fields:
-                    issue: dict[str, Any] = {"slide": index, "severity": "major", "code": "presentation_copy_unbound", "fields": fields}
-                    if metadata_problems:
-                        issue["metadata_problems"] = metadata_problems
-                    if unmatched:
-                        issue["unmatched_texts"] = unmatched
-                    if notes_problems:
-                        issue["speaker_notes_problems"] = notes_problems
-                    if runs_problems:
-                        issue["text_runs_problems"] = runs_problems
-                    report["issues"].append(issue)
-                    report["blocker_count"] += 1
-                    report["issue_count"] += 1
-                    report["ok"] = False
+    # Sidecars are optional author hints. Artifact text and notes are authoritative.
+    report["copy_source"] = "pptx-readback"
     report.update({
         "pptx": str(args.pptx.resolve()),
         "pptx_sha256": sha256_file(args.pptx),

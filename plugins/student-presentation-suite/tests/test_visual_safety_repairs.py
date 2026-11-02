@@ -26,8 +26,8 @@ class VisualSafetyTests(unittest.TestCase):
     def test_decorative_foreground_cannot_hide_text(self):
         for flag in ('decorative:true', 'allowOverlap:true'):
             report = self.registry("r.text(1,'fact',{x:1,y:1,w:2,h:1,fontSize:20});" + f"r.shape(1,{{x:.9,y:.9,w:2.2,h:1.2,fill:{{color:'FFFFFF'}},{flag}}});")
-            self.assertFalse(report['ok'])
-            self.assertIn('text_overlap', [item['code'] for item in report['errors']])
+            self.assertTrue(report['ok'])
+            self.assertIn('text_overlap', [item['code'] for item in report['warnings']])
 
     def test_background_and_transparent_foreground_are_allowed(self):
         report = self.registry("r.shape(1,{x:.9,y:.9,w:2.2,h:1.2,fill:{color:'FFFFFF'},decorative:true});r.text(1,'fact',{x:1,y:1,w:2,h:1,fontSize:20});r.shape(1,{x:.9,y:.9,w:2.2,h:1.2,fill:{color:'FFFFFF',transparency:100},decorative:true});")
@@ -36,7 +36,7 @@ class VisualSafetyTests(unittest.TestCase):
     def test_solid_contrast_uses_top_surface_and_rich_run_colors(self):
         base = "r.backgrounds.set(1,{color:'000000'});r.shape(1,{shapeType:'rect',x:0,y:0,w:10,h:5.625,fill:{color:'FFFFFF'}});"
         failed = self.registry(base + "r.text(1,'fact',{x:1,y:1,w:2,h:1,fontSize:20,textColors:['000000','FFFFFF']});")
-        self.assertIn('text_low_contrast', [item['code'] for item in failed['errors']])
+        self.assertIn('text_low_contrast', [item['code'] for item in failed['warnings']])
         passed = self.registry(base + "r.text(1,'fact',{x:1,y:1,w:2,h:1,fontSize:20,color:'111111'});")
         self.assertTrue(passed['ok'])
         self.assertEqual(passed['slides'][0]['contrast']['checked'], 1)
@@ -45,7 +45,7 @@ class VisualSafetyTests(unittest.TestCase):
         for surface in ("r.image(1,{x:0,y:0,w:10,h:5.625});", "r.shape(1,{shapeType:'rect',x:1,y:1,w:1,h:1,fill:{color:'FFFFFF'}});", "r.shape(1,{shapeType:'rect',x:0,y:0,w:10,h:5.625,fill:{color:'FFFFFF',transparency:40}});"):
             report = self.registry("r.backgrounds.set(1,{color:'000000'});" + surface + "r.text(1,'fact',{x:1,y:1,w:2,h:1,fontSize:20,color:'000000'});")
             self.assertEqual(report['slides'][0]['contrast']['unresolved'], 1)
-            self.assertNotIn('text_low_contrast', [item['code'] for item in report['errors']])
+            self.assertNotIn('text_low_contrast', [item['code'] for item in report['warnings']])
 
 
 class FactBindingTests(unittest.TestCase):

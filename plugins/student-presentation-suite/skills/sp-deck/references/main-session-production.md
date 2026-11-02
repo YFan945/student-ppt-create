@@ -15,7 +15,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" measure --
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" run --work-dir <wd>
 # 主会话查看返回的预览、实际文本和讲稿；有问题直接改，再 run。
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" run --work-dir <wd> --no-render
-# 只构建+全检、跳过渲染：迭代读 check_summary/geometry 报告用，不产出预览；complete 前仍需一次完整 run。
+# 只构建+全检、跳过渲染：迭代读 check_summary/geometry 报告用，不产出预览；complete 会按需补齐当前渲染，主会话仍须实际查看。
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete --work-dir <wd>
 ```
 
@@ -29,7 +29,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete -
 
 `run` 执行构建、字体处理、事实精确项、包与作者几何报告检查和全页渲染，返回 `technical_checks`、`geometry`、`review_required` 及当前页面路径。`ok` 只表示列出的技术检查通过，不代表审美、核心语义或逐页看图已经验收。几何 warning 和字体替换供作者对照完整渲染判断；合理的装饰覆盖不按数量阻断。不以金额、token 或修复次数阻断当前工作。当前文件与预览绑定一致时可复用渲染。
 
-检查按阶段暴露：几何 preflight 在构建期最先运行，先于事实精确项、包校验与内容门禁——preflight 失败时构建中止，内容检查结果尚不可见，先按报错（含元素 id 与 ratio/高度等细节）修几何，再次 run 才看得到后续门禁。迭代节奏：先用 `measure` 一次排掉全部文本溢出，再 `run`；只想读检查报告时用 `run --no-render`（构建+全部检查、跳过渲染，返回 `check_summary`、`geometry` 与 sidecar 路径，标记 `render_skipped`），`complete` 前仍需一次完整 run 出预览。
+几何和文字容量是预测性诊断：保留元素 id、重叠比例和所需高度，允许候选稿生成并渲染，作者对照实际页面判断。无效坐标/尺寸及代码执行失败仍阻止生成；包损坏、缺少明确精确项和实际指标错误仍阻止交付。`measure` 可选，用于提前定位；`run --no-render` 可用于只读技术结果，之后补齐当前预览并完成实际看图。
 
 `complete` 绑定当前产物并生成已确认的辅助文件。主会话在调用前完成看图和核心语义自检；工具不假装替作者做独立视觉评审。`status` 可以读取历史 manifest，旧管线任务须保留原件后以新 work-id 继续。
 
@@ -51,7 +51,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete -
 
 ## Authoring
 
-新任务 pages/ 导出页面函数：直接使用 ctx.slide（pptxgenjs）、ctx.pptx 和按需选用的 ctx.H。完整画布可用，背景和版式由页面源码绘制；脚手架不放置任何视觉元素，不按 design_freedom 限制函数或自动选择布局。presentation_copy 记录实际标题/标签；notes 写讲稿。
+新任务 pages/ 导出页面函数：直接使用 ctx.slide（pptxgenjs）、ctx.pptx 和按需选用的 ctx.H。完整画布可用，背景和版式由页面源码绘制；脚手架不放置任何视觉元素，不按 design_freedom 限制函数或自动选择布局。presentation_copy 可选地提示标题/标签，实际正文和讲稿以 PPTX 回读为准；notes 或原生 slide.addNotes 均可写讲稿。原生 addTable 支持自动尺寸和合并单元格，文字由 OOXML 回读。
 
 从事实材料和参考页面设计构图，保留必要的解释、证据与细节。使用组件时由作者选定输入与区域，不把其内部示例坐标复制成整套页面格式。接口查阅 pptxgenjs-helper-api.md、pptxgenjs-safety.md；图文实现可参阅 main-session-visual-examples.md。
 
@@ -63,8 +63,10 @@ INPUT 保留该页视觉用途、结构数据、页面功能、时间与原始�
 
 Read `authoring-quickstart.md` for normal page creation instead of discovering helper internals. `run` returns a concrete `check_summary` and `changed_pages`; shared source modifications flag all affected pages. Read `status --work-dir <wd>` for stored reports and current delivery health without production. Do not rerun merely to print a report. A persistent build replacement lock reports its exact stage/path; close that artifact and retry, without deleting unrelated files.
 
-New plans freeze `meta.output_dir`, project-relative or absolute inside project outputs, outside .pptx-work; omission defaults to `outputs/<work-id>`. Older manifests without this field retain their stored export convention. `preview` exports every slide PNG and a binding index; `contact-sheet` exports the overview separately. Never relocate frozen inputs or delivered files after complete. `status` reports incomplete delivery when a published binding is missing/changed, even if the stored state says complete.
+`meta.output_dir` 必须位于项目 outputs 内且不在 .pptx-work 中，默认 `outputs/<work-id>`。已确认任务可在同一 work-id 内修订 Spec/设计配置，再 `plan` 或 `run`；重新 plan 保留已写页面并同步脚手架管理的入口。JSON/YAML 排版变化不撤销确认；Production Summary 实质变化需在同一 work-id 重新确认。编辑源稿保留 `_inputs/` 快照，外部原件变化不锁死任务。工具仍保护原件和输出路径。
+
+`complete` 重新回读当前 PPTX 和素材契约，刷新检查，不要求旧报告、文案副本或所有源码哈希一致。当前逐页预览用于真实看图；仅缺失的预览按需恢复，不重建 PPTX。备注/ZIP 元数据变化可复用视觉内容相同的页面；PDF、联系表仅在实际请求时要求，联系表可由页面图重建。`preview` 导出全页 PNG，`contact-sheet` 单独导出概览。`status` 将用户修改的交付文件报告为 modified；缺失文件才使交付 incomplete。
 
 Review content roles against `../../../references/content-to-visual.md`, not shape quotas. Full final pages and the latest overview must reflect the last changes. Check unsupported comparisons/guarantees/causality in notes as well as visible text. Do not claim a target viewer or projector was tested unless it was actually used.
 
-`check_summary.expression_findings`汇总实际正文/备注的行文风险与已登记图标的跨页复用，不改变technical ok，不自动删除引文或判断美观。每条发现带 severity：`info` 命中规划或用户提供的文本（含 `must_convey`/`content`/标题等），确认展示意图即可；`advisory` 为作者自撰文字，需按行文规范处理；`must_show_exact` 条目不产生发现。对应详情在现有production-check.json的expression_review。查看提醒涉及的页，按content-to-visual检查主体与整套布局；未登记的图标仍需看图。允许的提示词占位按image-sourcing登记prompt_visible，必须能在对应页回读提示词。工具不会为本次规则更新修改既有PPT。
+`check_summary.expression_findings`汇总实际正文/备注的行文风险与显式标为 primary 的图标跨页复用，不改变technical ok，不自动删除引文或判断美观。每条发现带 severity：`info` 命中规划或用户提供的文本（含 `must_convey`/`content`/标题等），确认展示意图即可；`advisory` 为作者自撰文字，需按行文规范处理；`must_show_exact` 条目不产生发现。对应详情在现有production-check.json的expression_review。查看提醒涉及的页，按content-to-visual检查主体与整套布局；未登记的图标仍需看图。允许的提示词占位按image-sourcing登记prompt_visible，必须能在对应页回读提示词。工具不会为本次规则更新修改既有PPT。
