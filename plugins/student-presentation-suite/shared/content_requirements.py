@@ -65,7 +65,7 @@ def semantic_requirements(slide: dict[str, Any]) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def fact_binding_present(fact: dict[str, str], blocks: list[str]) -> bool:
+def fact_binding_status(fact: dict[str, str], blocks: list[str]) -> str:
     """Match an opted-in fact in a text object or a spatially associated region.
 
     Regions are assembled by the OOXML reader, never by joining a whole slide.
@@ -80,6 +80,9 @@ def fact_binding_present(fact: dict[str, str], blocks: list[str]) -> bool:
              re.finditer(r"(?<!\d)((?:19|20)\d{2})(?:年|(?=\s*$))", unicodedata.normalize("NFKC", block))}
     wanted_year = re.fullmatch(r"((?:19|20)\d{2})年?", str(fact.get("context") or ""))
     shared_year = bool(wanted_year and years == {wanted_year.group(1)})
+    review = False
+    contradicted = False
+    changed = False
     for block in blocks:
         normalized = unicodedata.normalize("NFKC", re.sub(r"\s+", "", block))
         if fact.get("context") and not (exact_present(fact["context"], block) or shared_year
@@ -87,9 +90,11 @@ def fact_binding_present(fact: dict[str, str], blocks: list[str]) -> bool:
             continue
         for token in NUMBER_RE.finditer(normalized):
             expected = fact["value"].rstrip("%％") + "%" if unit in {"%", "％"} else fact["value"]
-            if not numeric_present(expected, token.group()):
-                continue
             before, after = normalized[:token.start()], normalized[token.end():]
+            direct = bool(re.search(re.escape(label) + r"(?:[:=]|为|是|达到|等于)?$", before))
+            if not numeric_present(expected, token.group()):
+                changed = changed or (direct and after.startswith(unit))
+                continue
             if unit in {"%", "％"} and token.group().endswith(("%", "％")):
                 pass
             elif after.startswith(unit):
@@ -100,11 +105,28 @@ def fact_binding_present(fact: dict[str, str], blocks: list[str]) -> bool:
             else:
                 continue
             if unit and unit[-1].isascii() and unit[-1].isalpha() and after and after[0].isascii() and after[0].isalnum():
+                changed = changed or direct
+                continue
+            # A visible number is not an assertion when its own clause denies it.
+            clause = re.split(r"[，,；;。!?！？\n]", normalized[:token.start()])[-1] + token.group() + re.split(r"[，,；;。!?！？\n]", after)[0]
+            if re.search(r"并非|不是|不为|不等于|未达到|尚未|不成立|不正确|不实|错误|否认", clause):
+                contradicted = contradicted or label in clause
                 continue
             connectors = r"(?:[:=]|为|是|达到|等于)?"
             if re.search(re.escape(label) + connectors + r"$", before) or after.startswith(label):
-                return True
-    return False
+                return "matched"
+            # Natural prose outside the small deterministic grammar is not a
+            # missing fact. Preserve the co-located candidates for author review.
+            local_before = re.split(r"[，,；;。!?！？\n]", before)[-1]
+            if (label in local_before and not NUMBER_RE.search(local_before.split(label)[-1])
+                    and not re.search(r"超过|低于|高于|少于|多于|不足|约|左右|至少|至多|大于|小于", local_before + after)):
+                review = True
+    return "contradicted" if contradicted else "changed" if changed else "review" if review else "missing_or_changed"
+
+
+def fact_binding_present(fact: dict[str, str], blocks: list[str]) -> bool:
+    """Compatibility predicate for determinate associations only."""
+    return fact_binding_status(fact, blocks) == "matched"
 
 
 def semantic_review_issues(

@@ -475,12 +475,8 @@ def main(argv: list[str] | None = None) -> int:
         print("research_pack_to_evidence: --compiled-slide-spec requires --slide-spec", file=sys.stderr)
         return 2
 
-    pack = pack_validator.normalize(pack_validator.load(args.pack))
-    fetched = args.pack.parent / "research" / "fetched" / "fetch-text-report.json"
-    fetch_report = pack_validator._coerce_trail(fetched, "fetch-report")[0] if fetched.is_file() else None
-    verdict = pack_validator.validate(pack, fetch_report=fetch_report, work_dir=args.pack.resolve().parent)
-    from research_task_binding import apply_task
-    apply_task(verdict, pack, args.pack.resolve().parent)
+    from shared.research_validation import validate_current
+    pack, verdict = validate_current(args.pack, validator=pack_validator)
     if args.slide_spec and verdict.get("delivery_status") == "insufficient":
         gaps = verdict["core_gaps"]
         print(
@@ -500,7 +496,8 @@ def main(argv: list[str] | None = None) -> int:
     if not verdict["ok"]:
         print(
             "research_pack_to_evidence: refusing to compile an invalid Research Pack "
-            f"({verdict['counts']['blockers']} blockers). Run validate_research_pack.py first.",
+            f"({verdict['counts']['blockers']} blockers). Fix these inputs; changed content is revalidated automatically.\n"
+            + "\n".join(item["message"] for item in verdict["problems"] if item["severity"] in {"major", "critical"}),
             file=sys.stderr,
         )
         return 2

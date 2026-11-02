@@ -24,7 +24,7 @@ if str(ROOT) not in sys.path:
 
 from shared.content_requirements import (  # noqa: E402
     exact_present,
-    fact_binding_present,
+    fact_binding_status,
     numbers,
     numeric_present,
     semantic_requirements,
@@ -65,7 +65,7 @@ def _preview(text: str, limit: int = 80) -> str:
 
 
 def extract_pptx_text(pptx: Path) -> list[str]:
-    from shared.chart_readback import chart_regions, slide_parts
+    from shared.chart_readback import SlideText, chart_regions, slide_parts
     from shared.pptx_text_readback import slide_text
 
     with zipfile.ZipFile(pptx) as package:
@@ -76,7 +76,7 @@ def extract_pptx_text(pptx: Path) -> list[str]:
             # Associated chart facts are useful for binding, but do not repeat
             # their values in the literal slide transcript.
             chart_text = list(dict.fromkeys(str(text) for text in visible))
-            result.append("\n".join([slide_text(root), *chart_text]).strip())
+            result.append(SlideText("\n".join([slide_text(root), *chart_text]).strip(), visible.limitations))
         return result
 
 
@@ -220,14 +220,25 @@ def check(spec: dict[str, Any], actual: list[str], fact_blocks: list[list[str]] 
         slide_issues: list[dict[str, Any]] = []
 
         requirements = planned_requirements(planned)
+        limitations = getattr(actual_text, "readback_limitations", [])
         facts = (semantic_requirements(planned) or {}).get("fact_bindings", [])
         blocks = fact_blocks[index - 1] if fact_blocks is not None and index <= len(fact_blocks) else actual_text.splitlines()
         for fact in facts:
-            if not fact_binding_present(fact, blocks):
-                slide_issues.append({"severity": "major", "code": "fact_binding_missing_or_changed", "fact": fact})
+            status = fact_binding_status(fact, blocks)
+            if status == "review":
+                slide_issues.append({"severity": "advisory", "code": "fact_binding_needs_semantic_review", "fact": fact})
+            elif status != "matched":
+                uncertain = bool(limitations and status not in {"contradicted", "changed"})
+                slide_issues.append({"severity": "advisory" if uncertain else "major",
+                    "code": "fact_binding_unverified" if uncertain else "fact_binding_missing_or_changed", "fact": fact})
         for expected in requirements.get("must_show_exact", []):
             if not exact_present(expected, actual_text):
-                slide_issues.append({"severity": "major", "code": "exact_content_missing", "expected": expected})
+                unverified = bool(limitations and re.fullmatch(r"[+-]?\d[\d,.]*(?:[Ee][+-]?\d+)?\s*[%％]?", expected))
+                slide_issues.append({"severity": "advisory" if unverified else "major",
+                    "code": "exact_content_unverified" if unverified else "exact_content_missing", "expected": expected})
+        if limitations:
+            slide_issues.append({"severity": "advisory", "code": "readback_incomplete", "limitations": limitations,
+                                 "action": "Inspect visible labels; do not duplicate chart values to satisfy the extractor."})
         title = requirements["title"]
         if title and normalize(title) not in actual_norm:
             slide_issues.append({"severity": "major", "code": "missing_title", "expected": title})
@@ -277,6 +288,7 @@ def check(spec: dict[str, Any], actual: list[str], fact_blocks: list[list[str]] 
         "issues": issues,
         "slides": per_slide,
         "fact_binding_count": sum(len((semantic_requirements(slide) or {}).get("fact_bindings", [])) for slide in slides),
+        "automated_coverage": "partial" if any(item.get("code") in {"fact_binding_needs_semantic_review", "fact_binding_unverified", "exact_content_unverified", "readback_incomplete"} for item in issues) else "complete",
         "semantic_scope": "Exact tokens and opted-in metric/value/unit bindings only; unbound numbers, meaning, causality and claims require author review.",
     }
 

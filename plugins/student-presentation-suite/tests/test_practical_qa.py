@@ -67,7 +67,7 @@ class FactReadbackTests(unittest.TestCase):
         self.assertEqual(displayed_number("0.943", "0.0%"), "94.3%")
         self.assertEqual(displayed_number("2383.2", "#,##0.0"), "2,383.2")
         self.assertIsNone(displayed_number("820", "dd/mm/yyyy"))
-        self.assertEqual(displayed_number("2383000000", "0.0,,"), None)
+        self.assertEqual(displayed_number("2383000000", "0.0,,"), "2383.0")
         self.assertEqual(displayed_number("2383000000", '#,##0,,"百万"'), "2,383百万")
         self.assertEqual(displayed_number("2", "0.##"), "2")
         self.assertTrue(fact_binding_present({"label": "准确率", "value": "94.3", "unit": "%"}, ["准确率94.3%"] ))

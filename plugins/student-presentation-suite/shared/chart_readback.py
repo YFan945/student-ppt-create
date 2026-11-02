@@ -21,6 +21,20 @@ class ChartRegion(str):
         return item
 
 
+class ChartReadback(list):
+    """Visible labels plus explicit extraction limitations, never hidden values."""
+    def __init__(self):
+        super().__init__()
+        self.limitations = []
+
+
+class SlideText(str):
+    def __new__(cls, text: str, limitations: list):
+        item = super().__new__(cls, text)
+        item.readback_limitations = limitations
+        return item
+
+
 def relationships(package: ZipFile, part: str) -> dict[str, str]:
     path = posixpath.join(posixpath.dirname(part), "_rels", posixpath.basename(part) + ".rels")
     if path not in package.namelist():
@@ -65,7 +79,7 @@ def displayed_number(raw: str, code: str = "General") -> str | None:
     section = code.split(";")[1 if value < 0 and ";" in code else 0]
     # Retain literal positions. Unsupported Excel expressions are not guessed.
     pattern = re.sub(r'"([^"]*)"', r"\1", section)
-    number = re.search(r"[#0][#0,]*(?:\.[#0]+)?", pattern)
+    number = re.search(r"[#0][#0,]*(?:\.[#0]+)?,*", pattern)
     if not number or re.search(r"[\[\]_*?\\]", section):
         return None
     prefix, suffix = pattern[:number.start()], pattern[number.end():]
@@ -95,7 +109,7 @@ def displayed_number(raw: str, code: str = "General") -> str | None:
 
 def chart_regions(package: ZipFile, slide: ET.Element, part: str) -> list[str]:
     rels = relationships(package, part)
-    result: list[str] = []
+    result = ChartReadback()
     targets = dict.fromkeys(rels.get(node.get(f"{{{R}}}id", "")) for node in slide.iter(f"{{{C}}}chart"))
     for target in targets:
         if not target or target not in package.namelist():
@@ -125,10 +139,15 @@ def chart_regions(package: ZipFile, slide: ET.Element, part: str) -> list[str]:
                 name = "".join(node.text or "" for node in series.findall(f"{{{C}}}tx//{{{C}}}v"))
                 if legend and name and not pie:
                     result.append(name)
-                cats = points(series.find(f"{{{C}}}cat"))
+                categories_node = series.find(f"{{{C}}}cat")
+                if categories_node is None:
+                    categories_node = series.find(f"{{{C}}}xVal")
+                cats = points(categories_node)
                 if categories_visible or pie and legend:
                     result.extend(cats.values())
                 values_node = series.find(f"{{{C}}}val")
+                if values_node is None:
+                    values_node = series.find(f"{{{C}}}yVal")
                 values = points(values_node)
                 default_format = values_node.findtext(f".//{{{C}}}formatCode", "General") if values_node is not None else "General"
                 plot_labels = plot.find(f"{{{C}}}dLbls")
@@ -152,6 +171,8 @@ def chart_regions(package: ZipFile, slide: ET.Element, part: str) -> list[str]:
                         if formatting is None and labels is not None:
                             formatting = labels.find(f"{{{C}}}numFmt")
                         text = displayed_number(raw, formatting.get("formatCode", default_format) if formatting is not None else default_format)
+                        if text is None:
+                            result.limitations.append({"code": "chart_label_format_unreadable", "chart": target})
                     if text:
                         result.append(ChartRegion(text, scoped))
                         if index in cats and (categories_visible or category_label or pie and legend):

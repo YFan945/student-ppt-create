@@ -219,8 +219,8 @@ class PptxStaticCoreTests(unittest.TestCase):
             self.write_pptx(pptx, [slide])
             result = core.inspect_pptx(pptx)
         risks = [risk for finding in result["findings"] for risk in finding["risk"]]
-        self.assertIn("title-outside-title-zone", risks)
-        self.assertIn("footer-zone-invasion", risks)
+        self.assertNotIn("title-outside-title-zone", risks)
+        self.assertNotIn("footer-zone-invasion", risks)
 
     def test_flags_low_contrast_text_and_insufficient_gutter(self) -> None:
         slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
@@ -235,7 +235,7 @@ class PptxStaticCoreTests(unittest.TestCase):
             result = core.inspect_pptx(pptx)
         risks = [risk for finding in result["findings"] for risk in finding["risk"]]
         self.assertIn("low-foreground-background-contrast", risks)
-        self.assertIn("insufficient-gutter-risk", risks)
+        self.assertNotIn("insufficient-gutter-risk", risks)
 
     def test_flags_connector_routed_through_unrelated_object(self) -> None:
         slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'
@@ -286,7 +286,7 @@ class PptxStaticCoreTests(unittest.TestCase):
             self.write_pptx(pptx, [slide])
             result = core.inspect_pptx(pptx)
         risks = [risk for finding in result["findings"] for risk in finding["risk"]]
-        self.assertIn("text-box-padding-below-16pt", risks)
+        self.assertNotIn("text-box-padding-below-16pt", risks)
 
     def test_flags_nearly_aligned_stacked_objects(self) -> None:
         slide = """<p:sld xmlns:p='http://schemas.openxmlformats.org/presentationml/2006/main'

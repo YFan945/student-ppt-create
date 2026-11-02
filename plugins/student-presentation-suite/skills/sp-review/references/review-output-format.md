@@ -7,8 +7,6 @@ Use this structure by default. Omit sections that do not apply. Keep the review 
 
 ## What Works Well
 
-## Five-Dimension Score
-
 ## Critical Issues
 
 ## Slide-by-Slide Suggestions
@@ -18,8 +16,6 @@ Use this structure by default. Omit sections that do not apply. Keep the review 
 ## Evidence And Citations
 
 ## Rehearsal And Timing
-
-## Per-Slide Scores
 
 ## Group Handoffs
 
@@ -31,6 +27,8 @@ Use this structure by default. Omit sections that do not apply. Keep the review 
 
 ## Before/After Diff
 ```
+
+Only when scoring is requested, add the requested score dimensions or per-slide scores; concrete findings are the default.
 
 When requested, add a Training Card for each slide:
 

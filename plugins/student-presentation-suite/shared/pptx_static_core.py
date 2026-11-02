@@ -33,7 +33,7 @@ SMALL_TEXT_BOX_HEIGHT_EMU = 250_000
 CJK_CHAR_WIDTH_RATIO = 0.035   # 中文字宽 ≈ 字号 × 0.035cm
 LATIN_CHAR_WIDTH_RATIO = 0.021  # 英文平均字宽 ≈ 字号 × 0.021cm
 LINE_HEIGHT_RATIO = 1.18         # 与 pptx-helpers.js LINE_SPACING_FACTOR 一致
-OVERFLOW_BOX_FILL_RATIO = 0.85   # 文字总高超过盒高 85% 时判定溢出风险
+OVERFLOW_BOX_FILL_RATIO = 0.85   # Historical constant; the current scan has no fill quota.
 CLIPPING_FILL_RATIO = 1.0        # 文字总高超过盒高才算真实裁切
 HEADING_PLACEHOLDER_TYPES = {"title", "ctrTitle", "subTitle"}
 PRIMARY_TITLE_PLACEHOLDER_TYPES = {"title", "ctrTitle"}
@@ -713,8 +713,6 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                     elif min_size < 10:
                         # Inspection advisory, never a global typography floor.
                         risk.append("small-text-readability-review")
-                    if container_type == "shape" and text_box_padding_risk(container):
-                        risk.append("text-box-padding-below-16pt")
                     if bounds:
                         bounded_items.append((idx, bounds))
                         if bounds["cx"] < SMALL_TEXT_BOX_WIDTH_EMU or bounds["cy"] < SMALL_TEXT_BOX_HEIGHT_EMU:
@@ -733,8 +731,6 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                             fill = overflow["fill_ratio_raw"]
                             if fill > CLIPPING_FILL_RATIO:
                                 risk.append("text-vertical-overflow")
-                            elif fill > OVERFLOW_BOX_FILL_RATIO:
-                                risk.append("text-vertical-overflow-risk")
                         if (
                             bounds["x"] < 0
                             or bounds["y"] < 0
@@ -749,12 +745,6 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                             or slide_height - (bounds["y"] + bounds["cy"]) < EDGE_MARGIN_EMU
                         ):
                             risk.append("edge-margin-risk")
-                        title_zone = slide_height * 0.16
-                        footer_start = slide_height * 0.95
-                        if primary_title and bounds["y"] + bounds["cy"] > title_zone:
-                            risk.append("title-outside-title-zone")
-                        if not is_footer_shape(container) and bounds["y"] + bounds["cy"] > footer_start:
-                            risk.append("footer-zone-invasion")
                     background_color = solid_fill_color(container)
                     foreground_colors = text_colors(container)
                     if background_color:
@@ -795,18 +785,11 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                                 finding["overflow_estimate"] = overflow_detail
                         findings.append(finding)
                 if bounded_items:
-                    total_area = sum(
-                        min(item["cx"], slide_width) * min(item["cy"], slide_height)
-                        for _, item in bounded_items
-                    )
-                    slide_area = slide_width * slide_height
                     x_axes = {
                         round(item["x"] / EMU_PER_CM, 1)
                         for _, item in bounded_items
                     }
                     slide_risks = []
-                    if total_area / max(slide_area, 1) > 0.92:
-                        slide_risks.append("low-whitespace-risk")
                     if len(bounded_items) >= 7 and len(x_axes) >= 6:
                         slide_risks.append("alignment-axis-complexity")
                     if slide_risks:
@@ -832,7 +815,6 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                             }
                         )
                 overlap_examples = []
-                gutter_examples = []
                 for first_index, (first_kind, first_id, first_bounds) in enumerate(visible_objects):
                     if first_kind == "connector":
                         continue
@@ -847,12 +829,6 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                         min_area = min(first_bounds["cx"] * first_bounds["cy"], second_bounds["cx"] * second_bounds["cy"])
                         if area >= MIN_UNINTENDED_OVERLAP_EMU ** 2 and area / max(min_area, 1) >= 0.15:
                             overlap_examples.append({"first": f"{first_kind}:{first_id}", "second": f"{second_kind}:{second_id}", "area_emu2": area})
-                        vertical_overlap = min(first_bounds["y"] + first_bounds["cy"], second_bounds["y"] + second_bounds["cy"]) - max(first_bounds["y"], second_bounds["y"])
-                        horizontal_overlap = min(first_bounds["x"] + first_bounds["cx"], second_bounds["x"] + second_bounds["cx"]) - max(first_bounds["x"], second_bounds["x"])
-                        horizontal_gap = max(second_bounds["x"] - (first_bounds["x"] + first_bounds["cx"]), first_bounds["x"] - (second_bounds["x"] + second_bounds["cx"]), 0)
-                        vertical_gap = max(second_bounds["y"] - (first_bounds["y"] + first_bounds["cy"]), first_bounds["y"] - (second_bounds["y"] + second_bounds["cy"]), 0)
-                        if (vertical_overlap > 0 and 0 < horizontal_gap < MIN_GUTTER_EMU) or (horizontal_overlap > 0 and 0 < vertical_gap < MIN_GUTTER_EMU):
-                            gutter_examples.append({"first": f"{first_kind}:{first_id}", "second": f"{second_kind}:{second_id}", "gap_emu": min(horizontal_gap or MIN_GUTTER_EMU, vertical_gap or MIN_GUTTER_EMU)})
                 if overlap_examples:
                     findings.append(
                         {
@@ -868,23 +844,6 @@ def inspect_pptx(path: Path, max_bytes: int = DEFAULT_MAX_PPTX_BYTES) -> dict:
                             "primary_title_shape": False,
                             "risk": ["unexpected-object-overlap-risk"],
                             "overlap_examples": overlap_examples[:10],
-                        }
-                    )
-                if gutter_examples:
-                    findings.append(
-                        {
-                            "slide": slide_id,
-                            "shape": 0,
-                            "container_type": "slide",
-                            "text_preview": "slide-level gutter spacing",
-                            "min_font_pt": None,
-                            "font_size_source": "n/a",
-                            "char_count": 0,
-                            "detected_cjk": False,
-                            "heading_shape": False,
-                            "primary_title_shape": False,
-                            "risk": ["insufficient-gutter-risk"],
-                            "gutter_examples": gutter_examples[:10],
                         }
                     )
                 alignment_examples = []
@@ -1002,18 +961,11 @@ def summarize_static_risks(static_result: dict[str, object]) -> dict[str, object
     blocker_risks = {
         "text-vertical-overflow",
         "shape-outside-slide",
-        "low-whitespace-risk",
         "unexpected-object-overlap-risk",
         "low-resolution-image-risk",
         "image-aspect-distortion-risk",
-        "title-outside-title-zone",
-        "footer-zone-invasion",
-        "insufficient-gutter-risk",
         "low-foreground-background-contrast",
         "connector-crosses-object-risk",
-        "chart-missing-title-risk",
-        "text-box-padding-below-16pt",
-        "alignment-tolerance-risk",
     }
     for item in findings if isinstance(findings, list) else []:
         if not isinstance(item, dict):

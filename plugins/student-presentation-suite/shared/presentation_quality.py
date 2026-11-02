@@ -203,7 +203,7 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
                 )
             )
         refs = slide.get("evidence_refs") or []
-        unknown_refs = [ref for ref in refs if ref not in evidence_ids]
+        unknown_refs = [ref for ref in refs if ref not in evidence_ids] if "evidence_ledger" in data else []
         if unknown_refs:
             current.append(
                 finding(
@@ -315,7 +315,9 @@ def analyze_spec(data: dict[str, Any]) -> dict[str, Any]:
         ref
         for slide in slides
         if isinstance(slide, dict)
-        for ref in (slide.get("evidence_refs") or [])
+        for ref in [*(slide.get("evidence_refs") or []),
+                    *(ref for item in (slide.get("semantic_requirements") or {}).get("must_convey", [])
+                      for ref in item.get("evidence_refs", []))]
     }
     for evidence_id in sorted(evidence_ids - used_refs):
         findings.append(

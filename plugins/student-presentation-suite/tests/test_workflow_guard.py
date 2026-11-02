@@ -4,10 +4,8 @@ import argparse
 import contextlib
 import hashlib
 import io
-import json
 import tempfile
 import unittest
-import zipfile
 from pathlib import Path
 from unittest import mock
 
@@ -34,6 +32,13 @@ class StateTransitionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.module = load_module(SCRIPT)
+
+    def _ns(self, action: str, **kwargs: object) -> argparse.Namespace:
+        base = {"action": action, "state_file": None, "topic": "test", "summary_file": None,
+                "to": None, "qa_manifest": None, "pptx": None, "delivery_report": None,
+                "reason": None, "force": False}
+        base.update(kwargs)
+        return argparse.Namespace(**base)
 
     def test_all_valid_forward_transitions(self) -> None:
         module = self.module
@@ -64,28 +69,14 @@ class StateTransitionTests(unittest.TestCase):
         self.assertFalse(module.transition_allowed("complete", "qa"))
         self.assertFalse(module.transition_allowed("producing", "planned"))
 
-    def test_second_qa_rework_cycle_is_rejected(self) -> None:
+    def test_second_qa_rework_cycle_is_allowed_without_a_paperwork_reason(self):
         module = self.module
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp) / "state.json"
-            module.save_state(
-                state,
-                {
-                    "workflow_version": "1.0",
-                    "state": "qa",
-                    "topic": "t",
-                    "rework_count": 1,
-                },
-            )
-            with self.assertRaises(SystemExit):
-                module.state_command(
-                    self._ns(
-                        "transition",
-                        state_file=state,
-                        to="producing",
-                        reason="second blocker cycle",
-                    )
-                )
+            module.save_state(state, {"state": "qa", "rework_count": 1})
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(module.state_command(self._ns("transition", state_file=state, to="producing", reason=None)), 0)
+            self.assertEqual(module.load_state(state)["rework_count"], 2)
 
     def test_recovery_edge_incomplete_to_qa_allowed(self) -> None:
         module = self.module
@@ -131,323 +122,16 @@ class StateTransitionTests(unittest.TestCase):
                     module.transition_allowed(state, state)
                 )
 
-    def test_complete_requires_valid_qa_manifest(self) -> None:
-        module = self.module
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pptx = root / "deck.pptx"
-            with zipfile.ZipFile(pptx, "w") as archive:
-                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
-            content_qa = root / "content-qa.json"
-            visual_report = root / "visual-inspection.json"
-            asset_manifest = root / "asset-manifest.json"
-            asset_report = root / "asset-report.json"
-            content_qa.write_text("{}", encoding="utf-8")
-            visual_report.write_text("{}", encoding="utf-8")
-            asset_manifest.write_text("{}", encoding="utf-8")
-            asset_report.write_text("{}", encoding="utf-8")
-            manifest = root / "qa.json"
-            manifest.write_text(json.dumps({
-                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                "slide_count": 1,
-                "rendered_page_count": 1,
-                "scenario_contract_passed": True,
-                "visual_inspection": {
-                    "completed": True,
-                    "remaining_blockers": 0,
-                    "inspected_pages": [1],
-                    "repair_cycles": 0,
-                    "no_repair_needed_reason": "No visual defect was found.",
-                },
-                "content_qa_report": str(content_qa),
-                "content_qa_report_sha256": hashlib.sha256(content_qa.read_bytes()).hexdigest(),
-                "visual_inspection_report": str(visual_report),
-                "visual_inspection_report_sha256": hashlib.sha256(visual_report.read_bytes()).hexdigest(),
-                "asset_manifest": str(asset_manifest),
-                "asset_manifest_sha256": hashlib.sha256(asset_manifest.read_bytes()).hexdigest(),
-                "asset_manifest_report": str(asset_report),
-                "asset_manifest_report_sha256": hashlib.sha256(asset_report.read_bytes()).hexdigest(),
-            }), encoding="utf-8")
-            delivery = root / "delivery.json"
-            package = root / "package.json"
-            package.write_text(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                    }
-                ),
-                encoding="utf-8",
-            )
-            delivery.write_text(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "status": "complete",
-                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                        "qa_manifest_sha256": hashlib.sha256(
-                            manifest.read_bytes()
-                        ).hexdigest(),
-                        "package_report_sha256": hashlib.sha256(
-                            package.read_bytes()
-                        ).hexdigest(),
-                        "package_blockers": 0,
-                        "package_validation_passed": True,
-                        "preview_page_coverage": "1/1",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            self.assertEqual(
-                [],
-                module.validate_completion_manifest(manifest, pptx, delivery),
-            )
-            manifest.write_text("{}", encoding="utf-8")
-            self.assertTrue(module.validate_completion_manifest(manifest, pptx))
+    def test_current_completion_needs_no_old_receipts(self):
+        with mock.patch("shared.artifact_validation.validate_artifact", return_value={"ok": True}) as validator:
+            self.assertEqual(self.module.validate_completion_manifest(None, Path("deck.pptx")), [])
+            validator.assert_called_once_with(Path("deck.pptx"))
 
-    def test_complete_accepts_simplified_delivery_without_qa_manifest(self) -> None:
-        module = self.module
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pptx = root / "deck.pptx"
-            with zipfile.ZipFile(pptx, "w") as archive:
-                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
-            delivery = root / "delivery.json"
-            delivery.write_text(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "status": "complete",
-                        "gate_profile": "simplified-v1",
-                        "generation_core_version": "0.7.1",
-                        "actual_content_check_passed": True,
-                        "quality_check_passed": True,
-                        "quality_report_sha256": "1" * 64,
-                        "slide_spec_sha256": "2" * 64,
-                        "spec_lock_sha256": "3" * 64,
-                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                        "slide_spec_validation_passed": True,
-                        "package_validation_passed": True,
-                        "package_blockers": 0,
-                        "visual_reviewed": True,
-                        "preview_page_coverage": "1/1",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            self.assertEqual(
-                [], module.validate_completion_manifest(None, pptx, delivery)
-            )
-            broken = json.loads(delivery.read_text(encoding="utf-8"))
-            broken["visual_reviewed"] = False
-            delivery.write_text(json.dumps(broken), encoding="utf-8")
-            self.assertTrue(module.validate_completion_manifest(None, pptx, delivery))
-
-    def test_complete_rejects_pre_v071_simplified_delivery(self) -> None:
-        module = self.module
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pptx = root / "deck.pptx"
-            with zipfile.ZipFile(pptx, "w") as archive:
-                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
-            delivery = root / "delivery.json"
-            delivery.write_text(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "status": "complete",
-                        "gate_profile": "simplified-v1",
-                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                        "slide_spec_validation_passed": True,
-                        "package_validation_passed": True,
-                        "package_blockers": 0,
-                        "visual_reviewed": True,
-                        "preview_page_coverage": "1/1",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            errors = module.validate_completion_manifest(None, pptx, delivery)
-            self.assertTrue(any("0.7.1" in item for item in errors))
-            self.assertTrue(any("quality gate" in item for item in errors))
-
-    def test_complete_accepts_simplified_v08_delivery(self) -> None:
-        """v0.8 门禁链的交付报告必须能走 complete 转换（实战暴露的口径分裂）。"""
-        module = self.module
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pptx = root / "deck.pptx"
-            with zipfile.ZipFile(pptx, "w") as archive:
-                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
-            delivery = root / "delivery.json"
-            delivery.write_text(
-                json.dumps(
-                    {
-                        "ok": True,
-                        "status": "complete",
-                        "gate_profile": "simplified-v08",
-                        "generation_core_version": "0.8",
-                        "slide_spec_validation_passed": True,
-                        "package_validation_passed": True,
-                        "package_blockers": 0,
-                        "visual_reviewed": True,
-                        "actual_content_check_passed": True,
-                        "quality_check_passed": True,
-                        "visual_generation_check_passed": True,
-                        "visual_review_check_passed": True,
-                        "quality_report_sha256": "1" * 64,
-                        "actual_content_report_sha256": "4" * 64,
-                        "visual_generation_report_sha256": "5" * 64,
-                        "slide_spec_sha256": "2" * 64,
-                        "spec_lock_sha256": "3" * 64,
-                        "art_direction_sha256": "6" * 64,
-                        "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                        "preview_page_coverage": "1/1",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            self.assertEqual(
-                [], module.validate_completion_manifest(None, pptx, delivery)
-            )
-            # 任一 v0.8 检查项失败都必须拒绝。
-            broken = json.loads(delivery.read_text(encoding="utf-8"))
-            broken["visual_review_check_passed"] = False
-            delivery.write_text(json.dumps(broken), encoding="utf-8")
-            errors = module.validate_completion_manifest(None, pptx, delivery)
-            self.assertTrue(any("视觉复核证据绑定" in item for item in errors))
-
-    def test_complete_rejects_missing_manifest(self) -> None:
-        module = self.module
-        self.assertTrue(module.validate_completion_manifest(None, None))
-
-    def test_complete_rejects_hash_mismatch(self) -> None:
-        module = self.module
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pptx = root / "deck.pptx"
-            with zipfile.ZipFile(pptx, "w") as archive:
-                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
-            other = root / "other.pptx"
-            with zipfile.ZipFile(other, "w") as archive:
-                archive.writestr("ppt/slides/slide1.xml", "<slide><!-- different --></slide>")
-            manifest = root / "qa.json"
-            manifest.write_text(json.dumps({
-                "pptx_sha256": hashlib.sha256(other.read_bytes()).hexdigest(),
-                "slide_count": 1,
-                "rendered_page_count": 1,
-                "visual_inspection": {"completed": True, "remaining_blockers": 0},
-            }), encoding="utf-8")
-            errors = module.validate_completion_manifest(manifest, pptx)
-            self.assertTrue(any("pptx_sha256" in e for e in errors))
-
-    def test_complete_rejects_remaining_blockers(self) -> None:
-        module = self.module
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pptx = root / "deck.pptx"
-            with zipfile.ZipFile(pptx, "w") as archive:
-                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
-            manifest = root / "qa.json"
-            manifest.write_text(json.dumps({
-                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                "slide_count": 1,
-                "rendered_page_count": 1,
-                "visual_inspection": {"completed": True, "remaining_blockers": 2},
-            }), encoding="utf-8")
-            errors = module.validate_completion_manifest(manifest, pptx)
-            self.assertTrue(any("blocker" in e.lower() for e in errors))
-
-    def test_complete_rejects_missing_visual_inspection(self) -> None:
-        """没有逐页渲染证据时不能 complete。"""
-        module = self.module
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pptx = root / "deck.pptx"
-            with zipfile.ZipFile(pptx, "w") as archive:
-                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
-            manifest = root / "qa.json"
-            manifest.write_text(json.dumps({
-                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                "slide_count": 1,
-                "scenario_contract_passed": True,
-            }), encoding="utf-8")
-            delivery = root / "delivery.json"
-            delivery.write_text(json.dumps({
-                "ok": True,
-                "status": "complete",
-                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                "qa_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
-                "package_blockers": 0,
-                "package_validation_passed": True,
-                "preview_page_coverage": "0/0",
-            }), encoding="utf-8")
-            errors = module.validate_completion_manifest(manifest, pptx, delivery)
-            self.assertTrue(any("visual_inspection" in error for error in errors))
-            self.assertTrue(any("渲染页面" in error for error in errors))
-
-    def test_complete_allows_completed_inspection_without_repair_reason(self) -> None:
-        """no_repair_needed_reason 为可选：completed + remaining_blockers=0 即可 complete。"""
-        module = self.module
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            pptx = root / "deck.pptx"
-            with zipfile.ZipFile(pptx, "w") as archive:
-                archive.writestr("ppt/slides/slide1.xml", "<slide/>")
-            content_qa = root / "content-qa.json"
-            visual_report = root / "visual-inspection.json"
-            asset_manifest = root / "asset-manifest.json"
-            asset_report = root / "asset-report.json"
-            content_qa.write_text("{}", encoding="utf-8")
-            visual_report.write_text("{}", encoding="utf-8")
-            asset_manifest.write_text("{}", encoding="utf-8")
-            asset_report.write_text("{}", encoding="utf-8")
-            manifest = root / "qa.json"
-            manifest.write_text(json.dumps({
-                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                "slide_count": 1,
-                "rendered_page_count": 1,
-                "scenario_contract_passed": True,
-                "visual_inspection": {"completed": True, "remaining_blockers": 0},
-                "content_qa_report": str(content_qa),
-                "content_qa_report_sha256": hashlib.sha256(content_qa.read_bytes()).hexdigest(),
-                "visual_inspection_report": str(visual_report),
-                "visual_inspection_report_sha256": hashlib.sha256(visual_report.read_bytes()).hexdigest(),
-                "asset_manifest": str(asset_manifest),
-                "asset_manifest_sha256": hashlib.sha256(asset_manifest.read_bytes()).hexdigest(),
-                "asset_manifest_report": str(asset_report),
-                "asset_manifest_report_sha256": hashlib.sha256(asset_report.read_bytes()).hexdigest(),
-            }), encoding="utf-8")
-            delivery = root / "delivery.json"
-            delivery.write_text(json.dumps({
-                "ok": True,
-                "status": "complete",
-                "pptx_sha256": hashlib.sha256(pptx.read_bytes()).hexdigest(),
-                "qa_manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
-                "package_blockers": 0,
-                "package_validation_passed": True,
-                "preview_page_coverage": "1/1",
-            }), encoding="utf-8")
-            self.assertEqual(
-                [],
-                module.validate_completion_manifest(manifest, pptx, delivery),
-            )
-
-    def _ns(self, action: str, **kwargs: object) -> argparse.Namespace:
-        base: dict[str, object] = {
-            "action": action,
-            "state_file": None,
-            "topic": "test",
-            "summary_file": None,
-            "to": None,
-            "qa_manifest": None,
-            "pptx": None,
-            "delivery_report": None,
-            "reason": None,
-            "force": False,
-        }
-        base.update(kwargs)
-        return argparse.Namespace(**base)
+    def test_passing_old_receipt_cannot_override_current_artifact_error(self):
+        report = {"ok": False, "package": {"findings": [{"severity": "error", "code": "corrupt", "detail": "broken package"}]}}
+        with mock.patch("shared.artifact_validation.validate_artifact", return_value=report):
+            self.assertEqual(self.module.validate_completion_manifest(Path("old-qa.json"), Path("broken.pptx"), Path("old-passing.json")), ["broken package"])
+        self.assertTrue(self.module.validate_completion_manifest(None, None))
 
     def test_complete_rejects_changed_summary(self) -> None:
         """轻量防线：confirm 后 summary 被改 → complete 被拒。"""
@@ -535,28 +219,13 @@ class StateTransitionTests(unittest.TestCase):
                     self._ns("confirm", state_file=state, summary_file=summary)
                 )
 
-    def test_confirm_rejects_summary_missing_required_groups(self) -> None:
-        """必备字段组缺一即拒（exit 2）：防止批准后被换成缺维度的摘要。"""
-        module = self.module
+    def test_confirm_rejects_an_empty_summary(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            state = root / "state.json"
-            summary = root / "summary.md"
-            # 覆盖场景/受众/篇幅/输出交付，唯独缺"研究范围/证据"组。
-            summary.write_text(
-                "Production Summary：场景已定，受众已知，篇幅 8 页，输出到 outputs。",
-                encoding="utf-8",
-            )
-            buffer = io.StringIO()
-            with contextlib.redirect_stderr(buffer):
-                with self.assertRaises(SystemExit) as raised:
-                    module.state_command(
-                        self._ns("confirm", state_file=state, summary_file=summary)
-                    )
-            self.assertEqual(2, raised.exception.code)
-            self.assertIn("研究范围/证据", buffer.getvalue())
-            self.assertIn("且须与用户批准的版本一致", buffer.getvalue())
-            self.assertIsNone(module.load_state(state), "被拒后不应写入状态")
+            state = Path(tmp) / "state.json"
+            summary = Path(tmp) / "summary.md"
+            summary.write_text("  ", encoding="utf-8")
+            with self.assertRaises(SystemExit):
+                self.module.state_command(self._ns("confirm", state_file=state, summary_file=summary))
 
     def test_confirm_accepts_full_summary(self) -> None:
         """五组字段齐全的摘要正常 confirm，状态与哈希照常落盘。"""

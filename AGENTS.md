@@ -244,10 +244,9 @@ ruff check plugins/student-presentation-suite/shared/ plugins/student-presentati
 npx --prefix plugins/student-presentation-suite eslint --config plugins/student-presentation-suite/eslint.config.mjs plugins/student-presentation-suite/scripts/*.js
 npx --prefix plugins/student-presentation-suite prettier --check plugins/student-presentation-suite/scripts/*.js
 
-# Unit and integration tests
-# (check_plugin_release.py runs this same suite as its last stage — see Runtime
-# checks — so a red suite fails the release gate, not just this manual command)
-python -m unittest discover -s plugins/student-presentation-suite/tests
+# Unit and integration tests run once inside check_plugin_release.py below.
+# During development, use targeted unittest cases; do not run the full suite
+# separately immediately before the release check unless code changed.
 
 # Runtime checks
 python plugins/student-presentation-suite/scripts/smoke_pptx.py

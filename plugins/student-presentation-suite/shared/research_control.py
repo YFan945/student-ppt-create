@@ -6,6 +6,7 @@ import json
 import time
 from pathlib import Path
 
+from shared.artifact_fingerprints import content_digest
 from shared.research_io import atomic_json, file_lock
 
 
@@ -15,6 +16,13 @@ def read(path: Path) -> dict:
         return value if isinstance(value, dict) else {}
     except (OSError, ValueError):
         return {}
+
+
+def evidence_key(work: Path) -> str:
+    """A refreshed report or cache annotation is not new evidence."""
+    parts = [(name, content_digest(work / name) if (work / name).is_file() else None)
+             for name in ("research-task.json", "research-pack.json")]
+    return hashlib.sha256(json.dumps(parts).encode()).hexdigest()
 
 
 def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> dict:
@@ -34,8 +42,12 @@ def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> 
             state["last_progress_at"] = now
         report = read(work / "research-pack-validation.json")
         pack = work / "research-pack.json"
-        current = pack.is_file() and report.get("research_pack_sha256") == hashlib.sha256(pack.read_bytes()).hexdigest()
-        current = current and report.get("task", {}).get("sha256") == task_sha and report.get("ok") is True
+        pack_identity = report.get("research_pack_content_sha256")
+        task_identity = report.get("task", {}).get("content_sha256")
+        current = pack.is_file() and (pack_identity == content_digest(pack) if pack_identity else
+            report.get("research_pack_sha256") == hashlib.sha256(pack.read_bytes()).hexdigest())
+        current = current and (task_identity == content_digest(task_path) if task_identity else
+            report.get("task", {}).get("sha256") == task_sha) and report.get("ok") is True
         useful = set()
         if current:
             content = read(pack)
@@ -61,12 +73,16 @@ def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> 
         reason = state.get("reason", "")
         if reason in {"time_budget_exhausted", "no_useful_progress"}:
             reason = ""  # old timer decisions do not prevent continuing the task
-        if reason == "task_changed" or (state.get("task_sha256") != task_sha and reason == "sufficient_evidence"):
+        if reason == "task_changed" or (reason == "sufficient_evidence" and (
+                state.get("task_sha256") != task_sha or not current
+                or report.get("delivery_status") not in {"ready", "partial"})):
             reason = ""
         state["task_sha256"] = task_sha
         validation_path = work / "research-pack-validation.json"
         report_version = hashlib.sha256(validation_path.read_bytes()).hexdigest() if validation_path.is_file() else None
-        explicitly_continuing = bool(state.get("resume_validation_sha256")) and state["resume_validation_sha256"] == report_version
+        explicitly_continuing = (bool(state.get("resume_evidence_key")) and state["resume_evidence_key"] == evidence_key(work)) or (
+            not state.get("resume_evidence_key") and bool(state.get("resume_validation_sha256"))
+            and state["resume_validation_sha256"] == report_version)
         if not reason and current and not explicitly_continuing and report.get("delivery_status") in {"ready", "partial"}:
             reason = "sufficient_evidence"
         state.update(state="stop_requested" if reason else "active", reason=reason,

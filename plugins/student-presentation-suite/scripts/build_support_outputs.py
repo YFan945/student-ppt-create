@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import html
 import json
-import posixpath
 import re
 import sys
 import zipfile
@@ -65,30 +64,8 @@ def load_spec(path: Path) -> dict[str, Any]:
 
 def extract_pptx_notes(pptx: Path) -> dict[int, str]:
     """Read the actual notes panes, keyed by one-based slide number."""
-    notes: dict[int, str] = {}
-    with zipfile.ZipFile(pptx) as zf:
-        names = set(zf.namelist())
-        for name in names:
-            match = re.fullmatch(r"ppt/slides/slide(\d+)\.xml", name)
-            if not match:
-                continue
-            slide_no = int(match.group(1))
-            rels_name = f"ppt/slides/_rels/slide{slide_no}.xml.rels"
-            if rels_name not in names:
-                continue
-            targets = NOTESLIDE_REL_RE.findall(zf.read(rels_name).decode("utf-8"))
-            for target in targets:
-                notes_path = posixpath.normpath(posixpath.join("ppt/slides", target))
-                if notes_path not in names:
-                    continue
-                root = ET.fromstring(zf.read(notes_path))
-                text = "\n".join(
-                    node.text or "" for node in root.iter(f"{{{A_NS}}}t")
-                ).strip()
-                if text:
-                    notes[slide_no] = text
-                break
-    return notes
+    from shared.artifact_validation import content_checker
+    return content_checker().extract_pptx_notes(pptx)
 
 
 def parse_speaker_notes_markdown(path: Path, slide_ids: list[int]) -> dict[int, str]:
@@ -122,23 +99,19 @@ def actual_speaker_notes(
     if notes_path and notes_path.is_file():
         notes.update(parse_speaker_notes_markdown(notes_path, slide_ids))
     if pptx_path and pptx_path.is_file():
-        for slide_id, body in extract_pptx_notes(pptx_path).items():
-            notes.setdefault(slide_id, body)
+        actual = extract_pptx_notes(pptx_path)
+        for position, slide_id in enumerate(slide_ids, 1):
+            notes.setdefault(slide_id, actual.get(position, ""))
     missing = []
     for slide_id in slide_ids:
         body = notes.get(slide_id, "").strip()
         compact = re.sub(r"\s+", "", body)
-        placeholder_only = compact.casefold() in {
-            str(slide_id),
-            re.sub(r"\s+", "", slides[slide_id]).casefold(),
-        }
-        meaningful_chars = re.findall(r"[\w\u3400-\u9fff]", compact, re.UNICODE)
-        if placeholder_only or len(meaningful_chars) < 8:
+        if not compact:
             missing.append(slide_id)
     if missing:
         raise ValueError(
             "full-script/teleprompter require substantive per-slide speaker prose from "
-            "speaker-notes.md or PPTX notes panes; missing or too short: "
+            "speaker-notes.md or PPTX notes panes; missing: "
             + ", ".join(map(str, missing))
         )
     return notes
@@ -149,12 +122,12 @@ def with_actual_speaker_notes(
 ) -> dict[str, Any]:
     actual_titles = actual_titles or {}
     value = dict(data)
+    # Callers pass stable-ID keyed notes; actual_titles is keyed by page position.
     value["slides"] = [
-        {**slide, "speaker_notes": notes.get(int(slide.get("id") or 0), ""),
-         "title": actual_titles.get(int(slide.get("id") or 0)) or slide.get("title", "")}
-        if isinstance(slide, dict)
-        else slide
-        for slide in data.get("slides", [])
+        {**slide, "id": position, "speaker_notes": notes.get(int(slide.get("id") or position), ""),
+         "title": actual_titles.get(position) or slide.get("title", "")}
+        if isinstance(slide, dict) else slide
+        for position, slide in enumerate(data.get("slides", []), 1)
     ]
     return value
 
@@ -261,7 +234,7 @@ def speaker_notes_markdown(data: dict[str, Any]) -> str:
         lines.extend(
             [
                 f"## Slide {slide.get('id')}: {slide.get('title', '')}",
-                str(slide.get("speaker_notes") or slide.get("note_goal") or ""),
+                str(slide.get("speaker_notes") or ""),
                 "",
             ]
         )
@@ -298,6 +271,15 @@ def _assert_page_sections(name: str, text: str, data: dict[str, Any]) -> None:
             f"{name} rendered {found} page sections for {expected} slides; "
             "refusing to write a partial deliverable"
         )
+    if name in {"speaker-notes", "full-script", "teleprompter"}:
+        if name == "teleprompter":
+            bodies = re.findall(r"<p>(.*?)</p>", text, flags=re.S)
+        else:
+            headings = list(NOTES_HEADING_RE.finditer(text))
+            bodies = [text[item.end():headings[index + 1].start() if index + 1 < len(headings) else len(text)]
+                      for index, item in enumerate(headings)]
+        if len(bodies) != expected or any(not html.unescape(body).strip() for body in bodies):
+            raise ValueError(f"{name} has missing actual notes; refusing an empty deliverable")
 
 
 def main() -> None:
@@ -348,13 +330,16 @@ def main() -> None:
         )
         raise SystemExit(2)
     selected = requested if requested else confirmed & SUPPORTED
-    if selected & {"full-script", "teleprompter"}:
+    if selected & {"full-script", "teleprompter"} or ((args.pptx or args.speaker_notes) and selected & PAGE_RENDERERS):
         try:
             actual_notes = actual_speaker_notes(data, args.speaker_notes, args.pptx)
             data = with_actual_speaker_notes(data, actual_notes)
         except (OSError, ValueError, zipfile.BadZipFile, ET.ParseError) as exc:
             print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False, indent=2))
             raise SystemExit(2) from exc
+    else:
+        data = with_actual_speaker_notes(data, {int(slide.get("id") or position): str(slide.get("speaker_notes") or "")
+            for position, slide in enumerate(data.get("slides", []), 1)})
     renderers = {
         "speaker-notes": (f"{prefix}-speaker-notes.md", speaker_notes_markdown),
         "full-script": (f"{prefix}-full-script.md", full_script_markdown),

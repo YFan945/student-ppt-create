@@ -113,7 +113,7 @@ Production Summary 明确是否允许素材占位并保留历史禁止要求。`
 {"kind":"photo-slot","label":"素材待替换","replacement":"实验装置的实拍照片","reason":"尚未提供装置照片"}
 ```
 
-kind 为 `photo-slot` / `screenshot-slot` / `concept` / `data-skeleton`。该页实际显示 label；素材文件存在则记录 path、真实尺寸，无独立文件的原生占位可省略 path。仍填写 slide、purpose、alt_text、fallback。`validate-asset-manifest` 验证策略、记录及文件；`run` 验证对应页的标记并返回占位/替换清单。修改素材记录后重新 run；占位存在本身不阻断已允许的交付，缺失的真实核心证据仍准确说明。
+kind 为 `photo-slot` / `screenshot-slot` / `concept` / `data-skeleton`。该页实际显示 label；素材文件存在则记录 path、真实尺寸，无独立文件的原生占位可省略 path。仍填写 slide、purpose、alt_text；fallback 仅在实际需要后备方案时填写，可用素材不要求虚填。`validate-asset-manifest` 验证策略、记录及文件；`run` 验证对应页的标记并返回占位/替换清单。修改素材记录后重新 run；占位存在本身不阻断已允许的交付，缺失的真实核心证据仍准确说明。
 
 用户允许在占位区域写生图提示词时，将计划提示词写入asset的`prompt`，并设`placeholder.prompt_visible: true`。验证器要求prompt非空且完整出现在对应页，不能仅在备注或manifest隐藏；这不表示图片已经生成。提示词具体说明主体/场景、构图、风格/配色与限制，不仅写“生成配图”。`examples/main-session-visuals/rich-pages.js`的`promptPlaceholder(ctx, options, box)`可绘制可编辑的标记与提示词并返回asset记录；调用方仍须有允许占位的授权并登记记录。旧记录未设prompt_visible时保持兼容，不追溯要求已有PPT展示提示词。
 

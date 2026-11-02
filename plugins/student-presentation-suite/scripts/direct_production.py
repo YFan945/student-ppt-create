@@ -128,7 +128,8 @@ def status(args: argparse.Namespace) -> dict[str, Any]:
     if manifest.get("last_error"):
         result.update(ok=False, action="inspect_latest_failure", latest_failure={
             "attempt": manifest.get("attempts"), "error": manifest["last_error"],
-            "report": manifest.get("last_build_report"), "successful_build_is_previous": True})
+            "report": manifest.get("last_build_report"), "stage": manifest.get("last_failed_stage", "build"),
+            "successful_build_is_previous": manifest.get("last_failed_stage", "build") == "build"})
     published = manifest.get("published") or {}
     if published and isinstance(published, dict) and all(isinstance(item, dict) for item in published.values()):
         result["delivery_health"] = publication_health(published)
@@ -201,7 +202,7 @@ def final_outline(spec: dict[str, Any], texts: list[str], titles: dict[int, str]
 
 def check_summary(report: dict[str, Any]) -> dict[str, Any]:
     return {"ok": report.get("ok"), "content": {key: (report.get("content") or {}).get(key)
-            for key in ("ok", "planned_slide_count", "actual_slide_count", "issue_count", "blocker_count", "issues")},
+            for key in ("ok", "planned_slide_count", "actual_slide_count", "automated_coverage", "issue_count", "blocker_count", "issues")},
             "package_error_count": (report.get("package") or {}).get("error_count"),
             "geometry_errors": (report.get("geometry") or {}).get("errors", []),
             "geometry_warnings": (report.get("geometry") or {}).get("warnings", []),
@@ -547,9 +548,10 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
         "geometry": geometry,
         "assets": assets,
         "check_scope": {"kind": "technical-checks", "visual_quality_verified": False,
+                        "content_coverage": content_report.get("automated_coverage", "complete"),
                         "semantic_verification": "author-self-check-required",
                         "limitation": "ok covers the listed technical checks, not aesthetic approval or completed visual review."},
-        "review_required": VISUAL_REVIEW_TASKS,
+        "review_required": inspection_tasks([], initial=not (manifest.get("render") or {}).get("pages")),
         "semantic_verification": "main-session-self-check",
         "must_convey": [{"slide": index, "requirements": slide.get("semantic_requirements", {}).get("must_convey", [])}
                         for index, slide in enumerate(spec["slides"], 1)],
@@ -623,6 +625,15 @@ def make_contact_sheet(work: Path, pages: list[Path]) -> Path:
     return contact
 
 
+def inspection_tasks(changed: list[int], *, initial: bool = False) -> list[str]:
+    if initial:
+        return VISUAL_REVIEW_TASKS
+    if changed:
+        return [f"Inspect changed full-size pages {changed}; widen the scan only for affected shared design or narrative changes.",
+                "Check changed visible content and notes against their evidence and user requirements."]
+    return ["Check any changed notes or semantic requirements; unchanged images need no repeat inspection."]
+
+
 def run(args: argparse.Namespace) -> dict[str, Any]:
     import generator_scaffold
 
@@ -636,123 +647,106 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     manifest.pop("input_changes", None)
     inputs = authoring_inputs(work, manifest)
     previous_build = manifest.get("build") or {}
-    if (not manifest.get("last_error") and current(previous_build.get("pptx"))
-            and input_identity(inputs) == input_identity(previous_build.get("authoring_inputs", []))):
-        pptx = Path(previous_build["pptx"]["path"])
-        checked = check_artifact(work, manifest, pptx)
-        manifest["check"] = {"ok": checked["ok"], "report": bind(work / "production-check.json")}
-        previous_pages = (manifest.get("render") or {}).get("pages", [])
-        if not getattr(args, "no_render", False):
-            manifest["render"] = render(work, manifest, pptx)
-        changed = [number for number, page in enumerate((manifest.get("render") or {}).get("pages", []), 1)
-                   if number > len(previous_pages) or page["sha256"] != previous_pages[number - 1]["sha256"]]
-        save(work, manifest, "qa")
-        return {"ok": checked["ok"], "action": ("inspect_previews" if changed else "unchanged") if checked["ok"] else "inspect_and_fix",
-                "build_reused": True, "changed_pages": changed, "previews": manifest.get("render", {}),
-                "check_report": manifest["check"]["report"], "check_summary": check_summary(checked),
-                "technical_checks": checked["check_scope"]}
+    previous_inputs = previous_build.get("authoring_inputs", [])
     previous_pages = (manifest.get("render") or {}).get("pages", [])
-    previous_inputs = (manifest.get("build") or {}).get("authoring_inputs", [])
+    failed_stage = manifest.get("last_failed_stage", "build") if manifest.get("last_error") else None
+    reused = (current(previous_build.get("pptx")) and input_identity(inputs) == input_identity(previous_inputs)
+              and failed_stage != "build")
     manifest["attempts"] += 1
     manifest["check"] = {}
     save(work, manifest, "producing")
     start = time.monotonic()
     pptx = work / "deck.pptx"
     diagnostic = work / "last-build-report.json"
-    # 每次新尝试先清掉上一次的失败诊断，避免陈旧报告误导本次定位。
     diagnostic.unlink(missing_ok=True)
+    stage = "validation" if reused else "build"
     try:
-        with tempfile.TemporaryDirectory(prefix="build-", dir=work) as directory:
-            staging = Path(directory) / "raw.pptx"
-            try:
-                if manifest["mode"] == "edit_ooxml":
-                    pack_directory(work / "ooxml", staging)
-                else:
-                    entry = work / "deck.js"
-                    active_pages = [work / "pages" / name for name in manifest.get("scaffold", {}).get("pages", [])]
-                    remaining = generator_scaffold.scaffolded_pages(active_pages or generator_scaffold.listed_page_files(work / "pages"))
-                    if remaining:
-                        raise ProductionError("unfinished pages: " + ", ".join(remaining) +
-                                              "; implement their empty page functions using authoring-quickstart.md")
-                    execute(["node", str(ROOT / "scripts" / "run_with_pptxgenjs.js"), "--output", str(staging), str(entry)], work)
-                # The Node wrapper already normalizes XML and injects CJK fonts.
-                # OOXML editing packs directly to preserve untouched source parts.
-                replace_build(staging, pptx)
-                for suffix in (".registry-report.json", ".layout-report.json"):
-                    sidecar = Path(str(staging) + suffix)
-                    if sidecar.is_file():
-                        shutil.copy2(sidecar, Path(str(pptx) + suffix))
-                        if suffix == ".registry-report.json":
-                            report = load(Path(str(pptx) + suffix))
-                            report.update(pptx=str(pptx), pptx_sha256=file_sha256(pptx))
-                            write(Path(str(pptx) + suffix), report)
+        if not reused:
+            with tempfile.TemporaryDirectory(prefix="build-", dir=work) as directory:
+                staging = Path(directory) / "raw.pptx"
+                try:
+                    if manifest["mode"] == "edit_ooxml":
+                        pack_directory(work / "ooxml", staging)
                     else:
-                        Path(str(pptx) + suffix).unlink(missing_ok=True)
-            except (ProductionError, OSError, ValueError):
-                # staging 目录随下面的 TemporaryDirectory 一起删除；构建期几何
-                # preflight sidecar（若已落盘）复制到固定诊断路径，失败报告里指向它。
-                report = Path(str(staging) + ".registry-report.json")
-                if report.is_file():
-                    shutil.copy2(report, diagnostic)
-                raise
-        manifest["build"] = {"pptx": bind(pptx), "seconds": round(time.monotonic() - start, 3)}
-        # 只绑定作者源码：第一级以 `_`/`.` 开头的路径（如 _tmp/ 探测脚本）不参与绑定；
-        # pages/ 内部的共享模块（如 pages/_shared.js）正常参与绑定与变更检测。
-        manifest["build"]["authoring_inputs"] = inputs
+                        entry = work / "deck.js"
+                        active_pages = [work / "pages" / name for name in manifest.get("scaffold", {}).get("pages", [])]
+                        remaining = generator_scaffold.scaffolded_pages(active_pages or generator_scaffold.listed_page_files(work / "pages"))
+                        if remaining:
+                            raise ProductionError("unfinished pages: " + ", ".join(remaining) +
+                                                  "; implement their empty page functions using authoring-quickstart.md")
+                        execute(["node", str(ROOT / "scripts" / "run_with_pptxgenjs.js"), "--output", str(staging), str(entry)], work)
+                    # The Node wrapper already normalizes XML and injects CJK fonts.
+                    # OOXML editing packs directly to preserve untouched source parts.
+                    replace_build(staging, pptx)
+                    for suffix in (".registry-report.json", ".layout-report.json"):
+                        sidecar = Path(str(staging) + suffix)
+                        if sidecar.is_file():
+                            shutil.copy2(sidecar, Path(str(pptx) + suffix))
+                            if suffix == ".registry-report.json":
+                                report = load(Path(str(pptx) + suffix))
+                                report.update(pptx=str(pptx), pptx_sha256=file_sha256(pptx))
+                                write(Path(str(pptx) + suffix), report)
+                        else:
+                            Path(str(pptx) + suffix).unlink(missing_ok=True)
+                except (ProductionError, OSError, ValueError):
+                    # staging 目录随下面的 TemporaryDirectory 一起删除；构建期几何
+                    # preflight sidecar（若已落盘）复制到固定诊断路径，失败报告里指向它。
+                    report = Path(str(staging) + ".registry-report.json")
+                    if report.is_file():
+                        shutil.copy2(report, diagnostic)
+                    raise
+            manifest["build"] = {"pptx": bind(pptx), "seconds": round(time.monotonic() - start, 3)}
+            # 只绑定作者源码：第一级以 `_`/`.` 开头的路径（如 _tmp/ 探测脚本）不参与绑定；
+            # pages/ 内部的共享模块（如 pages/_shared.js）正常参与绑定与变更检测。
+            manifest["build"]["authoring_inputs"] = inputs
+        stage = "validation"
         checked = check_artifact(work, manifest, pptx)
         manifest["check"] = {"ok": checked["ok"], "report": bind(work / "production-check.json")}
         if (work / "presentation-copy.json").is_file():
             manifest["check"]["presentation_copy"] = bind(work / "presentation-copy.json")
         no_render = bool(getattr(args, "no_render", False))
+        stage = "render"
         if no_render:
-            # 只拿检查报告的迭代：构建+全检后跳过渲染。清空 render 绑定，
-            # complete 会因缺少当前预览拒绝交付，不会拿旧预览蒙混。
-            manifest["render"] = {}
+            if not reused:
+                manifest["render"] = {}
         else:
-            render_start = time.monotonic()
             manifest["render"] = render(work, manifest, pptx)
-            manifest["render"]["seconds"] = round(time.monotonic() - render_start, 3)
             if len(manifest["render"]["pages"]) != checked["content"]["actual_slide_count"]:
                 raise ProductionError("rendered page count differs from the PPTX")
-        manifest.pop("last_error", None)
-        manifest.pop("last_build_report", None)
+        for key in ("last_error", "last_build_report", "last_failed_stage"):
+            manifest.pop(key, None)
+        changed = [index for index, page in enumerate(manifest.get("render", {}).get("pages", []), 1)
+                   if index > len(previous_pages) or page["sha256"] != previous_pages[index - 1]["sha256"]]
+        tasks = inspection_tasks(changed, initial=not previous_pages and not no_render)
+        checked["review_required"] = tasks
+        write(work / "production-check.json", checked)
+        manifest["check"]["report"] = bind(work / "production-check.json")
         save(work, manifest, "qa")
-        changed_pages = [index for index, page in enumerate(manifest["render"].get("pages", []), 1)
-                         if index > len(previous_pages) or page["sha256"] != previous_pages[index - 1]["sha256"]]
-        previous_paths = {item["path"]: item for item in previous_inputs}
-        new_paths = {item["path"]: item for item in manifest["build"]["authoring_inputs"]}
-        source_changes = [path for path in previous_paths.keys() | new_paths.keys()
-                          if previous_paths.get(path) != new_paths.get(path)]
+        previous_paths = input_identity(previous_inputs)
+        new_paths = input_identity(inputs)
         shared_changed = bool(previous_inputs) and any(not re.match(r"p\d+-", Path(path).name)
-                                                       for path in source_changes)
-        if not checked["ok"]:
-            action = "inspect_and_fix"
-        elif no_render:
+            for path in previous_paths.keys() | new_paths.keys() if previous_paths.get(path) != new_paths.get(path))
+        action = ("inspect_previews" if changed else "unchanged" if reused else "inspect_changed_content") if checked["ok"] else "inspect_and_fix"
+        if no_render and checked["ok"]:
             action = "inspect_check_report"
-        else:
-            action = "inspect_previews" if changed_pages else "inspect_changed_content"
-        result = {"ok": checked["ok"], "action": action,
-                  "previews": manifest["render"], "check_report": manifest["check"]["report"],
-                  "technical_checks": checked["check_scope"], "geometry": checked["geometry"],
-                  "review_required": checked["review_required"],
-                  "asset_placeholders": checked["assets"]["placeholders"],
-                  "changed_pages": changed_pages, "shared_source_changed": shared_changed,
-                  "check_summary": check_summary(checked),
-                  "must_convey": checked["must_convey"], "semantic_verification": "main-session-self-check"}
-        if no_render:
-            result["render_skipped"] = True
-        return result
+        return {"ok": checked["ok"], "action": action, "build_reused": bool(reused),
+                "previews": manifest.get("render", {}), "check_report": manifest["check"]["report"],
+                "technical_checks": checked["check_scope"], "geometry": checked["geometry"],
+                "review_required": tasks, "asset_placeholders": checked["assets"]["placeholders"],
+                "changed_pages": changed, "shared_source_changed": shared_changed,
+                "check_summary": check_summary(checked), "must_convey": checked["must_convey"],
+                "semantic_verification": "main-session-self-check", **({"render_skipped": True} if no_render else {})}
     except (ProductionError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         message = str(exc)
         details = load(diagnostic) if diagnostic.is_file() else {}
-        details.update(ok=False, attempt=manifest["attempts"], error=message, authoring_inputs=inputs,
-                       previous_success_is_not_this_attempt=True)
+        details.update(ok=False, attempt=manifest["attempts"], stage=stage, error=message, authoring_inputs=inputs,
+                       previous_success_is_not_this_attempt=stage == "build")
         write(diagnostic, details)
         manifest["last_build_report"] = str(diagnostic)
-        message += f" (latest attempt {manifest['attempts']} diagnostic: {diagnostic})"
-        manifest["last_error"] = message
-        save(work, manifest, "producing")
-        raise ProductionError(message) from exc
+        manifest["last_failed_stage"] = stage
+        manifest["last_error"] = message + f" (latest attempt {manifest['attempts']} diagnostic: {diagnostic})"
+        save(work, manifest, "producing" if stage == "build" else "qa")
+        raise ProductionError(manifest["last_error"]) from exc
 
 
 def authoring_inputs(work: Path, manifest: dict[str, Any]) -> list[dict[str, str]]:
@@ -847,7 +841,9 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
 
     work = work_directory(args.work_dir)
     manifest = authorized(work)
-    if manifest.get("last_error"):
+    if manifest.get("last_error") and (manifest.get("last_failed_stage", "build") == "build"
+            or not current((manifest.get("build") or {}).get("pptx"))
+            or input_identity(authoring_inputs(work, manifest)) != input_identity((manifest.get("build") or {}).get("authoring_inputs", []))):
         raise ProductionError(f"latest build failed; inspect {manifest.get('last_build_report')} and run the corrected pages before delivery")
     pptx_binding = (manifest.get("build") or {}).get("pptx")
     if not pptx_binding or not Path(pptx_binding["path"]).is_file():
@@ -909,9 +905,12 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
                   for entry in copy.get("slides", [])}
     if selected & support.SUPPORTED:
         import pptx_actual_content_check as content
-        notes = (support.actual_speaker_notes(spec, None, pptx)
-                 if selected & {"full-script", "teleprompter"}
-                 else content.extract_pptx_notes(pptx))
+        if selected & {"full-script", "teleprompter"}:
+            notes = support.actual_speaker_notes(spec, None, pptx)
+        else:
+            page_notes = content.extract_pptx_notes(pptx)
+            notes = {int(slide.get("id") or position): page_notes.get(position, "")
+                     for position, slide in enumerate(spec["slides"], 1)}
         data = support.with_actual_speaker_notes(spec, notes, titles)
         renderers = {"speaker-notes": ("speaker-notes.md", support.speaker_notes_markdown),
                      "full-script": ("full-script.md", support.full_script_markdown),
@@ -968,6 +967,8 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
         destination = output / f"{prefix}-change-summary.md"
         shutil.copy2(summary, destination)
         published["change-summary"] = bind(destination)
+    for key in ("last_error", "last_build_report", "last_failed_stage"):
+        manifest.pop(key, None)
     manifest["published"] = published
     health = publication_health(published)
     if not health["ok"]:

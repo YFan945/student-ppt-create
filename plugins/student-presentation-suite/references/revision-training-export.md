@@ -52,7 +52,7 @@ For requested review/scoring, optional scores can summarize:
 - defense readiness.
 
 Scores summarize findings and never replace slide-specific fixes. Every issue
-must include severity, target, problem, impact, and concrete fix.
+must include severity, target, problem (including its impact), and concrete fix. Structured findings use exactly these four fields, with impact inside problem.
 
 Main-session production does not require a score file or critic receipt. A requested production quality report must distinguish technical checks from author self-check; it does not establish independent visual or semantic review.
 

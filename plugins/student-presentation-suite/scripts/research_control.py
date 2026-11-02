@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 
 from validate_research_task import validate_task  # noqa: E402
 
-from shared.research_control import read, status  # noqa: E402
+from shared.research_control import evidence_key, read, status  # noqa: E402
 from shared.research_io import atomic_json, file_lock  # noqa: E402
 
 REBIND_MIN_REASON = 1
@@ -37,6 +37,7 @@ def resume(work: Path, reason: str) -> None:
         state.pop("retrieval_started_at", None)
         validation = work / "research-pack-validation.json"
         state["resume_validation_sha256"] = hashlib.sha256(validation.read_bytes()).hexdigest() if validation.is_file() else None
+        state["resume_evidence_key"] = evidence_key(work)
         atomic_json(path, state)
         binding_path = work / "research-task-binding.json"
         binding = read(binding_path)

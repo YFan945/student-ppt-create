@@ -10,9 +10,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import validate_research_pack as validator  # noqa: E402
-from research_task_binding import apply_task  # noqa: E402
 
 from shared.research_io import atomic_json  # noqa: E402
+from shared.research_validation import validate_current  # noqa: E402
 
 
 def inspect(work: Path) -> dict:
@@ -20,11 +20,7 @@ def inspect(work: Path) -> dict:
     pack_path = work / "research-pack.json"
     validation_path = work / "research-pack-validation.json"
     try:
-        pack = validator.normalize(validator.load(pack_path))
-        fetched_path = work / "research/fetched/fetch-text-report.json"
-        fetched = validator._coerce_trail(fetched_path, "fetch-report")[0] if fetched_path.is_file() else None
-        verdict = validator.validate(pack, fetch_report=fetched, work_dir=work)
-        apply_task(verdict, pack, work)
+        _, verdict = validate_current(pack_path, validator=validator)
         errors = [p["message"] for p in verdict["problems"] if p["severity"] in {"major", "critical"}]
         verdict["research_pack_sha256"] = validator.sha256_file(pack_path)
         atomic_json(validation_path, verdict)

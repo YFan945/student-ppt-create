@@ -160,14 +160,13 @@ class SupportOutputTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "substantive per-slide speaker prose"):
             module.actual_speaker_notes(data, None, None)
 
-    def test_pptx_placeholder_text_is_not_a_complete_script(self) -> None:
+    def test_explicit_short_numeric_notes_are_not_rejected_by_a_length_heuristic(self) -> None:
         module = load_module(SCRIPT)
         data = {"slides": [{"id": 1, "title": "Opening"}]}
         with tempfile.TemporaryDirectory() as tmp:
             notes_path = Path(tmp) / "speaker-notes.md"
             notes_path.write_text("## 1 — Opening\n1\n", encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "missing or too short: 1"):
-                module.actual_speaker_notes(data, notes_path, None)
+            self.assertEqual(module.actual_speaker_notes(data, notes_path, None), {1: "1"})
 
     def test_chinese_dot_separator_format_is_recognized(self) -> None:
         """Regression test: '## 第 N 页 · 标题' format must be parsed."""

@@ -46,7 +46,7 @@ PYTHONPATH=. python -m unittest discover -s tests
 
 1. 从 `main` 创建功能分支
 2. 实施修改并添加测试
-3. 运行全部测试确保通过
+3. 运行根 AGENTS.md 的完整发布检查（已内含全部测试），不在相邻步骤重复跑整套 unittest
 4. 提交 PR 到 `main` 分支，并说明本地验证结果；push/PR 不再运行自动 CI
 
 ## 版本发布

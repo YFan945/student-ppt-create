@@ -1,7 +1,7 @@
 ---
 name: sp-review
 description: Use only for a clearly student-owned academic context when the user explicitly asks to review, audit, score, critique, compare, or diagnose an existing PPT/PPTX/PowerPoint deck or rendered export.
-version: 0.34.0
+version: 0.34.1
 ---
 
 # Student Presentation Review
@@ -15,13 +15,13 @@ version: 0.34.0
 - 分级：Critical（阻断理解/评分/表达）、Major（应修复）、Minor（润色）
 - 静态 XML 风险是信号，不替代渲染检查
 - 视觉结论需要渲染证据支撑
-- 按 `../../references/cost-discipline.md` 批量检查独立文件和当前渲染，变化后检查更新页与全套；外部事实检索走 `sp-research`，不依赖已移除的 CD 编号或评审回执
+- 按 `../../references/cost-discipline.md` 批量检查独立文件和当前渲染，变化后仅检查受影响页；公共设计或叙事变化时扩大范围；外部事实检索走 `sp-research`，不依赖已移除的 CD 编号或评审回执
 - 输出写入 `outputs/`，不得修改源文件
 
 ## 职责
 
 - "看看问题"、审查、评分、诊断 → 本 skill（只读）
-- "直接改好"、修改、重建 → 先诊断，再交接给 `sp-deck`（生成独立改进版 + change summary + revision manifest）
+- "直接改好"、修改、重建 → 先诊断，再交接给 `sp-deck`（生成独立改进版与 change summary；revision manifest 仅在用户选定时导出）
 - 不得覆盖原始 deck
 
 ## 工作流
@@ -35,12 +35,12 @@ version: 0.34.0
    - `../../references/revision-training-export.md` — 逐页评分与演练
    - `../../references/slide-spec.md` — 计划与实际对比
    - `../../references/image-strategy.md` — 视觉/来源审查
-3. 对 PPTX 输入运行 `pptx_static_check.py <deck.pptx> --json`。
+3. 按用户指定范围审查。涉及排版/可读性时可选运行 `pptx_static_check.py <deck.pptx> --json`；仅核对引用、文字或局部问题，不自动扩大为全套视觉审查。
 4. 检查渲染预览、PDF 页面、截图或 contact sheet。只有 PPTX 而无预览时，调用
    `python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" render <deck.pptx> --output-dir <work-render-dir> --prefix <topic>`；
-   渲染不可用则结论必须为 `incomplete`。渲染证据决定裁剪和可读性结论。
-5. 总览只判断整套节奏；逐页完整查看断行、裁切、意外重叠、连接线、标签归属、图文关系、信息密度与颜色层级。有用户参考件时并排比较。技术检查通过不等于视觉合格。每次发现分级为 Critical / Major / Minor，记录 `target`（目标页面/页码）、`problem`（问题+影响）、`fix`（具体修复建议），与 `review_findings` schema 一致。
-6. 检查来源缺口、故事顺序、重复页面、结论支撑、时间、转场、开篇/收尾、可能的问题。有 Slide Spec 时运行 `analyze_presentation_spec.py`。
+   需要视觉结论但渲染不可用时，该视觉部分为 `incomplete`。仅事实或引文审查不以缺少渲染判定未完成。渲染证据决定裁剪和可读性结论。
+5. 完整视觉审查时总览判断整套节奏，逐页完整查看；局部审查只看请求及其依赖范围。检查断行、裁切、意外重叠、连接线、标签归属、图文关系、信息密度与颜色层级。有用户参考件时并排比较。技术检查通过不等于视觉合格。每次发现分级为 Critical / Major / Minor，记录 `target`（目标页面/页码）、`problem`（问题+影响）、`fix`（具体修复建议），与 `review_findings` schema 一致。
+6. 检查来源缺口、故事顺序、重复页面、结论支撑、时间、转场、开篇/收尾、可能的问题。有相关结构疑问且 Slide Spec 适用时可选运行 `analyze_presentation_spec.py`，复用未变结果。
 7. 编辑请求时，写 `outputs/<topic>-slide-spec.yaml`（含 `source_deck`、`edit_intent`、`review_findings`（`severity`/`target`/`problem`/`fix`）、`preserve`、`change_summary_required`，按 `../../references/slide-spec.schema.json` 校验），再进入 `sp-deck`。
 
 交接说明：编辑交接件 `slide-spec.yaml` 是诊断与编辑意图的结构化输入，不等于生产授权。

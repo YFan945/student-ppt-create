@@ -1134,28 +1134,12 @@ def main(argv: list[str] | None = None) -> int:
         if candidate.is_file():
             args.fetch_report = candidate
 
-    search_log = None
-    search_payloads = None
-    if args.search_log:
-        search_log = args.search_log
-        payloads_path = args.search_log.parent / "search-payloads.json"
-        if payloads_path.is_file():
-            search_payloads = _coerce_trail(payloads_path, "search-payloads")[0]
-    fetch_report = None
-    if args.fetch_report and args.fetch_report.is_file():
-        fetch_report = _coerce_trail(args.fetch_report, "fetch-report")[0]
+    from types import SimpleNamespace
 
-    pack = normalize(load(args.pack))
-    report = validate(
-        pack,
-        search_log=search_log,
-        fetch_report=fetch_report,
-        search_payloads=search_payloads,
-        work_dir=args.pack.resolve().parent,
-        audit=args.audit,
-    )
-    from research_task_binding import apply_task
-    apply_task(report, pack, args.pack.resolve().parent, args.task)
+    from shared.research_validation import validate_current
+    backend = SimpleNamespace(validate=validate, load=load, normalize=normalize, _coerce_trail=_coerce_trail)
+    pack, report = validate_current(args.pack, validator=backend, task_path=args.task,
+        search_log=args.search_log, fetch_report=args.fetch_report, audit=args.audit)
     from shared.research_io import atomic_json
     atomic_json(args.pack.parent / "research-progress.json", {
         "updated_at": datetime.datetime.now(datetime.UTC).isoformat(),

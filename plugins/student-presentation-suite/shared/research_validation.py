@@ -1,0 +1,77 @@
+"""Reuse actual research validation across validator, handoff and compilation."""
+from __future__ import annotations
+
+import hashlib
+import importlib
+import json
+from pathlib import Path
+
+from shared.artifact_fingerprints import content_digest
+from shared.hashing import file_sha256
+from shared.research_io import atomic_json
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def validate_current(pack_path: Path, *, validator=None, task_path: Path | None = None,
+                     search_log: Path | None = None, fetch_report: Path | None = None,
+                     audit: bool = False) -> tuple[dict, dict]:
+    validator = validator or importlib.import_module("validate_research_pack")
+    from research_task_binding import apply_task
+
+    pack_path = pack_path.resolve()
+    work = pack_path.parent
+    explicit_task = task_path is not None
+    task_path = task_path or work / "research-task.json"
+    search_log = search_log or work / "research/search-log.json"
+    fetch_report = fetch_report or work / "research/fetched/fetch-text-report.json"
+    payloads = search_log.parent / "search-payloads.json"
+    pack = validator.normalize(validator.load(pack_path))
+    paths = {pack_path, task_path, fetch_report, ROOT / "package.json",
+             ROOT / "references/research-pack.schema.json", ROOT / "references/research-task.schema.json"}
+    if audit:
+        paths.update((search_log, payloads))
+    # Text bytes are dependencies when a binding supplies a local document.
+    def documents(value):
+        if isinstance(value, dict):
+            for key, item in value.items():
+                if key in {"text_path", "raw_path"} and isinstance(item, str):
+                    path = Path(item).expanduser()
+                    paths.add(path if path.is_absolute() else work / path)
+                else:
+                    documents(item)
+        elif isinstance(value, list):
+            for item in value:
+                documents(item)
+    documents(pack)
+    fetched = validator._coerce_trail(fetch_report, "fetch-report")[0] if fetch_report.is_file() else None
+    documents(fetched)
+    binding = work / "research-task-binding.json"
+    permission = json.loads(binding.read_text(encoding="utf-8")).get("scope") if binding.is_file() else None
+    key = hashlib.sha256(json.dumps(["research-validation-v1", audit, permission, explicit_task and not task_path.is_file(),
+        [(str(path.resolve()), content_digest(path) if path.is_file() else "missing") for path in sorted(paths)]],
+        ensure_ascii=False).encode()).hexdigest()
+    cache = work / "_tmp/research-validation.json"
+    report = None
+    if cache.is_file():
+        try:
+            saved = json.loads(cache.read_text(encoding="utf-8"))
+            if saved.get("key") == key and isinstance(saved.get("report"), dict):
+                report = saved["report"]
+                report["validation_reused"] = True
+        except (OSError, ValueError, AttributeError):
+            pass
+    if report is None:
+        payload = validator._coerce_trail(payloads, "search-payloads")[0] if audit and payloads.is_file() else None
+        report = validator.validate(pack, search_log=search_log if audit and search_log.is_file() else None,
+            fetch_report=fetched, search_payloads=payload, work_dir=work, audit=audit)
+        apply_task(report, pack, work, task_path if explicit_task else None)
+        report["validation_reused"] = False
+        atomic_json(cache, {"key": key, "report": report})
+    report["research_pack"] = str(pack_path)
+    report["research_pack_sha256"] = file_sha256(pack_path)
+    report["research_pack_content_sha256"] = content_digest(pack_path)
+    if task_path.is_file() and report.get("task"):
+        report["task"]["sha256"] = file_sha256(task_path)
+        report["task"]["content_sha256"] = content_digest(task_path)
+    return pack, report

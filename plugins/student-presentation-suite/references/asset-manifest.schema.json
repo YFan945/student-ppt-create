@@ -8,7 +8,10 @@
   ],
   "properties": {
     "placeholder_policy": {
-      "enum": ["allow", "forbid"],
+      "enum": [
+        "allow",
+        "forbid"
+      ],
       "default": "forbid",
       "description": "Record the confirmed permission for designed asset placeholders; omission preserves the historical prohibition."
     },
@@ -26,20 +29,43 @@
           "purpose",
           "source",
           "permission",
-          "alt_text",
-          "fallback"
+          "alt_text"
         ],
         "properties": {
           "placeholder": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["kind", "label", "replacement", "reason"],
+            "required": [
+              "kind",
+              "label",
+              "replacement",
+              "reason"
+            ],
             "properties": {
-              "kind": {"enum": ["photo-slot", "screenshot-slot", "concept", "data-skeleton"]},
-              "label": {"type": "string", "minLength": 1},
-              "replacement": {"type": "string", "minLength": 1},
-              "reason": {"type": "string", "minLength": 1},
-              "prompt_visible": {"type": "boolean", "description": "When true, the planned generation prompt must be present and visible on this slide."}
+              "kind": {
+                "enum": [
+                  "photo-slot",
+                  "screenshot-slot",
+                  "concept",
+                  "data-skeleton"
+                ]
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "replacement": {
+                "type": "string",
+                "minLength": 1
+              },
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              },
+              "prompt_visible": {
+                "type": "boolean",
+                "description": "When true, the planned generation prompt must be present and visible on this slide."
+              }
             }
           },
           "slide": {
@@ -95,7 +121,8 @@
           },
           "fallback": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Optional fallback when the asset cannot be delivered; an existing usable asset needs no fallback."
           },
           "provider_id": {
             "type": [
