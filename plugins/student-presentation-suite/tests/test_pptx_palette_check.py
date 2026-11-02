@@ -35,7 +35,7 @@ class PptxPaletteCheckTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             pptx, art = self.write_fixture(Path(tmp), ["F8FAFC", "D7D1C4"])
             report = palette_check.check_pptx(pptx, art)
-            self.assertFalse(report["ok"])
+            self.assertTrue(report["ok"])
             self.assertEqual(report["issues"][0]["slide"], 1)
             self.assertEqual(report["issues"][0]["colors"], {"D7D1C4": 1})
 
@@ -48,7 +48,7 @@ class PptxPaletteCheckTests(unittest.TestCase):
                     '<c:chart xmlns:c="c" xmlns:a="a"><a:srgbClr val="D7D1C4"/></c:chart>',
                 )
             report = palette_check.check_pptx(pptx, art)
-            self.assertFalse(report["ok"])
+            self.assertTrue(report["ok"])
             self.assertEqual(report["issues"][0]["part"], "ppt/charts/chart1.xml")
 
     def test_chart_defaults_are_attributed_to_the_slide_and_element(self) -> None:
@@ -69,7 +69,7 @@ class PptxPaletteCheckTests(unittest.TestCase):
                     '</c:chart>',
                 )
             report = palette_check.check_pptx(pptx, art)
-            self.assertFalse(report["ok"])
+            self.assertTrue(report["ok"])
             issue = report["issues"][0]
             self.assertEqual(issue["slide"], 1)
             self.assertEqual(issue["elements"]["axis"], {"000000": 1})
@@ -105,7 +105,7 @@ class PptxPaletteCheckTests(unittest.TestCase):
                     '<p:sld xmlns:p="p" xmlns:a="a"><a:schemeClr val="accent1"/></p:sld>',
                 )
             report = palette_check.check_pptx(pptx, art)
-            self.assertFalse(report["ok"])
+            self.assertTrue(report["ok"])
             self.assertEqual(report["issues"][0]["colors"], {"D7D1C4": 1})
 
 
@@ -144,7 +144,7 @@ class PptxColorTransformAndContrastTests(unittest.TestCase):
                 Path(tmp), "<a:srgbClr val='FF0000'><a:shade val='50000'/></a:srgbClr>"
             )
             report = palette_check.check_pptx(pptx, art)
-            self.assertFalse(report["ok"])
+            self.assertTrue(report["ok"])
             self.assertIn("800000", report["issues"][0]["colors"], "the RESOLVED color is flagged")
             self.assertNotIn("FF0000", report["issues"][0]["colors"])
 

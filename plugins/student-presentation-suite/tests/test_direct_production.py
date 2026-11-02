@@ -251,15 +251,18 @@ module.exports.notes={json.dumps(notes)};
         self.assertEqual(str(diagnostic), manifest["last_build_report"])
         self.assertIn("last-build-report.json", manifest["last_error"])
 
-        # A new attempt clears the stale diagnostic when the build fails before
-        # the sidecar is written again.
+        # Every failed attempt replaces the stale diagnostic, including failures
+        # before a geometry sidecar can be written.
         with patch.object(production, "execute", side_effect=production.ProductionError("node crashed")):
             with self.assertRaisesRegex(production.ProductionError, "node crashed"):
                 production.run(self.args)
-        self.assertFalse(diagnostic.exists())
+        self.assertTrue(diagnostic.exists())
+        latest = production.load(diagnostic)
+        self.assertEqual(latest["attempt"], 2)
+        self.assertEqual(latest["error"], "node crashed")
+        self.assertNotIn("overlap", diagnostic.read_text(encoding="utf-8"))
         manifest = production.load(self.work / "build-manifest.json")
-        self.assertNotIn("last_build_report", manifest)
-        self.assertNotIn("last-build-report.json", manifest["last_error"])
+        self.assertEqual(str(diagnostic), manifest["last_build_report"])
 
     def test_typography_alias_is_used_for_sentences_and_unknown_keys_are_named(self):
         code = """

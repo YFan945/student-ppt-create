@@ -1,20 +1,8 @@
 #!/usr/bin/env python3
-"""One-shot v0.8 gate run: frozen plan, Art Direction, composition, evidence.
+"""Compatibility CLI for shared technical validation.
 
-The suite used to run its gates as separate commands, and every one of them
-printed a complete JSON report. A *passing* run therefore cost a large amount of
-context while carrying zero information, and the v0.8 visual-generation gate
-re-validated Art Direction and composition candidates that had already been
-checked a moment earlier.
-
-This orchestrator runs the same validators in one process, prints only the
-problem items, and writes the complete detail to a JSON report on disk. It never
-replaces the individual gates: `art_direction_check.py`,
-`composition_candidate_check.py`, `pptx_visual_generation_gate_v08.py` and
-`slide_spec_guard.py` stay the canonical implementations and remain callable on
-their own.
-
-Exit codes: 0 = no blockers, 2 = at least one blocker.
+Historical analysis functions remain importable for explicit diagnostics;
+the executable route uses shared.validation_cli and has no score/lock gate.
 """
 
 from __future__ import annotations
@@ -267,93 +255,16 @@ def _qa_gate(
 
 
 def collect_qa(args: argparse.Namespace, gates: dict[str, Any], problems: list[dict[str, Any]], workdir: Path) -> None:
-    """Run the QA-side gates in one command.
-
-    These live behind separate CLIs with their own required inputs, so instead of
-    reimplementing them this shells out per gate and merges the JSON reports into
-    the single problem list. The saving is not process time, it is turning four or
-    five round-trips into one.
-    """
     if not getattr(args, "pptx", None):
         return
-    pptx = str(args.pptx)
-    spec = str(args.slide_spec) if args.slide_spec else ""
-
-    if spec:
-        _qa_gate(
-            "actual-content",
-            "pptx_actual_content_check.py",
-            [pptx, spec, "--output", str(workdir / "qa-actual-content.json")],
-            gates,
-            problems,
-            workdir / "qa-actual-content.json",
-        )
-
-    _qa_gate(
-        "rendered",
-        "pptx_rendered_check.py",
-        ["--pptx", pptx, "--output", str(workdir / "qa-rendered.json"), *(["--slide-spec", spec] if spec else [])],
-        gates,
-        problems,
-        workdir / "qa-rendered.json",
-    )
-
-    if spec and args.spec_lock and args.visual_report:
-        _qa_gate(
-            "quality",
-            "pptx_quality_gate_v071.py",
-            [
-                "--pptx", pptx,
-                "--slide-spec", spec,
-                "--spec-lock", str(args.spec_lock),
-                "--visual-report", str(args.visual_report),
-                "--output", str(workdir / "qa-quality.json"),
-            ],
-            gates,
-            problems,
-            workdir / "qa-quality.json",
-        )
-
-    delivery_inputs = [
-        spec,
-        args.spec_lock,
-        args.art_direction,
-        args.visual_generation_report,
-        args.quality_report,
-        args.package_report,
-        args.slide_spec_report,
-        args.actual_content_report,
-    ]
-    if all(delivery_inputs):
-        argv = [
-            "--pptx", pptx,
-            "--slide-spec", spec,
-            "--spec-lock", str(args.spec_lock),
-            "--art-direction", str(args.art_direction),
-            "--visual-generation-report", str(args.visual_generation_report),
-            "--quality-report", str(args.quality_report),
-            "--package-report", str(args.package_report),
-            "--slide-spec-report", str(args.slide_spec_report),
-            "--actual-content-report", str(args.actual_content_report),
-            "--visual-reviewed",
-            "--output", str(workdir / "qa-delivery.json"),
-        ]
-        if args.visual_review_report:
-            argv += ["--visual-review-report", str(args.visual_review_report)]
-        if args.notes:
-            argv += ["--notes", str(args.notes)]
-        for preview in args.preview or []:
-            argv += ["--preview", str(preview)]
-        if args.allow_missing_preview:
-            argv.append("--allow-missing-preview")
-        _qa_gate(
-            "delivery",
-            "pptx_delivery_check_v08.py",
-            argv,
-            gates,
-            problems,
-            workdir / "qa-delivery.json",
-        )
+    from shared.artifact_validation import validate_artifact
+    result = validate_artifact(Path(args.pptx), Path(args.slide_spec) if args.slide_spec else None,
+                               cache=workdir / "validation-cache.json")
+    gates["artifact"] = result
+    for item in result.get("issues", []) + result.get("content", {}).get("issues", []):
+        problems.append(problem_from("artifact", item))
+    if not result["ok"] and not problems:
+        problems.append(problem("artifact", "major", "artifact_invalid", "Actual PPTX or requested content is invalid."))
 
 
 def collect_visual_generation(args: argparse.Namespace, gates: dict[str, Any], problems: list[dict[str, Any]]) -> None:
@@ -509,30 +420,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    if not args.evidence_dir and not args.candidates and not args.pptx:
-        print(
-            "run_gates: nothing to check — pass --evidence-dir, --candidates and/or --pptx",
-            file=sys.stderr,
-        )
-        return 2
-    if args.evidence_dir and not args.slide_spec:
-        print("run_gates: --slide-spec is required together with --evidence-dir", file=sys.stderr)
-        return 2
-    if not args.art_direction and not args.pptx:
-        print("run_gates: --art-direction is required unless running QA gates with --pptx", file=sys.stderr)
-        return 2
-
-    report_path = args.output or ((args.evidence_dir or Path.cwd()) / "gates-report.json")
-    report = run(args, report_path.parent)
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-    if args.json:
-        print(json.dumps(report, ensure_ascii=False, indent=2))
-    else:
-        print(render(report, report_path, verbose=args.verbose, max_items=args.max_items), end="")
-    return 0 if report["ok"] else 2
+    from shared.validation_cli import main as validate_cli
+    return validate_cli("batch", argv)
 
 
 if __name__ == "__main__":

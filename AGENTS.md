@@ -123,6 +123,7 @@ Canonical ownership:
 - `references/image-strategy.md`: image sourcing and visual policy.
 - `references/research-workflow.md`: when and how external knowledge is gathered — A/B/C/D
   classification, source tiers, cross-validation, source sufficiency, and the Research Pack contract.
+- `references/validation-policy.md` and `shared/artifact_validation.py`: ordinary technical validation, optional observations, change-scoped inspection and completion boundaries.
 - `references/cost-discipline.md`: how the work is carried out — batched tool calls,
   in-place edits, write-once artifacts, per-stage summaries, delegated search and sequential gap recovery.
 - `references/visual-review.schema.json`: optional standalone historical review format;

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import io
 import json
 import os
 import re
@@ -45,7 +44,7 @@ VISUAL_REVIEW_TASKS = [
     "Compare supplied reference/template pages with the output, including fonts, imagery and richness requested by the user.",
     "Check the actual text and notes against must_convey, evidence and asset provenance; automatic checks do not prove meaning or visual quality.",
     "Check public-facing copy and notes against shared audience-facing standards; move production/verification caveats to the delivery conversation or quality report.",
-    "Repair affected pages, run again, inspect the current renders and scan the whole deck before complete.",
+    "After repairs, inspect changed renders; repeat a deck-wide scan only when shared layout or narrative changes warrant it. Notes-only edits need no repeat image inspection.",
 ]
 
 
@@ -126,6 +125,10 @@ def status(args: argparse.Namespace) -> dict[str, Any]:
     """Read stored checks and live delivery bindings without running production."""
     manifest = load(args.work_dir / "build-manifest.json")
     result = {**manifest, "stored_state": manifest.get("state"), "production_performed": False}
+    if manifest.get("last_error"):
+        result.update(ok=False, action="inspect_latest_failure", latest_failure={
+            "attempt": manifest.get("attempts"), "error": manifest["last_error"],
+            "report": manifest.get("last_build_report"), "successful_build_is_previous": True})
     published = manifest.get("published") or {}
     if published and isinstance(published, dict) and all(isinstance(item, dict) for item in published.values()):
         result["delivery_health"] = publication_health(published)
@@ -496,25 +499,27 @@ def actual_copy(work: Path, pptx: Path, spec: dict[str, Any]) -> None:
 def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str, Any]:
     import pptx_actual_content_check as content
 
-    from shared.pptx_runtime import validate_pptx
-
     spec_path = Path(manifest["slide_spec"]["path"])
     spec, errors, _ = validate_slide_spec(spec_path)
     if errors:
         raise ProductionError("invalid Slide Spec: " + json.dumps(errors, ensure_ascii=False))
-    actual_copy(work, pptx, spec)
-    package = validate_pptx(pptx, Path(manifest["source"]["path"]) if manifest["source"] else None)
-    content_path = work / "content-check.json"
-    with contextlib.redirect_stdout(io.StringIO()):
-        content.run(argparse.Namespace(pptx=pptx, slide_spec=spec_path, output=content_path, json=False, strict=True))
-    content_report = load(content_path)
-    notes = content.extract_pptx_notes(pptx)
-    missing_notes = [index for index in range(1, len(spec["slides"]) + 1)
-                     if (spec.get("meta") or {}).get("include_speaker_notes") and not notes.get(index, "").strip()]
+    from shared.artifact_validation import validate_artifact
+
     assets_path = work / "asset-manifest.json"
-    from shared.asset_contract import validate_assets
-    assets = validate_assets(load(assets_path) if assets_path.is_file() else {"deck": work.name, "assets": []},
-                             work, content.extract_pptx_text(pptx))
+    core = validate_artifact(pptx, spec_path,
+        original=Path(manifest["source"]["path"]) if manifest.get("source") else None,
+        assets_path=assets_path if assets_path.is_file() else None,
+        cache=work / "_tmp" / "artifact-validation.json")
+    if core.get("issues"):
+        raise ProductionError("invalid technical inputs: " + json.dumps(core["issues"], ensure_ascii=False))
+    package = core["package"]
+    content_report = core.get("content", {"ok": False, "actual_slide_count": 0, "issues": [], "blocker_count": 1})
+    missing_notes = core.get("missing_notes", [])
+    assets = core.get("assets", {"ok": True, "errors": [], "placeholders": [], "files": []})
+    write(work / "content-check.json", content_report)
+    if package["ok"]:
+        actual_copy(work, pptx, spec)
+    notes = content.extract_pptx_notes(pptx) if package["ok"] else {}
     if assets_path.is_file():
         assets["manifest"] = bind(assets_path)
         assets["file_bindings"] = [bind(Path(path)) for path in assets["files"]]
@@ -536,6 +541,7 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
             geometry["warnings"].append({"code": "geometry_cache_stale", "action": "inspect current renders; stale predictions are not used"})
     report = {
         "ok": package["ok"] and content_report["ok"] and not missing_notes and geometry["ok"] and assets["ok"],
+        "validation_reused": core.get("reused", False), "validation_policy": core["policy"],
         "pptx": bind(pptx), "slide_spec": manifest["slide_spec"],
         "package": package, "content": content_report, "missing_notes": missing_notes,
         "geometry": geometry,
@@ -551,9 +557,9 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
     from shared.deck_expression_review import review_expression
 
     copy_path = work / "presentation-copy.json"
-    actual = load(copy_path) if spec.get("schema_version") == "2.1" and copy_path.is_file() else {
+    actual = load(copy_path) if package["ok"] and spec.get("schema_version") == "2.1" and copy_path.is_file() else {
         "slides": [{"slide": index, "text_runs": [text], "speaker_notes": notes.get(index, "")}
-                   for index, text in enumerate(content.extract_pptx_text(pptx), 1)]}
+                   for index, text in enumerate(content.extract_pptx_text(pptx) if package["ok"] else [], 1)]}
     report["expression_review"] = review_expression(spec, actual)
     from shared.student_design_review import review_actual
     report["student_design_review"] = review_actual(spec, actual, geometry)
@@ -627,6 +633,24 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     if manifest["mode"] != "edit_ooxml" and manifest.get("input_changes"):
         manifest["scaffold"] = generator_scaffold.scaffold_generator(work, Path(manifest["slide_spec"]["path"]),
             Path(manifest["art_direction"]["path"]) if manifest.get("art_direction") else None)
+    manifest.pop("input_changes", None)
+    inputs = authoring_inputs(work, manifest)
+    previous_build = manifest.get("build") or {}
+    if (not manifest.get("last_error") and current(previous_build.get("pptx"))
+            and input_identity(inputs) == input_identity(previous_build.get("authoring_inputs", []))):
+        pptx = Path(previous_build["pptx"]["path"])
+        checked = check_artifact(work, manifest, pptx)
+        manifest["check"] = {"ok": checked["ok"], "report": bind(work / "production-check.json")}
+        previous_pages = (manifest.get("render") or {}).get("pages", [])
+        if not getattr(args, "no_render", False):
+            manifest["render"] = render(work, manifest, pptx)
+        changed = [number for number, page in enumerate((manifest.get("render") or {}).get("pages", []), 1)
+                   if number > len(previous_pages) or page["sha256"] != previous_pages[number - 1]["sha256"]]
+        save(work, manifest, "qa")
+        return {"ok": checked["ok"], "action": ("inspect_previews" if changed else "unchanged") if checked["ok"] else "inspect_and_fix",
+                "build_reused": True, "changed_pages": changed, "previews": manifest.get("render", {}),
+                "check_report": manifest["check"]["report"], "check_summary": check_summary(checked),
+                "technical_checks": checked["check_scope"]}
     previous_pages = (manifest.get("render") or {}).get("pages", [])
     previous_inputs = (manifest.get("build") or {}).get("authoring_inputs", [])
     manifest["attempts"] += 1
@@ -674,9 +698,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         manifest["build"] = {"pptx": bind(pptx), "seconds": round(time.monotonic() - start, 3)}
         # 只绑定作者源码：第一级以 `_`/`.` 开头的路径（如 _tmp/ 探测脚本）不参与绑定；
         # pages/ 内部的共享模块（如 pages/_shared.js）正常参与绑定与变更检测。
-        manifest["build"]["authoring_inputs"] = [
-            bind(path) for path in sorted(work.rglob("*.js"))
-            if not path.relative_to(work).parts[0].startswith(("_", "."))]
+        manifest["build"]["authoring_inputs"] = inputs
         checked = check_artifact(work, manifest, pptx)
         manifest["check"] = {"ok": checked["ok"], "report": bind(work / "production-check.json")}
         if (work / "presentation-copy.json").is_file():
@@ -708,7 +730,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         elif no_render:
             action = "inspect_check_report"
         else:
-            action = "inspect_previews"
+            action = "inspect_previews" if changed_pages else "inspect_changed_content"
         result = {"ok": checked["ok"], "action": action,
                   "previews": manifest["render"], "check_report": manifest["check"]["report"],
                   "technical_checks": checked["check_scope"], "geometry": checked["geometry"],
@@ -720,15 +742,102 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if no_render:
             result["render_skipped"] = True
         return result
-    except (ProductionError, OSError, ValueError) as exc:
+    except (ProductionError, OSError, ValueError, subprocess.TimeoutExpired) as exc:
         message = str(exc)
-        manifest.pop("last_build_report", None)
-        if diagnostic.is_file():
-            manifest["last_build_report"] = str(diagnostic)
-            message += f" (geometry/preflight report preserved at {diagnostic})"
+        details = load(diagnostic) if diagnostic.is_file() else {}
+        details.update(ok=False, attempt=manifest["attempts"], error=message, authoring_inputs=inputs,
+                       previous_success_is_not_this_attempt=True)
+        write(diagnostic, details)
+        manifest["last_build_report"] = str(diagnostic)
+        message += f" (latest attempt {manifest['attempts']} diagnostic: {diagnostic})"
         manifest["last_error"] = message
         save(work, manifest, "producing")
         raise ProductionError(message) from exc
+
+
+def authoring_inputs(work: Path, manifest: dict[str, Any]) -> list[dict[str, str]]:
+    """Actual build dependencies; exclude derived reports and temporary probes."""
+    paths = (list((work / "ooxml").rglob("*")) if manifest["mode"] == "edit_ooxml"
+             else list(work.rglob("*.js")))
+    paths += [Path(manifest[name]["path"]) for name in ("slide_spec", "art_direction") if manifest.get(name)]
+    paths.append(ROOT / "package.json")  # Runtime upgrades invalidate built-source caches.
+    assets = work / "asset-manifest.json"
+    if assets.is_file():
+        paths.append(assets)
+        paths += [(work / item["path"]).resolve() for item in load(assets).get("assets", []) if item.get("path")]
+    for directory in ("assets", "media", "data"):
+        paths.extend(path for path in (work / directory).rglob("*") if path.is_file())
+    return [bind(path) for path in sorted(set(paths)) if path.is_file()
+            and (not path.is_relative_to(work) or not path.relative_to(work).parts[0].startswith(("_", ".")))]
+
+
+def input_identity(inputs: list[dict[str, str]]) -> dict[str, str]:
+    return {item["path"]: item.get("content_sha256", item["sha256"]) for item in inputs}
+
+
+def preview(args: argparse.Namespace) -> dict[str, Any]:
+    """Build selected page modules without importing unfinished other pages."""
+    from xml.etree import ElementTree as ET
+    from zipfile import ZipFile
+
+    import generator_scaffold
+
+    from shared.chart_readback import slide_parts
+    from shared.pptx_runtime import pack_directory
+    from shared.pptx_runtime.render import render_pptx
+
+    work = work_directory(args.work_dir)
+    manifest = authorized(work)
+    spec = generator_scaffold.load_spec(Path(manifest["slide_spec"]["path"]))
+    selected = []
+    for token in args.slides.split(","):
+        match = re.fullmatch(r"\s*(\d+)(?:-(\d+))?\s*", token)
+        if not match:
+            raise ProductionError("--slides accepts page positions such as 1-3,5")
+        first, last = int(match[1]), int(match[2] or match[1])
+        if first < 1 or last < first or last > len(spec["slides"]):
+            raise ProductionError("preview page positions must be within the current Spec")
+        selected.extend(range(first, last + 1))
+    selected = list(dict.fromkeys(selected))
+    root = work / "_tmp" / "previews"
+    root.mkdir(parents=True, exist_ok=True)
+    directory = Path(tempfile.mkdtemp(prefix="pages-", dir=root))
+    candidate = directory / "preview.pptx"
+    if manifest["mode"] == "edit_ooxml":
+        whole = directory / "whole.pptx"
+        pack_directory(work / "ooxml", whole)
+        with ZipFile(whole) as source, ZipFile(candidate, "w") as target:
+            presentation = ET.fromstring(source.read("ppt/presentation.xml"))
+            ids = presentation.find("{http://schemas.openxmlformats.org/presentationml/2006/main}sldIdLst")
+            chosen = [list(ids)[number - 1] for number in selected]
+            ids[:] = chosen
+            for item in source.infolist():
+                target.writestr(item, ET.tostring(presentation, encoding="utf-8", xml_declaration=True)
+                                if item.filename == "ppt/presentation.xml" else source.read(item.filename))
+        # Unreferenced parts are retained to preserve relationships; only registered slides render.
+        with ZipFile(candidate) as package:
+            if len(slide_parts(package)) != len(selected):
+                raise ProductionError("partial preview slide selection failed")
+    else:
+        names = manifest["scaffold"]["pages"]
+        pages = [work / "pages" / names[number - 1] for number in selected]
+        remaining = generator_scaffold.scaffolded_pages(pages)
+        if remaining:
+            raise ProductionError("selected preview pages are unfinished: " + ", ".join(remaining))
+        source = (work / "deck.js").read_text(encoding="utf-8")
+        requires = ",\n".join("  require(" + json.dumps(str(page)) + ")" for page in pages)
+        source, count = re.subn(r"const PAGES\s*=\s*\[[\s\S]*?\];", lambda _: "const PAGES = [\n" + requires + "\n];", source, count=1)
+        if not count:
+            raise ProductionError("partial module preview requires the scaffold PAGES array; restore that assembly boundary")
+        source = source.replace("const n = index + 1;", "const n = " + json.dumps(selected) + "[index];")
+        entry = directory / "deck.js"
+        entry.write_text("require = require('node:module').createRequire(" + json.dumps(str(work / "deck.js")) + ");\n" + source, encoding="utf-8")
+        execute(["node", str(ROOT / "scripts" / "run_with_pptxgenjs.js"), "--output", str(candidate), str(entry)], work)
+    pdf, pages, _ = render_pptx(candidate, directory / "render", "slide", "png", 144)
+    return {"ok": True, "scope": "partial-preview", "complete": False, "source_slides": selected,
+            "pptx": bind(candidate), "pdf": bind(pdf),
+            "pages": [{**bind(page), "source_slide": number} for page, number in zip(pages, selected, strict=True)],
+            "full_build_unchanged": True}
 
 
 def complete(args: argparse.Namespace) -> dict[str, Any]:
@@ -738,6 +847,8 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
 
     work = work_directory(args.work_dir)
     manifest = authorized(work)
+    if manifest.get("last_error"):
+        raise ProductionError(f"latest build failed; inspect {manifest.get('last_build_report')} and run the corrected pages before delivery")
     pptx_binding = (manifest.get("build") or {}).get("pptx")
     if not pptx_binding or not Path(pptx_binding["path"]).is_file():
         raise ProductionError("build a PPTX before delivery")
@@ -894,6 +1005,10 @@ def main() -> int:
     measuring = commands.add_parser("measure", help="measure all text blocks without building; reports every overflow and tight margin in one pass")
     measuring.add_argument("--work-dir", type=Path, required=True)
     measuring.set_defaults(handler=measure)
+    partial = commands.add_parser("preview", help="render selected page positions without loading unfinished other modules")
+    partial.add_argument("--work-dir", type=Path, required=True)
+    partial.add_argument("--slides", required=True, help="page positions, e.g. 1-3,5")
+    partial.set_defaults(handler=preview)
     args = parser.parse_args()
     try:
         result = args.handler(args)

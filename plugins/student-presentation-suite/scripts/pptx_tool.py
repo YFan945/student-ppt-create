@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -46,7 +45,6 @@ from shared.pptx_runtime.thumbnail import (  # noqa: E402
     slide_metadata,
     slide_text_content,
 )
-from shared.slide_spec_contract import load_slide_spec, validate_slide_spec  # noqa: E402
 
 PPTX_SUFFIXES = {".pptx", ".potx"}
 SKILL_SCRIPTS = ROOT / "skills" / "sp-deck" / "scripts"
@@ -553,196 +551,33 @@ def _load_skill_module(file_name: str, module_name: str):
 
 
 def command_gate_all(args: argparse.Namespace) -> int:
-    """Run package/actual-content/rendered/quality gates in one process.
+    """One technical policy; no nested legacy score/receipt gates."""
+    from shared.artifact_validation import validate_artifact
 
-    Same checks, same reports, same exit contract as running each gate
-    separately — the only change is one interpreter instead of four and a
-    merged summary report. Any failing gate still fails the whole run
-    (fail-closed), and every step keeps writing its own standalone report.
-    """
-    import time
-    from argparse import Namespace
-
-    output_dir: Path = args.output_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    actual = _load_skill_module(
-        "pptx_actual_content_check.py", "gate_all_actual_content"
-    )
-    rendered = _load_skill_module(
-        "pptx_rendered_check.py", "gate_all_rendered_check"
-    )
-    quality = _load_skill_module(
-        "pptx_quality_gate_v071.py", "gate_all_quality_gate"
-    )
-
-    steps: list[tuple[str, str, object, Path]] = [
-        (
-            "package",
-            "command_validate",
-            Namespace(
-                input=args.pptx,
-                original=None,
-                json=False,
-                output=output_dir / "package-report.json",
-            ),
-            output_dir / "package-report.json",
-        ),
-        (
-            "actual-content",
-            None,
-            Namespace(
-                pptx=args.pptx,
-                slide_spec=args.slide_spec,
-                output=output_dir / "actual-content-report.json",
-                json=False,
-                strict=True,
-            ),
-            output_dir / "actual-content-report.json",
-        ),
-        (
-            "rendered",
-            None,
-            Namespace(
-                pptx=args.pptx,
-                tokens=args.tokens,
-                slide_spec=args.slide_spec,
-                output=output_dir / "rendered-check-report.json",
-                json=False,
-                strict=True,
-                lenient=False,
-            ),
-            output_dir / "rendered-check-report.json",
-        ),
-        (
-            "quality",
-            None,
-            Namespace(
-                pptx=args.pptx,
-                slide_spec=args.slide_spec,
-                spec_lock=args.spec_lock,
-                visual_report=args.visual_report,
-                output=output_dir / "quality-report.json",
-                json=False,
-                strict=True,
-            ),
-            output_dir / "quality-report.json",
-        ),
-    ]
-
-    runners: dict[str, Any] = {
-        "package": command_validate,
-        "actual-content": actual.run,
-        "rendered": rendered.run,
-        "quality": quality.run,
-    }
-
-    step_reports: dict[str, Any] = {}
-    failed = False
-    for name, _, namespace, report_path in steps:
-        started = time.perf_counter()
-        code = 0
-        error: str | None = None
-        try:
-            code = runners[name](namespace)
-        except SystemExit as exc:  # a gate may SystemExit with a diagnostic
-            code = 1
-            error = str(exc)
-        except Exception as exc:  # noqa: BLE001 - one gate must not kill the rest
-            code = 1
-            error = f"{type(exc).__name__}: {exc}"
-        elapsed = round(time.perf_counter() - started, 3)
-        report: Any = None
-        if report_path.is_file():
-            try:
-                report = json.loads(report_path.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                report = None
-        ok = code == 0 and isinstance(report, dict) and report.get("ok", code == 0)
-        step_reports[name] = {
-            "ok": ok,
-            "exit_code": code,
-            "elapsed_s": elapsed,
-            "report": report_path.name,
-            "blocker_count": report.get("blocker_count") if isinstance(report, dict) else None,
-            "error": error,
-        }
-        if not ok:
-            failed = True
-
-    pptx_hash = hashlib.sha256(args.pptx.read_bytes()).hexdigest()
-    merged = {
-        "ok": not failed,
-        "gate_profile": "gate-all-v1",
-        "pptx": str(args.pptx.resolve()),
-        "pptx_sha256": pptx_hash,
-        "steps": step_reports,
-    }
-    payload = json.dumps(merged, ensure_ascii=False, indent=2) + "\n"
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(payload, encoding="utf-8")
-    if args.json or not args.output:
-        print(payload, end="")
-    return 2 if failed else 0
+    directory = args.output_dir or args.pptx.parent / "_qa"
+    directory.mkdir(parents=True, exist_ok=True)
+    assets = args.pptx.parent / "asset-manifest.json"
+    report = validate_artifact(args.pptx, args.slide_spec,
+        assets_path=assets if assets.is_file() else None,
+        cache=directory / "validation-cache.json")
+    report["gate_profile"] = "artifact-validation-v2"
+    report["steps"] = {name: {"ok": value["ok"], "performed": True} for name, value in
+        (("package", report.get("package")), ("actual-content", report.get("content")), ("assets", report.get("assets"))) if value is not None}
+    output = args.output or directory / "gate-report.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(report if args.json else {"ok": report["ok"], "output": str(output)}, ensure_ascii=False, indent=2))
+    return 0 if report["ok"] else 2
 
 
 def command_content_qa(args: argparse.Namespace) -> int:
-    pptx: Path = args.pptx
-    try:
-        spec = load_slide_spec(args.slide_spec)
-        extracted = slide_text_content(pptx)
-        metadata = slide_metadata(pptx)
-    except (OSError, ValueError, zipfile.BadZipFile) as exc:
-        raise SystemExit(f"cannot perform content QA: {exc}") from exc
-    expected = spec.get("slides") or []
-    findings: list[dict[str, Any]] = []
-    if spec.get("schema_version") == "2.1":
-        gate_path = ROOT / "skills/sp-deck/scripts"
-        if str(gate_path) not in sys.path:
-            sys.path.insert(0, str(gate_path))
-        import pptx_actual_content_check as actual_check
-        report = actual_check.check(spec, actual_check.extract_pptx_text(pptx))
-        findings.extend({**item, "severity": "blocker" if item["severity"] in {"critical", "major"} else "minor"} for item in report["issues"])
-    if len(extracted) != len(expected):
-        findings.append({"severity": "blocker", "code": "slide-count", "detail": f"PPTX has {len(extracted)} slides; Slide Spec has {len(expected)}"})
-    for index, (actual, planned) in enumerate(zip(extracted, expected, strict=False), 1):
-        text = str(actual.get("text") or "")
-        title = str(planned.get("title") or "").strip()
-        normalized_title = re.sub(r"\s+", "", title).casefold()
-        normalized_text = re.sub(r"\s+", "", text).casefold()
-        if not text.strip():
-            findings.append({"slide": index, "severity": "blocker", "code": "empty-slide", "detail": "slide has no extractable content"})
-        if spec.get("schema_version") != "2.1" and title and normalized_title not in normalized_text:
-            findings.append({"slide": index, "severity": "blocker", "code": "title-drift", "detail": "planned title is not present in the generated slide"})
-        if PLACEHOLDER_PATTERN.search(text):
-            findings.append({"slide": index, "severity": "blocker", "code": "placeholder", "detail": "placeholder text remains"})
-        if planned.get("speaker_notes") and index <= len(metadata) and not metadata[index - 1].get("has_notes"):
-            findings.append({"slide": index, "severity": "blocker", "code": "missing-notes", "detail": "Slide Spec requires speaker notes but the PPTX slide has no notes part"})
-        # id 可能不是数字（手写 spec），旧实现在 try 块外直接 int() 会抛未捕获 ValueError。
-        planned_id = planned.get("id", index)
-        try:
-            ordered = int(planned_id) == index
-        except (TypeError, ValueError):
-            ordered = False
-        if not ordered:
-            findings.append({"slide": index, "severity": "blocker", "code": "page-order", "detail": f"Slide Spec id {planned_id!r} is not in rendered page order"})
-    blockers = [item for item in findings if item["severity"] == "blocker"]
-    payload = {
-        "ok": not blockers,
-        "report_type": "content-qa-v1",
-        "pptx": str(pptx),
-        "pptx_sha256": _sha256(pptx),
-        "slide_spec": str(args.slide_spec),
-        "slide_spec_sha256": _sha256(args.slide_spec),
-        "slide_count": len(extracted),
-        "findings": findings,
-        "blocker_count": len(blockers),
-    }
+    from shared.artifact_validation import validate_artifact
+    report = validate_artifact(args.pptx, args.slide_spec)
+    report["report_type"] = "content-qa-v2"
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"ok": payload["ok"], "output": str(args.output)}, ensure_ascii=False))
-    return 0 if payload["ok"] else 1
+    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"ok": report["ok"], "output": str(args.output)}, ensure_ascii=False))
+    return 0 if report["ok"] else 2
 
 
 def command_validate_asset_manifest(args: argparse.Namespace) -> int:
@@ -763,34 +598,35 @@ def command_validate_asset_manifest(args: argparse.Namespace) -> int:
 
 def command_visual_inspection(args: argparse.Namespace) -> int:
     pptx: Path = args.pptx
-    previews: list[Path] = args.preview
+    previews: list[Path] = args.preview or []
     slide_count = _slide_count(pptx)
-    if len(previews) != slide_count:
-        raise SystemExit(f"visual inspection requires exactly {slide_count} previews")
-    if args.repair_cycle not in {0, 1}:
-        raise SystemExit("--repair-cycle must be 0 or 1")
+    if args.repair_cycle < 0:
+        raise SystemExit("--repair-cycle must be nonnegative")
     try:
-        review = json.loads(args.findings.read_text(encoding="utf-8"))
+        review = json.loads(args.findings.read_text(encoding="utf-8")) if args.findings else {"pages": []}
     except (OSError, json.JSONDecodeError) as exc:
         raise SystemExit(f"cannot read visual findings: {exc}") from exc
     pages = review.get("pages") if isinstance(review, dict) else None
-    if not isinstance(pages, list) or len(pages) != slide_count:
-        raise SystemExit("visual findings must contain one pages entry per slide")
+    if not isinstance(pages, list):
+        raise SystemExit("visual findings pages must be an array; partial observations are allowed")
     normalized_pages = []
-    for index, (page, preview) in enumerate(zip(pages, previews, strict=True), 1):
-        if not isinstance(page, dict) or page.get("slide") != index:
-            raise SystemExit(f"visual findings page {index} has an invalid slide number")
-        if page.get("checked") is not True:
-            raise SystemExit(f"visual findings page {index} was not explicitly checked")
+    seen = set()
+    for page in pages:
+        index = page.get("slide") if isinstance(page, dict) else None
+        if not isinstance(index, int) or isinstance(index, bool) or not 1 <= index <= slide_count or index in seen:
+            raise SystemExit("visual findings need distinct page positions within the deck")
+        seen.add(index)
+        preview = previews[index - 1] if len(previews) == slide_count else None
+        # A recorded checkbox is not proof of inspection; findings are optional observations.
         blockers = page.get("blockers") or []
         warnings = page.get("warnings") or []
         if not isinstance(blockers, list) or not isinstance(warnings, list):
             raise SystemExit(f"visual findings page {index} blockers/warnings must be arrays")
         normalized_pages.append({
             "slide": index,
-            "checked": True,
-            "preview": str(preview),
-            "preview_sha256": _sha256(preview),
+            "checked": page.get("checked") is True,
+            "preview": str(preview) if preview else None,
+            "preview_sha256": _sha256(preview) if preview else None,
             "blockers": blockers,
             "warnings": warnings,
             "notes": str(page.get("notes") or ""),
@@ -798,12 +634,15 @@ def command_visual_inspection(args: argparse.Namespace) -> int:
     blocker_count = sum(len(page["blockers"]) for page in normalized_pages)
     payload = {
         "ok": blocker_count == 0,
-        "report_type": "visual-inspection-v1",
+        "report_type": "visual-inspection-v2",
+        "scope": "optional author observations; no proof of viewing or full-deck acceptance",
+        "visual_quality_verified": False,
         "pptx": str(pptx),
         "pptx_sha256": _sha256(pptx),
         "slide_count": slide_count,
         "repair_cycle": args.repair_cycle,
-        "checked_page_count": slide_count,
+        "observed_page_count": len(normalized_pages),
+        "checked_page_count": sum(page["checked"] for page in normalized_pages),
         "blocker_count": blocker_count,
         "pages": normalized_pages,
     }
@@ -828,105 +667,17 @@ def _validate_bound_qa_report(report: Path, pptx: Path, report_type: str) -> dic
 
 
 def command_qa_manifest(args: argparse.Namespace) -> int:
-    pptx: Path = args.pptx
-    previews: list[Path] = args.preview
-    slide_count = _slide_count(pptx)
-    if previews and len(previews) != slide_count:
-        raise SystemExit(
-            f"preview count ({len(previews)}) must equal slide count ({slide_count}) "
-            "when previews are provided"
-        )
-    package_report_data = None
-    if args.package_report:
-        package_report_data = _validate_package_report(args.package_report, pptx)
-    content_qa_data = None
-    visual_inspection_data = None
-    if args.content_qa:
-        content_qa_data = _validate_bound_qa_report(args.content_qa, pptx, "content-qa-v1")
-    if previews:
-        if not args.content_qa or not args.visual_inspection or not args.asset_manifest or not args.asset_manifest_report:
-            raise SystemExit("rendered QA requires content, visual inspection, and asset manifest evidence")
-        try:
-            asset_report_data = json.loads(args.asset_manifest_report.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
-            raise SystemExit(f"cannot read asset manifest report: {exc}") from exc
-        if asset_report_data.get("ok") is not True or asset_report_data.get("manifest_sha256") != _sha256(args.asset_manifest):
-            raise SystemExit("asset manifest report does not bind a valid current manifest")
-        visual_inspection_data = _validate_bound_qa_report(args.visual_inspection, pptx, "visual-inspection-v1")
-        if visual_inspection_data.get("checked_page_count") != slide_count:
-            raise SystemExit("visual inspection does not cover every slide")
-        bound_hashes = [page.get("preview_sha256") for page in visual_inspection_data.get("pages", [])]
-        if bound_hashes != [_sha256(path) for path in previews]:
-            raise SystemExit("visual inspection preview hashes do not match --preview files")
-    try:
-        spec_report_data = json.loads(args.slide_spec_report.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise SystemExit(f"cannot read Slide Spec report: {exc}") from exc
-    if not isinstance(spec_report_data, dict) or spec_report_data.get("valid") is not True:
-        raise SystemExit("Slide Spec validation report did not pass")
-    # spec 自规划期未被改动时不再重复校验（规划期已由 validate_slide_spec.py 校验），
-    # QA 只做 hash 绑定与页数核对，避免门禁叠罗汉。spec 被改动时才重校验以捕获漂移。
-    spec_hash = spec_report_data.get("slide_spec_sha256")
-    actual_spec_hash = _sha256(args.slide_spec)
-    try:
-        if actual_spec_hash == spec_hash:
-            spec_data, spec_errors = load_slide_spec(args.slide_spec), []
-        else:
-            spec_data, spec_errors, actual_spec_hash = validate_slide_spec(args.slide_spec)
-    except (OSError, ValueError) as exc:
-        raise SystemExit(f"cannot validate Slide Spec: {exc}") from exc
-    if spec_errors:
-        raise SystemExit(
-            "Slide Spec no longer passes validation: "
-            + "; ".join(error["message"] for error in spec_errors[:3])
-        )
-    if not spec_hash or actual_spec_hash != spec_hash:
-        raise SystemExit("Slide Spec report does not bind the current spec")
-    if len((spec_data or {}).get("slides") or []) != slide_count:
-        raise SystemExit("Slide Spec slide count does not match the current PPTX")
-    output: Path = args.output
-    output.parent.mkdir(parents=True, exist_ok=True)
-    # scenario_contract_passed 恒为 True：由上方对 Slide Spec 的重校验推导
-    # （spec 有效且页数与 slide_count 一致），并非独立的场景检测结果。
-    payload = {
-        "pptx_sha256": _sha256(pptx),
-        "slide_count": slide_count,
-        # 未提供 --preview 时如实记 null（"未渲染"），与"渲染了 0 页"区分开；
-        # 下游 delivery_check 对 None/0 均按未渲染处理。
-        "rendered_page_count": len(previews) if previews else None,
-        "scenario_contract_passed": True,
-        "slide_spec": str(args.slide_spec),
-        "slide_spec_report": str(args.slide_spec_report),
-        "slide_spec_report_sha256": _sha256(args.slide_spec_report),
-        "slide_spec_sha256": spec_hash,
-        "preview_files": [str(path) for path in previews],
-        "preview_sha256": [_sha256(path) for path in previews],
-    }
-    if previews:
-        payload["visual_inspection"] = {
-            "completed": True,
-            "inspected_pages": list(range(1, slide_count + 1)),
-            "repair_cycles": visual_inspection_data["repair_cycle"],
-            "remaining_blockers": 0,
-        }
-        payload["visual_inspection_report"] = str(args.visual_inspection)
-        payload["visual_inspection_report_sha256"] = _sha256(args.visual_inspection)
-        payload["asset_manifest"] = str(args.asset_manifest)
-        payload["asset_manifest_sha256"] = _sha256(args.asset_manifest)
-        payload["asset_manifest_report"] = str(args.asset_manifest_report)
-        payload["asset_manifest_report_sha256"] = _sha256(args.asset_manifest_report)
-    if content_qa_data is not None:
-        payload["content_qa_report"] = str(args.content_qa)
-        payload["content_qa_report_sha256"] = _sha256(args.content_qa)
-    if package_report_data is not None:
-        payload["package_report"] = str(args.package_report)
-        payload["package_report_sha256"] = _sha256(args.package_report)
-        payload["package_validation_profile"] = package_report_data.get(
-            "validation_profile"
-        )
-    output.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(json.dumps({"ok": True, "output": str(output)}, ensure_ascii=False))
-    return 0
+    """Record current technical results; optional observations do not prove viewing."""
+    from shared.artifact_validation import validate_artifact
+    report = validate_artifact(args.pptx, getattr(args, "slide_spec", None),
+        assets_path=getattr(args, "asset_manifest", None), cache=args.output.parent / "validation-cache.json")
+    report.update(report_type="qa-manifest-v2", visual_quality_verified=False,
+                  previews=[str(path) for path in args.preview],
+                  author_observations_supplied=bool(getattr(args, "visual_inspection", None)))
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"ok": report["ok"], "output": str(args.output)}, ensure_ascii=False))
+    return 0 if report["ok"] else 2
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1073,19 +824,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     gate_all = sub.add_parser(
         "gate-all",
-        help="run package/actual-content/rendered/quality gates in one process",
+        help="validate actual package and explicit requirements once",
     )
     gate_all.add_argument("--pptx", required=True, type=_pptx_file)
-    gate_all.add_argument("--slide-spec", required=True, type=_existing_file)
-    gate_all.add_argument("--spec-lock", required=True, type=_existing_file)
-    gate_all.add_argument("--visual-report", required=True, type=_existing_file)
+    gate_all.add_argument("--slide-spec", type=_existing_file)
+    gate_all.add_argument("--spec-lock", type=_path, help="deprecated compatibility input")
+    gate_all.add_argument("--visual-report", type=_path, help="optional author observations")
     gate_all.add_argument(
         "--tokens",
         type=_path,
         default=ROOT / "references" / "design-tokens.json",
         help="design tokens for the rendered-artifact readback",
     )
-    gate_all.add_argument("--output-dir", required=True, type=_path)
+    gate_all.add_argument("--output-dir", type=_path)
     gate_all.add_argument("--output", type=_path, help="merged summary report path")
     gate_all.add_argument("--json", action="store_true")
     gate_all.set_defaults(handler=command_gate_all)
@@ -1097,8 +848,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     visual_inspection = sub.add_parser("visual-inspection", help="bind explicit page-by-page findings to rendered previews")
     visual_inspection.add_argument("--pptx", required=True, type=_pptx_file)
-    visual_inspection.add_argument("--preview", action="append", required=True, type=_existing_file)
-    visual_inspection.add_argument("--findings", required=True, type=_existing_file)
+    visual_inspection.add_argument("--preview", action="append", default=[], type=_existing_file)
+    visual_inspection.add_argument("--findings", type=_existing_file)
     visual_inspection.add_argument("--repair-cycle", type=int, default=0)
     visual_inspection.add_argument("--output", required=True, type=_path)
     visual_inspection.set_defaults(handler=command_visual_inspection)
@@ -1109,15 +860,15 @@ def build_parser() -> argparse.ArgumentParser:
     manifest.add_argument("--output", required=True, type=_path)
     manifest.add_argument(
         "--package-report",
-        type=_existing_file,
+        type=_path,
         help="validate-produced package report to bind to the PPTX (optional)",
     )
-    manifest.add_argument("--slide-spec-report", required=True, type=_existing_file)
-    manifest.add_argument("--slide-spec", required=True, type=_existing_file)
-    manifest.add_argument("--content-qa", type=_existing_file)
-    manifest.add_argument("--visual-inspection", type=_existing_file)
+    manifest.add_argument("--slide-spec-report", type=_path, help="deprecated; current Spec is checked directly")
+    manifest.add_argument("--slide-spec", type=_path)
+    manifest.add_argument("--content-qa", type=_path)
+    manifest.add_argument("--visual-inspection", type=_path)
     manifest.add_argument("--asset-manifest", type=_existing_file)
-    manifest.add_argument("--asset-manifest-report", type=_existing_file)
+    manifest.add_argument("--asset-manifest-report", type=_path)
     manifest.set_defaults(handler=command_qa_manifest)
     return parser
 

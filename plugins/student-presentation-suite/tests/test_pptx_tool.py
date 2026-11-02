@@ -416,7 +416,7 @@ class PptxToolTests(unittest.TestCase):
         self.assertFalse(json.loads(result.stdout)["ok"])
         self.assertNotIn("Traceback", result.stderr)
 
-    def test_qa_manifest_binds_final_pptx_and_all_previews(self) -> None:
+    def test_qa_manifest_rechecks_actual_package_despite_passing_old_receipts(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             source = root / "deck.pptx"
@@ -509,13 +509,11 @@ class PptxToolTests(unittest.TestCase):
                 "--asset-manifest-report",
                 str(asset_report),
             )
-            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual(2, result.returncode, result.stderr)
             payload = json.loads(output.read_text(encoding="utf-8"))
-        self.assertEqual(1, payload["rendered_page_count"])
-        self.assertEqual([1], payload["visual_inspection"]["inspected_pages"])
-        self.assertTrue(payload["scenario_contract_passed"])
-        self.assertEqual(spec_hash, payload["slide_spec_sha256"])
-        self.assertEqual(str(package_report), payload["package_report"])
+        self.assertFalse(payload["ok"])
+        self.assertFalse(payload["package"]["ok"])
+        self.assertFalse(payload["visual_quality_verified"])
 
     def test_asset_manifest_rejects_missing_alt_text_and_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -548,7 +546,7 @@ class PptxToolTests(unittest.TestCase):
         self.assertNotEqual(0, result.returncode)
         self.assertFalse(payload["ok"])
 
-    def test_visual_inspection_rejects_unchecked_page(self) -> None:
+    def test_visual_inspection_records_unchecked_page_without_claiming_inspection(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             pptx = root / "deck.pptx"
@@ -584,9 +582,10 @@ class PptxToolTests(unittest.TestCase):
                 "--output",
                 str(report),
             )
-        self.assertNotEqual(0, result.returncode)
-        self.assertIn("was not explicitly checked", result.stderr)
-        self.assertFalse(report.exists())
+            self.assertEqual(0, result.returncode, result.stderr)
+            payload = json.loads(report.read_text(encoding="utf-8"))
+            self.assertEqual(payload["checked_page_count"], 0)
+            self.assertFalse(payload["visual_quality_verified"])
 
     def test_real_package_edit_preserves_source_and_validates_against_original(self) -> None:
         if not shutil.which("node"):

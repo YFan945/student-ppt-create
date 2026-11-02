@@ -16,7 +16,6 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
-import pptx_delivery_check as legacy  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
@@ -67,65 +66,9 @@ def validate_actual_report(path: Path, pptx: Path, slide_count: int | None) -> d
     }
 
 
-def main() -> None:
-    args = parse_args()
-    deliverables = legacy.parse_deliverables(getattr(args, "deliverables", None))
-    require_notes, require_preview = legacy.resolve_requirements(
-        deliverables,
-        allow_missing_notes=args.allow_missing_notes,
-        allow_missing_preview=args.allow_missing_preview,
-    )
-    result = legacy.inspect_delivery(
-        args.pptx,
-        args.notes,
-        args.preview,
-        require_notes=require_notes,
-        require_preview=require_preview,
-        owed_deliverables=legacy.required_deliverables(
-            deliverables,
-            allow_missing_notes=args.allow_missing_notes,
-            allow_missing_preview=args.allow_missing_preview,
-        ),
-        extra_files={
-            "pdf": getattr(args, "pdf", None),
-            "teleprompter": getattr(args, "teleprompter", None),
-        },
-        package_report=args.package_report,
-        require_package_report=True,
-        slide_spec_report=args.slide_spec_report,
-        simple=True,
-        visual_reviewed=args.visual_reviewed,
-    )
-
-    actual = validate_actual_report(args.actual_content_report, args.pptx, result.get("slide_count"))
-    result["actual_content_report"] = actual
-    result["delivery_report"]["actual_content_check_passed"] = actual["valid"]
-    result["delivery_report"]["actual_content_report_sha256"] = actual.get("sha256")
-    # Keep the existing profile for workflow_guard compatibility; v0.7 adds
-    # stronger fields without breaking older completion-state readers.
-    result["delivery_report"]["gate_profile"] = "simplified-v1"
-    result["delivery_report"]["generation_core_version"] = "0.7"
-
-    if not actual["valid"]:
-        result["ok"] = False
-        result["delivery_report"]["ok"] = False
-        result["delivery_report"]["status"] = "incomplete"
-
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        legacy.print_text(result)
-        print(f"Actual content check: valid={actual['valid']} errors={actual['errors']}")
-
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(
-            json.dumps(result["delivery_report"], ensure_ascii=False, indent=2) + "\n",
-            encoding="utf-8",
-        )
-
-    if args.strict and not result["ok"]:
-        raise SystemExit(1)
+def main() -> int:
+    from shared.validation_cli import main as validate_cli
+    return validate_cli("delivery")
 
 
 if __name__ == "__main__":

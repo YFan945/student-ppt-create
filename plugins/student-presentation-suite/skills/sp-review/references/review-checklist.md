@@ -138,9 +138,7 @@ When useful, rate each dimension as Excellent / Good / Needs Work / Risk:
 
 Include one sentence explaining the score for each dimension. Do not let scoring replace concrete fixes.
 
-For machine-readable review, use 0-100 scores for logic, evidence, readability,
-speakability, and defense readiness. Run `analyze_presentation_spec.py` when a
-Slide Spec is available; rendered deck evidence still overrides heuristics.
+When the user requests scoring and the rubric supports it, optional machine-readable scores may summarize the requested dimensions. Concrete findings are sufficient for ordinary review. `analyze_presentation_spec.py` is optional for a relevant Spec question; rendered evidence overrides heuristics.
 
 ## Evidence Review
 

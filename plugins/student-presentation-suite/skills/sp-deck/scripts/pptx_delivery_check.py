@@ -842,53 +842,9 @@ def print_text(result: dict[str, Any]) -> None:
     print(f"Delivery OK: {result['ok']}")
 
 
-def main() -> None:
-    args = parse_args()
-    deliverables = parse_deliverables(getattr(args, "deliverables", None))
-    owed = required_deliverables(
-        deliverables,
-        allow_missing_notes=args.allow_missing_notes,
-        allow_missing_preview=args.allow_missing_preview,
-    )
-    require_notes, require_preview = resolve_requirements(
-        deliverables,
-        allow_missing_notes=args.allow_missing_notes,
-        allow_missing_preview=args.allow_missing_preview,
-    )
-    result = inspect_delivery(
-        args.pptx,
-        args.notes,
-        args.preview,
-        require_notes=require_notes,
-        require_preview=require_preview,
-        owed_deliverables=owed,
-        extra_files={
-            "pdf": args.pdf,
-            "full-script": args.full_script,
-            "teleprompter": args.teleprompter,
-            "quality-report": args.quality_report,
-            "revision-manifest": args.revision_manifest,
-        },
-        qa_manifest=args.qa_manifest,
-        quality_report=args.quality_report,
-        package_report=args.package_report,
-        require_package_report=args.strict or args.simple,
-        slide_spec_report=args.slide_spec_report,
-        simple=args.simple,
-        visual_reviewed=args.visual_reviewed,
-        visual_review_report=args.visual_review_report,
-    )
-    result.setdefault("requirements", {})["deliverables"] = deliverables
-    result["requirements"]["owed_deliverables"] = owed
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        print_text(result)
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(result["delivery_report"], ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    if args.strict and not result["ok"]:
-        raise SystemExit(1)
+def main() -> int:
+    from shared.validation_cli import main as validate_cli
+    return validate_cli("delivery")
 
 
 if __name__ == "__main__":

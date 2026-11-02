@@ -2,6 +2,8 @@
 
 主会话直接读取素材、编写页面、查看当前预览并修复。Python 负责执行工具，不派发模型或评判审美。
 
+普通技术校验、变化范围与停止条件由 [validation-policy.md](../../../references/validation-policy.md) 所有；不串联多份评分和回执。
+
 ## Commands
 
 完成 intake 后，工作目录为项目 `outputs/.pptx-work/<work-id>`：
@@ -13,7 +15,9 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" measure --
 # measure 不构建不渲染：按真实页面代码一次报出全部文本溢出与余量偏紧的块，写 _tmp/measure-report.json。
 # measure 只覆盖文本溢出/偏紧；颜色对比度、元素重叠与对齐由 run 检查。
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" run --work-dir <wd>
-# 主会话查看返回的预览、实际文本和讲稿；有问题直接改，再 run。
+python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" preview --work-dir <wd> --slides 1-3,5
+# 只加载选中的已实现模块；不覆盖完整 deck 或 manifest。OOXML 编辑按当前页面顺序生成独立选页副本。
+# 主会话查看返回的预览、实际文本和讲稿；有实际问题直接改，再 run。
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" run --work-dir <wd> --no-render
 # 只构建+全检、跳过渲染：迭代读 check_summary/geometry 报告用，不产出预览；complete 会按需补齐当前渲染，主会话仍须实际查看。
 python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete --work-dir <wd>
@@ -47,7 +51,7 @@ python "${CLAUDE_PLUGIN_ROOT}/skills/sp-deck/scripts/ppt_pipeline.py" complete -
 
 用户要求“充实/丰富”、提供参考件或诊断松散时，content-to-visual属于本次必要参考，不能只读通用接口后把文字排进矩形就算完成。diagram-only仅限定素材类型，仍需表达主题对象与关系。对照材料逐句检查新增解释的依据：不能把“缺少持续跟进”扩写为已观察到“无人维护联系、参与停在一次活动”。在真实主会话看图发现这些问题后直接修复；自述检查记录不能替代修复。
 
-交付前必须渲染所有最终页面，总览看节奏，再逐页完整查看断行、裁切、意外重叠、连接线、标签归属、页码、信息密度、颜色层级和图文关系。检查同级一致、跨级区分、重点突出、对齐间距、正文支撑完整和简短讲解路径；再按课堂投影/目标观看条件缩放检查表格、图例和重点。封面与模板按 `cover-and-template.md` 对照真实页面。占位须确认是有意设计且已获允许，有替换目标和可读内容，不把遗留 TODO、空白页或缺失核心证据当作完成。修复后再次 `run`，查看变化页并扫描全套；最后确认内容、素材来源和用户要求。自动报告不证明美观、事实语义正确或已在 PowerPoint 中实测。
+交付前必须渲染所有最终页面，总览看节奏，再逐页完整查看断行、裁切、意外重叠、连接线、标签归属、页码、信息密度、颜色层级和图文关系。检查同级一致、跨级区分、重点突出、对齐间距、正文支撑完整和简短讲解路径；再按课堂投影/目标观看条件缩放检查表格、图例和重点。封面与模板按 `cover-and-template.md` 对照真实页面。占位须确认是有意设计且已获允许，有替换目标和可读内容，不把遗留 TODO、空白页或缺失核心证据当作完成。修复后再次 `run`，查看变化页；公共样式或叙事变化时扩大检查范围，单纯备注修改不重看未变图片；最后确认内容、素材来源和用户要求。自动报告不证明美观、事实语义正确或已在 PowerPoint 中实测。
 
 ## Authoring
 
@@ -65,8 +69,8 @@ Read `authoring-quickstart.md` for normal page creation instead of discovering h
 
 `meta.output_dir` 必须位于项目 outputs 内且不在 .pptx-work 中，默认 `outputs/<work-id>`。已确认任务可在同一 work-id 内修订 Spec/设计配置，再 `plan` 或 `run`；重新 plan 保留已写页面并同步脚手架管理的入口。JSON/YAML 排版变化不撤销确认；Production Summary 实质变化需在同一 work-id 重新确认。编辑源稿保留 `_inputs/` 快照，外部原件变化不锁死任务。工具仍保护原件和输出路径。
 
-`complete` 重新回读当前 PPTX 和素材契约，刷新检查，不要求旧报告、文案副本或所有源码哈希一致。当前逐页预览用于真实看图；仅缺失的预览按需恢复，不重建 PPTX。备注/ZIP 元数据变化可复用视觉内容相同的页面；PDF、联系表仅在实际请求时要求，联系表可由页面图重建。`preview` 导出全页 PNG，`contact-sheet` 单独导出概览。`status` 将用户修改的交付文件报告为 modified；缺失文件才使交付 incomplete。
+`complete` 根据当前 PPTX 和素材契约刷新检查；未变的技术输入复用校验结果，不要求旧报告、文案副本或所有源码哈希一致。当前逐页预览用于真实看图；仅缺失的预览按需恢复，不重建 PPTX。备注/ZIP 元数据变化可复用视觉内容相同的页面；PDF、联系表仅在实际请求时要求，联系表可由页面图重建。`preview` 导出全页 PNG，`contact-sheet` 单独导出概览。`status` 将用户修改的交付文件报告为 modified；缺失文件才使交付 incomplete。
 
 Review content roles against `../../../references/content-to-visual.md`, not shape quotas. Full final pages and the latest overview must reflect the last changes. Check unsupported comparisons/guarantees/causality in notes as well as visible text. Do not claim a target viewer or projector was tested unless it was actually used.
 
-`check_summary.expression_findings`汇总实际正文/备注的行文风险与显式标为 primary 的图标跨页复用，不改变technical ok，不自动删除引文或判断美观。每条发现带 severity：`info` 命中规划或用户提供的文本（含 `must_convey`/`content`/标题等），确认展示意图即可；`advisory` 为作者自撰文字，需按行文规范处理；`must_show_exact` 条目不产生发现。对应详情在现有production-check.json的expression_review。查看提醒涉及的页，按content-to-visual检查主体与整套布局；未登记的图标仍需看图。允许的提示词占位按image-sourcing登记prompt_visible，必须能在对应页回读提示词。工具不会为本次规则更新修改既有PPT。
+`check_summary.expression_findings`汇总实际正文/备注的行文风险与显式标为 primary 的图标跨页复用，不改变technical ok，不自动删除引文或判断美观。每条发现带 severity：`info` 命中规划或用户提供的文本（含 `must_convey`/`content`/标题等），确认展示意图即可；`advisory` 为作者自撰文字，结合上下文判断是否确有问题，不要求清零；`must_show_exact` 条目不产生发现。对应详情在现有production-check.json的expression_review。查看提醒涉及的页，按content-to-visual检查主体与整套布局；未登记的图标仍需看图。允许的提示词占位按image-sourcing登记prompt_visible，必须能在对应页回读提示词。工具不会为本次规则更新修改既有PPT。

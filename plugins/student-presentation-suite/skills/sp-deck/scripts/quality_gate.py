@@ -1,23 +1,13 @@
 #!/usr/bin/env python3
-"""Stable CLI for the deck quality gate, dispatched by generator-core version.
+"""Compatibility CLI for shared technical validation.
 
-Same contract as `delivery_check.py`: one external surface, `--core` selects
-the internal implementation, historical modules stay importable but are no
-longer exposed as sibling CLIs.
-
-    python quality_gate.py [--core {v071}] <original args...>
-
-`--core` currently only has v071 (the only quality-gate implementation); the
-default is pinned explicitly so adding a future core never silently changes
-behaviour for existing calls. This wrapper's own `--help` documents the
-dispatch surface; the per-core flags are documented by the inner modules
-(also reachable directly).
+Historical analysis functions remain importable for explicit diagnostics;
+the executable route uses shared.validation_cli and has no score/lock gate.
 """
 
 from __future__ import annotations
 
 import argparse
-import importlib
 import sys
 from pathlib import Path
 
@@ -28,13 +18,13 @@ DEFAULT_CORE = "v071"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, add_help=False
     )
     parser.add_argument(
         "--core",
         choices=sorted(CORES),
         default=DEFAULT_CORE,
-        help="internal quality-gate implementation to dispatch to (default: %(default)s)",
+        help="deprecated compatibility core (same current policy) (default: %(default)s)",
     )
     return parser
 
@@ -49,9 +39,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if str(HERE) not in sys.path:
         sys.path.insert(0, str(HERE))
-    module = importlib.import_module(CORES[known.core])
-    sys.argv = [f"{CORES[known.core]}.py", *forwarded]
-    return module.main() or 0
+    plugin = str(Path(__file__).resolve().parents[3])
+    if plugin not in sys.path:
+        sys.path.insert(0, plugin)
+    from shared.validation_cli import main as validate_cli
+    return validate_cli("quality", forwarded)
+
 
 
 if __name__ == "__main__":

@@ -434,7 +434,7 @@ def check_pptx(pptx: Path, art_direction: Path) -> dict[str, Any]:
             issues.append({
                 "slide": slide,
                 "part": part,
-                "severity": "minor" if part in low_alpha_parts else "major",
+                "severity": "minor",
                 "code": "off-palette-color",
                 "message": message,
                 "colors": outside,

@@ -1,26 +1,13 @@
 #!/usr/bin/env python3
-"""Stable CLI for deck delivery checking, dispatched by generator-core version.
+"""Compatibility CLI for shared technical validation.
 
-Version history used to live in sibling script names
-(`pptx_delivery_check_v07.py`, `_v071.py`, `_v08.py`), which meant every new
-core added another top-level tool and every doc had to pick one. Version
-belongs in schema and data, not in file names: this entry is the single
-external surface, and `--core` selects the implementation. The historical
-modules stay importable as internal implementations and their own tests keep
-covering them.
-
-    python delivery_check.py [--core {v07,v071,v08}] <original args...>
-
-`--core` defaults to v08 (the current pipeline contract); remaining arguments
-are forwarded verbatim to the selected implementation, whose exit code is
-returned. This wrapper's own `--help` documents the dispatch surface; the
-per-core flags are documented by the inner modules (also reachable directly).
+Historical analysis functions remain importable for explicit diagnostics;
+the executable route uses shared.validation_cli and has no score/lock gate.
 """
 
 from __future__ import annotations
 
 import argparse
-import importlib
 import sys
 from pathlib import Path
 
@@ -35,13 +22,13 @@ DEFAULT_CORE = "v08"
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter, add_help=False
     )
     parser.add_argument(
         "--core",
         choices=sorted(CORES),
         default=DEFAULT_CORE,
-        help="internal delivery-check implementation to dispatch to (default: %(default)s)",
+        help="deprecated compatibility core (same current policy) (default: %(default)s)",
     )
     return parser
 
@@ -56,11 +43,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if str(HERE) not in sys.path:
         sys.path.insert(0, str(HERE))
-    module = importlib.import_module(CORES[known.core])
-    # The historical mains parse sys.argv directly and return None; rewrite the
-    # argv so their usage/prog strings stay truthful, then normalise the result.
-    sys.argv = [f"{CORES[known.core]}.py", *forwarded]
-    return module.main() or 0
+    plugin = str(Path(__file__).resolve().parents[3])
+    if plugin not in sys.path:
+        sys.path.insert(0, plugin)
+    from shared.validation_cli import main as validate_cli
+    return validate_cli("delivery", forwarded)
+
 
 
 if __name__ == "__main__":

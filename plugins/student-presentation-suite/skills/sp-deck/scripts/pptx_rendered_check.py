@@ -1,22 +1,8 @@
 #!/usr/bin/env python3
-"""Rendered-artifact visual readback check.
+"""Compatibility CLI for shared technical validation.
 
-The other gates validate *declared* values (art-direction YAML, slide spec).
-This gate reads the generated OOXML, not raster pixels. It checks:
-
-1. ``font-below-floor``  – every run size on every slide >= ``caption_min_pt``;
-2. ``title-body-ratio``  – per-page title/body font ratio >= the tokens'
-   ``title_min_pt / body_cjk_min_pt`` (the same 1.45x the art-direction gate
-   demands on paper);
-3. ``chart-axis-auto``   – every chart value axis carries an explicit
-   ``c:max``/``c:min`` (auto-scaling hides real data differences);
-4. ``dead-space``        – content-only bottom whitespace > 25% is advisory;
-5. ``off-palette-color`` – every rendered sRGB color belongs to the approved
-   light/dark role palettes when ``--art-direction`` is supplied.
-
-Exit codes follow the v0.8 gate contract: fail-closed by default (2 when the
-report is not ok), ``--lenient`` opts out, ``--strict`` is a deprecated no-op
-alias kept for backward compatibility.
+Historical analysis functions remain importable for explicit diagnostics;
+the executable route uses shared.validation_cli and has no score/lock gate.
 """
 
 from __future__ import annotations
@@ -314,65 +300,13 @@ def registry_sidecar_findings(pptx: Path) -> list[dict[str, Any]]:
 
 
 def run(args: argparse.Namespace) -> int:
-    """Run the rendered-artifact gate with pre-parsed arguments (shared by gate-all)."""
-    report = check_pptx(args.pptx, _load_tokens(args.tokens))
-    if getattr(args, "slide_spec", None):
-        from pptx_actual_content_check import load_structured
-
-        from shared.design_policy import model_led
-
-        if model_led(load_structured(args.slide_spec)):
-            report["issues"] = [item for item in report["issues"] if item.get("code") not in {"font-below-floor", "title-body-ratio"}]
-            report["ok"] = not any(item.get("severity") in {"critical", "major", "blocker"} for item in report["issues"])
-    sidecar = registry_sidecar_findings(args.pptx)
-    if sidecar:
-        report["registry_geometry"] = {
-            "source": str(args.pptx) + ".registry-report.json",
-            "findings": sidecar,
-        }
-        report["issues"].extend(sidecar)
-        report["ok"] = not any(item.get("severity") in {"critical", "major", "blocker"} for item in report["issues"])
-    if getattr(args, "art_direction", None):
-        import pptx_palette_check
-
-        palette = pptx_palette_check.check_pptx(args.pptx, args.art_direction)
-        if getattr(args, "slide_spec", None) and model_led(load_structured(args.slide_spec)):
-            for item in palette["issues"]:
-                if item.get("code") in {"off-palette-color", "accent-element-dominance"}:
-                    item["severity"] = "minor"
-        report["palette"] = palette
-        report["issues"].extend(palette["issues"])
-        # Advisory issues (borderline contrast, sub-50%-alpha off-palette washes)
-        # ride along for the repair packet but must not flip the gate: only
-        # blocking severities decide ok, mirroring how collect() counts them.
-        blocking = {"critical", "major", "blocker"}
-        report["ok"] = not any(item.get("severity") in blocking for item in report["issues"])
-    payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(payload, encoding="utf-8")
-    if args.json or not args.output:
-        print(payload, end="")
-    if not report["ok"] and not args.lenient:
-        return 2
-    return 0
+    from shared.validation_cli import run_namespace
+    return run_namespace(args, "quality")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--pptx", type=Path, required=True)
-    parser.add_argument("--tokens", type=Path, default=DEFAULT_TOKENS)
-    parser.add_argument("--art-direction", type=Path)
-    parser.add_argument("--slide-spec", type=Path)
-    parser.add_argument("--output", type=Path)
-    parser.add_argument("--json", action="store_true")
-    parser.add_argument("--strict", action="store_true", help="deprecated no-op alias; gates are fail-closed by default")
-    parser.add_argument(
-        "--lenient",
-        action="store_true",
-        help="opt-in relaxation: exit 0 even when the report is not ok (default is fail-closed)",
-    )
-    return run(parser.parse_args())
+    from shared.validation_cli import main as validate_cli
+    return validate_cli("quality")
 
 
 if __name__ == "__main__":

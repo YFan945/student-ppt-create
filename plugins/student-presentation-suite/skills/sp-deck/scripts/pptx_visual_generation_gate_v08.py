@@ -9,7 +9,6 @@ back to the old `Slide Spec -> deck.js` path.
 
 from __future__ import annotations
 
-import argparse
 import json
 import re
 import sys
@@ -265,42 +264,8 @@ def validate_visual_generation(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--slide-spec", type=Path, required=True)
-    parser.add_argument("--art-direction", type=Path, required=True)
-    parser.add_argument("--evidence-dir", type=Path, required=True)
-    parser.add_argument(
-        "--quality",
-        choices=["fast", "standard", "rigorous", "basic", "high-score"],
-        default="high-score",
-        help="delivery tier (legacy basic/high-score accepted); rigorous is strict",
-    )
-    parser.add_argument("--output", type=Path)
-    parser.add_argument("--json", action="store_true")
-    parser.add_argument("--strict", action="store_true", help="deprecated no-op alias; gates are fail-closed by default")
-    parser.add_argument(
-        "--lenient",
-        action="store_true",
-        help="opt-in relaxation: exit 0 even when the report is not ok (default is fail-closed)",
-    )
-    args = parser.parse_args()
-
-    quality = "high-score" if tier_policy(args.quality)["strict_v08"] else "standard"
-    report = validate_visual_generation(
-        slide_spec=args.slide_spec,
-        art_direction=args.art_direction,
-        evidence_dir=args.evidence_dir,
-        quality=quality,
-    )
-    payload = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(payload, encoding="utf-8")
-    if args.json or not args.output:
-        print(payload, end="")
-    if not report["ok"] and not args.lenient:
-        return 2
-    return 0
+    from shared.validation_cli import main as validate_cli
+    return validate_cli("planning")
 
 
 if __name__ == "__main__":

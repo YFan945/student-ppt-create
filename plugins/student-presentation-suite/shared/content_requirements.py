@@ -74,17 +74,31 @@ def fact_binding_present(fact: dict[str, str], blocks: list[str]) -> bool:
     """
     label = unicodedata.normalize("NFKC", re.sub(r"\s+", "", fact["label"]))
     unit = re.sub(r"\s+", "", fact.get("unit", ""))
+    # A single explicitly labelled year is page context, not a demand to repeat
+    # the date inside every metric. Mixed-year comparisons remain local.
+    years = {match.group(1) for block in blocks for match in
+             re.finditer(r"(?<!\d)((?:19|20)\d{2})(?:年|(?=\s*$))", unicodedata.normalize("NFKC", block))}
+    wanted_year = re.fullmatch(r"((?:19|20)\d{2})年?", str(fact.get("context") or ""))
+    shared_year = bool(wanted_year and years == {wanted_year.group(1)})
     for block in blocks:
         normalized = unicodedata.normalize("NFKC", re.sub(r"\s+", "", block))
-        if fact.get("context") and not exact_present(fact["context"], block):
+        if fact.get("context") and not (exact_present(fact["context"], block) or shared_year
+                or any(exact_present(fact["context"], context) for context in getattr(block, "contexts", ()))):
             continue
         for token in NUMBER_RE.finditer(normalized):
-            if not numeric_present(fact["value"], token.group()):
+            expected = fact["value"].rstrip("%％") + "%" if unit in {"%", "％"} else fact["value"]
+            if not numeric_present(expected, token.group()):
                 continue
             before, after = normalized[:token.start()], normalized[token.end():]
-            if not after.startswith(unit):
+            if unit in {"%", "％"} and token.group().endswith(("%", "％")):
+                pass
+            elif after.startswith(unit):
+                after = after[len(unit):]
+            elif unit and (not after or after.startswith(label)) and any(
+                    unit in re.split(r"[:：()（）\s]+", context) for context in getattr(block, "contexts", ())):
+                pass  # Chart-local axis/title units apply to its own value labels.
+            else:
                 continue
-            after = after[len(unit):]
             if unit and unit[-1].isascii() and unit[-1].isalpha() and after and after[0].isascii() and after[0].isalnum():
                 continue
             connectors = r"(?:[:=]|为|是|达到|等于)?"

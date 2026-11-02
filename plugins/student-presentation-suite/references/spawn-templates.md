@@ -27,3 +27,5 @@ Only external evidence retrieval uses an isolated researcher; page production st
 ```
 
 scope 和具体证据规则由 research-workflow.md 所有；任务修改不需要重抄背景或数字。
+
+研究任务的验收条件来自用户要求，不能把代理自定的精确分布变成核心缺口。研究员结束后以当前交接为准；迟到完成通知指向相同产物时不再次研究或触发PPT重建。具体恢复与收口规则见research-workflow.md。

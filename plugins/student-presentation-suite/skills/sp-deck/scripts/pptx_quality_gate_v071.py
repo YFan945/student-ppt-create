@@ -31,11 +31,7 @@ ROOT = HERE.parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import pptx_actual_content_check as actual_check  # noqa: E402
-import slide_spec_guard as spec_guard  # noqa: E402
 
-from shared.content_requirements import semantic_binding, semantic_review_issues  # noqa: E402
-from shared.design_policy import model_led  # noqa: E402
 from shared.hashing import file_sha256 as sha256_file  # noqa: E402
 from shared.quality_tiers import tier_policy  # noqa: E402
 
@@ -623,7 +619,7 @@ def check_timing(spec: dict[str, Any], notes_by_slide: dict[int, str] | None = N
         if include_notes and not notes:
             issues.append(issue("major", "speaker_notes_missing", f"Slide {slide_no} requires speaker notes in the PPTX notes pane but none are present.", slide=slide_no))
         elif planned > 0 and ratio > 1.35:
-            issues.append(issue("major", "slide_timing_overrun", f"Slide {slide_no} notes are estimated at {estimated:.0f}s versus {planned:.0f}s planned.", slide=slide_no, estimated_sec=round(estimated, 1), planned_sec=planned))
+            issues.append(issue("minor", "slide_timing_overrun", f"Slide {slide_no} notes are estimated at {estimated:.0f}s versus {planned:.0f}s planned.", slide=slide_no, estimated_sec=round(estimated, 1), planned_sec=planned))
         elif planned > 0 and ratio > 1.15:
             issues.append(issue("minor", "slide_timing_tight", f"Slide {slide_no} notes are estimated at {estimated:.0f}s versus {planned:.0f}s planned.", slide=slide_no, estimated_sec=round(estimated, 1), planned_sec=planned))
         slide_reports.append({"slide": slide_no, "planned_sec": planned, "estimated_sec": round(estimated, 1), "ratio": round(ratio, 3) if math.isfinite(ratio) else None})
@@ -633,7 +629,7 @@ def check_timing(spec: dict[str, Any], notes_by_slide: dict[int, str] | None = N
     if confirmed_total > 0:
         overall_ratio = estimated_total / confirmed_total
         if overall_ratio > 1.15:
-            issues.append(issue("major", "deck_timing_overrun", f"Speaker notes are estimated at {estimated_total / 60.0:.2f} min for a {confirmed_total / 60.0:.2f} min presentation."))
+            issues.append(issue("minor", "deck_timing_overrun", f"Speaker notes are estimated at {estimated_total / 60.0:.2f} min for a {confirmed_total / 60.0:.2f} min presentation."))
         elif overall_ratio > 1.05:
             issues.append(issue("minor", "deck_timing_tight", f"Speaker notes are estimated at {estimated_total / 60.0:.2f} min for a {confirmed_total / 60.0:.2f} min presentation."))
         elif include_notes and overall_ratio < 0.55:
@@ -818,111 +814,13 @@ def apply_modelled_findings(findings: list[dict[str, Any]]) -> None:
 
 
 def run(args: argparse.Namespace) -> int:
-    """Run the quality gate with pre-parsed arguments (shared by gate-all)."""
-    if not args.pptx.is_file():
-        raise SystemExit(f"PPTX does not exist: {args.pptx}")
-    if not args.slide_spec.is_file():
-        raise SystemExit(f"Slide Spec does not exist: {args.slide_spec}")
-
-    spec_lock = spec_guard.check_lock(args.spec_lock, args.slide_spec)
-    spec = load_structured(args.slide_spec)
-    actual_text = actual_check.extract_pptx_text(args.pptx)
-    meta = spec.get("meta") or {}
-    policy = tier_policy(meta.get("quality_level"))
-
-    visual_only = bool(args.visual_report)
-    rhythm_plan: dict[str, Any] | None = None
-    if getattr(args, "rhythm_plan", None) and args.rhythm_plan.is_file():
-        try:
-            loaded = json.loads(args.rhythm_plan.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            loaded = None  # the plan is advisory input; a corrupt file must not fail the gate
-        rhythm_plan = loaded if isinstance(loaded, dict) else None
-    if visual_only:
-        visual = validate_visual_report(
-            args.visual_report, args.pptx, len(actual_text), policy=policy, rhythm_plan=rhythm_plan,
-            modelled=model_led(spec),
-        )
-    else:
-        visual = {
-            "ok": True,
-            "issues": [],
-            "skipped": "deterministic-only run: no --visual-report supplied",
-        }
-    evidence = check_evidence(spec, actual_text)
-    timing = check_timing(spec, actual_check.extract_pptx_notes(args.pptx))
-    history_path = args.pptx.parent / SCORE_HISTORY_NAME
-    if visual_only:
-        regression, merged_scores = check_visual_regression(history_path, load_json(args.visual_report))
-        if not policy["block_regression"]:
-            for item in regression:
-                item["severity"] = ADVISORY_SEVERITY
-    else:
-        # No scores to record: writing the history from a deterministic-only run would
-        # overwrite the critic's per-slide baseline with an empty map.
-        regression, merged_scores = [], None
-    lock_issues = [] if spec_lock["ok"] else [issue("critical", "slide_spec_lock_invalid", message) for message in spec_lock["errors"]]
-    move_issues = repeated_move_issues(Path(str(args.pptx) + ".layout-report.json"), policy)
-    if model_led(spec):
-        for finding in move_issues:
-            finding["severity"] = ADVISORY_SEVERITY
-    semantic_issues = []
-    if visual_only and spec.get("schema_version") == "2.1":
-        review = load_json(args.visual_report)
-        notes_data = actual_check.extract_pptx_notes(args.pptx)
-        binding = semantic_binding(sha256_file(args.slide_spec), actual_text, notes_data)
-        if review.get("semantic_binding") != binding:
-            semantic_issues.append(issue("major", "semantic_review_stale", "Semantic review must bind the frozen Spec and actual PPTX notes."))
-        registry_path = Path(str(args.pptx) + ".registry-report.json")
-        registry_data = load_json(registry_path) if registry_path.is_file() else {}
-        elements = {item["slide"]: {str(element["id"]) for element in item.get("elements", [])} for item in registry_data.get("slides", [])}
-        semantic_issues.extend(semantic_review_issues(spec, review, actual_text, notes_data, elements))
-    all_issues = lock_issues + visual["issues"] + evidence["issues"] + timing["issues"] + regression + move_issues
-    all_issues += semantic_issues
-    if model_led(spec):
-        # A subjective score alone cannot replace a concrete readability finding.
-        apply_modelled_findings(all_issues)
-        visual["blocker_count"] = sum(item["severity"] in BLOCKING_SEVERITIES for item in visual["issues"])
-        visual["advisory_count"] = sum(item["severity"] == ADVISORY_SEVERITY for item in visual["issues"])
-        visual["ok"] = visual["blocker_count"] == 0
-    blockers = [item for item in all_issues if item["severity"] in BLOCKING_SEVERITIES]
-
-    result = {
-        "ok": not blockers,
-        "generation_core_version": "0.7.1",
-        "pptx_sha256": sha256_file(args.pptx),
-        "slide_spec_sha256": sha256_file(args.slide_spec),
-        "spec_lock_sha256": sha256_file(args.spec_lock),
-        "visual_report_sha256": sha256_file(args.visual_report) if visual_only else None,
-        "visual_reviewed": visual_only,
-        "slide_count": len(actual_text),
-        "blocker_count": len(blockers),
-        "issue_count": len(all_issues),
-        "visual": visual,
-        "evidence": evidence,
-        "timing": timing,
-        "visual_regression": regression,
-        "issues": all_issues,
-    }
-
-    payload = json.dumps(result, ensure_ascii=False, indent=2)
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(payload + "\n", encoding="utf-8")
-    if merged_scores is not None:
-        history_path.write_text(
-            json.dumps(merged_scores, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
-        )
-    if args.json or not args.output:
-        print(payload)
-    if args.strict and not result["ok"]:
-        return 2
-    return 0
+    from shared.validation_cli import run_namespace
+    return run_namespace(args, "quality")
 
 
 def main() -> int:
-    return run(parse_args())
+    from shared.validation_cli import main as validate_cli
+    return validate_cli("quality")
 
 
 if __name__ == "__main__":

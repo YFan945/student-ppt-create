@@ -9,8 +9,6 @@ import sys
 from pathlib import Path
 
 import pptx_delivery_check as legacy
-import pptx_delivery_check_v07 as v07
-import pptx_delivery_check_v071 as v071
 
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
@@ -183,117 +181,9 @@ def brief_required_deliverables(meta: dict) -> list[str]:
         return ["pptx"]
 
 
-def main() -> None:
-    args = parse_args()
-    deliverables = confirmed_deliverables(args.slide_spec, args.deliverables)
-    owed = legacy.required_deliverables(
-        deliverables,
-        allow_missing_notes=args.allow_missing_notes,
-        allow_missing_preview=args.allow_missing_preview,
-    )
-    require_notes, require_preview = legacy.resolve_requirements(
-        deliverables,
-        allow_missing_notes=args.allow_missing_notes,
-        allow_missing_preview=args.allow_missing_preview,
-    )
-    result = legacy.inspect_delivery(
-        args.pptx,
-        args.notes,
-        args.preview,
-        require_notes=require_notes,
-        require_preview=require_preview,
-        owed_deliverables=owed,
-        extra_files={
-            "pdf": args.pdf,
-            "full-script": args.full_script,
-            "teleprompter": args.teleprompter,
-        },
-        package_report=args.package_report,
-        require_package_report=True,
-        slide_spec_report=args.slide_spec_report,
-        simple=True,
-        visual_reviewed=args.visual_reviewed,
-        visual_review_report=args.visual_review_report,
-    )
-    actual = v07.validate_actual_report(args.actual_content_report, args.pptx, result.get("slide_count"))
-    quality = v071.validate_quality_report(
-        args.quality_report,
-        args.pptx,
-        args.slide_spec,
-        args.spec_lock,
-        result.get("slide_count"),
-    )
-    visual_generation = validate_visual_generation_report(
-        args.visual_generation_report,
-        args.slide_spec,
-        args.art_direction,
-    )
-    result["actual_content_report"] = actual
-    result["quality_report"] = quality
-    result["visual_generation_report"] = visual_generation
-
-    delivery = result["delivery_report"]
-    delivery["actual_content_check_passed"] = actual["valid"]
-    delivery["actual_content_report_sha256"] = actual.get("sha256")
-    delivery["quality_check_passed"] = quality["valid"]
-    delivery["quality_report_sha256"] = quality.get("sha256")
-    delivery["visual_generation_check_passed"] = visual_generation["valid"]
-    delivery["visual_generation_report_sha256"] = visual_generation.get("sha256")
-    delivery["slide_spec_sha256"] = sha256_file(args.slide_spec) if args.slide_spec.is_file() else None
-    delivery["spec_lock_sha256"] = sha256_file(args.spec_lock) if args.spec_lock.is_file() else None
-    delivery["art_direction_sha256"] = sha256_file(args.art_direction) if args.art_direction.is_file() else None
-    delivery["gate_profile"] = "simplified-v08"
-    delivery["generation_core_version"] = "0.8"
-    delivery["deliverables"] = deliverables
-    delivery["owed_deliverables"] = owed
-    delivery["notes_required"] = require_notes
-    delivery["preview_required"] = require_preview
-    delivery["missing_deliverables"] = [
-        name for name, evidence in result.get("deliverable_evidence", {}).items() if not evidence["satisfied"]
-    ]
-
-    review_check = (result.get("delivery_report") or {}).get("visual_review_check") or {}
-    delivery["visual_review_check_passed"] = review_check.get("valid") is True
-    if not review_check.get("valid"):
-        result["ok"] = False
-
-    if not actual["valid"] or not quality["valid"] or not visual_generation["valid"]:
-        result["ok"] = False
-        delivery["ok"] = False
-        delivery["status"] = "incomplete"
-        delivery["issues"] = [
-            {"severity": "major", "code": f"{gate}_report_invalid", "message": message}
-            for gate, validation in (("actual_content", actual), ("quality", quality), ("visual_generation", visual_generation))
-            for message in validation["errors"]
-        ]
-    # Per-name deliverable verification is the last word: confirming a deliverable
-    # and then not producing its file must block completion, not just appear as a
-    # warning line in the report. `required_deliverables` already limits `owed` to
-    # names backed by a concrete artifact (and honours --allow-missing-*), so an
-    # empty `owed` — e.g. "PPTX only" — cannot fail here.
-    if delivery["missing_deliverables"]:
-        result["ok"] = False
-        delivery["ok"] = False
-        delivery["status"] = "incomplete"
-        delivery["deliverable_blockers"] = delivery["missing_deliverables"]
-
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        legacy.print_text(result)
-        print(f"Actual content check: valid={actual['valid']} errors={actual['errors']}")
-        print(f"Quality check: valid={quality['valid']} errors={quality['errors']}")
-        print(
-            "Visual generation check: "
-            f"valid={visual_generation['valid']} errors={visual_generation['errors']}"
-        )
-
-    if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(delivery, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-
-    if args.strict and not result["ok"]:
-        raise SystemExit(1)
+def main() -> int:
+    from shared.validation_cli import main as validate_cli
+    return validate_cli("delivery")
 
 
 if __name__ == "__main__":

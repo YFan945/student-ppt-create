@@ -65,29 +65,29 @@ def _preview(text: str, limit: int = 80) -> str:
 
 
 def extract_pptx_text(pptx: Path) -> list[str]:
-    slides: list[tuple[int, str]] = []
-    with zipfile.ZipFile(pptx) as zf:
-        for name in zf.namelist():
-            match = re.fullmatch(r"ppt/slides/slide(\d+)\.xml", name)
-            if not match:
-                continue
-            root = ET.fromstring(zf.read(name))
-            from shared.pptx_text_readback import slide_text
+    from shared.chart_readback import chart_regions, slide_parts
+    from shared.pptx_text_readback import slide_text
 
-            slides.append((int(match.group(1)), slide_text(root)))
-    return [text for _, text in sorted(slides)]
+    with zipfile.ZipFile(pptx) as package:
+        result = []
+        for part in slide_parts(package):
+            root = ET.fromstring(package.read(part))
+            visible = chart_regions(package, root, part)
+            # Associated chart facts are useful for binding, but do not repeat
+            # their values in the literal slide transcript.
+            chart_text = list(dict.fromkeys(str(text) for text in visible))
+            result.append("\n".join([slide_text(root), *chart_text]).strip())
+        return result
 
 
 def extract_fact_blocks(pptx: Path) -> list[list[str]]:
+    from shared.chart_readback import chart_regions, slide_parts
     from shared.pptx_text_readback import fact_blocks
 
-    slides = []
     with zipfile.ZipFile(pptx) as package:
-        for name in package.namelist():
-            match = re.fullmatch(r"ppt/slides/slide(\d+)\.xml", name)
-            if match:
-                slides.append((int(match.group(1)), fact_blocks(ET.fromstring(package.read(name)))))
-    return [blocks for _, blocks in sorted(slides)]
+        return [fact_blocks(ET.fromstring(package.read(part))) +
+                chart_regions(package, ET.fromstring(package.read(part)), part)
+                for part in slide_parts(package)]
 
 
 NOTESLIDE_REL_RE = re.compile(r'Type="[^"]*?/notesSlide"[^>]*?Target="([^"]+)"')
@@ -104,18 +104,15 @@ def extract_pptx_notes(pptx: Path) -> dict[int, str]:
     notes: dict[int, str] = {}
     with zipfile.ZipFile(pptx) as zf:
         names = set(zf.namelist())
-        for name in names:
-            match = re.fullmatch(r"ppt/slides/slide(\d+)\.xml", name)
-            if not match:
-                continue
-            slide_no = int(match.group(1))
-            rels_name = f"ppt/slides/_rels/slide{slide_no}.xml.rels"
+        from shared.chart_readback import slide_parts
+        for slide_no, name in enumerate(slide_parts(zf), 1):
+            rels_name = posixpath.join(posixpath.dirname(name), "_rels", posixpath.basename(name) + ".rels")
             if rels_name not in names:
                 continue
             targets = NOTESLIDE_REL_RE.findall(zf.read(rels_name).decode("utf-8"))
             pieces: list[str] = []
             for target in targets:
-                notes_path = posixpath.normpath(posixpath.join("ppt/slides", target))
+                notes_path = posixpath.normpath(posixpath.join(posixpath.dirname(name), target)).lstrip("/")
                 if notes_path not in names:
                     continue
                 root = ET.fromstring(zf.read(notes_path))

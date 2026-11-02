@@ -82,10 +82,14 @@ class GateAllTests(unittest.TestCase):
             "  - id: 1\n"
             "    title: 标题一\n"
             "    claim: 标题一\n"
+            "    content: [正文一]\n"
+            "    layout: title-body\n"
             "    timing_sec: 240\n"
             "  - id: 2\n"
             "    title: 标题二\n"
             "    claim: 标题二\n"
+            "    content: [正文二]\n"
+            "    layout: title-body\n"
             "    timing_sec: 240\n",
             encoding="utf-8",
         )
@@ -166,7 +170,8 @@ class GateAllTests(unittest.TestCase):
             fixture = self._make_fixture(root, title_pt=24)
             self._run_gate_all(root, fixture)
             legacy = json.loads((root / 'gate-all-report.json').read_text(encoding='utf-8'))
-            self.assertFalse(legacy['steps']['rendered']['ok'])
+            self.assertTrue(legacy['ok'])
+            self.assertNotIn('rendered', legacy['steps'])
             spec = fixture['spec']
             spec.write_text(spec.read_text(encoding='utf-8').replace('meta:\n', 'meta:\n  design_freedom: auto\n'), encoding='utf-8')
             report = root / 'slide-spec-report.json'
@@ -175,7 +180,7 @@ class GateAllTests(unittest.TestCase):
             guard.write_lock(fixture['lock'], guard.make_lock(spec, report, revision=1, reason='modelled fixture'))
             result = self._run_gate_all(root, fixture)
             current = json.loads((root / 'gate-all-report.json').read_text(encoding='utf-8'))
-            self.assertTrue(current['steps']['rendered']['ok'], result.stdout + result.stderr)
+            self.assertTrue(current['ok'], result.stdout + result.stderr)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_gate_all_passes_a_clean_deck_and_writes_all_reports(self) -> None:
@@ -187,10 +192,10 @@ class GateAllTests(unittest.TestCase):
 
             merged = json.loads((root / "gate-all-report.json").read_text(encoding="utf-8"))
             self.assertTrue(merged["ok"])
-            self.assertEqual("gate-all-v1", merged["gate_profile"])
-            for name in ("package", "actual-content", "rendered", "quality"):
+            self.assertEqual("artifact-validation-v2", merged["gate_profile"])
+            for name in ("package", "actual-content", "assets"):
                 self.assertTrue(merged["steps"][name]["ok"], f"{name} should pass: {merged['steps'][name]}")
-                self.assertTrue((root / "reports" / merged["steps"][name]["report"]).is_file())
+            self.assertTrue((root / "reports" / "validation-cache.json").is_file())
             # 单进程合并后，各门禁报告仍然独立存在且绑定同一 PPTX。
             self.assertEqual(
                 merged["pptx_sha256"],
@@ -201,9 +206,7 @@ class GateAllTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             fixture = self._make_fixture(root)
-            # 换一个 9pt 文本且内容与 spec 不符的 deck：rendered（字号下限）与
-            # actual-content（claim 回读）都会拦，quality 因 visual-review 绑定
-            # 的哈希失效而失败——gate-all 必须 fail-closed（exit 2）。
+            # 缺少明确的展示内容仍失败；旧评分与字号门不参与当前判定。
             bad_deck = root / "bad-deck.pptx"
             bad_script = root / "make-bad-deck.js"
             bad_script.write_text(
@@ -232,12 +235,12 @@ class GateAllTests(unittest.TestCase):
             self.assertEqual(2, result.returncode)
             merged = json.loads((root / "gate-all-report.json").read_text(encoding="utf-8"))
             self.assertFalse(merged["ok"])
-            self.assertFalse(merged["steps"]["rendered"]["ok"])
+            self.assertNotIn("rendered", merged["steps"])
             self.assertFalse(merged["steps"]["actual-content"]["ok"])
-            self.assertFalse(merged["steps"]["quality"]["ok"])
+            self.assertNotIn("quality", merged["steps"])
             # 单步失败不拖垮其余步骤：package 与其余步骤仍有独立结论。
             self.assertIn("ok", merged["steps"]["package"])
-            self.assertIn("ok", merged["steps"]["quality"])
+            self.assertIn("ok", merged["steps"]["package"])
 
 
 if __name__ == "__main__":

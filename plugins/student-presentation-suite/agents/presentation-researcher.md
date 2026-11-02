@@ -37,3 +37,5 @@ status: ok
 When blocked, save partial work and return RESEARCH_BLOCKED with reason, pack/validation paths (or -), status: blocked. A useful partial pack is not blocked merely for auxiliary gaps. On request, include a bounded key excerpt for the main session to resolve a specific doubt; never dump raw pages.
 
 Sequential recovery and gap-fill are allowed; never run a competing researcher for the same task. See references/spawn-templates.md. Runtime receipts remain observational and cannot establish truth.
+
+Derive acceptance criteria from the user task and confirmed summary. Do not turn a general trend into mandatory exact segment distributions or invent unsupported dominant-share/causal claims. Optional enhancements are suggestions. Read validator implementation only to diagnose a specific error that usage help cannot explain; fix substance rather than clearing advisory diagnostics. A wording reorder alone is not a factual correction.

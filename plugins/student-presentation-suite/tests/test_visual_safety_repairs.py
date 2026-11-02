@@ -64,7 +64,8 @@ class FactBindingTests(unittest.TestCase):
         self.assertTrue(fact_binding_present(fact, ['参与人数\n233人']))
         self.assertTrue(fact_binding_present(fact, ['233人\n参与人数']))
         fact['context'] = '2026年'
-        self.assertFalse(fact_binding_present(fact, ['参与人数233人', '2026年']))
+        self.assertTrue(fact_binding_present(fact, ['参与人数233人', '2026年']))
+        self.assertFalse(fact_binding_present(fact, ['参与人数233人', '2026年', '2025年']))
         self.assertTrue(fact_binding_present(fact, ['2026年参与人数233人']))
 
     def test_real_ooxml_blocks_preserve_text_object_boundaries(self):

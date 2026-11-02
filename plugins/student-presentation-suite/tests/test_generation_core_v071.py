@@ -592,7 +592,7 @@ class GenerationCoreV071Tests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertIn("missing_final_reference", {item["code"] for item in result["issues"]})
 
-    def test_timing_estimator_blocks_deck_overrun(self) -> None:
+    def test_timing_estimator_advises_deck_overrun(self) -> None:
         spec = {
             "meta": {"duration_min": 1, "include_speaker_notes": True},
             "slides": [
@@ -603,7 +603,7 @@ class GenerationCoreV071Tests(unittest.TestCase):
             ],
         }
         result = self.quality.check_timing(spec, {1: "这是测试讲稿。" * 60})
-        self.assertFalse(result["ok"])
+        self.assertTrue(result["ok"])
         self.assertIn("deck_timing_overrun", {item["code"] for item in result["issues"]})
 
     def test_speaker_notes_are_judged_from_the_artifact_not_the_spec(self) -> None:

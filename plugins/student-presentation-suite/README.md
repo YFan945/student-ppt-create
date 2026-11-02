@@ -84,3 +84,5 @@ Current production protects opaque text occlusion and checks contrast on known s
 ## Templates and student presentation design
 
 The plugin carries a portable [design-reference library](assets/template-library/README.md) of previews and object-layout recipes. New-page design searches it by default, inspects relevant pages and reconstructs editable objects from task content; another computer needs no original source folders. User templates take priority. Local catalogs still support page-role search, per-slide source references and editable slide assembly from original PPTX files. Adapt photos, tables, charts and diagrams with rich coordinated colors and deliberate text hierarchy. See [template workflow](references/template-workflow.md).
+
+Public QA commands share one technical validation policy; ordinary delivery needs no visual scores, lock files or receipt chain. Native visible chart labels participate in readback, and partial page previews support early inspection without unfinished pages. See [validation policy](references/validation-policy.md) and [production commands](skills/sp-deck/references/main-session-production.md).

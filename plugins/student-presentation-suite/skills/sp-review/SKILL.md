@@ -1,7 +1,7 @@
 ---
 name: sp-review
 description: Use only for a clearly student-owned academic context when the user explicitly asks to review, audit, score, critique, compare, or diagnose an existing PPT/PPTX/PowerPoint deck or rendered export.
-version: 0.33.0
+version: 0.34.0
 ---
 
 # Student Presentation Review
@@ -62,3 +62,5 @@ version: 0.33.0
 
 评审报告默认写入 `outputs/<topic>-review.md`；编辑交接件写入 `outputs/<topic>-slide-spec.yaml`。
 写入 `${CLAUDE_PROJECT_DIR}/outputs` 或当前项目的 `outputs/` 回退，不得写入 `${CLAUDE_PLUGIN_ROOT}`。
+
+普通制作校验边界见 ../../references/validation-policy.md。按具体发现和用户标准诊断；不以缺少评分/checked/可选报告判定不合格，不把措辞提示全部当错误，也不把未改意义的换词说成事实纠正。已检查且未变内容无需再次检查。

@@ -1,7 +1,7 @@
 ---
 name: sp-research
 description: Use only for a student-owned academic presentation needing external facts, current data, statistics, citations or a user-material Research Pack. Does not design slides or generate PPTX.
-version: 0.33.0
+version: 0.34.0
 argument-hint: "[work-id] [brief-or-draft-spec-path] [scope:A|B|C|D] [materials-path-or--]"
 arguments: [work_id, brief_path, scope, materials_path]
 ---
@@ -21,3 +21,5 @@ arguments: [work_id, brief_path, scope, materials_path]
 unknown_payload 不证明后端未执行；backend_not_executed 只暂停 WebSearch，文档读取仍可用。检索日志由 hooks 维护，--audit 可选，不清零诊断。来源支持、真实口径、错误引用和用户禁网约束仍须遵守。
 
 输出：research-pack.json、工具更新的校验报告和 research/ 资料；located/unresolved 不入事实账本。图片获取另走 ../../references/image-sourcing.md。
+
+claim条件须忠实于用户任务；增强建议不自动变成核心缺口。只消费当前交接一次；重复完成通知或缺少可选hook回执不触发重搜、重新验收或下游重建，详见research-workflow的任务忠实与通知收口。

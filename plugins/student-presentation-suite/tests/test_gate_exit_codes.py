@@ -47,12 +47,12 @@ class GateExitCodeTests(unittest.TestCase):
             self.assertEqual(0, self._exit(composition_candidate_check, [str(tmp), "--lenient"]))
 
     def test_visual_generation_fail_closed(self) -> None:
-        with mock.patch.object(visual_gate, "validate_visual_generation", return_value=NON_OK):
+        with mock.patch("shared.validation_cli.validate_slide_spec", return_value=({}, NON_OK["issues"], "")):
             with tempfile.TemporaryDirectory() as d:
                 paths = [str(Path(d) / name) for name in ("spec", "art", "ev")]
                 base = ["--slide-spec", paths[0], "--art-direction", paths[1], "--evidence-dir", paths[2]]
                 self.assertEqual(2, self._exit(visual_gate, base))
-                self.assertEqual(0, self._exit(visual_gate, [*base, "--lenient"]))
+                self.assertEqual(2, self._exit(visual_gate, [*base, "--lenient"]))
 
 
 if __name__ == "__main__":

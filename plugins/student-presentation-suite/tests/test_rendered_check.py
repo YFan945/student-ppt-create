@@ -93,7 +93,7 @@ class RenderedCheckTests(unittest.TestCase):
             with mock.patch.object(sys, "argv", ["gate", *argv_base]):
                 self.assertEqual(2, rendered_check.main())
             with mock.patch.object(sys, "argv", ["gate", *argv_base, "--lenient"]):
-                self.assertEqual(0, rendered_check.main())
+                self.assertEqual(2, rendered_check.main())
 
 
 if __name__ == "__main__":
