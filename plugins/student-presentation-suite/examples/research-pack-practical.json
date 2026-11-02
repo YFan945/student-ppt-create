@@ -1,0 +1,35 @@
+{
+  "version": "0.10",
+  "topic": "示例：表格证据转录（合成数字）",
+  "evidence_contract": "source-backed-v1",
+  "findings": [],
+  "data_points": [
+    {
+      "id": "D01",
+      "claim_id": "C01",
+      "value": "820",
+      "meaning": "示例表中目标列的值",
+      "status": "usable",
+      "source_ids": [
+        "S01"
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "id": "S01",
+      "title": "示例报告（非真实证据）",
+      "url": "https://example.org/report.pdf"
+    }
+  ],
+  "evidence": [
+    {
+      "entity_id": "D01",
+      "source_id": "S01",
+      "excerpt": "740 820 910",
+      "locator": "第12页表3",
+      "method": "PDF table extraction",
+      "support_note": "已核对目标列及表头单位；真实任务必须替换为实际来源。"
+    }
+  ]
+}

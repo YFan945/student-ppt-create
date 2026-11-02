@@ -50,16 +50,10 @@ def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> 
                     for binding in content.get("evidence", []):
                         if binding.get("entity_id") != eid:
                             continue
-                        evidence_path = Path(binding.get("text_path", ""))
-                        evidence_path = evidence_path if evidence_path.is_absolute() else work / evidence_path
-                        try:
-                            if hashlib.sha256(evidence_path.read_bytes()).hexdigest() != binding.get("text_sha256"):
-                                continue
-                        except OSError:
-                            continue
-                        # Paraphrases, report rewrites and unrelated readable pages
-                        # are not progress. A task claim must gain validated support.
-                        token = [claim["id"], claim["status"], binding.get("text_sha256")]
+                        # Content progress is source support, not byte identity of
+                        # a parser's output. Hashes remain cache metadata only.
+                        token = [claim["id"], claim["status"], binding.get("source_id"),
+                                 binding.get("excerpt"), binding.get("support_note")]
                         useful.add(json.dumps(token, ensure_ascii=False))
         if useful - set(state["seen"]):
             state["last_progress_at"] = now
@@ -67,9 +61,13 @@ def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> 
         reason = state.get("reason", "")
         if reason in {"time_budget_exhausted", "no_useful_progress"}:
             reason = ""  # old timer decisions do not prevent continuing the task
-        if state.get("task_sha256") != task_sha:
-            reason = "task_changed"
-        if not reason and current and report.get("delivery_status") in {"ready", "partial"}:
+        if reason == "task_changed" or (state.get("task_sha256") != task_sha and reason == "sufficient_evidence"):
+            reason = ""
+        state["task_sha256"] = task_sha
+        validation_path = work / "research-pack-validation.json"
+        report_version = hashlib.sha256(validation_path.read_bytes()).hexdigest() if validation_path.is_file() else None
+        explicitly_continuing = bool(state.get("resume_validation_sha256")) and state["resume_validation_sha256"] == report_version
+        if not reason and current and not explicitly_continuing and report.get("delivery_status") in {"ready", "partial"}:
             reason = "sufficient_evidence"
         state.update(state="stop_requested" if reason else "active", reason=reason,
                      elapsed_seconds=round(now - state["started_at"], 3),

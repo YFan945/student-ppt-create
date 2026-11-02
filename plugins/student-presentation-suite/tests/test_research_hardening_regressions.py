@@ -157,156 +157,28 @@ class ResearchHardeningRegressionTests(unittest.TestCase):
 
 
 class RetrievalMechanicsContractTests(unittest.TestCase):
-    """2026-09-29: a dead search backend turned the research phase into a SERP crawl.
+    def test_ordinary_sources_accept_multiple_reading_methods(self):
+        workflow = (ROOT / "references/research-workflow.md").read_text(encoding="utf-8")
+        for term in ("PDF", "OCR", "source-backed-v1", "text-bound-v1", "source_value", "transformation"):
+            self.assertIn(term, workflow)
+        self.assertIn("不要求 text_path/text_sha256/fetch-report 一致", workflow)
 
-    The researcher spent 1176 of its 1256 retrieval seconds fetching search-result
-    pages (81 of 135 fetches, median 8.5 s) after `No links found` came back for 30
-    of 31 searches. The first cut over-fitted that outage — it told the executor to
-    issue searches one per turn and to abandon re-phrasing — which would have taxed
-    every later healthy run. What is pinned here is the corrected doctrine: result
-    pages are not sources (an evidence rule, environment-independent), search batches
-    stay small rather than serial, and a backend that returned nothing is recorded as
-    `search_unavailable` instead of being read as "no evidence exists".
-    """
+    def test_compact_entrypoints_link_the_owner_and_allow_recovery(self):
+        for relative in ("agents/presentation-researcher.md", "skills/sp-research/SKILL.md", "references/spawn-templates.md"):
+            text = (ROOT / relative).read_text(encoding="utf-8")
+            self.assertIn("research-workflow.md", text)
+            self.assertNotIn("恰好一次", text)
+            self.assertNotIn("不得新增来源", text)
 
-    AGENT = ROOT / "agents" / "presentation-researcher.md"
-    WORKFLOW = ROOT / "references" / "research-workflow.md"
-    SPAWN = ROOT / "references" / "spawn-templates.md"
-    COST = ROOT / "references" / "cost-discipline.md"
-    SKILL = ROOT / "skills" / "sp-research" / "SKILL.md"
-    SCHEMA = ROOT / "references" / "research-pack.schema.json"
-
-    def read(self, path: Path) -> str:
-        return path.read_text(encoding="utf-8")
-
-    def test_no_concurrency_rule_is_written_into_the_contract(self) -> None:
-        """Concurrency rejections were an incidental model-side artifact, not a rule.
-
-        The owner's correction (2026-09-29): do not build contract text on them. Stating
-        that retrieval has no separate concurrency rule is the correction itself and is
-        allowed; what must not come back is a rule derived from those rejections.
-        """
-        wrong = ("concurrency limit", "并发上限", "批次保持小", "serialize them")
-        for path in (self.AGENT, self.WORKFLOW, self.SPAWN, self.COST, self.SKILL):
-            text = self.read(path)
-            for phrase in wrong:
-                with self.subTest(path=path.name, phrase=phrase):
-                    self.assertNotIn(phrase, text)
-        self.assertIn("Batch independent calls into one turn", self.read(self.AGENT))
-
-    def test_the_channel_switch_ladder_is_documented(self) -> None:
-        workflow = self.read(self.WORKFLOW)
-        self.assertIn("换文档定位路线", workflow)
-        self.assertIn("返回无关结果", workflow)
-        self.assertIn("一个可回答单元", workflow)
-        agent = self.read(self.AGENT)
-        self.assertIn("switch channel", agent)
-        self.assertIn("smallest answerable unit", agent)
-
-    def test_closing_a_claim_is_the_stated_stop_condition(self) -> None:
-        workflow = self.read(self.WORKFLOW)
-        self.assertIn("status: verified", workflow)
-        self.assertIn("保留已拿到的 `source_ids`", workflow)
-        self.assertIn("claim 写成内容", workflow)
-        self.assertIn("永远关不上", workflow)
-        self.assertIn("entity_ids", workflow, "the closure support declaration is the entity link")
-        self.assertIn("minor 提示，不是门禁", workflow, "the count is an advisory everywhere")
-        schema = json.loads(self.read(self.SCHEMA))
-        descriptions = json.dumps(schema["properties"]["must_verify"], ensure_ascii=False)
-        self.assertIn("降级收口", descriptions)
-        self.assertIn("没有终点的检索任务", descriptions)
-        self.assertIn("entity_ids", descriptions)
-
-    def test_result_pages_are_never_sources(self) -> None:
-        # Detailed host policy has one owner; entrypoints link rather than copy it.
-        workflow = self.read(self.WORKFLOW)
-        self.assertIn("结果页永远不是来源", workflow)
-        self.assertIn("so.com", workflow)
-        self.assertIn("duckduckgo", workflow)
-        for path in (self.AGENT, self.SPAWN, self.SKILL):
-            self.assertIn("research-workflow", self.read(path))
-
-    def test_backend_failure_has_its_own_reason(self) -> None:
-        schema = json.loads(self.read(self.SCHEMA))
-        reasons = schema["properties"]["unresolved"]["items"]["properties"]["reason"]["enum"]
-        self.assertIn("search_unavailable", reasons)
-        self.assertNotIn("out_of_budget", reasons, "budget vocabulary is retired")
-        for path in (self.AGENT, self.WORKFLOW):
-            with self.subTest(path=path.name):
-                self.assertIn("search_unavailable", self.read(path))
-
-    def test_tier_is_annotation_metadata_not_a_gate(self) -> None:
-        """Owner ruling 2026-09-30: tier obsession caused the tier-climbing searches.
-
-        The S/A/B/C/D letter is slide-footer metadata. The only evidence gates are
-        traceability and independent corroboration (mechanical since 0.23.3: same
-        registrable domain is one origin, an independence_note override leaves a
-        minor advisory; opinion-source support is a minor wording hint since the
-        owner's 2026-09-30 "too strict" ruling). The validator's tier floors and
-        type ceilings are removed, and the docs must
-        record that so nobody reads them back into the strategy.
-        """
-        workflow = self.read(self.WORKFLOW)
-        self.assertIn("标注元数据，不是门槛", workflow)
-        self.assertIn("硬门只有两条", workflow)
-        self.assertIn("已移除", workflow)
-        self.assertIn("independence_note", workflow)
-        self.assertNotIn("不同用途的最低要求", workflow, "the tier-floor table is retired")
-        self.assertNotIn("暂时保留为兜底", workflow, "the transition is over")
-        agent = self.read(self.AGENT)
-        self.assertIn("Never search to climb a source tier", agent)
-        self.assertNotIn("Prioritize\n   primary sources", agent)
-        self.assertIn("attribution metadata only", agent)
-        self.assertIn("opinion_only_support", agent)
-        self.assertIn("来源等级仅标注", self.read(self.SKILL))
-        self.assertIn("research-workflow.md", self.read(self.SPAWN))
-        schema = json.loads(self.read(self.SCHEMA))
-        tier_description = schema["properties"]["sources"]["items"]["properties"]["tier"]["description"]
-        self.assertIn("页脚标注元数据（不是门禁）", tier_description)
-
-    def test_closure_is_one_ledger_and_the_trail_is_audited(self) -> None:
-        """0.23.7: the two soft residuals are gone.
-
-        (1) The re-typed-source closure path is closed: verified entries must
-        link entity_ids when the pack has F/D entities — the docs and the schema
-        must state that, not just offer it. (2) The §七 behavior rules have a
-        machine consumer: the validation command carries --search-log and
-        --fetch-report in every surface that states it, and the workflow records
-        that the audit exists and is advisory-only.
-        """
-        workflow = self.read(self.WORKFLOW)
-        self.assertIn("must_verify_unlinked", workflow)
-        self.assertIn("must_verify_orphan_source", workflow)
-        self.assertIn("唯一合法声明", workflow)
-        self.assertIn("--search-log", workflow)
-        self.assertIn("--fetch-report", workflow)
-        agent = self.read(self.AGENT)
-        self.assertIn("matching claim_id", agent)
-        self.assertIn("--search-log", agent)
-        self.assertIn("entity_ids/claim_id", self.read(self.SKILL))
-        self.assertIn("research-task.json", self.read(self.SPAWN))
-        schema = json.loads(self.read(self.SCHEMA))
-        must_verify = json.dumps(schema["properties"]["must_verify"], ensure_ascii=False)
-        self.assertIn("must_verify_unlinked", must_verify)
-
-    def test_the_deterministic_route_is_documented_where_the_executor_reads(self) -> None:
-        for path in (self.AGENT, self.WORKFLOW):
-            text = self.read(path)
-            with self.subTest(path=path.name):
-                self.assertIn("fetch-text", text)
-                self.assertIn("--scope", text)
-        agent = self.read(self.AGENT)
-        self.assertIn("text_sha256", agent, "the quote must be bound to the fetched artifact")
-        self.assertIn("file hashes alone do not establish semantic support", agent)
-
-    def test_a_dead_backend_is_not_read_as_absent_evidence(self) -> None:
-        agent = self.read(self.AGENT)
-        self.assertIn("unknown_payload", agent)
-        self.assertIn("search_unavailable", agent)
-        self.assertIn("Fetch documents", agent)
-        self.assertIn("verbatim", agent)
-        self.assertIn("主源直取", self.read(self.WORKFLOW))
-        self.assertNotIn("停止换词重搜", self.read(self.WORKFLOW))
+    def test_review_forms_and_diagnostics_are_optional(self):
+        workflow = (ROOT / "references/research-workflow.md").read_text(encoding="utf-8")
+        self.assertIn("不要求 support_check 表", workflow)
+        self.assertIn("--audit", workflow)
+        self.assertIn("不需要清零", workflow)
+        schema = json.loads((ROOT / "references/research-pack.schema.json").read_text(encoding="utf-8"))
+        binding = schema["properties"]["evidence"]["items"]
+        self.assertNotIn("text_sha256", binding["required"])
+        self.assertNotIn("text_path", binding["required"])
 
 
 if __name__ == "__main__":

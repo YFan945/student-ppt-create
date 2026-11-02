@@ -274,6 +274,14 @@ def measured_assets(work: Path) -> list[dict[str, Any]]:
 def research_receipt(work: Path, artifact: Path, *, allow_missing: bool = False) -> dict[str, Any]:
     """Retain research provenance without any deck-agent receipt machinery."""
     imported = work / "research-import.json"
+    if allow_missing:
+        path = imported if imported.is_file() else work / "research-execution.json"
+        try:
+            receipt = load(path) if path.is_file() else {}
+        except (OSError, ValueError):
+            receipt = {}
+        return {**receipt, "work_id": work.name, "artifact": bind(artifact),
+                "verification": "observational", "imported": imported.is_file()}
     if imported.is_file():
         receipt = load(imported)
         if receipt.get("work_id") != work.name or receipt.get("pack") != bind(artifact):
@@ -284,8 +292,6 @@ def research_receipt(work: Path, artifact: Path, *, allow_missing: bool = False)
         return {**receipt, "imported": True}
     path = work / "research-execution.json"
     if not path.is_file():
-        if allow_missing:
-            return {"work_id": work.name, "artifact": bind(artifact), "verification": "receipt-unavailable"}
         raise ProductionError("research receipt missing")
     receipt = load(path)
     if (receipt.get("agent") != "student-presentation-suite:presentation-researcher"
@@ -336,8 +342,8 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     research = None
     if scope in {"A", "B", "D"} or external or args.research_pack or pack.is_file():
         validation = work / "research-pack-validation.json"
-        if not pack.is_file() or not validation.is_file():
-            raise ProductionError("research-backed work needs research-pack.json and its validation report")
+        if not pack.is_file():
+            raise ProductionError("research-backed work needs research-pack.json")
         research = research_receipt(work, pack, allow_missing=True)
         compiled = work / "slide-spec-compiled.json"
         execute([sys.executable, str(ROOT / "scripts" / "research_pack_to_evidence.py"),

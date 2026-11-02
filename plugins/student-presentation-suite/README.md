@@ -12,6 +12,9 @@ Audience-facing language follows the required shared standards; tables use edita
 
 Automatic monetary, token, request-count, research-time and repair-round budgets have been removed. Usage reports remain observational; real errors and incomplete work still require repair.
 
+
+Research accepts browser reading, PDF/OCR and table extraction without mandatory text hashes, fetch receipts or repeated review forms. Tools refresh validation on handoff, preserve source support and allow sequential gap recovery. Strict text-bound auditing is opt-in; see [research workflow](references/research-workflow.md).
+
 ## Four skills
 
 | Skill | Outcome |

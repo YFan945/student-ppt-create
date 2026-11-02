@@ -16,10 +16,9 @@ evidence) resolves slide refs that name sources directly — each cited source
 becomes one source-level ledger entry with its byte-exact title/locator and a
 user-material limitation note.
 
-A Research Pack that fails validate_research_pack.py is refused. If a validation
-report is supplied, it must be passing and hash-bound to the exact pack. The
-resulting evidence map records the pack, validation and Slide Spec hashes so the
-freeze gate can verify one provenance chain rather than three unrelated files.
+A Research Pack that fails current content validation is refused. A supplied
+validation report is refreshed automatically. Hashes record versions; ordinary
+research is not rejected for stale tool receipts.
 
 Exit codes: 0 = compiled, 2 = invalid/stale input or unresolved evidence refs.
 """
@@ -476,9 +475,9 @@ def main(argv: list[str] | None = None) -> int:
         print("research_pack_to_evidence: --compiled-slide-spec requires --slide-spec", file=sys.stderr)
         return 2
 
-    pack = pack_validator.load(args.pack)
+    pack = pack_validator.normalize(pack_validator.load(args.pack))
     fetched = args.pack.parent / "research" / "fetched" / "fetch-text-report.json"
-    fetch_report = json.loads(fetched.read_text(encoding="utf-8")) if fetched.is_file() else None
+    fetch_report = pack_validator._coerce_trail(fetched, "fetch-report")[0] if fetched.is_file() else None
     verdict = pack_validator.validate(pack, fetch_report=fetch_report, work_dir=args.pack.resolve().parent)
     from research_task_binding import apply_task
     apply_task(verdict, pack, args.pack.resolve().parent)
@@ -491,8 +490,8 @@ def main(argv: list[str] | None = None) -> int:
             f"  (a) 授权研究员做一轮定向补检：向研究员给出明确 claim 清单 {gaps} "
             "与候选来源，补齐核验后再编译；\n"
             "  (b) 若 Slide Spec 不再断言该维度，把 claim 从 core 降为 supporting，"
-            "并用 `research_control.py --work-dir <wd> --rebind --reason \"<具体收敛了什么>\"` "
-            "收敛绑定后重跑；\n"
+            ""
+            "按当前任务重跑；\n"
             "  (c) 用户提供材料后按 D 类导入。\n"
             "禁止：不得把未经核验的数字/结论写进 spec 冒充已收口。",
             file=sys.stderr,
@@ -510,14 +509,11 @@ def main(argv: list[str] | None = None) -> int:
     validation_hash: str | None = None
     audit_line = ""
     if args.validation_report:
-        valid, error = validate_report_for_pack(args.validation_report, pack_hash)
-        if not valid:
-            print(f"research_pack_to_evidence: {error}", file=sys.stderr)
-            return 2
-        saved = load_json(args.validation_report)
-        if verdict.get("task") and saved.get("task") != verdict["task"]:
-            print("research_pack_to_evidence: task binding is stale or missing", file=sys.stderr)
-            return 2
+        # We just validated current content; refresh observational reports instead
+        # of rejecting a legitimate edit because an earlier receipt expired.
+        verdict["research_pack_sha256"] = pack_hash
+        verdict["research_pack"] = str(args.pack.resolve())
+        write_structured(args.validation_report, verdict)
         validation_hash = sha256_file(args.validation_report)
         # Carry the retrieval-audit advisories into this command's output: the
         # pipeline consumes the compiler's ok line, so a minor advisory is read

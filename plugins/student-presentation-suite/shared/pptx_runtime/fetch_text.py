@@ -382,24 +382,6 @@ def load_records(out_dir: Path) -> list[dict[str, Any]]:
     return [record for record in records if isinstance(record, dict)]
 
 
-def _closed_record(url: str, scope: str, channel: str) -> dict[str, Any]:
-    return {
-        "url": url,
-        "scope": scope,
-        "extractor": EXTRACTOR,
-        "fetched_at": datetime.datetime.now(datetime.UTC).isoformat(),
-        "ok": False,
-        "reason": "channel_closed",
-        "channel": channel,
-        "channel_verdict": DEGENERATE_ECHO,
-        "channel_note": DEGENERATE_ECHO_NOTE,
-        "detail": (
-            "this endpoint already returned one body for distinct requests; "
-            "the request was not sent"
-        ),
-    }
-
-
 def _report_from_records(records: list[dict[str, Any]], scope: str) -> dict[str, Any]:
     fetched = [record for record in records if record.get("ok")]
     refused = [record for record in records if record.get("reason") in _REFUSAL_DETAIL]
@@ -426,10 +408,8 @@ def fetch_many(
 ) -> dict[str, Any]:
     """Fetch every URL and return a report accumulated with whatever this directory already holds.
 
-    A channel already classified as a degenerate echo is not requested again: the new
-    URL is recorded as `channel_closed` and no HTTP call is made. An exact URL that
-    already succeeded is reused. Both are classifications of the trail, not a cap on
-    how many documents a run may fetch. `this_call` lists the rows this invocation
+    Repeated-byte endpoints remain diagnostic. New URLs may be requested; exact
+    successes use the validated cache. There is no request-count quota. `this_call` lists the rows this invocation
     touched; `write_report` strips it so the file stays the audit shape.
     """
     stable = report_directory(out_dir)
@@ -438,12 +418,13 @@ def fetch_many(
     if task_path.is_file():
         task = json.loads(task_path.read_text(encoding="utf-8"))
         scope = task["scope"]
-        if frozen_path.is_file() and json.loads(frozen_path.read_text(encoding="utf-8")).get("sha256") != hashlib.sha256(task_path.read_bytes()).hexdigest():
-            scope = "task_changed"
+        if frozen_path.is_file():
+            permission = json.loads(frozen_path.read_text(encoding="utf-8")).get("scope")
+            if permission in {"C", "D"}:
+                scope = permission
     elif frozen_path.is_file():
         scope = "task_missing"
     records = load_records(stable)
-    closed = {entry["channel"] for entry in degenerate_channels(records)}
     by_url = {str(record.get("url") or ""): record for record in records}
     this_call: list[dict[str, Any]] = []
     pending = []
@@ -460,15 +441,8 @@ def fetch_many(
             this_call.append(refused)
             write_report(_report_from_records([refused], scope), stable)
             continue
-        channel = endpoint_key(url)
-        if channel and channel in closed:
-            existing = by_url.get(url)
-            if existing is None:
-                existing = _closed_record(url, scope, channel)
-                records.append(existing)
-                by_url[url] = existing
-            this_call.append(existing)
-            continue
+        # Repeated bodies are a diagnostic, not proof that every future request
+        # is useless. A new URL is allowed; exact successes still use the cache.
         existing = by_url.get(url)
         if existing and existing.get("ok") and cache_valid(existing):
             this_call.append({**existing, "reused": True})

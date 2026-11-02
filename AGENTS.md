@@ -48,8 +48,8 @@ Inside the plugin package:
 
 - `.claude-plugin/plugin.json`: plugin manifest.
 - `agents/`: plugin-scoped subagents. `presentation-researcher.md` is the isolated
-  executor that `sp-research` spawns explicitly through the Agent tool, so raw
-  retrieval never reaches the main conversation context. Do **not** reintroduce
+  executor that `sp-research` spawns explicitly through the Agent tool, so bulk
+  retrieval stays outside the main context; bounded key excerpts may be inspected when needed. Do **not** reintroduce
   `context: fork` as the isolation mechanism: it is not honored under `claude -p`,
   where the skill is inlined into the main session. Plugin subagents register as
   `<plugin>:<agent>` and may not use `hooks`, `mcpServers`, or `permissionMode`.
@@ -124,7 +124,7 @@ Canonical ownership:
 - `references/research-workflow.md`: when and how external knowledge is gathered — A/B/C/D
   classification, source tiers, cross-validation, source sufficiency, and the Research Pack contract.
 - `references/cost-discipline.md`: how the work is carried out — batched tool calls,
-  in-place edits, write-once artifacts, per-stage summaries, delegated search, single-run gating.
+  in-place edits, write-once artifacts, per-stage summaries, delegated search and sequential gap recovery.
 - `references/visual-review.schema.json`: optional standalone historical review format;
   main-session production does not require visual scores, review JSON or critic receipts.
 - `shared/content_requirements.py` and `shared/pptx_text_readback.py`: exact numeric

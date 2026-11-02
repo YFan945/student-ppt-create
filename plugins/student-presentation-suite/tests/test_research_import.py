@@ -50,7 +50,7 @@ class MustVerifyStopConditionTests(unittest.TestCase):
     def test_out_of_range_claim_count_is_reported(self) -> None:
         pack = base_pack(must_verify=[{"claim": "c1", "source_ids": ["S1"]}])
         codes = {item["code"] for item in validator.must_verify_issues(pack)}
-        self.assertIn("must_verify_count", codes)
+        self.assertNotIn("must_verify_count", codes)
 
     def test_uncovered_claim_names_the_stop_condition(self) -> None:
         pack = base_pack(must_verify=[
@@ -72,8 +72,7 @@ class MustVerifyStopConditionTests(unittest.TestCase):
                     for item in validator.must_verify_issues(pack)
                     if item["code"] == "must_verify_count"
                 ]
-                self.assertEqual(1, len(count_items))
-                self.assertEqual({"minor"}, {item["severity"] for item in count_items})
+                self.assertEqual([], count_items)
 
     def test_unknown_source_reference_is_reported(self) -> None:
         pack = base_pack(must_verify=[

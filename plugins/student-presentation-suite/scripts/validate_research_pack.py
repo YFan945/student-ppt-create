@@ -26,11 +26,14 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
 
 # Dependency-free on purpose: a research environment validates a trail without the
 # PPTX runtime installed (see shared/retrieval_trail.py).
 from shared.hashing import file_sha256 as sha256_file  # noqa: E402
 from shared.research_evidence import evidence_issues  # noqa: E402
+from shared.research_model import normalize  # noqa: E402
 from shared.retrieval_trail import (  # noqa: E402
     UNKNOWN_PAYLOAD,
     degenerate_channels,
@@ -119,11 +122,12 @@ def schema_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
 
 def id_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
+    content_ids: set[str] = set()
     for key, pattern in ID_PATTERNS.items():
         seen: set[str] = set()
         for entry in items(pack, key):
             value = str(entry.get("id") or "")
-            if not pattern.match(value):
+            if not value or (pack.get("evidence_contract") == "text-bound-v1" and not pattern.match(value)):
                 out.append(
                     issue(
                         "critical",
@@ -132,9 +136,11 @@ def id_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                         entry=value,
                     )
                 )
-            elif value in seen:
+            elif value in seen or (key in {"findings", "data_points", "quotes", "sources"} and value in content_ids):
                 out.append(issue("critical", "duplicate_id", f"{key} id {value!r} is used twice", entry=value))
             seen.add(value)
+            if key in {"findings", "data_points", "quotes", "sources"}:
+                content_ids.add(value)
     return out
 
 
@@ -284,6 +290,29 @@ def _effective_groups(pack: dict[str, Any]) -> tuple[dict[str, str], list[dict[s
     without a URL (user files, arXiv-style locators) merge only through their
     declared group, which is what the D-mode importer already keys on file names.
     """
+    if pack.get("evidence_contract") != "text-bound-v1":
+        # A host can publish independent reports; different hosts can republish
+        # one report. Merge declared origins/groups, never infer origin from DNS.
+        sources = items(pack, "sources")
+        parent = {str(s["id"]): str(s["id"]) for s in sources}
+
+        def root(sid: str) -> str:
+            while parent[sid] != sid:
+                sid = parent[sid]
+            return sid
+
+        seen: dict[tuple[str, str], str] = {}
+        for source in sources:
+            sid = str(source["id"])
+            for field in ("origin_id", "independence_group", "document"):
+                value = str((source.get("url") or source.get("locator")) if field == "document" else source.get(field) or "").strip()
+                if not value:
+                    continue
+                key = (field, value)
+                if key in seen:
+                    parent[root(sid)] = root(seen[key])
+                seen[key] = sid
+        return {sid: root(sid) for sid in parent}, []
     sources = [(str(entry.get("id")), entry) for entry in items(pack, "sources")]
     parent: dict[str, str] = {source_id: source_id for source_id, _ in sources}
 
@@ -362,7 +391,10 @@ def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
         for ref in entry.get("affected_ids") or []:
             conflict_targets.add(str(ref))
 
-    for entry in items(pack, "data_points"):
+    confidence_entries = items(pack, "data_points")
+    if pack.get("evidence_contract") == "source-backed-v1":
+        confidence_entries += [e for e in items(pack, "findings") if e.get("confidence") == "high"]
+    for entry in confidence_entries:
         refs = [str(ref) for ref in entry.get("source_ids") or []]
         flagged = bool(entry.get("conflict"))
         if entry.get("confidence") == "high":
@@ -383,8 +415,7 @@ def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                             "major",
                             "sources_are_not_independent",
                             f"data_point {entry.get('id')} claims high confidence but its {len(refs)} sources "
-                            f"collapse to one independent origin {sorted(distinct)} — same registrable "
-                            "domain counts as one source; set independence_note to claim an exception",
+                            f"collapse to one independent origin {sorted(distinct)}; cite independent original evidence",
                             entry=entry.get("id"),
                         )
                     )
@@ -427,32 +458,6 @@ def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                 )
             )
     return out + overrides
-
-
-def hygiene_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    cited: set[str] = set()
-    for key in ("findings", "data_points"):
-        for entry in items(pack, key):
-            cited.update(str(ref) for ref in entry.get("source_ids") or [])
-    for entry in items(pack, "quotes"):
-        cited.add(str(entry.get("source_id")))
-    for entry in items(pack, "conflicts"):
-        for sub in entry.get("entries") or []:
-            if isinstance(sub, dict):
-                cited.add(str(sub.get("source_id")))
-
-    for entry in items(pack, "sources"):
-        if str(entry.get("id")) not in cited:
-            out.append(
-                issue(
-                    "minor",
-                    "unused_source",
-                    f"source {entry.get('id')} is listed but never used",
-                    entry=entry.get("id"),
-                )
-            )
-    return out
 
 
 def contract_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
@@ -529,16 +534,6 @@ def must_verify_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
     if not isinstance(entries, list):
         return [issue("major", "must_verify_invalid", "must_verify must be a list of claim entries")]
     out: list[dict[str, Any]] = []
-    if not 3 <= len(entries) <= 5:
-        out.append(
-            issue(
-                "minor",
-                "must_verify_count",
-                f"must_verify declares {len(entries)} claims; 3-5 keep the stop condition "
-                "focused (fewer usually means the deck's load-bearing claims were not all "
-                "declared) — advisory, not a blocker",
-            )
-        )
     known_sources = {str(entry.get("id")) for entry in items(pack, "sources")}
     entity_ids = {
         str(entry.get("id")): entry
@@ -578,7 +573,7 @@ def must_verify_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                 )
             )
             continue
-        if entity_ids and not entity_refs:
+        if pack.get("evidence_contract") == "text-bound-v1" and entity_ids and not entity_refs:
             out.append(
                 issue(
                     "major",
@@ -977,30 +972,30 @@ def validate(
     fetch_report: Any = None,
     search_payloads: Any = None,
     work_dir: Path | None = None,
+    audit: bool = False,
 ) -> dict[str, Any]:
+    pack = normalize(pack)
     # Verification strength belongs to the task, not to a model-written entity.
     if work_dir and (work_dir / "research-task.json").is_file():
-        import copy
         try:
             task = json.loads((work_dir / "research-task.json").read_text(encoding="utf-8"))
             levels = {c["id"]: c.get("verification", "source") for c in task["claims"]}
-            pack = copy.deepcopy(pack)
+            pack = normalize(pack, task)
             for key in ("findings", "data_points", "quotes"):
                 for entity in pack.get(key, []):
                     if entity.get("claim_id") in levels:
                         entity["verification"] = levels[entity["claim_id"]]
         except (OSError, ValueError, TypeError, KeyError):
             pass  # apply_task reports malformed task contracts to every CLI consumer.
-    problems = (
-        schema_issues(pack)
-        + id_issues(pack)
+    shape_problems = schema_issues(pack)
+    problems = shape_problems or (
+        id_issues(pack)
         + reference_issues(pack)
         + source_kind_issues(pack)
         + cross_validation_issues(pack)
         + contract_issues(pack)
         + must_verify_issues(pack)
-        + retrieval_audit_issues(pack, search_log, fetch_report, search_payloads)
-        + hygiene_issues(pack)
+        + (retrieval_audit_issues(pack, search_log, fetch_report, search_payloads) if audit else [])
         + evidence_issues(pack, fetch_report, work_dir)
     )
     blockers = [p for p in problems if p["severity"] in {"critical", "major"}]
@@ -1109,6 +1104,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--verbose", action="store_true", help="also list minor findings")
+    parser.add_argument("--audit", action="store_true", help="include optional retrieval diagnostics; never requires warning cleanup")
     parser.add_argument("--max-items", type=int, default=12)
     parser.add_argument("--task", type=Path, help="research-task.json; enforces claim coverage and new evidence bindings")
     parser.add_argument(
@@ -1141,25 +1137,22 @@ def main(argv: list[str] | None = None) -> int:
     search_log = None
     search_payloads = None
     if args.search_log:
-        search_log = (
-            json.loads(args.search_log.read_text(encoding="utf-8"))
-            if args.search_log.is_file()
-            else {"search_executions": []}
-        )
+        search_log = args.search_log
         payloads_path = args.search_log.parent / "search-payloads.json"
         if payloads_path.is_file():
-            search_payloads = json.loads(payloads_path.read_text(encoding="utf-8"))
+            search_payloads = _coerce_trail(payloads_path, "search-payloads")[0]
     fetch_report = None
     if args.fetch_report and args.fetch_report.is_file():
-        fetch_report = json.loads(args.fetch_report.read_text(encoding="utf-8"))
+        fetch_report = _coerce_trail(args.fetch_report, "fetch-report")[0]
 
-    pack = load(args.pack)
+    pack = normalize(load(args.pack))
     report = validate(
         pack,
         search_log=search_log,
         fetch_report=fetch_report,
         search_payloads=search_payloads,
         work_dir=args.pack.resolve().parent,
+        audit=args.audit,
     )
     from research_task_binding import apply_task
     apply_task(report, pack, args.pack.resolve().parent, args.task)

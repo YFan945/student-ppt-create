@@ -138,9 +138,8 @@ class RebindTests(unittest.TestCase):
             controller.rebind(self.work, "converged task bytes are already bound; no archive needed")
         return buffer.getvalue()
 
-    def test_rebind_requires_a_concrete_reason(self):
-        with self.assertRaises(ValueError):
-            controller.rebind(self.work, "short")
+    def test_rebind_accepts_a_short_concrete_reason(self):
+        controller.rebind(self.work, "收敛范围")
 
     def test_rebind_refuses_without_a_binding(self):
         self.binding.unlink()

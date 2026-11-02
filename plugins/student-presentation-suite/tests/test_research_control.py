@@ -114,6 +114,7 @@ class HandoffTests(unittest.TestCase):
         after = json.loads((self.work / "research-control.json").read_text(encoding="utf-8"))
         self.assertEqual(before["seen"], after["seen"])
         self.assertEqual(1, len(after["resumes"]))
+        self.assertEqual("active", status(self.work)["state"], "explicit gap-fill must not immediately stop on the previous ready report")
 
     def test_stop_blocks_retrieval_but_allows_pack_finalization(self):
         import os
@@ -137,7 +138,7 @@ class HandoffTests(unittest.TestCase):
     def test_tampered_text_or_receipt_is_rejected(self):
         self.receipt.write_text(json.dumps({"spawn_verified": True, "agent": fixtures.runtime.RESEARCHER,
             "artifact": {"path": str(self.pack), "sha256": "bad"}}), encoding="utf-8")
-        self.assertFalse(handoff.inspect(self.work)["ok"])
+        self.assertTrue(handoff.inspect(self.work)["ok"], "receipts are observational")
         Path(self.fixture.report["records"][0]["text_path"]).write_bytes(b"changed")
         self.assertFalse(handoff.inspect(self.work)["ok"])
 

@@ -7,6 +7,8 @@ from pathlib import Path
 
 from validate_research_task import validate_task
 
+from shared.research_model import normalize
+
 
 def task_verdict(pack: dict, work_dir: Path, explicit: Path | None = None) -> tuple[list[str], dict | None, dict | None]:
     path = explicit or work_dir / "research-task.json"
@@ -19,12 +21,15 @@ def task_verdict(pack: dict, work_dir: Path, explicit: Path | None = None) -> tu
         errors = validate_task(task, path)
         if errors:
             return errors, binding, task
+        pack = normalize(pack, task)
         if Path(task["work_dir"]).resolve() != work_dir.resolve():
             errors.append("Task and pack must belong to the same work directory")
         declared = {c.get("id"): c for c in pack.get("must_verify", [])}
         for claim in task["claims"]:
             actual = declared.get(claim["id"], {})
-            if actual.get("claim") != claim["claim"]:
+            if not actual:
+                errors.append(f"Task claim {claim['id']} is absent")
+            elif pack.get("evidence_contract") == "text-bound-v1" and actual.get("claim") != claim["claim"]:
                 errors.append(f"Task claim {claim['id']} is absent or changed")
             if claim.get("verification", "source") in {"text", "cross_check"} and actual.get("status") == "usable":
                 errors.append(f"Task claim {claim['id']} requires verified evidence")
@@ -45,20 +50,18 @@ def task_verdict(pack: dict, work_dir: Path, explicit: Path | None = None) -> tu
             errors.append("C/D tasks prohibit web queries")
         if task["scope"] == "D" and any(s.get("type") != "user-file" for s in pack.get("sources", [])):
             errors.append("D tasks may only cite user-file sources")
-        frozen = work_dir / "research-task-binding.json"
-        if frozen.is_file() and json.loads(frozen.read_text(encoding="utf-8")).get("sha256") != binding["sha256"]:
-            errors.append(
-                "Research task changed after researcher spawn; if this is the sanctioned "
-                "scope convergence (the spec no longer asserts the unresolved claims), re-bind via "
-                "`research_control.py --work-dir <wd> --rebind --reason \"<the scope change>\"` "
-                "instead of editing guard files by hand"
-            )
+        permission_path = work_dir / "research-task-binding.json"
+        if permission_path.is_file():
+            permission = json.loads(permission_path.read_text(encoding="utf-8")).get("scope")
+            if permission in {"C", "D"} and task["scope"] in {"A", "B"}:
+                errors.append("Web permission was not granted by the main session; confirm the scope change there")
         return errors, binding, task
     except (OSError, ValueError, TypeError, KeyError) as exc:
         return [str(exc)], binding, None
 
 
 def delivery(pack: dict, task: dict | None) -> dict:
+    pack = normalize(pack, task)
     claims = {c.get("id"): c for c in pack.get("must_verify", [])}
     requirements = task["claims"] if task else list(claims.values())
     gaps = [c["id"] for c in requirements if c.get("importance", "core") == "core"

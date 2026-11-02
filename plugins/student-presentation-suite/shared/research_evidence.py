@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 
-def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> list[dict]:
+def strict_evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> list[dict]:
     out: list[dict] = []
 
     def fail(code: str, message: str, entity: str = "", severity: str = "major") -> None:
@@ -93,9 +93,8 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
             fail("evidence_quote_mismatch", "Quote differs from the bound excerpt.", eid)
             continue
         if key == "data_points":
-            value = re.sub(r"\s+", "", str(entity.get("value", "")))
-            compact = re.sub(r"\s+", "", excerpt)
-            if not value or not re.search(r"(?<![\d.])" + re.escape(value) + r"(?![\d.])", compact):
+            value = str(entity.get("value", ""))
+            if not value or not value_present(value, excerpt):
                 fail("evidence_value_mismatch", "Data value is not stated verbatim in its excerpt.", eid)
                 continue
             if balanced and entity.get("verification", "source") == "source":
@@ -160,4 +159,104 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
                 entity = entities.get(eid, ("", {}))[1]
                 if not claim.get("id") or entity.get("claim_id") != claim["id"]:
                     fail("evidence_claim_link_mismatch", "Verified claim must link to an entity with the same claim_id.", eid)
+    return out
+
+
+def _normalized(text: str) -> str:
+    """Ignore extraction whitespace without joining neighbouring numeric cells."""
+    import unicodedata
+    return " ".join(unicodedata.normalize("NFKC", text).split())
+
+
+def value_present(value: str, passage: str) -> bool:
+    """Compare numeric tokens, preserving table boundaries and percent meaning."""
+    from decimal import Decimal, InvalidOperation
+    pattern = r"(?<![\d.])[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?[%％]?(?![\d.]|,\d)"
+    expected = _normalized(value).replace(" ", "").replace("％", "%")
+    if not expected:
+        return False
+    try:
+        number = Decimal(expected.rstrip("%").replace(",", ""))
+    except InvalidOperation:
+        return _normalized(value) in _normalized(passage)
+    passage = re.sub(r"(?<=\d)\s+(?=[%％])", "", _normalized(passage))
+    for token in re.findall(pattern, passage):
+        token = token.replace("％", "%")
+        if token.endswith("%") != expected.endswith("%"):
+            continue
+        if Decimal(token.rstrip("%").replace(",", "")) == number:
+            return True
+    return False
+
+
+def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> list[dict]:
+    """Check usable support; tool identity, paths and hashes are not evidence gates.
+
+    The historical byte audit is available only through explicit text-bound-v1.
+    Ordinary records can come from PDF/OCR, a browser, a table or a local parser.
+    Semantic support remains the researcher's responsibility.
+    """
+    if pack.get("evidence_contract") == "text-bound-v1":
+        return strict_evidence_issues(pack, fetch_report, work_dir)
+    if not pack.get("evidence_contract") and not pack.get("evidence"):
+        return [{"severity": "minor", "code": "legacy_evidence_unbound",
+                 "message": "Legacy pack: source support has not been recorded."}]
+    out: list[dict] = []
+
+    def fail(code: str, message: str, eid: str) -> None:
+        out.append({"severity": "major", "code": code, "message": message, "entry": eid})
+
+    entities = {str(e["id"]): (kind, e) for kind in ("findings", "data_points", "quotes")
+                for e in pack.get(kind, []) if isinstance(e, dict) and "id" in e}
+    sources = {str(s["id"]): s for s in pack.get("sources", []) if isinstance(s, dict) and "id" in s}
+    covered: set[tuple[str, str]] = set()
+    reviews: dict[str, list[dict]] = {}
+    for binding in pack.get("evidence", []):
+        eid, sid = str(binding.get("entity_id", "")), str(binding.get("source_id", ""))
+        if eid not in entities or sid not in sources:
+            fail("evidence_unknown_reference", "Evidence entity/source does not exist.", eid)
+            continue
+        kind, entity = entities[eid]
+        refs = [entity.get("source_id")] if kind == "quotes" else entity.get("source_ids", [])
+        if sid not in refs:
+            fail("evidence_unlinked_source", "Binding source is not used by the entity.", eid)
+            continue
+        if entity.get("status") in {"located", "unresolved"}:
+            continue
+        passage = str(binding.get("excerpt", ""))
+        context = str(binding.get("context_excerpt", ""))
+        note = str(binding.get("support_note", "")).strip()
+        if not passage.strip() and not note:
+            fail("evidence_support_missing", "Record a supporting passage or an explanation with a source locator.", eid)
+            continue
+        if kind == "quotes":
+            if not passage or _normalized(str(entity.get("text", ""))) not in _normalized(passage):
+                fail("evidence_quote_mismatch", "Direct quotation differs from its supporting passage.", eid)
+                continue
+        elif kind == "data_points" and passage:
+            value = str(entity.get("source_value", entity.get("value", "")))
+            if not value_present(value, passage + "\n" + context):
+                fail("evidence_value_mismatch", "Value is absent from the passage; check the table or record source_value and transformation.", eid)
+                continue
+        covered.add((eid, sid))
+        if isinstance(binding.get("support_check"), dict):
+            reviews.setdefault(eid, []).append(binding["support_check"])
+    for eid, (kind, entity) in entities.items():
+        if entity.get("status") in {"located", "unresolved"}:
+            continue
+        if (kind == "data_points" and entity.get("source_value") is not None
+                and not value_present(str(entity.get("value", "")), str(entity["source_value"]))
+                and not str(entity.get("transformation", "")).strip()):
+            fail("evidence_transformation_missing", "Explain rounding, calculation or unit conversion once in transformation.", eid)
+        checks = reviews.get(eid, []) + ([entity["support_check"]] if isinstance(entity.get("support_check"), dict) else [])
+        for check in checks:
+            if check.get("verdict") == "unsupported" or any(check.get(f) == "mismatch" for f in ("subject_scope", "time_scope", "causal_scope")):
+                fail("evidence_support_review_rejected", "Support was explicitly rejected; correct or leave the claim unresolved.", eid)
+            elif check.get("verdict") == "qualified" and not any(str(v).strip() for v in
+                    (check.get("limitations", ""), entity.get("notes", ""), entity.get("limitations", ""))):
+                fail("evidence_support_review_limits_missing", "Keep one explanation of the qualification in limitations or notes.", eid)
+        refs = [entity.get("source_id")] if kind == "quotes" else entity.get("source_ids", [])
+        minimum = 2 if entity.get("verification") == "cross_check" or entity.get("confidence") == "high" else 1
+        if sum((eid, sid) in covered for sid in refs) < minimum:
+            fail("evidence_support_missing", f"{eid} needs {minimum} supporting source(s); extra citations need no duplicate audit forms.", eid)
     return out

@@ -117,7 +117,7 @@
     "semantic_review_required": {
       "type": "boolean",
       "default": false,
-      "description": "Require a second-pass support/scope review for every usable evidence binding; legacy tasks remain compatible."
+      "description": "Compatibility hint: review support semantically once per claim; no per-binding review form is required in ordinary mode."
     }
   }
 }

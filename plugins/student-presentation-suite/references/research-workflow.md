@@ -1,488 +1,99 @@
 # Research Workflow
 
-本文件是 suite 范围内**外部知识获取**的 canonical 来源：什么该查、什么不该查、查到
-什么程度算够、查不到怎么记录。产出的形状见 `research-pack.schema.json`，语义校验见
-`scripts/validate_research_pack.py`，引用如何进入页面见 `evidence-and-citations.md`。
+本文件拥有外部知识获取规则：权限、来源支持、核验、收口与恢复。Research Pack 形状见 research-pack.schema.json，引用编译见 evidence-and-citations.md。
 
-设计宗旨一句话：
+## 目标与分工
 
-> **Search for evidence, not text.** 不是"帮我找点 PPT 内容"，而是"识别需要外部证据
-> 支持的论断，检索高质量来源，完成交叉验证，并把事实、数据、来源与可视化机会压缩成
-> 结构化 Research Pack"。
+研究员查证会上屏的事实、数字和引文，产出可追溯的 Research Pack。内容支持由研究员阅读判断；校验器检查引用完整性、明确的数值矛盾和交付缺口，不宣称自动证明语义。
+研究不决定版式、不写成段讲稿、不生成 PPTX。主会话负责内容组织、设计和制作。
 
-## 定位：知识获取层
+## 范围与权限
 
-```text
-Presentation Brief   用户想讲什么
-      ↓
-Research Pack        外界事实是什么      ← 本文件负责这一层
-      ↓
-Slide Spec           每页讲什么
-      ↓
-Art Direction        每页怎么看
-      ↓
-PPTX                 最终怎么呈现
-```
-
-`sp-research` 只负责第二层。它**不**决定版式、不设计页面、不生成 PPTX、不改视觉风格、
-不撰写成段讲稿。职责一旦混在一起，前面几层的产物就会互相污染。
-
-## 一、什么时候必须查：A / B / C / D
-
-**最重要的能力不是"会搜索"，而是"知道什么时候不该搜索"。**
-
-| 类 | 判据 | 处理 |
-| --- | --- | --- |
-| **A 必须查** | 时效性内容：最新数据、最新政策、最新版本、最新榜单、某机构最新预测、产品现状 | 必须联网；查不到就进 `unresolved`，不得用模型记忆冒充 |
-| **B 最好查** | 模型大概率知道，但结论会被打分的内容：课程答辩、论文汇报、竞赛、正式提交 | 查；拿不到就降级为"模型常识"并**在页面标注无来源**，不得假装有出处 |
-| **C 不用查** | 与外部事实无关的任务：过渡页、把已有材料概括成三点、重排用户提供的结构 | 不产生检索 |
-| **D 禁止查** | 用户明确限定范围："只根据我上传的论文 / 只用课程 PPT / 不要用外部资料" | 立即停止检索；用 `import_user_materials.py` 确定性导入用户材料（不派研究员子代理），只整理用户材料 |
-
-D 类默认走确定性导入（`import_user_materials.py` → Research Pack + `research-import.json` 凭据，无子代理）；仅当用户点名要研究员整理时才 spawn 隔离研究员。D 类是硬约束：一旦触发，`sp-research` 不发起任何检索，只把用户材料整理成 Research Pack
-（`queries` 为空、`sources` 只含用户材料）。D 类 pack 没有 F/D/Q 实体，Slide Spec 的
-`evidence_refs` 直接引用来源 id（`S01`…）；编译器会把被引来源落成 source 级 ledger 条目
-（标题/locator 与 pack 字节一致，附用户材料限定语）——v0.16.13 之前这类引用结构性无法解析。
-
-## 二、调用单位是 Claim，不是主题
-
-不要 `research("生成式 AI")`——范围太大，回来的东西没法用。要按**需要被证明的论断**
-拆分：
-
-```text
-✗ research("生成式 AI")
-✓ Claim 1  生成式 AI 的企业采用率近年明显上升
-✓ Claim 2  多模态模型正在成为主流技术方向
-✓ Claim 3  幻觉是企业部署生成式 AI 的主要风险之一
-```
-
-每条 Claim 各自找证据，最终形成：
-
-```text
-Claim → Evidence → Source
-```
-
-这条链路与 `evidence-and-citations.md` 的 Evidence Ledger 天然对齐。
-
-## 三、知识缺口：不要接受模糊陈述
-
-Slide Spec 草稿里出现"市场发展迅速"这类**未量化**的表述时，`sp-research` 不应直接
-采用，而应识别为缺口并去补：
-
-```yaml
-knowledge_gap:
-  claim: "AI Agent 市场发展迅速"
-  reason: "缺乏定量证据"
-  research_needed: [市场规模, CAGR, 主流机构预测]
-```
-
-补上之后才变成可上屏的内容：
-
-```text
-AI Agent 市场正在快速增长
-2025 年 xx 亿美元 → 2030 年 xx 亿美元，CAGR xx%（来源 S03）
-```
-
-## 四、来源分级（标注元数据，不是门槛）
-
-分级表只回答一个问题：**页脚怎么写**。它不决定置信度，不驱动检索，也不构成任何门禁
-（等级门已废止："往上升一级"的边际成本是几十次搜索，收益只是页脚一行字）。
-
-| Tier | 内容 | 页脚标注参考 |
-| --- | --- | --- |
-| **S** | 法律法规、官方文件、官方数据库、论文原文、政府统计数据 | 按原文引用 |
-| **A** | 顶会论文、权威研究机构、高校、国际组织、上市公司财报 | 按机构+报告名引用 |
-| **B** | 主流媒体（Reuters / Bloomberg / Nature News 等） | 按媒体+稿件引用 |
-| **C** | 技术博客、行业博客、厂商博客 | 按作者/厂商引用，避免作为关键数字唯一支撑 |
-| **D** | 论坛、社区、个人博客 | **仅**作为"用户观点/舆论"标注 |
-
-证据体系的硬门只有两条，都与等级 letter 无关：
-
-| 硬门 | 内容 |
+| scope | 处理 |
 | --- | --- |
-| **可追溯** | 来源必须有 `url` 或 `locator`；用户文件必须有导入回执绑定（`import_user_materials.py` 的 sha256） |
-| **独立印证** | 标 `confidence: high` 必须 ≥2 个有效独立来源互相印证；同源转载冒充两个来源会被 `sources_are_not_independent` 拦下 |
+| A | 最新政策、数据、版本、产品现状必须查；不能用模型记忆冒充最新证据 |
+| B | 正式课程、论文或竞赛事实应查；缺证据时明确保留缺口或无来源限定 |
+| C | 仅整理既有内容，不检索 |
+| D | 用户限定材料，禁止联网；默认 import_user_materials.py 导入，不派代理 |
 
-一条**提示**（来源*种类*，不是等级，不拒绝）：条目只靠论坛/社区/
-个人博客/厂商博客这类观点源支撑时，validator 记 minor advisory `opinion_only_support`，
-pack 照常通过；页面必须把它表述为"社区/厂商观点"并标注来源类型，不得写成公认事实。
+C/D 在网络调用和缓存读取前检查。研究员不能通过改任务文件扩大联网授权；用户授权变更后，由主会话用 research_control.py --rebind --reason <说明> 更新权限。普通内容修订无需此操作。D 来源限 user-file，queries 为空。用户明确要求研究员整理 D 材料时仍不得联网。
 
-过渡期说明已失效（v0.23.3/v0.23.4 落地）：validator 的 tier 下限（`weak_source_for_data_point` /
-`weak_source_for_high_confidence`）与类型上限（`tier_above_type_ceiling`）**已移除**；契约与
-代码现在一致——等级只剩标注一个用途。validator 执行的是：可追溯、独立印证（**独立性按注册
-域名机械判定**：同域默认并组，声明相互独立须写 `independence_note`，并留一条 minor advisory
-供人工复核）、以及观点源提示（`opinion_only_support`，minor）。
+## 任务和继续研究
 
-## 五、交叉验证
+主会话写 research-task.json：背景、范围、输入路径和逐条 claim 的 ID、验收要求。校验后显式调用 student-presentation-suite:presentation-researcher，不使用 context: fork。
+默认批量处理独立查询，复用已读文档。按实际内容确定 claim 数量，不凑 3–5 条。
+importance 为 core/supporting；verification 为 source/text/cross_check。simple/standard/deep 仅是建议，不限制次数、总时长或修复轮数。
+任务通过稳定 ID 关联；工具推导无歧义的 entity_ids/claim_id，内容无需在多个表中逐字重复。
+任务可以收敛或补充，当前任务是准据；普通修改不冻结、不需要 rebind。兼容命令 research_control.py --rebind 仅记录变更，无理由字数门槛。
 
-核验强度由 task 决定：普通数字采用 source 时允许单源 medium；关键数字用 text 核验口径，争议结论用 cross_check 多源比对。以下是多源核验示例，不是所有数字的默认门槛：
+同一任务同一时刻只运行一个研究员。失败、正常结束后允许顺序恢复或定向补检，优先续做已有缺口，不重复研究已完成部分。
+主会话可用宿主 resume 继续已有 agent；宿主已终止它时可重新派发。需要时运行 research_control.py --resume --reason <本次目标> 清理旧活动标记。
+不区分“只许恢复一次”的基础设施和内容例外；unknown_payload 不构成故障证明，也不禁止正常修复。
 
-```text
-Source A  50 亿
-Source B  52 亿
-Source C  48 亿   → 量级一致 → confidence: high（≥2 个独立来源）
-```
+## 来源和读取方式
 
-```text
-Source A  50 亿
-Source B  120 亿
-Source C  35 亿   → 量级不一致 → confidence: low，conflict: true，
-                     并在 conflicts 里逐条列出取值与来源
-```
-
-口径差异（统计范围、年份、汇率、口径定义）也算冲突——**先怀疑口径，再怀疑数据**。
-
-独立性判定是**机械规则**（v0.23.3 起 validator 执行）：同注册域名（gov.cn / com.cn 等后缀
-正确处理）或同声明组的来源并为同一个独立组——同域页面通常源自同一个上游，"转载源当两组用"
-从此凑不出 high confidence。确实独立（如同一门户下两份不同机构的报告）时，在该来源写
-`independence_note` 说明理由，按声明组计，并接受一条 minor advisory（`independence_override_used`）
-供人工复核。
-
-## 六、可视化机会：PPT 研究与其他研究的分界
-
-普通检索找"知识"；`sp-research` 还要找"**可以画图的知识**"：
-
-| 材料形态 | visual_candidate.type |
-| --- | --- |
-| 一列随时间变化的数值 | `line_chart` |
-| 几个并列的规模/占比 | `bar_chart` / `kpi` |
-| 传统方法 vs 新方法 | `comparison` |
-| 若干里程碑事件 | `timeline` |
-| 方法分成几类 | `taxonomy` |
-| 有先后依赖的步骤 | `process` |
-| 多维对照 | `table` |
-
-标出类型与优先级即可，**具体画法由 Art Direction 和 Composition 决定**。
-
-## 七、检索深度档位
-
-| 档位 | 适用 |
-| --- | --- |
-| `simple` | 普通课程展示、小组作业 |
-| `standard` | 课程答辩、结题答辩 |
-| `deep` | 论文汇报、竞赛答辩、毕业答辩 |
-
-档位是**深度建议，不是次数上限**：检索与页面抓取均不设次数配额。纪律靠证据规则而不是
-计数器——同一 URL 复用已抓取结果，失败最多重试一次；优先把检索花在会上屏的关键论断上，
-其余记入 `unresolved`，不得把未经核实的数字写成已验证。
-`research-execution.json` 记录实际 `WebSearch` / `WebFetch` 次数，供成本复盘。
-
-默认由 `scenario` 推导，用户可覆盖。硬约束是：**不要为了某一页的一句话搜索二十个网页。**
-
-### 检索机制：按失败签名换通道，有新信息时修正查询
-
-失败要按签名处理（下表与后文各条的实测依据均见 `scripts/live_prompts/FINDINGS.md` 第九节）：
-
-| 工具返回 | 机制含义 | 正确反应 |
-| --- | --- | --- |
-| 结构化运行时元数据明确 execution_status=not_executed | 已确认后端未执行；签名 backend_not_executed | 暂停该搜索通道，不引用响应。可继续原文抓取与定点核验 |
-| 无有效候选链接的不识别格式、散文或伪工具调用 | unknown_payload：无法确认执行状态 | 仅提示，不暂停 WebSearch；禁止将其数字/日期当证据 |
-| 完整 JSON 的 title + link/url 记录（字段顺序不限），或已适配的 web_search_prime_result_summary 包装 | 可解析的定位候选，不证明其中内容属实 | 获取文档并建立原文绑定；Markdown、纯文本有效 URL/DOI 也算候选定位成功；响应内数字不构成证据 |
-| 裸的 Links: - No links found. | index_empty：该查询未返回定位候选，不能证明整轮服务正常或故障 | 换文档定位路线，不关闭整个会话 |
-| **返回无关结果** | 查询太宽或把整句话塞进了检索框 | 砍到**一个可回答单元**（见下条"查询构造"），不要继续加限定词 |
-| **captcha / 登录墙**（常见于部委、电网、协会站点） | 该站点只能直连，索引到不了它，也到不了它的站内检索 | 转直连路线；不要把同一 claim 再喂给索引 |
-| **域名过滤后为空** | 过滤器把唯一命中的来源挡掉了 | 去掉过滤器，让发布方名字本身承担约束 |
-| 目标页返回 JS 壳 / 与查询无关的泛化条目 | 该页面或该路径不可抓 | 记 `unresolved`，不要抓同域的其它页面试运气 |
-| **同一端点对不同请求返回同一份字节**（`fetch-text-report.json` 的 `degenerate_channels`；判定＝同一端点下 ≥2 个**不同**请求 URL 共享同一 `raw_sha256`） | 该端点不按请求作答（缓存壳 / 查询被忽略）——换 `t=` / `page=` / `q=` 只是**同一个通道的变体** | **该通道判定一次即收口**：换端点（另一个发布方记录页、另一个 host）或直接取文档 URL；claim 按 `access_blocked` 记录，不要在同一端点上继续试参数 |
-
-**通道级**判定的依据是重复的**字节**（而不是重复的措辞）——同一端点对不同请求返回同一份
-字节才算"不按请求作答"；单纯的措辞重复不构成通道关闭。
-
-**通道按类判定一次，不按次数累加。** 上限是计数器，通道判定是分类；一条通道只判一次。
-新步骤必须带来可指出的证据收益，不是同一通道的新参数或新措辞。
-unknown_payload 是格式不确定性，只记录 advisory，不暂停；backend_not_executed 只来自结构化运行时执行状态。
-JSON 空数组视为正常无命中。纠正语言、官方名称、时间范围或移除过滤器属于合理改写，
-search-log 可用 adjustment_reason 说明新增收益；仅无收益的重复查询触发重试提示。
-暂停状态按事件顺序更新，历史成功不能掩盖之后的故障；仅对应 WebSearch 被暂停。
-主流程在提供方/适配器/环境发生具体变化后可恢复一次探测（研究员不得自行重置）：
+搜索定位来源，获取正文核实。主源直取、浏览器阅读、下载后自行解析 PDF、OCR、表格转录和用户文件都可使用；不得为了工具不支持 PDF 而放弃已经取得的原文去找二手散文。
+fetch-text 是可选的确定性抓取工具，不是唯一可信入口：
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/reset_research_channel.py" \
-  --project <project> --session-id <researcher-session-id> --agent-id <researcher-id> \
-  --reason <具体环境变化>
+python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" fetch-text --url <document> --scope A --out-dir <work-dir>/research/fetched
 ```
 
-恢复事件与 hook 共用同一把锁，追加时间戳且不删除原记录；只有明确未执行再次暂停，未知格式仅提示。
-只有一个活跃暂停通道时可省略两个 ID；多个通道必须明确选择。
-没有环境变化就走其他可用路线或 unresolved 收口，不反复 reset，同一会话不为同一任务另派研究员。
+同一 URL 优先复用缓存，工具自动保存原始字节、抽取文本、获取时间和 SHA-256。缓存哈希用于发现损坏、重新抓取，普通包不要求 text_path/text_sha256/fetch-report 一致。
+合法文件移动、重解析、换行和编码调整不使证据失效。无本地文本也可记录浏览器/PDF页码、表号及支持说明。
+搜索摘要仅供定位，不能冒充已阅读正文。目录页或 index.html 若确实载有正式数据，可以按实际内容引用；不能仅凭 URL 形状拒绝。
 
-**查询构造：一个查询 = 一个可回答单元。** 同一次运行的数据非常一致——成功的那批是
-20–30 字符、只含 `主体 + 指标 + 时间`（或 `发布方 + 报告名`），失败的那批里塞着一整句 claim
-（70–95 字符、最多 15 个词条）。规则：
+## 普通证据契约：source-backed-v1
 
-- 一个单元一条查询（主体 + 指标 + 时间），**不要把 claim 句子粘进检索框**；
-- 用发布方的语言：IRENA / IEA / GWEC / UN 用英文，国家能源局 / 中电联 / CPIA 用中文；
-- **不要回显你已经拿到的数字**——"719.2万千瓦""169GW"这类查询只可能返回同一批转述；
-  要主源就去发布方自己的记录端点或索引页；
-- 查到的每个来源记 `url`/`locator` 与 `independence_group`，写进 `queries` 只追加不改写。
+每个使用的实体有来源引用和至少一条 evidence：entity_id、source_id，以及 excerpt 或 support_note。推荐保留 locator（页码、表号、段落）和获取方式 method。
+来源最少填写 id、title、url 或 locator；短字符串也可作稳定ID，推荐沿用F/D/Q/S编号以便人读。类型、等级、独立组、查询历史和本地文件信息均可选；工具补足兼容字段。
+一条直接来源可支持普通论断，默认 medium；不用为每个补充来源重复提取、绑定和填写审查表。
+extra 字段允许保留；工具仍拒绝重复 ID、缺失的引用目标和不可追溯来源。
 
-**逐条收口，满足核心证据后停止。** 状态统一使用下文“新任务交接与原文绑定”的
-located / usable / verified / unresolved；交付统一使用 ready / partial / insufficient。
-usable/verified 必须通过 entity_ids 链接支持实体，不能用来源列表代替论断支持关系。
-这是有 F/D 实体时的唯一合法声明；缺少链接为 must_verify_unlinked，孤立来源为
-must_verify_orphan_source。未解决项保留已拿到的 `source_ids` 并记录影响。
-例如 must_verify 的 status: verified 表示任务核验已满足；单源普通支持可为 usable。
-claim 写成内容，不写成检索动作；条数越界仅为 minor 提示，不是门禁。
-仅定位到链接不能算可用证据；无继续收益则记录缺口，允许有效部分交接。
+数字按独立数值 token 比对，保留表格单元格边界；2,383.2 和 2383.20 视为数值等价，820 不匹配 1820。单位、年份和适用范围从段落/章节/表头整体核对，不要求每个片段重复抄齐。
+四舍五入、单位转换、简单算术允许记录 source_value（原值）和 transformation（说明），显示值不能伪装成来源原值；跨范围、跨年份差异不能自动消解。
+普通事实允许归纳、OCR校正和表格转录。直接引语保留逐字含义核对，允许抽取造成的空白差异；不得把转述伪装成引语。
 
-**等级门作为检索动机已废止（它是历史上"搜很多次"的根因）。** 直连主源的理由只有两个——**逐字保真**
-（上屏数字要原文）与**转述相互冲突**（需要原始出处仲裁）；"把 B 升成 S"永远不构成继续
-检索的理由。
+复读一次原文是否支持主体、时间、因果和适用范围。不要求 support_check 表；愿意记录时可在实体上写一次，也兼容旧 binding 记录。
+qualified 只需在 notes/limitations 任何一处保留有效限制，无固定 usable/medium 组合要求。明确 unsupported/mismatch 的内容不能进入可用账本。
+这是同一研究员自查，不是独立评审；哈希、回执和已填写的表格都不能证明结论真实。
 
-`must_verify` 的措辞必须是**内容**（会上屏的事实/数字，如"2030 年风光总装机目标 1200GW"），
-**不是"找到 X 的官方出处"**——后者是一条没有终点的检索任务：主源打不开时它永远不满足，
-于是只能一遍遍重试，这才是"搜很多次都找不到"的机器侧原因。
+## 可选严格模式
 
-**结果页永远不是来源。** 这是证据分级规则（Tier），与后端好坏无关：`cn.bing.com` /
-`www.bing.com` / `so.com` / `sogou.com` / `duckduckgo.com` / `lite.duckduckgo.com` /
-`html.duckduckgo.com` / `search.brave.com` / `mojeek.com` / `search.yahoo.com` / `baidu.com` /
-`google.com`、任何 `link?m=` 跳转，以及政府站的**站内检索接口返回的记录页**，都只算定位手段。
-定位交给检索工具；要读的是它给出的**文档 URL**。`fetch-text` 不做题材审查：你让它取哪个 URL
-它就取哪个，只在 provenance 里标出 host 类别（`host_class`），所以痕迹是诚实的，判断仍在
-你这边——但结果页写进 `sources` 就是证据错误。
+只有用户明确要求逐字、逐源审计时才设置 text-bound-v1。它保留本地原文、逐字摘录、哈希和抓取记录核对，不作为普通作业默认，也不能因解析失败擅自开启或升级。
+semantic_review_required 为兼容提示，普通模式不产生逐绑定审查门槛。
 
-定位页的 `host_class` 为 `listing`：发布方记录端点、末级 /news、/press-releases、
-/xwdt、/xwfb 和 index.htm/index.html。文章位于这些目录下不自动成为定位页；
-政策正文和 PDF 是文档。定位页可以读取以发现文档，但不能作为 claim 的证据。
+## 来源分级与交叉核验
 
-通道关闭之后仅暂停 WebSearch；WebFetch 文档与发布方目录、fetch-text、文件操作仍可用。
-正文 Read 使用 offset/limit；Grep 的 content 模式必须设置正整数 head_limit，文件名/计数模式
-可用；禁止 shell 把整页正文输出回上下文。搜索引擎结果页 WebFetch 仍拒绝。
-无有效信封或校验报告时主流程记 RESEARCH_BLOCKED，不再 spawn 盲目续搜。
+S/A/B/C/D 为标注元数据，不是门槛；不得为升级等级继续搜索。观点来源按观点归属表述，不冒充公认事实。
+high 或 cross_check 要求至少两个独立来源。根据原始报告/数据集判断独立性；同 origin_id 或声明组的转载合并。同一域名不必然同源，跨域也不必然独立，不按域名硬合并。
+冲突先检查年份、地区、单位和统计定义；实质冲突保留记录和限制，不任挑一个数字。
 
-**确定性地取原文（不经小模型转述）**：`fetch-text` 把 HTTP 原文与抽取文本一起落盘，两份
-sha256 一起写进 provenance。转述会改写数字，而会上屏的数字要求逐字引用：
+## 失败与停止
+
+- backend_not_executed 只来自结构化运行时执行状态，暂停 WebSearch；WebFetch、主源直取、文件解析仍可用。
+- unknown_payload 是格式未知，仅诊断；空结果不证明内容不存在。
+- 同端点不同请求返回相同字节记 degenerate_channels 诊断，不永久禁止后续新 URL。
+- 验证码、付费或登录受阻记录 access_blocked；允许换合法可用路线，不绕过访问控制。
+- 修正语言、名称、年份、过滤条件，以及用已知数字追查出处，均可合理执行；不因查询外形要求修脚本。
+- 核心满足后优先交付；继续必须有具体缺口或补检目标，不能无目的重复。
+
+状态：located 仅定位；usable 已有支持并保留限制；verified 满足任务核验；unresolved 记录缺口。located/unresolved 不进入事实账本。
+交付：ready 完整；partial 仅有辅助缺口；insufficient 有核心缺口。有效 JSON 不等于研究充分，核心缺口仍阻止作为已完成证据编译。
+明确停止请求始终生效。任务调整自动重新判断，不以文件字节变化阻断。
+
+## 交接和诊断
+
+研究结果放项目 outputs/.pptx-work/<work-id>；不写安装插件或市场仓库。
+默认回 RESEARCH_DONE/RESEARCH_BLOCKED 路径与状态；原始材料留文件。遇到疑点可附少量关键证据供主会话复核，不倾倒整页正文。
 
 ```bash
-python "${CLAUDE_PLUGIN_ROOT}/scripts/pptx_tool.py" fetch-text \
-  --url <文档 URL> [--url <另一个>] --scope <A|B> \
-  --out-dir <work-dir>/research/fetched
+python "${CLAUDE_PLUGIN_ROOT}/scripts/research_handoff.py" --work-dir <work-dir>
 ```
 
-`--scope` 是**权限门**：只有 A/B 授权联网取原文，C/D 一律拒绝——与"D 类禁止联网"是同一条
-规则，由工具机械执行而不是靠提醒。报告落在 `research/fetched/fetch-text-report.json`，每条
-记录带 `raw_path` / `text_path` / `raw_sha256` / `text_sha256` / `charset` / `title`；
-失败同样留痕（`reason` + `detail`）。引用时逐字取自 `text_path`，pack 的 `url` 记
-**文档 URL**（不是跳转链接），locator 可带该原文的 sha256。
+交接校验当前内容并自动刷新报告。不要求旧校验报告、研究员身份回执或 Pack 哈希链相互锁定；报告和执行统计是工具维护的观测信息。
+compiler 同样校验当前内容，自动刷新传入的旧报告。实际内容错误仍需修复，不为 stale receipt 反复重建 Pack。
+搜索载荷由 hooks 自动记录；模型不用在查询表、日志和载荷里重复抄写。没有 WebSearch 的合法直取无需编造 queries。
 
-### 新任务交接与原文绑定
-
-主流程写 research-task.json（schema：research-task.schema.json），运行
-validate_research_task.py 后显式 spawn；prompt 只给 task 和 work-dir 的绝对路径。
-背景、scope、档位、输入文件与 claims 的 id/原文/acceptance 都在 task，避免转抄漂移。
-例子见 examples/research-task.json。校验 pack 自动发现 task（也可传 --task），所有任务 claim 必须逐字保留并收口。
-
-新 A/B 包默认启用 evidence_contract=source-backed-v1：每个可用 F/D/Q 至少有一个可读取的
-来源片段绑定 entity_id → source_id → excerpt + text_path + text_sha256 + locator + support_note。
-绑定必须先从 fetched 原文用脚本开窗抽取（`research_excerpt.py`），再写进 pack；凭记忆写
-摘录、被逐字校验打回后再补救，是写包-校验循环里最大的一笔浪费。
-一个直接来源即可支持普通论断，默认 medium；不为所有辅助来源重复建立绑定。
-数字仍须在片段中直接出现，直接引语必须逐字一致；搜索摘要只能用于定位，不能作为事实账本。
-正文路径必须在 work-dir/research 下；web 来源需成功的 fetch-report 将 URL 与同一文本绑定。
-support_note 解释语义支持关系，机器不宣称自动证明语义。
-
-claims 新增 importance=core|supporting（默认 core）、verification=source|text|cross_check（默认 source）。
-关键数字指定 text，要求 year/unit/region/metric 与原文对应；可用 context_excerpt 引用同一
-原文中的表头或年份说明。争议结论指定 cross_check，要求至少两个独立来源并满足原文校验。
-text-bound-v1 保留为显式严格模式，继续要求每个使用的来源绑定，不作为普通任务默认。
-计算值/单位转换由下游记录原值和计算，不能冒充原文数字。
-
-claim/实体状态为 located（仅找到）、usable（可引用且记录限制）、verified（完成要求的核验）、
-unresolved（缺失与影响）。located/unresolved 不编入事实账本，usable 可以 medium 继续。
-校验 ok 只表示契约有效；delivery_status 独立分为 ready、partial、insufficient。
-核心 claims 都达到 usable/verified 且无其他缺口为 ready；仅辅助缺口为 partial；核心缺口为
-insufficient，编译 Slide Spec 时明确拒绝并列出缺口，不能把“返回了包”当成研究完成。
-
-任务默认自动发现 work-dir/research-task.json，编译器也重验任务与验证报告哈希；省略 --task
-不能绕过新任务规则。spawn 冻结任务绑定，C/D 在网络工具调用前拒绝；缓存也先检查 scope。
-研究员读取任务后，hook 优先按该 agent 的任务读取凭据解析 work-dir；主会话 Stop 清理
-活动标记不撤销后台研究员的任务定位。多个任务读取仍拒绝检索，任务哈希、scope、停止与
-证据与权限检查仍生效；检索响应及进度提示使用同一目录，不混入其他会话的活动 deck。
-旧包没有任务文件仍兼容且保留未绑定提示。输出禁止落在 plugin 或 marketplace 内。
-
-**任务收敛的受支持出口（rebind）**：任务在派发时冻结，但收口路径允许事后收敛——spec
-不再断言某个未解决的维度时，把该 claim 从 core 降为 supporting 后，用
-`research_control.py --work-dir <wd> --rebind --reason "<具体收敛了什么>"` 把绑定迁到当前
-任务字节（理由 ≥24 字符，旧绑定按旧哈希留档 `research-task-binding.superseded-<sha8>.json`，
-决定写入 research-control 历史）。不要手工改名/改写 hook 拥有的绑定文件；同一会话重派
-同一任务的研究员会被 spawn 绑定（session_id）机械拒绝——rebind 是让既有 pack 通过校验的通道，不是重跑检索的通道。
-
-抓取使用 --workers 4（可选 1–8），URL 去重，每条完成立即写盘；报告采用锁和原子替换，
-保留失败历史。URL/内容哈希隔离文件，复用前核验 raw/text 哈希。退化判定只针对查询/目录
-locator，不把同一文档的跟踪或签名参数视为故障。
-
-首次拿到有效证据就保存 research-pack.json 并运行校验，自动更新 research-progress.json。
-每轮新增有用证据后再次保存；中断后读取进度和报告，仅续做 pending_claims、未满足的
-验收条件和未抓取 URL。已完成内容不重搜。核心满足后优先 partial 交接；继续研究必须指明
-能补齐的口径、冲突或关键证据。连续工作没有有效进展时返回当前包与具体缺口，不能无限等待。
-工具边界现在机械检查 research-control.json：ready/partial 交付（sufficient_evidence）或任务变更
-（task_changed）时停止新增检索，但允许保存/校验/回传当前包。
-研究按证据是否满足要求、明确停止请求及真实接口状态决定继续或结束，不设默认总时长或停滞计时器阻断。旧 budget/time_budget_seconds/stall_timeout_seconds 字段仅作历史记录，不产生预算门禁。单次调用超时与重复任务、越权检索检查继续有效。
-
-来源增加 origin_id 表示原始报告/数据集，跨域转载同源按该标识合并，independence_note
-不能绕过它；同域托管确实独立报告仍允许用 independence_note 解释。
-
-**主源直取路线**：索引给不出东西时，直接取 claim 所属发布方的文档——政策原文（gov.cn
-政策库）、部委统计发布页、国际组织报告页/PDF、论文原文。发布方原文页通常能给出标题、
-发文机关、日期与全部量化目标（逐字）；配合 `fetch-text` 的原文与双 sha256 落盘，"逐字引用"即可落地。
-
-受阻原因按机制分开记录：`search_unavailable`（索引没返回结果）、`not_found`（有覆盖但检索
-不到）、`access_blocked`（有覆盖但打不开）。三者对下游的意义不同，不许合并成一句"查不到"。
-
-**档位必须按证据需求选，scenario 只定默认**：需核验的数据点/claims ≥ 10 或 slide_count ≥ 12
-时至少 `standard`；≥ 18 或 slide_count ≥ 15 时用 `deep`。宁可初始档位高一级——gap-fill
-重入的代价显著高于首次暖上下文里多跑几条检索；档位选低的典型表现是把更多维度压进更少
-维度，而不是研究员搜多了。
-
-### 启动前声明与停止条件
-
-检索开始前，Research Pack 先按 task 列出 `must_verify` claim（决定内容成立与否的
-待证论断；条数越界是 minor 提示，小 deck 不凑数）并选定深度档位。**claim 写成内容，不写成
-检索任务**——"2030 年风光总装机目标
-1200GW" 可以关门，"找到 12 亿千瓦目标的官方出处" 在主源打不开时永远关不上，于是只能反复重试。
-停止条件按前述四种论断状态和三种交付状态执行，不再另设“只有两个出口”的旧规则。
-开始前给出具体待证内容；3–5 条仅为建议，不为凑数编造论断。继续检索须指出能补齐的
-验收条件；有辅助缺口但核心满足时优先 partial 交接。 有新增信息的语言/名称/筛选修正
-可以继续，须记录 adjustment_reason；重复失败且没有新证据收益时收口。
-
-历史教训归结为一句：声明先行、逐条关门才是刹车；刹车失灵的典型形态是声明写成检索任务、
-`verified` 判得太松——刹车不在次数，在口径。
-
-### 补检（gap-fill）
-
-- 授权补检时写明本次要核验的 claim 清单；研究员按 claim 收益决定检索量，不受次数配额。
-- **禁止删除已执行的 queries 记录**——pack 是审计记录，只追加不改写（为迎合上限删记录的
-  做法已废除，上限本身也不复存在）。
-
-## 八、上下文防火墙
-
-这是把研究拆成独立角色的主要理由。原始检索会产出大量低价值内容（搜索结果页、网页
-正文、论文摘要、失败信息、重复资料），如果让主流程直接承接，上下文会迅速膨胀。
-
-```text
-原始检索上下文  ~100k tokens
-        ↓  子代理内部消化
-Research Pack    ~8k tokens
-```
-
-契约（与 `cost-discipline.md` CD-5 的 envelope 规则是同一条，以它为准）：
-
-- 原始结果落盘 `outputs/.pptx-work/<work-id>/research/<topic>.json`；
-- 回传主流程的只有固定的 `RESEARCH_DONE` / `RESEARCH_BLOCKED` envelope 加
-  Research Pack 落盘路径——pack 正文不回传、不粘贴；
-- 主流程**不得**要求子代理"把搜到的东西贴过来看看"。
-
-## 九、检索受阻必须留痕
-
-打不开网页、来源付费、来源不可得——**不许静默降级**，一律写进 `unresolved`：
-搜索层面的失败同样留痕——`research/search-log.json` 的 `search_executions` 必须包含
-每次实际执行的检索（含空返回 / 返回无关结果 / 超时重试，标 `status: failed`）；每条失败记录
-带 `signature` 记失败签名（`backend_not_executed` = 检索没执行，见§七；`index_empty` = 执行了
-但没有覆盖；`irrelevant`；`blocked` = captcha / 登录墙）。`signature` 是**分类**不是计数：
-它决定该 claim 记哪种机制、下一步换哪条通道。gap-fill 的检索
-必须**追加**写入该日志（`n` 续号），不得只改 pack。`pack.queries` 记录所有实际执行的查询（含失败），不记录计划调用；
-每次调用的成功/空结果/失败状态由 search_executions 记录——但没有日志留痕，就无法审计两者之间的差额。
-
-这份留痕**不是纸面承诺**：validator 自动发现 pack 旁的 `research/search-log.json` 与
-`research/fetched/fetch-text-report.json`（`--search-log` / `--fetch-report` 仅用于覆盖路径），机械审计
-日志与 pack 的差额（`query_unlogged`）、重复查询（`duplicate_query`）、换措辞重试
-（`reworded_retry`）、把整句话粘进检索框（`over_broad_query`）、把已入库的数字原样塞回
-检索框（`query_echoes_known_value`）、抓取结果页当证据
-（`result_page_fetched`）、**在同一个不按请求作答的端点上反复换参数**（`degenerate_channel`，
-从 fetch 报告的 `raw_sha256` 重算，不依赖工具版本）、**整轮检索都没执行**（
-`search_backend_not_executed`，全部失败记录的 `signature` 都是 `backend_not_executed` 时触发）
-——全部 minor：审计提示行为，不设门禁、不数次数。
-
-抓取侧的 `fetch-text-report.json` 由工具自己算出 `degenerate_channels`（§七最后一条），
-并且**跨调用累积**：同一次 `--out-dir` 的下一次 `fetch-text` 会读到上一次的记录。判定一旦成立，
-同一端点的**新**请求不再发出（记录 `reason: channel_closed`，不产生新的 HTTP）；已经取回的
-真结果仍留在报告里。能返回真正文的参数值必须出现在判定成立的那一次调用中，否则改走文档 URL，
-不要再换 `t=`。`research/fetched/<子目录>` 会折回 `research/fetched`，所以逐 URL 分子目录盖不住
-这份报告。工具 stdout 只给本次新增的行和通道判定，正文留在 `text_path`——用 Read 的 offset/limit
-取要引用的几行，不要 cat / grep / print 整页回到对话里。
-
-
-判定口径经过一轮校准（0.23.9），只抓站得住的信号：`reworded_retry` 要求两条失败查询的
-**数字集完全相同**——换了数字（2025→2026）就是另一个可回答单元，不是换措辞；
-`over_broad_query` **只归因实际失败的长查询**（成功的首发长句不算错，n=1 样本里那 49 字符
-成功查询就是旧口径的误报）。advisory 有强制出口：validator 一行输出与 Evidence 编译器的
-ok 行都固定带 `retrieval audit — N advisory: …`，主管道读编译器输出就看见——不依赖谁
-主动去翻 validation 报告。
-
-```yaml
-unresolved:
-  - query: "IPCC AR6 WGIII 原始表格"
-    reason: access_blocked
-    impact: "对应条目置信度降为 medium，页面按'区间'表述"
-```
-
-## 十、与图片检索的分工
-
-本文件**只管知识**（事实、数据、论文、引用、证据）。图片素材另走
-`image-sourcing.md` 的能力声明与权限门禁。
-
-两者的优化目标不同，不要合并成一个"超级代理"：
-
-| | 知识检索 | 视觉素材检索 |
-| --- | --- | --- |
-| 首要指标 | 可信度、正确性、时效性、可追溯 | 分辨率、构图、版权、风格适配、可裁剪性 |
-
-## Evidence Map 的确定性边界
-
-`research_pack_to_evidence.py` 的产出受 `evidence-map.schema.json` 约束（编译器在写盘前
-验证，失败即退出码 2）。它的确定性要说清楚，避免过度承诺：
-
-| 性质 | 状态 |
-| --- | --- |
-| **语义内容确定性** | ✅ 同一份 pack 编译两次，`ref_map`、`evidence_ledger`、`source_index`、`semantic_sha256` 完全一致 |
-| **字节级位置无关确定性** | 🟡 完整 JSON 里 `provenance` 记录绝对路径，因此**相同内容 + 不同工作目录**会得到不同的文件字节 |
-
-`semantic_sha256` 刻意只覆盖语义内容，不含 `provenance`。**不要为了"字节也一样"把审计
-路径删掉**——路径是追溯所需的信息，而需要比较"是否是同一份证据"时用 `semantic_sha256`
-即可。冻结时绑定的是文件 SHA-256（含路径），所以跨机器的字节差异不会造成误判，只会
-让"换个目录重新编译"需要重新 freeze。
-
-## 可验证标准
-
-- `scripts/validate_research_pack.py <pack>` 0 blocker；
-- Research Pack 里每条 `source` 都有 `url` 或 `locator`（可追溯）；用户文件有导入回执绑定；
-- 每个 `confidence: high` 的条目都有 ≥2 个独立来源印证；
-- 出现 `conflict: true` 的条目同时 `confidence: low`，且有对应 `conflicts` 记录；
-- 检索受阻都出现在 `unresolved` 里（含后端空返回的 `search_unavailable`），没有静默降级；
-- 每条 claim 要么有可追溯来源支撑且无冲突，要么在 `unresolved` 里有写明影响的记录
-  ——档位只定深度，不对 `queries` / `sources` 设数量上限；等级 letter 不构成任何标准。
-
-研究正文的 Grep 未传 head_limit 时，PreToolUse 自动补 80 并保留其他参数，不再先拒绝再重试；
-显式无效值仍需纠正。实现遵循 [Claude Code hooks 的 updatedInput 契约](https://code.claude.com/docs/en/hooks#pretooluse-decision-control)。
-
-### 原文支持复读
-
-新任务入口设置 semantic_review_required=true。每个可用绑定写 support_check：statement
-逐字复制实体 claim/meaning/text；verdict 为 supported/qualified/unsupported；subject_scope、
-time_scope、causal_scope 为 matches/not_applicable/mismatch；rationale 解释原文如何支持，
-limitations 记录限定条件。先提取证据，再从反证角度复读一次：是否把局部推广到总体、旧数据
-写成现状、相关写成因果，或省略人群/地区/实验条件。不为复读再搜索。
-机器检查复读覆盖与声明的一致性；unsupported/mismatch 不得进入可用账本。qualified 仅可
-usable/medium 且必须在实体 notes 和 limitations 保留限制；若原 claim 本身越界则 unresolved，
-不能靠一句限制把不成立的 claim 洗成成立。旧任务默认关闭新字段以保留兼容。
-复读仍由同一研究员完成，不能称为独立评审；校验不会自动证明自然语言语义正确。
-
-### 研究员终止与恢复
-
-同一会话每个 research-task 只派一次研究员，由 spawn binding 的 session_id 机械约束，这条不变。
-研究员中途终止按原因分两类，恢复权限不同：
-
-- **基础设施故障**（API 错误、连接中断、宿主终止等非内容原因）：研究员在写出可解析的
-  Research Pack 之前被终止，且检索证据已落盘——主流程可以恢复（resume）同一 agent **恰好一次**。
-  恢复走的是宿主 Agent 工具的 resume 能力（宿主明确支持继续同一 agent），不是重新 spawn，
-  "只派一次"的 spawn 约束不受影响。恢复提示词用 spawn-templates.md 的恢复模板：要求它
-  只基于已落盘证据直接写出/补全 pack，不得重新检索、不得新增来源。恢复前主流程先运行
-  `research_control.py --work-dir <wd> --resume --reason "recovered_from: crash: <具体错误>"`，
-  把恢复事实记入研究轨迹（research-control.json 的 resumes 记录），handoff 与审计据此核验。
-- **unknown_payload 或校验失败的 pack**（内容原因）：维持现状——不足时返回现有成果与缺口，
-  记 blocked，主流程不得因为 unknown_payload 自行 reset/resume/重派，也不再 spawn；
-  续做需用户明确补检指令或提供新材料，在新的研究运行中进行，不能把旧的失败响应冒充环境变化。
-真实验收见 scripts/live_prompts/README.md；宿主 timeout 会保留逐事件流并终止该验收子进程树。
-
-精确多行摘录用 scripts/research_excerpt.py --text <text_path> --start <字面起点> --end <字面终点>，
-默认/最大 2000 字符，超限拒绝而不截断。可加 --pack/--entity-id/--source-id 原子更新已有绑定，
-stdout 仅回元数据；避免自写动态 grab/find 函数输出不受界限约束的正文而触发防火墙。
+`validate_research_pack.py --audit` 可选输出检索诊断（含重复查询、长查询和数字回显），不需要清零，不要求逐项解释。默认不报告 unused_source、claim数量或查询形状噪声。
+Read/Grep 使用适当窗口控制上下文；允许自写有界读取和其他解析器。research_excerpt.py 只是便利工具，可指定最大摘录长度，不强制2000字符上限或固定目录名。

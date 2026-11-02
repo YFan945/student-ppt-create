@@ -36,7 +36,7 @@ Rules:
 
 1. Research Pack is the sole entry point for external facts. Numbers, factual claims and direct quotations must trace to a `finding`, `data_point`, or `quote`, then to source(s).
 2. `confidence: low` or `conflict: true` must survive into the ledger limitation and into qualified/range wording on the slide.
-3. Source tier letters (S/A/B/C/D) are **attribution metadata only** — they shape how the footer cites a source, never whether a claim passes, never the confidence of findings/data_points (there is no tier→confidence display mapping either; see `research-workflow.md` §四), and never a reason to keep searching. The gates are traceability (every source has `url`/`locator`; user files carry the import receipt) and independent corroboration (`high` requires ≥2 independent origins, judged mechanically by registrable domain since 0.23.3).
+3. Source tier letters (S/A/B/C/D) are **attribution metadata only** — they shape how the footer cites a source, never whether a claim passes, never the confidence of findings/data_points (there is no tier→confidence display mapping either; see `research-workflow.md` §四), and never a reason to keep searching. The gates are traceability (every source has `url`/`locator`; user files record their locator) and independent corroboration (`high` requires ≥2 independent origins, judged by the original report/data set, not domain alone).
 4. Opinion sources (community / personal-blog / vendor-blog) do not block a claim (owner ruling 2026-09-30): a number resting solely on them passes with a minor advisory (`opinion_only_support`), and the slide must attribute it as a community/vendor view rather than an established fact.
 5. Blocked/paywalled/missing retrieval remains in `unresolved`; affected slide wording must be downgraded rather than silently treated as verified.
 6. `E<n>` ids are **compiler-owned**, never model-authored:
@@ -49,13 +49,13 @@ Rules:
    ```
 
 7. The compiler can write a non-destructive **compiled Slide Spec**. Draft `evidence_refs` may use F/D/Q ids; the compiler rewrites them to E ids, replaces the Research Evidence Ledger, and recomputes `used_on_slides` mechanically.
-8. `validate_research_pack.py` binds its report to `research_pack_sha256`; `evidence-map.json` binds the pack, validation report and compiled Slide Spec hashes. `slide_spec_guard.py freeze` verifies the whole provenance chain before accepting a research-backed plan.
+8. Handoff and compilation validate current content and refresh older reports automatically. Hashes and execution receipts are observational in ordinary research; only explicit text-bound audits require the historical byte chain. Content references and the final Slide Spec still need to agree.
 
 ## Delegated retrieval
 
-All external retrieval is executed by the isolated research subagent. The main flow never searches directly and never asks for raw pages/search summaries back.
+All external retrieval is executed by the isolated research subagent. The main flow delegates retrieval; it may inspect a bounded supporting passage to resolve a concrete doubt, without repeating the research or importing whole pages.
 
-The successful handoff is exactly the fixed `RESEARCH_DONE` envelope emitted by `presentation-researcher`; content travels through files, not prose:
+The default successful handoff is the fixed `RESEARCH_DONE` envelope emitted by `presentation-researcher`; content travels through files, not prose:
 
 ```text
 research-pack.json

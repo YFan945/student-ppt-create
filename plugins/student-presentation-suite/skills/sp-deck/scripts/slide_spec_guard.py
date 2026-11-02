@@ -135,6 +135,37 @@ def validate_research_chain(paths: dict[str, Path], spec_hash: str) -> dict[str,
     pack_hash = sha256_file(pack_path)
     validation_hash = sha256_file(validation_path)
 
+    pack = load_json(pack_path)
+    if pack.get("evidence_contract") == "source-backed-v1":
+        # Ordinary research is checked against current content. Earlier byte
+        # receipts are observational; a real changed claim still needs a new map.
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import research_pack_to_evidence as compiler
+        from research_task_binding import apply_task
+        pack = compiler.pack_validator.normalize(pack)
+        verdict = compiler.pack_validator.validate(pack, work_dir=pack_path.parent)
+        apply_task(verdict, pack, pack_path.parent)
+        if not verdict["ok"] or verdict.get("delivery_status") == "insufficient":
+            raise SystemExit("Current Research Pack has invalid support or core gaps.")
+        usable = dict(pack)
+        for key in ("findings", "data_points", "quotes"):
+            usable[key] = [e for e in pack.get(key, []) if e.get("status") not in {"located", "unresolved"}]
+        expected, _ = compiler.compile_pack(usable, None)
+        evidence_map = load_json(evidence_map_path)
+
+        def content_ledger(records):
+            return [{k: v for k, v in record.items() if k != "used_on_slides"} for record in records]
+
+        if (expected["ref_map"] != evidence_map.get("ref_map")
+                or expected["source_index"] != evidence_map.get("source_index")
+                or content_ledger(expected["evidence_ledger"]) != content_ledger(evidence_map.get("evidence_ledger", []))
+                or evidence_map.get("unresolved_refs")):
+            raise SystemExit("Evidence map content differs from current research; recompile the changed claims.")
+        if evidence_map.get("provenance", {}).get("compiled_slide_spec_sha256") != spec_hash:
+            raise SystemExit("Evidence map was not compiled for the Slide Spec being frozen.")
+        return {name: {"path": str(path.resolve()), "sha256": sha256_file(path), "verification": "content"}
+                for name, path in paths.items()}
+
     validation = load_json(validation_path)
     if validation.get("ok") is not True:
         raise SystemExit(f"Research Pack validation report is not passing.{_research_report_regen_hint()}")
@@ -248,7 +279,7 @@ def check_lock(lock_path: Path, spec_override: Path | None = None) -> dict[str, 
         path = Path(str(entry.get("path") or ""))
         if not path.is_file():
             errors.append(f"Bound research artifact is missing: {name}.")
-        elif entry.get("sha256") != sha256_file(path):
+        elif entry.get("verification") != "content" and entry.get("sha256") != sha256_file(path):
             errors.append(
                 f"Bound research artifact changed after freeze: {name}. "
                 "Re-run the Research Gate and `revise` with a reason."

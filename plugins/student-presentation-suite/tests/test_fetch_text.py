@@ -118,12 +118,11 @@ class GateTests(unittest.TestCase):
         self.assertTrue(record["ok"], record)
         self.assertEqual("listing", record["host_class"])
 
-    def test_every_domain_classified_in_code_is_named_in_the_workflow(self) -> None:
-        doc = WORKFLOW.read_text(encoding="utf-8")
+    def test_known_search_hosts_are_diagnostic_labels(self) -> None:
         for host in fetch_text._SEARCH_HOSTS:
-            domain = ".".join(host.split(".")[-2:])
-            with self.subTest(domain=domain):
-                self.assertIn(domain, doc, "the code classification must not outrun the documented rule")
+            with self.subTest(host=host):
+                self.assertEqual("search_engine", fetch_text.host_class(f"https://{host}/search?q=x"))
+        self.assertIn("搜索摘要仅供定位", WORKFLOW.read_text(encoding="utf-8"))
 
 
 class ExtractionTests(unittest.TestCase):
@@ -269,7 +268,7 @@ class DegenerateChannelReportTests(unittest.TestCase):
             self.assertEqual([], report["degenerate_channels"])
             self.assertFalse(any("channel_verdict" in record for record in report["records"]))
 
-    def test_a_later_call_does_not_reopen_a_closed_channel(self) -> None:
+    def test_repeated_body_diagnostic_allows_later_targeted_request(self) -> None:
         """The verdict has to survive the next invocation. The live run issued a fresh
         fetch-text per variation, and each one overwrote the report that held the echo.
         """
@@ -289,9 +288,9 @@ class DegenerateChannelReportTests(unittest.TestCase):
             first_report = fetch_text.fetch_many(first, out, scope="A", getter=getter)
             fetch_text.write_report(first_report, out)
             second = fetch_text.fetch_many([later], out, scope="A", getter=getter)
-            self.assertNotIn(later, calls, "a closed channel is not requested again")
+            self.assertIn(later, calls, "byte duplication is not a permanent network ban")
             closed = [row for row in second["this_call"] if row.get("reason") == "channel_closed"]
-            self.assertEqual([later], [row["url"] for row in closed])
+            self.assertEqual([], closed)
             fetch_text.write_report(second, out)
             stored = json.loads((out / "fetch-text-report.json").read_text(encoding="utf-8"))
             self.assertNotIn("this_call", stored)

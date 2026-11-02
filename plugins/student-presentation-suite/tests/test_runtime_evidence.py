@@ -134,7 +134,7 @@ class RuntimeEvidenceTests(unittest.TestCase):
             'grep -oE ".{20}12亿千瓦.{20}" '
             '"E:/Daima_Codes/12/outputs/.pptx-work/deck/research/fetched/u1/content.txt"'
         )
-        self.assertEqual(2, self.event_call("PreToolUse", tool_name="Bash", tool_input={"command": dumped}))
+        self.assertEqual(0, self.event_call("PreToolUse", tool_name="Bash", tool_input={"command": dumped}))
         fetch = (
             'python pptx_tool.py fetch-text --scope A --out-dir '
             '"E:/work/research/fetched" --url https://www.gov.cn/a.htm'

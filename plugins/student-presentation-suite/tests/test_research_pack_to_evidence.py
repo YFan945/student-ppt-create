@@ -167,7 +167,7 @@ class ResearchPackToEvidenceTests(unittest.TestCase):
         self.assertEqual(2, code)
         self.assertFalse((self.tmp / "m.json").exists())
 
-    def test_validation_report_must_match_exact_pack(self) -> None:
+    def test_old_validation_report_is_refreshed_for_current_pack(self) -> None:
         pack_path = self.write_pack(base_pack())
         validation = self.write_validation(pack_path)
         changed = base_pack()
@@ -180,7 +180,9 @@ class ResearchPackToEvidenceTests(unittest.TestCase):
                 "--output", str(self.tmp / "m.json"),
             ]
         )
-        self.assertEqual(2, code)
+        self.assertEqual(0, code)
+        refreshed = json.loads(validation.read_text(encoding="utf-8"))
+        self.assertEqual(hashlib.sha256(pack_path.read_bytes()).hexdigest(), refreshed["research_pack_sha256"])
 
     def test_provenance_records_pack_validation_and_compiled_spec_hashes(self) -> None:
         draft = {"slides": [{"id": 1, "evidence_refs": ["F01"]}]}
@@ -234,8 +236,8 @@ class ResearchPackToEvidenceTests(unittest.TestCase):
             [str(pack_path), "--validation-report", str(validation), "--output", str(self.tmp / "m.json")]
         )
         self.assertEqual(0, code)
-        self.assertIn("retrieval audit", stdout)
-        self.assertIn("reworded_retry", stdout)
+        self.assertNotIn("retrieval audit", stdout)
+        self.assertNotIn("reworded_retry", stdout)
 
     def test_missing_pack_exits_two(self) -> None:
         code, _ = self.invoke([str(self.tmp / "absent.json")])

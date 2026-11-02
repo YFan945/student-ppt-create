@@ -127,14 +127,7 @@ class SkillBehaviorContractTests(unittest.TestCase):
 
         workflow = self.read("references/research-workflow.md")
         for token in (
-            "Search for evidence, not text",
-            "A 必须查",
-            "B 最好查",
-            "C 不用查",
-            "D 禁止查",
-            "unresolved",
-            "交叉验证",
-            "Tier",
+            "| A |", "| B |", "| C |", "| D |", "unresolved", "交叉核验", "source-backed-v1",
         ):
             self.assertIn(token, workflow)
 

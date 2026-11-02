@@ -32,7 +32,6 @@ from shared.retrieval_trail import (  # noqa: E402
     degenerate_channels,
     endpoint_key,
     is_listing_locator,
-    is_locator,
     search_backend_never_executed,
     search_channel_closed,
     search_payload_signature,
@@ -238,102 +237,19 @@ class SearchSignatureTests(unittest.TestCase):
 
 
 class ContractSyncTests(unittest.TestCase):
-    """The verdicts are only useful if the executor's own surfaces name them."""
-
-    def test_the_degenerate_row_and_the_channel_once_rule_are_documented(self) -> None:
+    def test_recovery_and_channel_limits_have_one_owner(self):
         workflow = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("degenerate_channels", workflow)
-        self.assertIn("同一端点对不同请求返回同一份字节", workflow)
-        self.assertIn("通道按类判定一次，不按次数累加", workflow)
-        self.assertIn("不是同一通道的新参数或新措辞", workflow)
-        skill = SKILL.read_text(encoding="utf-8")
-        self.assertIn("degenerate_channels", skill)
-        self.assertIn("通道按类判定一次，不按次数累加", skill)
-        self.assertIn("degenerate_channel", skill)
+        self.assertIn("backend_not_executed", workflow)
+        self.assertIn("unknown_payload", workflow)
+        self.assertIn("不永久禁止", workflow)
+        self.assertIn("顺序恢复", workflow)
+        for path in (AGENT, SKILL, SPAWN):
+            self.assertIn("research-workflow.md", path.read_text(encoding="utf-8"))
 
-    def test_the_backend_not_executed_signature_is_documented(self) -> None:
-        self.assertIn("backend_not_executed", WORKFLOW.read_text(encoding="utf-8"))
-        agent = AGENT.read_text(encoding="utf-8")
-        self.assertIn("never executed", agent)
-        self.assertIn("backend_not_executed", agent)
-        spawn = SPAWN.read_text(encoding="utf-8")
-        self.assertIn("没有执行", spawn)
-        self.assertIn("backend_not_executed", spawn)
-        self.assertIn("degenerate_channels", spawn)
-        self.assertIn("search_backend_not_executed", SKILL.read_text(encoding="utf-8"))
-
-    def test_the_one_out_dir_rule_is_documented_where_the_executor_reads(self) -> None:
-        """The report accumulates, and a nested directory is folded back into it."""
-        agent = AGENT.read_text(encoding="utf-8")
-        self.assertIn("one `--out-dir`", agent)
-        self.assertIn("sub-directories", agent)
-        self.assertIn("channel_closed", agent)
-        self.assertIn("同一个 `--out-dir`", SPAWN.read_text(encoding="utf-8"))
-
-    def test_the_verdicts_are_classifications_not_a_budget(self) -> None:
-        """Owner standing rule: the reaction retires a channel, it never caps a run.
-
-        The one thing that must not come back is a *count* — the same verdict is stated
-        as a property of the channel, so it cannot loosen as a run gets longer.
-        """
-        workflow = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("上限是计数器，通道判定是分类", workflow)
-        self.assertIn("一条通道只判一次", workflow)
-
-    def test_listing_pages_are_locators_and_policy_pages_are_documents(self) -> None:
-        self.assertTrue(is_listing_locator("https://sousuo.www.gov.cn/search-gov/data?t=all&q=x"))
-        self.assertFalse(is_listing_locator("https://www.nea.gov.cn/xwdt/gnxw.htm"))
-        self.assertTrue(is_listing_locator("https://www.nea.gov.cn/xwfb/index.htm"))
-        self.assertTrue(is_listing_locator("https://www.gwec.net/news"))
-        self.assertTrue(is_listing_locator("https://www.irena.org/press-releases"))
-        self.assertTrue(is_listing_locator("https://www.example.com/index.html"))
-        self.assertFalse(
-            is_listing_locator("https://www.gov.cn/zhengce/2021-10/26/content_5644989.htm")
-        )
-        self.assertFalse(is_listing_locator("https://www.gov.cn/zhengce/news/P0202.pdf"))
-        self.assertTrue(is_locator("https://cn.bing.com/search?q=x"))
-        self.assertFalse(is_locator("https://www.gov.cn/zhengce/2021-10/26/content_5644989.htm"))
-
-    def test_the_closeout_is_written_where_the_executor_and_parent_read(self) -> None:
-        workflow = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("通道关闭之后", workflow)
-        self.assertIn("`listing`", workflow)
-        skill = SKILL.read_text(encoding="utf-8")
-        self.assertIn("通道关闭之后", skill)
-        self.assertIn("不再 spawn", skill)
-        self.assertIn("通道关闭之后", SPAWN.read_text(encoding="utf-8"))
-        self.assertIn("closed for WebSearch only", AGENT.read_text(encoding="utf-8"))
-
-    def test_an_infra_crash_may_resume_the_same_agent_exactly_once(self) -> None:
-        """2026-10-19 audit: a researcher killed by an API error after its evidence
-        was already on disk had no sanctioned recovery — the absolute no-resume rule
-        collided with the host Agent tool's own resume capability, forcing a choice
-        between violating the contract and interrupting the user. Terminations are
-        now split: an infrastructure failure (non-content cause) before a parseable
-        pack, with retrieval evidence on disk, may resume the same agent exactly once
-        from disk evidence only; an unknown_payload or validation-failed pack stays
-        blocked with no self-resume. The one-spawn-per-session rule is unchanged.
-        """
-        workflow = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("基础设施故障", workflow)
-        self.assertIn("恰好一次", workflow)
-        self.assertIn("recovered_from: crash", workflow)
-        self.assertIn("不得重新检索", workflow)
-        self.assertIn("不得新增来源", workflow)
-        self.assertIn("不是重新 spawn", workflow)
-        self.assertIn("resumes 记录", workflow)
-        self.assertIn("unknown_payload 或校验失败的 pack", workflow)
-        skill = SKILL.read_text(encoding="utf-8")
-        self.assertIn("唯一例外", skill)
-        self.assertIn("恰好一次", skill)
-        self.assertIn("recovered_from: crash", skill)
-        self.assertIn("不自行 resume", skill)
-        spawn = SPAWN.read_text(encoding="utf-8")
-        self.assertIn("researcher-resume", spawn)
-        self.assertIn("恰好恢复一次", spawn)
-        self.assertIn("不得重新检索", spawn)
-        self.assertIn("校验契约不变", spawn)
-        self.assertIn("recovered_from: crash", spawn)
+    def test_listing_classification_remains_a_diagnostic(self):
+        self.assertTrue(is_listing_locator("https://example.org/index.html"))
+        self.assertFalse(is_listing_locator("https://example.org/report.pdf"))
+        self.assertIn("按实际内容引用", WORKFLOW.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

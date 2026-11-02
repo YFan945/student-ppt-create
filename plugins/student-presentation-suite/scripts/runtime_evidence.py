@@ -58,7 +58,7 @@ NAMED_SPAWN_REFUSAL = (
 )
 NESTED_SPAWN_REFUSAL = (
     "Do not nest presentation-researcher inside another "
-    "agent. Only the main session may spawn it, once, without "
+    "agent. Only the main session may spawn it without "
     "`name`. If you are a teammate whose WebSearch was blocked, stop — the "
     "main session must respawn the plugin agent correctly."
 )
@@ -81,7 +81,7 @@ BACKEND_NOTE = (
 UNKNOWN_NOTE = (
     "search_signature: unknown_payload. This response format is not recognised; "
     "it does not prove that the backend failed or executed. Search remains available; "
-    "record this advisory and use any candidate links only to locate readable sources."
+    "telemetry records this automatically; use candidate links to locate readable sources."
 )
 LOCATOR_REFUSAL = (
     "A search-result page is a locator, not a source. Fetch the document URL with "
@@ -576,9 +576,9 @@ def handle(event: dict) -> int:
                 try:
                     task = json.loads(task_path.read_text(encoding="utf-8"))
                     errors = validate_task(task, task_path)
-                    frozen = json.loads((task_path.parent / "research-task-binding.json").read_text(encoding="utf-8"))
-                    if frozen.get("sha256") != hashlib.sha256(task_path.read_bytes()).hexdigest():
-                        errors.append("Task changed after spawn")
+                    permission = read_json(task_path.parent / "research-task-binding.json").get("scope", task.get("scope"))
+                    if permission not in {"A", "B"}:
+                        errors.append("The main session has not authorized web retrieval for this task")
                     if errors or task.get("scope") not in {"A", "B"}:
                         print("Research task does not authorize this retrieval: " + "; ".join(errors), file=sys.stderr)
                         return 2
@@ -600,12 +600,11 @@ def handle(event: dict) -> int:
                 if "reset_research_channel" in command:
                     print("Only the main session may reset the research search channel.", file=sys.stderr)
                     return 2
-                if "research_control.py" in command and "--resume" in command:
+                if "research_control.py" in command and any(flag in command for flag in ("--resume", "--rebind")):
                     print("Only the main session may resume research after new input/environment changes.", file=sys.stderr)
                     return 2
-                if dumps_fetched_body(command):
-                    print(BODY_DUMP_REFUSAL, file=sys.stderr)
-                    return 2
+                # The tool's own output limits bound custom PDF/OCR/excerpt
+                # commands; do not reject them by guessing Python syntax.
             if tool == "Grep" and greps_fetched_body(inputs) and inputs.get("output_mode") == "content" and (
                     not isinstance(inputs.get("head_limit"), int) or isinstance(inputs.get("head_limit"), bool)
                     or inputs["head_limit"] <= 0
@@ -673,15 +672,21 @@ def handle(event: dict) -> int:
                 if errors:
                     print("Invalid researcher task: " + "; ".join(errors), file=sys.stderr)
                     return 2
-                prior = read_json(researcher_work / "research-task-binding.json")
-                if prior.get("session_id") == event.get("session_id") and prior.get("session_id"):
-                    print("This session already spawned this research task. Return its saved pack and gaps; do not autonomously restart or respawn it.", file=sys.stderr)
-                    return 2
-                atomic_json(researcher_work / "research-task-binding.json", {
-                    "path": str(task_path.resolve()),
-                    "session_id": event.get("session_id"),
-                    "sha256": hashlib.sha256(task_path.read_bytes()).hexdigest(),
-                })
+                # A sequential retry may reuse saved evidence; do not impose a
+                # lifetime one-spawn quota. Refuse only a genuinely live child.
+                from shared.research_io import file_lock
+                with file_lock(researcher_work / ".research-task.lock"):
+                    prior = read_json(researcher_work / "research-task-binding.json")
+                    if prior.get("active_agent_id"):
+                        print("This research task already has an active researcher; resume that child.", file=sys.stderr)
+                        return 2
+                    atomic_json(researcher_work / "research-task-binding.json", {
+                        "path": str(task_path.resolve()),
+                        "session_id": event.get("session_id"),
+                        "sha256": hashlib.sha256(task_path.read_bytes()).hexdigest(),
+                        "scope": json.loads(task_path.read_text(encoding="utf-8"))["scope"],
+                        "active_agent_id": "starting",
+                    })
                 from shared.research_control import status
                 status(researcher_work)
             pipeline_context.mark_research_active(
@@ -749,6 +754,11 @@ def handle(event: dict) -> int:
                     task_path = works[0] / "research-task.json"
                     if task_path.is_file():
                         data["reads"][str(task_path.resolve())] = digest(task_path)
+                        from shared.research_io import atomic_json
+                        binding_path = task_path.parent / "research-task-binding.json"
+                        binding = read_json(binding_path)
+                        binding["active_agent_id"] = child
+                        atomic_json(binding_path, binding)
             except (OSError, ValueError, KeyError):
                 pass
     elif not data or data.get("agent") != agent:
@@ -773,6 +783,13 @@ def handle(event: dict) -> int:
         retrieval = data.setdefault("retrieval", {"WebSearch": 0, "WebFetch": 0})
         retrieval[tool] = int(retrieval.get(tool) or 0) + 1
     elif kind == "SubagentStop":
+        from shared.research_io import atomic_json
+        for work_dir in _armed_work_dirs(project, event):
+            binding_path = work_dir / "research-task-binding.json"
+            binding = read_json(binding_path)
+            if binding.get("active_agent_id") == child:
+                binding.pop("active_agent_id", None)
+                atomic_json(binding_path, binding)
         for name, sha in data["writes"].items():
             artifact = Path(name)
             if agent == RESEARCHER:

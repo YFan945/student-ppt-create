@@ -33,8 +33,7 @@ class ExcerptTests(unittest.TestCase):
                 excerpt.extract(path, "起点", "终点", 2)
             with self.assertRaises(ValueError):
                 excerpt.extract(path, "missing", "终点")
-            with self.assertRaises(ValueError):
-                excerpt.extract(path, "起点", "终点", 2001)
+            self.assertEqual("起点\n中间\n终点", excerpt.extract(path, "起点", "终点", 2001)["excerpt"])
 
 
 if __name__ == "__main__":

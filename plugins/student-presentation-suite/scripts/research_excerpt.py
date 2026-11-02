@@ -14,11 +14,9 @@ from shared.research_io import atomic_json  # noqa: E402
 
 
 def extract(path: Path, start: str, end: str, max_chars: int = 2000) -> dict:
-    if not 1 <= max_chars <= 2000 or not start or not end:
-        raise ValueError("Use literal start/end markers and max_chars in 1..2000")
+    if max_chars < 1 or not start or not end:
+        raise ValueError("Use literal start/end markers and a positive max_chars")
     path = path.resolve()
-    if "research" not in path.parts:
-        raise ValueError("Text must be under the research directory")
     raw = path.read_bytes()
     text = raw.decode("utf-8")
     i = text.find(start)
@@ -46,8 +44,8 @@ def main() -> int:
         result = extract(args.text, args.start, args.end, args.max_chars)
         if args.pack:
             pack_path = args.pack.resolve()
-            if not args.entity_id or not args.source_id or not args.text.resolve().is_relative_to(pack_path.parent / "research"):
-                raise ValueError("Updating a binding requires entity/source ids and text inside this pack's research directory")
+            if not args.entity_id or not args.source_id:
+                raise ValueError("Updating a binding requires entity/source ids")
             pack = json.loads(pack_path.read_text(encoding="utf-8"))
             matches = [e for e in pack.get("evidence", []) if e.get("entity_id") == args.entity_id and e.get("source_id") == args.source_id]
             if len(matches) != 1:
