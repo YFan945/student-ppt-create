@@ -551,6 +551,15 @@ def handle(event: dict) -> int:
         return 0
 
     if kind == "PreToolUse":
+        if tool in {"Agent", "Task"}:
+            # A generic "cleanup" child can overwrite the same Pack just as a
+            # second researcher can. Protect the task, not only one agent name.
+            active_work = _agent_work_dir(inputs, root)
+            if active_work:
+                active = read_json(active_work / "research-task-binding.json").get("active_agent_id")
+                if active and str(inputs.get("resume") or "") != str(active):
+                    print(f"Research task {active_work.name} is owned by {active}; continue that child or wait for its handoff. Do not start a parallel cleanup writer or poll file hashes.", file=sys.stderr)
+                    return 2
         if _is_researcher(event):
             works = _armed_work_dirs(project, event)
             task_path = works[0] / "research-task.json" if works else None
@@ -677,7 +686,7 @@ def handle(event: dict) -> int:
                 from shared.research_io import file_lock
                 with file_lock(researcher_work / ".research-task.lock"):
                     prior = read_json(researcher_work / "research-task-binding.json")
-                    if prior.get("active_agent_id"):
+                    if prior.get("active_agent_id") and str(inputs.get("resume") or "") != str(prior["active_agent_id"]):
                         print("This research task already has an active researcher; resume that child.", file=sys.stderr)
                         return 2
                     atomic_json(researcher_work / "research-task-binding.json", {
@@ -685,7 +694,7 @@ def handle(event: dict) -> int:
                         "session_id": event.get("session_id"),
                         "sha256": hashlib.sha256(task_path.read_bytes()).hexdigest(),
                         "scope": json.loads(task_path.read_text(encoding="utf-8"))["scope"],
-                        "active_agent_id": "starting",
+                        "active_agent_id": prior.get("active_agent_id") or "starting",
                     })
                 from shared.research_control import status
                 status(researcher_work)

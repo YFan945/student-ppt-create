@@ -330,9 +330,9 @@ function layoutText(input, box, policy) {
   }
   let y = (box.y || 0) + (margins[0] || 0) / 72;
   const rich = [];
-  // Paragraph spacing. pptxgenjs writes text-level `paraSpaceAfter` into every
-  // paragraph it emits — and each wrapped line is one of its paragraphs — so an
-  // explicit caller value applies per wrapped line (measure the same way).
+  // Predicted wraps are NOT paragraphs. Let the viewer wrap the editable
+  // object once; forcing our predicted edge as a paragraph makes a viewer's
+  // slightly wider fonts wrap it a second time and creates orphan lines.
   // Without an explicit value, multi-paragraph body/list blocks get a
   // 0.4× paragraph-size space after each real (explicit-\n) paragraph; display
   // roles stay untouched. The value rides on the LAST run of the paragraph's
@@ -346,7 +346,6 @@ function layoutText(input, box, policy) {
   const paraEnds = lines.map((entry, index) => {
     // A trailing empty line emits no run, hence no pptxgenjs paragraph/space.
     if (index === lines.length - 1 && !contentFlags[index] && !entry.explicit) return false;
-    if (hasExplicit) return true;
     if (entry.explicit) return true;
     return index === lines.length - 1;
   });
@@ -393,7 +392,7 @@ function layoutText(input, box, policy) {
           ...piece.options,
           fontFace: piece.fontFace,
           fontSize: piece.fontSize,
-          breakLine: position === pieces.length - 1 && index < lines.length - 1,
+          breakLine: entry.explicit && position === pieces.length - 1 && index < lines.length - 1,
           ...(annotateSpace && position === pieces.length - 1
             ? { paraSpaceAfter: trailingSpacePt }
             : {}),

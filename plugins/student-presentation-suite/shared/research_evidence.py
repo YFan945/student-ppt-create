@@ -203,13 +203,12 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
                  "message": "Legacy pack: source support has not been recorded."}]
     out: list[dict] = []
 
-    def fail(code: str, message: str, eid: str) -> None:
-        out.append({"severity": "major", "code": code, "message": message, "entry": eid})
+    def fail(code: str, message: str, eid: str, severity: str = "major") -> None:
+        out.append({"severity": severity, "code": code, "message": message, "entry": eid})
 
     entities = {str(e["id"]): (kind, e) for kind in ("findings", "data_points", "quotes")
                 for e in pack.get(kind, []) if isinstance(e, dict) and "id" in e}
     sources = {str(s["id"]): s for s in pack.get("sources", []) if isinstance(s, dict) and "id" in s}
-    covered: set[tuple[str, str]] = set()
     reviews: dict[str, list[dict]] = {}
     for binding in pack.get("evidence", []):
         eid, sid = str(binding.get("entity_id", "")), str(binding.get("source_id", ""))
@@ -227,7 +226,6 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
         context = str(binding.get("context_excerpt", ""))
         note = str(binding.get("support_note", "")).strip()
         if not passage.strip() and not note:
-            fail("evidence_support_missing", "Record a supporting passage or an explanation with a source locator.", eid)
             continue
         if kind == "quotes":
             if not passage or _normalized(str(entity.get("text", ""))) not in _normalized(passage):
@@ -235,10 +233,11 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
                 continue
         elif kind == "data_points" and passage:
             value = str(entity.get("source_value", entity.get("value", "")))
-            if not value_present(value, passage + "\n" + context):
-                fail("evidence_value_mismatch", "Value is absent from the passage; check the table or record source_value and transformation.", eid)
-                continue
-        covered.add((eid, sid))
+            if not value_present(value, passage + "\n" + context) and not entity.get("transformation"):
+                # A token search cannot distinguish a table cell, a unit in its
+                # header, a calculated value or a different subject. Keep the
+                # citation usable and ask for semantic inspection, not a binder.
+                fail("evidence_value_unverified", "Numeric extraction is inconclusive. Inspect the cited table/passage for subject, year, units and calculation; do not rewrite the pack or search again just to match tokens.", eid, "minor")
         if isinstance(binding.get("support_check"), dict):
             reviews.setdefault(eid, []).append(binding["support_check"])
     for eid, (kind, entity) in entities.items():
@@ -247,7 +246,7 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
         if (kind == "data_points" and entity.get("source_value") is not None
                 and not value_present(str(entity.get("value", "")), str(entity["source_value"]))
                 and not str(entity.get("transformation", "")).strip()):
-            fail("evidence_transformation_missing", "Explain rounding, calculation or unit conversion once in transformation.", eid)
+            fail("evidence_transformation_missing", "Check whether rounding or conversion explains the display value; record a brief explanation when it affects interpretation.", eid, "minor")
         checks = reviews.get(eid, []) + ([entity["support_check"]] if isinstance(entity.get("support_check"), dict) else [])
         for check in checks:
             if check.get("verdict") == "unsupported" or any(check.get(f) == "mismatch" for f in ("subject_scope", "time_scope", "causal_scope")):
@@ -255,8 +254,6 @@ def evidence_issues(pack: dict, fetch_report: Any, work_dir: Path | None) -> lis
             elif check.get("verdict") == "qualified" and not any(str(v).strip() for v in
                     (check.get("limitations", ""), entity.get("notes", ""), entity.get("limitations", ""))):
                 fail("evidence_support_review_limits_missing", "Keep one explanation of the qualification in limitations or notes.", eid)
-        refs = [entity.get("source_id")] if kind == "quotes" else entity.get("source_ids", [])
-        minimum = 2 if entity.get("verification") == "cross_check" or entity.get("confidence") == "high" else 1
-        if sum((eid, sid) in covered for sid in refs) < minimum:
-            fail("evidence_support_missing", f"{eid} needs {minimum} supporting source(s); extra citations need no duplicate audit forms.", eid)
+        # Source references are already checked by the pack validator. Ordinary
+        # research does not need a second entity/source table to repeat them.
     return out

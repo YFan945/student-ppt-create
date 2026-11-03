@@ -15,6 +15,7 @@ Only external evidence retrieval uses an isolated researcher; page production st
 ## researcher-resume
 
 任务中断、内容修复和定向补检均可继续。优先宿主 resume；旧研究员已结束时允许顺序重新派发，禁止同一任务并发重复执行。
+不能在原研究员仍写入时另派通用清理代理操作同一Pack；活动代理统一负责局部修复和交接。发现已有写入者时协调原任务，不反复监控mtime/哈希或启动第二套构建器。
 需要时主流程运行 research_control.py --resume --reason <本次具体目标>，不要求 recovered_from: crash 前缀或恢复次数。
 
 ```text

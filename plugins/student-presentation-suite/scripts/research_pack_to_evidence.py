@@ -476,7 +476,20 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     from shared.research_validation import validate_current
-    pack, verdict = validate_current(args.pack, validator=pack_validator)
+    used = None
+    if args.slide_spec:
+        if not args.slide_spec.is_file():
+            print(f"Slide Spec does not exist: {args.slide_spec}", file=sys.stderr)
+            return 2
+        draft = pack_validator.load(args.slide_spec)
+        refs = set(spec_source_refs(draft))
+        for slide in draft.get("slides", []):
+            for requirement in slide.get("semantic_requirements", {}).get("must_convey", []):
+                refs.update(requirement.get("evidence_refs", []))
+        raw = pack_validator.normalize(pack_validator.load(args.pack))
+        _, mapping = build_ledger(raw)
+        used = {key for key, value in mapping.items() if key in refs or value in refs} if refs else None
+    pack, verdict = validate_current(args.pack, validator=pack_validator, used_entities=used)
     if args.slide_spec and verdict.get("delivery_status") == "insufficient":
         gaps = verdict["core_gaps"]
         print(

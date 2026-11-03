@@ -127,10 +127,7 @@ try {
   }
   if (otherFixes.length > 0) {
     // eslint-disable-next-line no-console
-    console.warn(
-      `[normalize] ${otherFixes.length} 处 slide XML 结构修复（stray pPr 清理 / CJK <a:ea> 注入）：\n` +
-        `  ${otherFixes.join('\n  ')}`,
-    );
+    console.warn(`[normalize] ${otherFixes.length} 处常规 XML/字体修复已完成。`);
   }
   if (normalizedCharts.length > 0) {
     // eslint-disable-next-line no-console
@@ -170,6 +167,28 @@ try {
   for (const suffix of ['.registry-report.json', '.layout-report.json']) {
     if (fs.existsSync(`${generated}${suffix}`))
       fs.renameSync(`${generated}${suffix}`, `${finalOutput}${suffix}`);
+  }
+  const geometryPath = `${finalOutput}.registry-report.json`;
+  if (fs.existsSync(geometryPath)) {
+    const geometry = JSON.parse(fs.readFileSync(geometryPath, 'utf8'));
+    geometry.pptx = finalOutput;
+    geometry.pptx_sha256 = require('node:crypto')
+      .createHash('sha256')
+      .update(fs.readFileSync(finalOutput))
+      .digest('hex');
+    fs.writeFileSync(geometryPath, `${JSON.stringify(geometry, null, 2)}\n`);
+    const collisions = [...(geometry.errors || []), ...(geometry.warnings || [])].filter((item) =>
+      ['text_overlap', 'text_overflow', 'out_of_canvas', 'content_overflow_bottom'].includes(
+        item.code,
+      ),
+    );
+    if (collisions.length) {
+      const pages = [...new Set(collisions.map((item) => item.slide))].join(', ');
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[layout] ${collisions.length} 个需优先处理的排版问题，页 ${pages}。候选已保留；查看当前真实页面及 ${geometryPath}，不可按元素 warnings 为空宣称通过。`,
+      );
+    }
   }
 } finally {
   for (const temporary of [

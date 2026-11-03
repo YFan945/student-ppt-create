@@ -19,6 +19,7 @@
       ]
     },
     "evidence": {
+      "description": "Optional excerpts or reading notes for ordinary source-backed research; a duplicate per-entity binding table is not required. Explicit text-bound audits validate their recorded bindings.",
       "type": "array",
       "items": {
         "type": "object",
@@ -124,19 +125,7 @@
             "type": "string",
             "description": "How this source was read: browser, PDF parser, OCR, fetch-text, table, or user material."
           }
-        },
-        "anyOf": [
-          {
-            "required": [
-              "excerpt"
-            ]
-          },
-          {
-            "required": [
-              "support_note"
-            ]
-          }
-        ]
+        }
       }
     },
     "version": {

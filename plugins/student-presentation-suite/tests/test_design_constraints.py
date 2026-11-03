@@ -140,7 +140,9 @@ process.stdout.write(JSON.stringify(Object.fromEntries(['empty','ink','unmeasure
         result = subprocess.run(["node", "-e", code], cwd=ROOT, text=True, capture_output=True, check=True)
         reports = json.loads(result.stdout)
         self.assertTrue(reports["empty"]["ok"])
-        for kind in ("ink", "unmeasured", "invalid", "zero"):
+        self.assertFalse(reports["ink"]["ok"])
+        self.assertIn("text_overlap", [item["code"] for item in reports["ink"]["errors"]])
+        for kind in ("unmeasured", "invalid", "zero"):
             self.assertIn("text_overlap", [item["code"] for item in reports[kind]["warnings"]])
 
 

@@ -1642,7 +1642,7 @@ function describeApi(functionName) {
     },
     fitText: {
       description:
-        'Measure without drawing. Returns fits, requiredH, lines and lineGeometry. Expand the region or reorganize content on failure.',
+        'Measure without drawing. Returns fits, requiredH, lines and lineGeometry. requiredH and geometry are inches; fontSize and lineSpacing are points. Measure with the same width/font/bold/spacing used to draw. Expand the region or reorganize content on failure.',
       example:
         "H.fitText('科研信息汇总',{x:.6,y:1,w:4,h:1},H.rolePolicy(tokens,'chinese','body',{fontSize:22}));",
     },

@@ -494,6 +494,10 @@ class SlideElementRegistry {
           a: a.el.id,
           b: b.el.id,
           overlapRatio: ratio,
+          basis:
+            a.el.type === 'text' && b.el.type === 'text' && aInk && bInk
+              ? 'measured-text'
+              : 'predicted-box',
         };
         if (involvesText && ratio > 0.04) errors.push(issue);
         else if (ratio > 0.12) warnings.push(issue);
@@ -532,7 +536,7 @@ class SlideElementRegistry {
         'content_overflow_bottom',
       ]);
       for (let index = errors.length - 1; index >= 0; index--) {
-        if (predictive.has(errors[index].code)) {
+        if (predictive.has(errors[index].code) && errors[index].basis !== 'measured-text') {
           warnings.push({
             ...errors[index],
             severity: 'advisory',
@@ -711,8 +715,13 @@ class SlideElementRegistry {
 
   assertSafe() {
     const report = this.analyzeDeck();
-    if (!report.ok) {
-      const summary = report.errors.map((e) => formatPreflightError(e)).join('\n');
+    // Keep a renderable candidate even when measured text collides. The
+    // production report retains these errors and prevents complete delivery.
+    const blocking = this.options.designPreferencesAdvisory
+      ? report.errors.filter((e) => e.basis !== 'measured-text')
+      : report.errors;
+    if (blocking.length) {
+      const summary = blocking.map((e) => formatPreflightError(e)).join('\n');
       throw new Error(`Actual slide geometry preflight failed:\n${summary}`);
     }
     return report;
@@ -768,6 +777,7 @@ class SlideElementRegistry {
               'fontFace',
               'lineGeometry',
               'decorative',
+              'allowOverlap',
             ]
               .filter((key) => element[key] !== undefined)
               .map((key) => [key, element[key]]),

@@ -1,7 +1,7 @@
 ---
 name: sp-deck
 description: Use only for a clearly student-owned academic context when the user explicitly asks to create, edit, improve, or rebuild an editable PPT, PPTX, PowerPoint, or slide deck.
-version: 0.34.1
+version: 0.34.2
 ---
 
 # Student Presentation PPT
@@ -28,7 +28,7 @@ version: 0.34.1
 4. 按 `../../references/content-to-visual.md` 在已有规划中明确各页主要图片/表格/统计图/具体图解及来源或生图/占位方案，对照整套主体布局变化与统一视觉语言；小图标仅辅助，不反复填充同一纸张/勾选符号。用户允许的图片占位可显示具体生成提示词。阅读 references/main-session-production.md，再调用 `ppt_pipeline.py plan` 创建薄装配文件和逐页源码。Art Direction 可选；不创建校准、Packet、分片或评分文件。
 5. **主会话直接读写 pages/**。脚手架提供完整画布的页面函数及事实输入，不注入预设版式、背景、分区或字号表。直接使用 pptxgenjs 和按需选用的 helpers。素材和内容决定字号、布局和信息密度，讲稿不替代必要的上屏解释。先读 references/authoring-quickstart.md；其他接口规则只按当前操作查询，不提前研究字体/事实验证实现。参考件或丰富视觉任务按 ../../references/content-to-visual.md 检查主题对象、证据、关系和层级。
 6. 调用一次 `ppt_pipeline.py run`，工具批量构建、处理中文字体、检查精确事实和包结构并渲染。它返回当前页面图、具体问题和待自检的核心信息，不派发代理。
-7. **主会话查看所有当前渲染页并直接修复**。按 `references/main-session-production.md` 检查层级、重点、正文充实度、封面、模板及允许的占位图；总览看节奏，再完整看每页，并按目标观看条件检查缩放可读性。对照实际文本和简短讲稿核对核心信息及讲解路径。技术检查 `ok` 不代表视觉合格；自检不称为独立评审。修改后再次 `run`，按 changed_pages 检查全部受影响的最终完整页（共享文件影响所有引用页），公共样式或叙事变化时扩大检查范围；仅备注改变无需重看未变图片。读取已有结果使用 status，不能为查看摘要再次构建。
+7. **主会话查看所有当前渲染页并直接修复**。先处理返回的layout_attention（文字重叠、裁切和标签覆盖），不能过滤text_overlap后宣布布局稳定；只收到图片描述不算实际看图。按 `references/main-session-production.md` 检查层级、重点、正文充实度、封面、模板及允许的占位图；总览看节奏，再完整看每页，并按目标观看条件检查缩放可读性。对照实际文本和简短讲稿核对核心信息及讲解路径。技术检查 `ok` 不代表视觉合格；自检不称为独立评审。修改后再次 `run`，按 changed_pages 检查全部受影响的最终完整页；公共样式或叙事变化时扩大范围，仅备注改变无需重看未变图片。读取已有结果使用status，不能为查看摘要再次构建。
 8. 看图和内容自检完成后调用 `ppt_pipeline.py complete`，只导出已确认类型。它核验当前产物与检查/预览的绑定，生成的讲稿来自最终 PPTX 备注。导出路径由工具绑定，不在 complete 后手工搬文件；用 status 核验交付有效性。真实阻塞或未完成工作如实说明，保留当前产物继续修复。
 
 ## Commands

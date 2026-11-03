@@ -29,7 +29,7 @@ def content_checker():
 def validation_key(pptx: Path, spec: Path | None = None, original: Path | None = None,
                    assets: Path | None = None) -> str:
     """Cache only unchanged technical inputs; never use it as proof of viewing."""
-    inputs: list[Any] = [POLICY_VERSION, file_sha256(pptx), content_digest(ROOT / "package.json")]
+    inputs: list[Any] = [POLICY_VERSION, "layout-v1", file_sha256(pptx), content_digest(ROOT / "package.json")]
     inputs.extend((str(path.resolve()), content_digest(path) if path.is_file() else "missing") if path else None
                   for path in (spec, original, assets))
     if assets and assets.is_file():
@@ -43,6 +43,32 @@ def validation_key(pptx: Path, spec: Path | None = None, original: Path | None =
     return hashlib.sha256(json.dumps(inputs, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
+def geometry_report(pptx: Path) -> dict:
+    path = Path(str(pptx) + ".registry-report.json")
+    empty = {"performed": False, "ok": True, "errors": [], "warnings": [],
+             "limitation": "No current geometry report; actual page inspection is required."}
+    if not path.is_file():
+        return empty
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if data.get("pptx_sha256") != file_sha256(pptx):
+            empty["warnings"] = [{"code": "geometry_cache_stale", "action": "inspect current images"}]
+            return empty
+        errors, warnings = [], list(data.get("warnings", []))
+        predictive = {"text_overlap", "text_overflow", "out_of_canvas", "text_low_contrast", "content_overflow_bottom", "near_miss_alignment"}
+        for item in data.get("errors", []):
+            if item.get("code") in predictive and item.get("basis") != "measured-text":
+                warnings.append({**item, "severity": "advisory", "requiresRenderedInspection": True})
+            else:
+                errors.append(item)
+        return {"performed": True, "ok": not errors, "errors": errors, "warnings": warnings,
+                "error_count": len(errors), "warning_count": len(warnings), "rendered": data.get("rendered", {}),
+                "font_substitutions": data.get("font_substitutions", []), "report": {"path": str(path), "sha256": file_sha256(path)}}
+    except (OSError, ValueError, TypeError, AttributeError):
+        empty["warnings"] = [{"code": "geometry_report_unreadable", "action": "inspect actual pages"}]
+        return empty
+
+
 def validate_artifact(pptx: Path, spec_path: Path | None = None, *, original: Path | None = None,
                       assets_path: Path | None = None, cache: Path | None = None) -> dict[str, Any]:
     from shared.pptx_runtime import validate_pptx
@@ -54,7 +80,9 @@ def validate_artifact(pptx: Path, spec_path: Path | None = None, *, original: Pa
         try:
             saved = json.loads(cache.read_text(encoding="utf-8"))
             if saved.get("key") == key and isinstance(saved.get("report"), dict):
-                return {**saved["report"], "reused": True}
+                report = {**saved["report"], "reused": True, "geometry": geometry_report(pptx)}
+                report["ok"] = report.get("technical_ok", report["ok"]) and report["geometry"]["ok"]
+                return report
         except (OSError, ValueError, AttributeError):
             pass
     try:
@@ -63,6 +91,7 @@ def validate_artifact(pptx: Path, spec_path: Path | None = None, *, original: Pa
         package = {"ok": False, "issues": [{"code": "unreadable_package", "severity": "critical", "message": str(exc)}]}
     report: dict[str, Any] = {"ok": False, "policy": POLICY_VERSION, "key": key, "reused": False,
                               "package": package, "issues": [], "pptx_sha256": file_sha256(pptx)}
+    report["geometry"] = geometry_report(pptx)
     spec: dict[str, Any] = {}
     if spec_path:
         if not spec_path.is_file():
@@ -81,7 +110,8 @@ def validate_artifact(pptx: Path, spec_path: Path | None = None, *, original: Pa
                                    if spec.get("meta", {}).get("include_speaker_notes") and not notes.get(number, "").strip()]
         data = json.loads(assets_path.read_text(encoding="utf-8")) if assets_path and assets_path.is_file() else {"deck": pptx.stem, "assets": []}
         report["assets"] = validate_assets(data, assets_path.parent if assets_path else pptx.parent, texts)
-        report["ok"] = report["content"]["ok"] and not report["missing_notes"] and report["assets"]["ok"]
+        report["technical_ok"] = report["content"]["ok"] and not report["missing_notes"] and report["assets"]["ok"]
+        report["ok"] = report["technical_ok"] and report["geometry"]["ok"]
     report["scope"] = "package, explicit content/fact requirements, requested notes and declared assets; visual quality requires actual inspection"
     if cache:
         cache.parent.mkdir(parents=True, exist_ok=True)

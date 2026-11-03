@@ -24,6 +24,8 @@ Use the existing handoff plan for this page’s question/answer, visible support
 
 After the approved summary, create the 2.1 Slide Spec in the work directory and call `plan`. This valid single-page shape shows normal fields; replace the example content, facts, number of pages and speaking times from the task. Use the current validator for errors rather than querying the full schema repeatedly.
 
+Pending research does not prevent plan/run/preview: use the formal scaffold and actual tokens, then close adopted evidence before complete. Do not write a second probe generator while waiting for the researcher.
+
 ```json
 {
   "schema_version": "2.1", "research_scope": "C",
@@ -65,6 +67,8 @@ The coordinates, size and synthetic wording above illustrate the API, not a page
 Use size, weight, color and grouping to make a visible speaking path. Choose typography from the viewing conditions and actual renders. Line height uses real font metrics; explicit line/paragraph spacing wins. Font/size counts are reported as context, not style violations; optional legacy threshold warnings require `typographyHeuristics: true`.
 
 A predicted overflow needs comparison with the actual render: improve wording/grouping or geometry without dropping required support. `H.fitText(value, box, H.rolePolicy(tokens, 'chinese', role, options))` returns `fits`, `requiredH`, `lines` and `lineGeometry` without drawing. Ordinary Chinese quotation marks use the Chinese family; explicit run font choices remain binding. Never claim PowerPoint behavior from LibreOffice alone.
+
+`requiredH` is inches; never divide it by 72. Measure with the same width, font, bold and line/paragraph spacing used to draw. Predicted wraps remain native wrapping, not forced paragraphs. Reserve the actual height of a short source citation before allocating body space; detailed source passages and calculations belong in notes/references, not a long paragraph laid over the bottom of the page.
 
 Mixed-language text stays one object by default: CJK and Latin/digit runs render as a single rich-text object with per-run fonts, which is also how you do inline emphasis (bold/color on key numbers and terms within one line). The legacy anti-rewrap split into separately positioned fragments is opt-in via `positionMixedText: true` (options or box level); readback re-joins such fragments by their shared `sps-line:` name. Use the split only for measurement-critical single-line chips, never for wrapped body text — fragment baselines and line pitch follow the font model, not the renderer. A `fact_bindings` metric may use one object or unambiguous nearby label/value objects in the same container. The reader associates mutual nearest neighbours and two-cell table rows; it never concatenates the whole slide. Ambiguous regions need clearer association or author review. Natural positive connectors such as 为/达到 are accepted; negated/comparative claims are not treated as exact facts.
 

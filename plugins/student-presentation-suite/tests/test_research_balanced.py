@@ -101,8 +101,10 @@ class BalancedEvidenceTests(unittest.TestCase):
         self.pack["data_points"][0]["verification"] = "source"
         self.assertTrue(self.verdict()["ok"])
 
-    def test_source_mode_still_rejects_fabricated_numbers(self):
+    def test_source_mode_does_not_mistake_extraction_for_semantic_verification(self):
         self.pack["data_points"][0]["value"] = "83%"
+        self.assertIn("evidence_value_unverified", [p["code"] for p in self.verdict()["problems"]])
+        self.pack["data_points"][0]["support_check"] = {"verdict": "unsupported"}
         self.assertFalse(self.verdict()["ok"])
 
     def test_optional_gap_is_partial_and_core_gap_is_insufficient(self):

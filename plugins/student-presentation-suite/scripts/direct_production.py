@@ -124,7 +124,8 @@ def publication_health(published: dict[str, Any]) -> dict[str, Any]:
 def status(args: argparse.Namespace) -> dict[str, Any]:
     """Read stored checks and live delivery bindings without running production."""
     manifest = load(args.work_dir / "build-manifest.json")
-    result = {**manifest, "stored_state": manifest.get("state"), "production_performed": False}
+    result = {**manifest, "stored_state": manifest.get("state"), "production_performed": False,
+              "draft": (manifest.get("research") or {}).get("status") == "pending"}
     if manifest.get("last_error"):
         result.update(ok=False, action="inspect_latest_failure", latest_failure={
             "attempt": manifest.get("attempts"), "error": manifest["last_error"],
@@ -206,10 +207,18 @@ def check_summary(report: dict[str, Any]) -> dict[str, Any]:
             "package_error_count": (report.get("package") or {}).get("error_count"),
             "geometry_errors": (report.get("geometry") or {}).get("errors", []),
             "geometry_warnings": (report.get("geometry") or {}).get("warnings", []),
+            "layout_attention": layout_attention(report.get("geometry") or {}),
             "asset_errors": (report.get("assets") or {}).get("errors", []),
             "expression_findings": (report.get("expression_review") or {}).get("findings", []),
             "student_design": report.get("student_design_review"),
             "missing_notes": report.get("missing_notes")}
+
+
+def layout_attention(geometry: dict) -> dict:
+    findings = [item for item in geometry.get("errors", []) + geometry.get("warnings", [])
+                if item.get("code") in {"text_overlap", "text_overflow", "out_of_canvas", "content_overflow_bottom", "rendered_text_overlap"}]
+    return {"count": len(findings), "pages": sorted({item["slide"] for item in findings if item.get("slide")}),
+            "findings": findings, "action": "Inspect these actual pages before aesthetic suggestions; never filter out text_overlap." if findings else "No detected layout collisions; actual page inspection is still required."}
 
 
 def work_directory(path: Path) -> Path:
@@ -284,7 +293,13 @@ def execute(command: list[str], cwd: Path) -> str:
     proc = subprocess.run(command, cwd=cwd, env=environment, capture_output=True,
                           text=True, encoding="utf-8", errors="replace", timeout=360)
     if proc.returncode:
-        raise ProductionError((proc.stderr or proc.stdout or f"exit {proc.returncode}")[-4000:])
+        message = proc.stderr or proc.stdout or f"exit {proc.returncode}"
+        if len(message) > 4000:
+            path = cwd / "_tmp/tool-error.log"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(message, encoding="utf-8")
+            message = message[:2800] + f"\n... full diagnostic: {path}\n" + message[-900:]
+        raise ProductionError(message)
     return proc.stdout
 
 
@@ -387,29 +402,25 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     # Research evidence remains a separate skill. Compile existing evidence in
     # this command rather than asking the model to hand-copy facts or references.
     pack = args.research_pack or work / "research-pack.json"
-    if args.research_pack is not None and not pack.is_file():
-        message = f"Research Pack does not exist: {pack}"
-        if not pack.is_absolute():
-            message += (f" (relative paths resolve against the tool's own working directory"
-                        f" {Path.cwd()}, not the calling shell's; pass an absolute path)")
-        raise ProductionError(message)
     scope = spec.get("research_scope", "C")
     external = any(item.get("source_type") not in {"user-file", "experiment", "interview", "survey"}
                    for item in spec.get("evidence_ledger", []))
     research = None
+    planning_spec = spec_path
     if scope in {"A", "B", "D"} or external or args.research_pack or pack.is_file():
-        validation = work / "research-pack-validation.json"
-        if not pack.is_file():
-            raise ProductionError("research-backed work needs research-pack.json")
-        research = research_receipt(work, pack, allow_missing=True)
-        compiled = work / "slide-spec-compiled.json"
-        execute([sys.executable, str(ROOT / "scripts" / "research_pack_to_evidence.py"),
-                 str(pack), "--validation-report", str(validation), "--slide-spec", str(spec_path),
-                 "--compiled-slide-spec", str(compiled), "--output", str(work / "evidence-map.json")], work)
-        spec_path = compiled
-        spec, errors, _ = validate_slide_spec(spec_path)
-        if errors:
-            raise ProductionError("compiled Slide Spec is invalid: " + json.dumps(errors, ensure_ascii=False))
+        research = {"pack_path": str(pack.resolve()), "status": "pending"}
+        if pack.is_file():
+            draft_spec = spec
+            try:
+                spec_path = compile_research(work, pack, planning_spec)
+                spec, errors, _ = validate_slide_spec(spec_path)
+                if errors:
+                    raise ProductionError("compiled Slide Spec is invalid: " + json.dumps(errors, ensure_ascii=False))
+                research["status"] = "ready"
+            except ProductionError as exc:
+                research["diagnostic"] = str(exc)
+                spec_path = planning_spec
+                spec = draft_spec
     meta = spec.get("meta") or {}
     from shared.bundled_templates import catalog_path, metadata, suggestions
     from shared.student_design_review import planning_review
@@ -451,18 +462,42 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
         "design_freedom": meta.get("design_freedom", "auto"),
         "attempts": 0,
         "research": research,
+        "planning_spec": bind(planning_spec),
         "scaffold": scaffold, "build": {}, "render": {}, "check": {},
         "template_sources": templates,
         "semantic_verification": "main-session-self-check",
     }
     save(work, manifest, "planned")
     return {"ok": True, "action": "author_pages", "work_dir": str(work), "assets": measured_assets(work),
+            "research": research, "draft": bool(research and research["status"] != "ready"),
             "reference_library": suggestions(spec),
             "student_design": planning_review(spec), "template_sources": templates,
             "delivery_dir": str(output), "authoring_guide": str(ROOT / "skills/sp-deck/references/authoring-quickstart.md"),
             "pages": [str(work / "pages" / name) for name in scaffold.get("pages", [])],
             "source_directory": str(work / "ooxml") if mode == "edit_ooxml" else None,
             "next_command": f'python "{HERE / "ppt_pipeline.py"}" run --work-dir "{work}"'}
+
+
+def compile_research(work: Path, pack: Path, spec: Path) -> Path:
+    if not pack.is_file():
+        raise ProductionError("Research Pack is pending; continue layout/preview, then close the adopted facts before delivery.")
+    compiled = work / "slide-spec-compiled.json"
+    execute([sys.executable, str(ROOT / "scripts/research_pack_to_evidence.py"), str(pack),
+             "--validation-report", str(work / "research-pack-validation.json"), "--slide-spec", str(spec),
+             "--compiled-slide-spec", str(compiled), "--output", str(work / "evidence-map.json")], work)
+    return compiled
+
+
+def refresh_research(work: Path, manifest: dict) -> None:
+    research = manifest.get("research")
+    if not research:
+        return
+    pack = Path(research.get("pack_path") or (research.get("artifact") or {}).get("path") or work / "research-pack.json")
+    planning = manifest.get("planning_spec") or manifest["slide_spec"]
+    compiled = compile_research(work, pack, Path(planning["path"]))
+    manifest["slide_spec"] = bind(compiled)
+    research.update(status="ready", pack_path=str(pack))
+    research.pop("diagnostic", None)
 
 
 def actual_copy(work: Path, pptx: Path, spec: dict[str, Any]) -> None:
@@ -524,22 +559,8 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
     if assets_path.is_file():
         assets["manifest"] = bind(assets_path)
         assets["file_bindings"] = [bind(Path(path)) for path in assets["files"]]
-    geometry_path = Path(str(pptx) + ".registry-report.json")
-    geometry = {"performed": False, "ok": True, "errors": [], "warnings": [],
-                "limitation": "No authoring geometry report; inspect rendered pages for layout defects."}
-    if geometry_path.is_file():
-        authored_geometry = load(geometry_path)
-        if authored_geometry.get("pptx_sha256") == file_sha256(pptx):
-            geometry = {key: authored_geometry.get(key, [] if key in {"errors", "warnings", "font_substitutions"} else 0)
-                        for key in ("ok", "errors", "warnings", "error_count", "warning_count", "font_substitutions")}
-            geometry.update(performed=True, report=bind(geometry_path))
-            predictive = {"text_overlap", "text_overflow", "out_of_canvas", "text_low_contrast", "content_overflow_bottom", "near_miss_alignment"}
-            geometry["warnings"].extend({**item, "severity": "advisory", "requiresRenderedInspection": True}
-                                         for item in geometry["errors"] if item.get("code") in predictive)
-            geometry["errors"] = [item for item in geometry["errors"] if item.get("code") not in predictive]
-            geometry.update(ok=not geometry["errors"], error_count=len(geometry["errors"]), warning_count=len(geometry["warnings"]))
-        else:
-            geometry["warnings"].append({"code": "geometry_cache_stale", "action": "inspect current renders; stale predictions are not used"})
+    from shared.artifact_validation import geometry_report
+    geometry = core.get("geometry") or geometry_report(pptx)
     report = {
         "ok": package["ok"] and content_report["ok"] and not missing_notes and geometry["ok"] and assets["ok"],
         "validation_reused": core.get("reused", False), "validation_policy": core["policy"],
@@ -571,6 +592,14 @@ def check_artifact(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str
 
 def render(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str, Any]:
     from shared.pptx_runtime.render import render_pptx
+    from shared.rendered_layout import inspect_pdf
+
+    intentional = {}
+    geometry = Path(str(pptx) + ".registry-report.json")
+    if geometry.is_file():
+        for slide in load(geometry).get("slides", []):
+            intentional[str(slide["slide"])] = [[e["x"] * 72, e["y"] * 72, (e["x"] + e["w"]) * 72, (e["y"] + e["h"]) * 72]
+                for e in slide.get("elements", []) if e.get("allowOverlap") and e.get("type") == "text"]
 
     previous = manifest.get("render") or {}
     visual = visual_digest(pptx)
@@ -583,6 +612,9 @@ def render(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str, Any]:
         result = {**previous, "pptx_sha256": file_sha256(pptx), "visual_sha256": visual}
         if "contact-sheet" in selected and not current(result.get("contact_sheet")):
             result["contact_sheet"] = bind(make_contact_sheet(work, [Path(page["path"]) for page in result["pages"]]))
+        if ("layout" not in result or result.get("intentional_overlap") != intentional) and current(result.get("pdf")):
+            result["layout"] = inspect_pdf(Path(result["pdf"]["path"]), intentional)
+        result["intentional_overlap"] = intentional
         return result
     # A fresh directory avoids mixing old pages with the current deck.
     with tempfile.TemporaryDirectory(prefix="render-", dir=work) as directory:
@@ -603,7 +635,22 @@ def render(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str, Any]:
     contact = make_contact_sheet(work, final_pages)
     return {"pptx_sha256": file_sha256(pptx), "visual_sha256": visual, "settings": RENDER_SETTINGS,
             "pages": [bind(page) for page in final_pages],
-            "pdf": bind(final_pdf), "contact_sheet": bind(contact)}
+            "pdf": bind(final_pdf), "contact_sheet": bind(contact), "layout": inspect_pdf(final_pdf, intentional), "intentional_overlap": intentional}
+
+
+def apply_rendered_layout(report: dict, rendered: dict) -> None:
+    layout = rendered.get("layout") or {}
+    geometry = report.setdefault("geometry", {"errors": [], "warnings": []})
+    geometry["errors"] = [item for item in geometry.get("errors", []) if item.get("code") != "rendered_text_overlap"] + layout.get("errors", [])
+    geometry.update(ok=not geometry["errors"], error_count=len(geometry["errors"]), rendered=layout)
+    report["ok"] = report["ok"] and geometry["ok"]
+    path = Path(str(report.get("pptx", {}).get("path", "")) + ".registry-report.json")
+    if path.is_file():
+        data = load(path)
+        data.update(errors=geometry["errors"], error_count=geometry["error_count"], ok=geometry["ok"], rendered=layout)
+        if data != load(path):
+            write(path, data)
+        geometry["report"] = bind(path)
 
 
 def make_contact_sheet(work: Path, pages: list[Path]) -> Path:
@@ -713,11 +760,14 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             manifest["render"] = render(work, manifest, pptx)
             if len(manifest["render"]["pages"]) != checked["content"]["actual_slide_count"]:
                 raise ProductionError("rendered page count differs from the PPTX")
+            apply_rendered_layout(checked, manifest["render"])
+            manifest["check"]["ok"] = checked["ok"]
         for key in ("last_error", "last_build_report", "last_failed_stage"):
             manifest.pop(key, None)
         changed = [index for index, page in enumerate(manifest.get("render", {}).get("pages", []), 1)
                    if index > len(previous_pages) or page["sha256"] != previous_pages[index - 1]["sha256"]]
-        tasks = inspection_tasks(changed, initial=not previous_pages and not no_render)
+        attention = layout_attention(checked["geometry"])
+        tasks = ([f"Resolve layout collisions on pages {attention['pages']} first; open actual full-size images, not image descriptions."] if attention["count"] else []) + inspection_tasks(changed, initial=not previous_pages and not no_render)
         checked["review_required"] = tasks
         write(work / "production-check.json", checked)
         manifest["check"]["report"] = bind(work / "production-check.json")
@@ -730,6 +780,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
         if no_render and checked["ok"]:
             action = "inspect_check_report"
         return {"ok": checked["ok"], "action": action, "build_reused": bool(reused),
+                "draft": (manifest.get("research") or {}).get("status") == "pending", "research": manifest.get("research"),
                 "previews": manifest.get("render", {}), "check_report": manifest["check"]["report"],
                 "technical_checks": checked["check_scope"], "geometry": checked["geometry"],
                 "review_required": tasks, "asset_placeholders": checked["assets"]["placeholders"],
@@ -849,6 +900,7 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
     if not pptx_binding or not Path(pptx_binding["path"]).is_file():
         raise ProductionError("build a PPTX before delivery")
     pptx = Path(pptx_binding["path"])
+    refresh_research(work, manifest)
     manifest["build"]["pptx"] = bind(pptx)
     # Re-read the deliverable instead of trusting or requiring old report hashes.
     report = check_artifact(work, manifest, pptx)
@@ -863,6 +915,12 @@ def complete(args: argparse.Namespace) -> dict[str, Any]:
     # contact-sheet caches do not require rebuilding an otherwise valid deck.
     rendered = render(work, manifest, pptx)
     manifest["render"] = rendered
+    apply_rendered_layout(report, rendered)
+    if not report["ok"]:
+        write(work / "production-check.json", report)
+        manifest["check"].update(ok=False, report=bind(work / "production-check.json"))
+        save(work, manifest, "qa")
+        raise ProductionError("Rendered text overlaps; repair the affected pages in production-check.json before delivery.")
     if len(rendered.get("pages", [])) != report["content"]["actual_slide_count"]:
         raise ProductionError("current PPTX needs one rendered preview per slide")
     spec = load_slide_spec(Path(manifest["slide_spec"]["path"]))

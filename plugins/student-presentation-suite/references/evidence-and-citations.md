@@ -36,7 +36,7 @@ Rules:
 
 1. Research Pack is the sole entry point for external facts. Numbers, factual claims and direct quotations must trace to a `finding`, `data_point`, or `quote`, then to source(s).
 2. `confidence: low` or `conflict: true` must survive into the ledger limitation and into qualified/range wording on the slide.
-3. Source tier letters (S/A/B/C/D) are **attribution metadata only** — they shape how the footer cites a source, never whether a claim passes, never the confidence of findings/data_points (there is no tier→confidence display mapping either; see `research-workflow.md` §四), and never a reason to keep searching. The gates are traceability (every source has `url`/`locator`; user files record their locator) and independent corroboration (`high` requires ≥2 independent origins, judged by the original report/data set, not domain alone).
+3. Source tiers and confidence are metadata, not source-count quotas or reasons to keep searching. Trace adopted facts to a readable source and its locator. Independent corroboration is required only for explicit `cross_check`, judged by original reports/data sets rather than domain count; see `research-workflow.md`.
 4. Opinion sources (community / personal-blog / vendor-blog) do not block a claim (owner ruling 2026-09-30): a number resting solely on them passes with a minor advisory (`opinion_only_support`), and the slide must attribute it as a community/vendor view rather than an established fact.
 5. Blocked/paywalled/missing retrieval remains in `unresolved`; affected slide wording must be downgraded rather than silently treated as verified.
 6. `E<n>` ids are **compiler-owned**, never model-authored:
@@ -79,11 +79,11 @@ Draft Slide Spec with F/D/Q evidence_refs
 Compiled Slide Spec + evidence-map.json
    ↓ validate_slide_spec.py
 Slide Spec validation report
-   ↓ slide_spec_guard.py freeze
-Frozen plan + bound research provenance
+   ↓ current production inputs
+Editable plan + adopted source provenance
 ```
 
-Do not hand-copy the generated ledger into the spec. If the plan changes after freeze, rebuild/revalidate the affected research chain and use `revise --reason`; a research-backed revision may not silently drop its research artifacts.
+Do not hand-copy the generated ledger. Planning and previews can proceed while research is pending. Before complete delivery, the compiler refreshes adopted evidence and requested core gaps; unused candidate evidence does not block adopted facts. Revise the current plan in place; no freeze/revise command or receipt chain is required.
 
 ## Evidence closure
 
@@ -118,7 +118,7 @@ resolves each used entry's `source_ids` to those records. A cited id the ledger 
 42 used entries no matter what the pages said, which pinned QA above zero and made `complete`
 unreachable by construction — the band already listed all 25 source titles verbatim.
 
-`pptx_quality_gate_v071.py` performs deterministic closure checks on ledger usage and final references.
+Current validation follows `validation-policy.md`; legacy quality modules are explicit diagnostics, not an additional production gate.
 
 ## Gap Detection
 

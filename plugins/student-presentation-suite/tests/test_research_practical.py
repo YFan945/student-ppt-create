@@ -63,16 +63,18 @@ class PracticalResearchTests(unittest.TestCase):
         self.pack["evidence"][0]["support_note"] = "已读取第12页表3，煤电对应列为820，单位见表头。"
         self.assert_valid()
 
-    def test_wrong_numeric_value_is_still_rejected(self):
+    def test_unmatched_numeric_extraction_requires_semantic_inspection(self):
         self.pack["data_points"][0]["value"] = "1820"
-        self.assertFalse(self.report()["ok"])
+        report = self.report()
+        self.assertTrue(report["ok"])
+        self.assertIn("evidence_value_unverified", [p["code"] for p in report["problems"]])
 
     def test_explicit_rounding_records_original_value(self):
         self.pack["data_points"][0].update(value="94%", source_value="94.3%", transformation="按整数百分比四舍五入展示")
         self.pack["evidence"][0]["excerpt"] = "采用率为94.3%"
         self.assert_valid()
         self.pack["data_points"][0].pop("transformation")
-        self.assertFalse(self.report()["ok"])
+        self.assertIn("evidence_transformation_missing", [p["code"] for p in self.report()["problems"]])
 
     def test_review_is_optional_and_qualification_is_recorded_once(self):
         self.pack["data_points"][0]["support_check"] = {"verdict": "qualified", "limitations": "仅限报告所列样本"}
@@ -88,6 +90,7 @@ class PracticalResearchTests(unittest.TestCase):
         self.assert_valid()
         for source in self.pack["sources"]:
             source["origin_id"] = "same-report"
+        self.pack["data_points"][0]["verification"] = "cross_check"
         self.assertFalse(self.report()["ok"])
 
     def test_unused_sources_and_claim_count_do_not_create_cleanup_work(self):
@@ -116,7 +119,7 @@ class PracticalResearchTests(unittest.TestCase):
 
     def test_duplicate_document_cannot_claim_independent_support(self):
         self.pack["sources"].append({**self.pack["sources"][0], "id": "S02"})
-        self.pack["data_points"][0].update(source_ids=["S01", "S02"], confidence="high")
+        self.pack["data_points"][0].update(source_ids=["S01", "S02"], confidence="high", verification="cross_check")
         self.pack["evidence"].append({"entity_id": "D01", "source_id": "S02", "excerpt": "820"})
         self.assertFalse(self.report()["ok"])
 

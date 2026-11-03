@@ -151,9 +151,11 @@ class ResearchPackContractTests(unittest.TestCase):
         self.assertNotIn("opinion_only_support", codes)
         self.assertNotIn("tier_d_cannot_support_claim", codes)
 
-    def test_high_confidence_number_needs_cross_validation(self) -> None:
+    def test_confidence_is_not_a_source_count_quota(self) -> None:
         pack = base_pack()
         pack["data_points"][0]["source_ids"] = ["S01"]
+        self.assertNotIn("high_confidence_needs_cross_check", self.codes(pack, "major"))
+        pack["data_points"][0]["verification"] = "cross_check"
         self.assertIn("high_confidence_needs_cross_check", self.codes(pack, "major"))
 
     def test_a_flagged_conflict_must_lower_confidence_and_be_recorded(self) -> None:
@@ -209,6 +211,7 @@ class ResearchPackContractTests(unittest.TestCase):
 
     def test_two_rows_from_one_origin_are_not_two_sources(self) -> None:
         pack = base_pack()
+        pack["data_points"][0]["verification"] = "cross_check"
         pack["sources"][1]["independence_group"] = pack["sources"][0]["independence_group"]
         self.assertIn("sources_are_not_independent", self.codes(pack, "major"))
 

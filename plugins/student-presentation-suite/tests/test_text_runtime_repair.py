@@ -538,7 +538,7 @@ class ParagraphEndAnnotationTests(unittest.TestCase):
             paragraphs = re.findall(r"<a:p>.*?</a:p>", xml, re.S)
             with_spcaft = [p for p in paragraphs if "<a:spcAft>" in p]
             without_spcaft = [p for p in paragraphs if "<a:spcAft>" not in p]
-            self.assertGreater(len(paragraphs), 3)
+            self.assertEqual(2, len(paragraphs), "Predicted wraps must not become extra OOXML paragraphs")
             self.assertEqual(2, len(with_spcaft))
             self.assertEqual(len(paragraphs) - 2, len(without_spcaft))
             self.assertEqual(

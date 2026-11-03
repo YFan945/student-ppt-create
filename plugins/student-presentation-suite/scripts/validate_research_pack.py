@@ -392,18 +392,19 @@ def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
             conflict_targets.add(str(ref))
 
     confidence_entries = items(pack, "data_points")
-    if pack.get("evidence_contract") == "source-backed-v1":
-        confidence_entries += [e for e in items(pack, "findings") if e.get("confidence") == "high"]
+    confidence_entries += [e for e in items(pack, "findings")
+                           if e.get("confidence") == "high" or e.get("verification") == "cross_check"]
     for entry in confidence_entries:
         refs = [str(ref) for ref in entry.get("source_ids") or []]
         flagged = bool(entry.get("conflict"))
-        if entry.get("confidence") == "high":
+        if entry.get("verification") == "cross_check" or (
+                pack.get("evidence_contract") == "text-bound-v1" and entry.get("confidence") == "high"):
             if len(refs) < 2:
                 out.append(
                     issue(
                         "major",
                         "high_confidence_needs_cross_check",
-                        f"data_point {entry.get('id')} claims high confidence from a single source",
+                        f"{entry.get('id')} explicitly requests independent cross-checking but cites one source",
                         entry=entry.get("id"),
                     )
                 )
@@ -414,7 +415,7 @@ def cross_validation_issues(pack: dict[str, Any]) -> list[dict[str, Any]]:
                         issue(
                             "major",
                             "sources_are_not_independent",
-                            f"data_point {entry.get('id')} claims high confidence but its {len(refs)} sources "
+                            f"{entry.get('id')} requests cross-checking but its {len(refs)} sources "
                             f"collapse to one independent origin {sorted(distinct)}; cite independent original evidence",
                             entry=entry.get("id"),
                         )

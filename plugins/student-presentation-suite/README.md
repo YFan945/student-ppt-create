@@ -15,6 +15,8 @@ Automatic monetary, token, request-count, research-time and repair-round budgets
 
 Research accepts browser reading, PDF/OCR and table extraction without mandatory text hashes, fetch receipts or repeated review forms. Tools refresh validation on handoff, preserve source support and allow sequential gap recovery. Strict text-bound auditing is opt-in; see [research workflow](references/research-workflow.md).
 
+Confidence is not a source-count quota, and ordinary source references need no duplicate evidence-binding table. Pending research permits formal planning and previews; adopted evidence is refreshed before delivery. Measured and rendered text collisions take priority over aesthetic advice, remain visible in the existing report and must be repaired. See [validation policy](references/validation-policy.md).
+
 ## Four skills
 
 | Skill | Outcome |
