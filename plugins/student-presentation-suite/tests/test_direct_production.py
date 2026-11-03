@@ -109,6 +109,14 @@ module.exports.notes={json.dumps(notes)};
         self.assertTrue(source["file"]["path"].endswith(".json.gz"))
         self.assertIn("recipe award-blue", source["recipe_command"])
         self.assertTrue(source["reference_assets"])
+        page_source = Path(result["pages"][0]).read_text(encoding="utf-8")
+        self.assertIn('"design_references"', page_source)
+        selected = self.work / "inputs/template-references/award-blue-7.json"
+        recipe = json.loads(selected.read_text(encoding="utf-8"))
+        self.assertEqual(recipe["slides"][0]["slide"], 7)
+        self.assertTrue(recipe["slides"][0]["objects"])
+        self.assertTrue(recipe["inherited_components"])
+        self.assertIn(str(selected).replace("\\", "\\\\"), page_source)
         production.authorized(self.work)
 
     def test_final_outline_uses_actual_title_and_visible_support_without_old_claim(self):

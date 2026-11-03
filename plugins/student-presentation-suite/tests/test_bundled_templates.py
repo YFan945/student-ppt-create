@@ -24,6 +24,24 @@ from build_template_references import extract  # noqa: E402
 
 
 class BundledTemplateTests(unittest.TestCase):
+    def test_suggestions_match_page_content_without_optional_visual_type(self):
+        def entry(key, name, count):
+            return {"id": key, "name": name, "path": f"builtin:{key}", "slide_count": count,
+                    "slides": [{"slide": n, "text": "能源成本统计" if key == "energy" else "普通数据",
+                                "roles": ["data"], "pictures": 0, "tables": int(n > 1)}
+                               for n in range(1, count + 1)]}
+        catalog = {"templates": [entry("generic", "A", 40), entry("energy", "Z", 4)]}
+        spec = {"meta": {"topic": "能源"}, "slides": [
+            {"id": 1, "kind": "cover", "title": "能源"},
+            {"id": 2, "title": "成本统计"}, {"id": 3, "title": "能源数据"}]}
+        with patch.object(bundled, "load_catalog", return_value=catalog):
+            result = bundled.suggestions(spec)
+        cover, first, second = result["by_slide"]
+        self.assertTrue(all(c["page_kind"] == "cover" for c in cover["candidates"]))
+        self.assertEqual(first["candidates"][0]["source_id"], "energy")
+        self.assertTrue(all(c["slide"] > 1 for c in first["candidates"] + second["candidates"]))
+        self.assertGreater(len({c["slide"] for c in result["candidates"] if c["source_id"] == "energy"}), 1)
+
     def fixture(self, root: Path) -> None:
         (root / "layouts").mkdir(parents=True)
         (root / "previews").mkdir()

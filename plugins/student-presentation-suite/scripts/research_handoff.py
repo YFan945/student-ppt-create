@@ -30,6 +30,8 @@ def inspect(work: Path) -> dict:
         except (OSError, ValueError):
             receipt = {}
         return {"ok": not errors, "delivery_status": verdict["delivery_status"],
+                "content_status": verdict.get("content_status"), "next_action": verdict.get("next_action"),
+                "plugin_version": json.loads((ROOT / "package.json").read_text(encoding="utf-8"))["version"],
                 "pack": str(pack_path), "validation": str(validation_path),
                 "core_gaps": verdict["core_gaps"], "pending_claims": verdict["pending_claims"],
                 "counts": verdict["inventory"], "retrieval": receipt.get("retrieval", {}),

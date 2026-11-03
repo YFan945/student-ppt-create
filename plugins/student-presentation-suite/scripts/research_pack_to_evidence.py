@@ -490,7 +490,7 @@ def main(argv: list[str] | None = None) -> int:
         _, mapping = build_ledger(raw)
         used = {key for key, value in mapping.items() if key in refs or value in refs} if refs else None
     pack, verdict = validate_current(args.pack, validator=pack_validator, used_entities=used)
-    if args.slide_spec and verdict.get("delivery_status") == "insufficient":
+    if args.slide_spec and verdict.get("core_gaps"):
         gaps = verdict["core_gaps"]
         print(
             "research_pack_to_evidence: Research Pack delivery_status=insufficient — "

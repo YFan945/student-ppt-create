@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT))
 
 from validate_research_task import validate_task  # noqa: E402
 
-from shared.research_control import evidence_key, read, status  # noqa: E402
+from shared.research_control import evidence_key, read, requirements_key, status  # noqa: E402
 from shared.research_io import atomic_json, file_lock  # noqa: E402
 
 REBIND_MIN_REASON = 1
@@ -32,7 +32,8 @@ def resume(work: Path, reason: str) -> None:
         now = time.time()
         state.setdefault("resumes", []).append({"at": now, "reason": reason.strip(), "previous_reason": state.get("reason")})
         state.update(started_at=now, last_progress_at=now, reason="", state="active",
-                     task_sha256=hashlib.sha256(task_path.read_bytes()).hexdigest())
+                     task_sha256=hashlib.sha256(task_path.read_bytes()).hexdigest(),
+                     requirements_key=requirements_key(read(task_path)))
         state.setdefault("seen", [])
         state.pop("retrieval_started_at", None)
         validation = work / "research-pack-validation.json"

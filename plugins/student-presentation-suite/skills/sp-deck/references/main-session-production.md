@@ -1,5 +1,13 @@
 # Main-session production
 
+Choose requested built-in cover/body references before implementing pages. `plan`
+returns per-page candidates and resolves adopted template_refs into the page's
+INPUT.design_references (preview and selected object-layout recipe). Adapt their
+structure and replace example content; do not write the whole deck before plan.
+During normal changed-page inspection, use the existing report's
+student_design_review.reference_comparisons to view reference/final pairs. These
+are inspection aids, not automatic aesthetic approval or a new review stage.
+
 主会话直接读取素材、编写页面、查看当前预览并修复。Python 负责执行工具，不派发模型或评判审美。
 
 普通技术校验、变化范围与停止条件由 [validation-policy.md](../../../references/validation-policy.md) 所有；不串联多份评分和回执。

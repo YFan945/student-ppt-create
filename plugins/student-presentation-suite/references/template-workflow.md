@@ -17,6 +17,15 @@ task's actual explanations, evidence and images. Combine useful pages across
 sources. An unsuitable candidate may be discarded; no forced layout or extra
 approval stage is added.
 
+If the user asks to use the built-in library, that is an adaptation requirement,
+not permission to inspect a directory and then discard all references. Choose
+usable cover and body prototypes before writing page modules. A candidate may
+be replaced by a better library page; abandoning the requested template use
+requires a concrete content limitation, not a preference for a generic style.
+Record the chosen pages and what their object grouping/visual hierarchy will
+contribute in the existing handoff-plan; do not add another approval document.
+Example identities, data and template advice must be replaced.
+
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/template_library.py" search --role evidence --limit 8
 python "${CLAUDE_PLUGIN_ROOT}/scripts/template_library.py" recipe award-blue --slide 7
@@ -28,6 +37,15 @@ useful candidates before implementing pages; this is a design aid, not automatic
 template selection or aesthetic approval. `catalog` returns the complete index;
 `verify-bundled` checks shipped asset hashes. All asset paths resolve at the
 current installation, with no source-drive dependency.
+
+`reference_library.by_slide` groups cover/body candidates using the actual title,
+content and visual purpose, even when optional visual.type is absent. Several
+useful pages may come from the same source. Selected built-in template_refs are
+resolved by plan to inputs/template-references/<source>-<page>.json and exposed
+as INPUT.design_references in the page source. Read these selected recipes; a
+catalog entry, contact-sheet cover or image text description is not adaptation.
+If preview reading only returns prose, use the host's real image-viewing route
+once and state any remaining inability instead of pretending to have viewed it.
 
 Recipes include object geometry/order, text styles, groups, tables, replacement
 slots and inherited layout/master/theme components. Group coordinates retain
@@ -121,5 +139,9 @@ Check wrong schools/names, copied unsupported results, empty slots, clipping and
 lost image information. Missing facts call for supported explanation, narrower
 scope, merging or authorized evidence gathering. Repair and re-render actual
 pages; template count, color count and successful import do not prove quality.
+The existing production-check student_design_review.reference_comparisons pairs
+the selected reference preview with its actual rendered page. Inspect those
+pairs as part of the ordinary changed-page review; they carry no automatic
+visual approval, score, additional gate or demand to recheck unchanged pages.
 
 Embedded template advice such as “每页200字以内”, “讲述5分钟以内”, “请输入标题” and promotion text are example content to replace, not task constraints. Do not import their word limits, timing limits or achievements into the Production Summary or Spec. Only the actual user request may authorize such controls.

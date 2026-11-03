@@ -569,7 +569,9 @@ def handle(event: dict) -> int:
                 from shared.research_control import status
                 decision = status(task_path.parent, retrieval=True)
                 if decision["state"] == "stop_requested":
-                    stop_note = "Save the current pack, mark remaining gaps and return; no more retrieval."
+                    stop_note = (f"Next: {decision.get('next_action', 'handoff')}. "
+                                 "Refresh/repair the existing pack locally if needed, then hand off; "
+                                 "no more retrieval or confidence upgrades. Do not rebuild the pack.")
                     if decision["reason"] == "task_changed":
                         stop_note += (
                             " If the main flow sanctioned a scope convergence, it can re-bind the task via "

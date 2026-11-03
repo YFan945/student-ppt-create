@@ -469,6 +469,7 @@ def plan(args: argparse.Namespace) -> dict[str, Any]:
     }
     save(work, manifest, "planned")
     return {"ok": True, "action": "author_pages", "work_dir": str(work), "assets": measured_assets(work),
+            "plugin_version": load(ROOT / "package.json")["version"],
             "research": research, "draft": bool(research and research["status"] != "ready"),
             "reference_library": suggestions(spec),
             "student_design": planning_review(spec), "template_sources": templates,
@@ -639,6 +640,12 @@ def render(work: Path, manifest: dict[str, Any], pptx: Path) -> dict[str, Any]:
 
 
 def apply_rendered_layout(report: dict, rendered: dict) -> None:
+    from shared.student_design_review import reference_comparisons
+
+    spec_path = (report.get("slide_spec") or {}).get("path")
+    if spec_path and Path(spec_path).is_file():
+        report.setdefault("student_design_review", {})["reference_comparisons"] = reference_comparisons(
+            load(Path(spec_path)), rendered.get("pages", []))
     layout = rendered.get("layout") or {}
     geometry = report.setdefault("geometry", {"errors": [], "warnings": []})
     geometry["errors"] = [item for item in geometry.get("errors", []) if item.get("code") != "rendered_text_overlap"] + layout.get("errors", [])

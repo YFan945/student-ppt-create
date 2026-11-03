@@ -11,6 +11,9 @@ def planning_review(spec: dict[str, Any]) -> dict[str, Any]:
         visual = slide.get("visual") or {}
         requirements = slide.get("semantic_requirements") or {}
         core = [item.get("text", "") for item in requirements.get("must_convey", [])]
+        if spec.get("template_sources") and not slide.get("template_refs"):
+            findings.append({"slide": index, "code": "template_adaptation_unmapped", "severity": "advisory",
+                             "action": "本任务已选择模板，但本页未关联参考页；对照封面/正文原型完成适配，或在现有规划说明本页为何采用其他结构。登记引用本身不证明视觉落实。"})
         pages.append({"slide": index, "planned_title": slide.get("title"), "core_information": core,
                       "support": slide.get("content", []), "main_visual": visual,
                       "template_refs": slide.get("template_refs", []),
@@ -18,6 +21,30 @@ def planning_review(spec: dict[str, Any]) -> dict[str, Any]:
                                     "主要图像/图解/表格怎样解释这个回答，哪些细节必须可见？",
                                     "学生先指哪里、再解释哪里，其他内容怎样支撑重点？"]})
     return {"scope": "author decisions, not automatic aesthetic acceptance", "pages": pages, "findings": findings}
+
+
+def reference_comparisons(spec: dict[str, Any], rendered: list[dict]) -> list[dict]:
+    """Pair actual final pages with their chosen references; never certify looks."""
+    from shared.bundled_templates import metadata
+
+    sources = {source["id"]: source for source in spec.get("template_sources", [])}
+    pairs = []
+    for index, page in enumerate(spec.get("slides", [])):
+        if index >= len(rendered):
+            continue
+        for ref in page.get("template_refs", []):
+            source = sources.get(ref["source_id"], {})
+            path = source.get("path", "")
+            preview = None
+            if path.startswith("builtin:"):
+                entry = metadata(path)
+                preview = next((p.get("preview") or entry.get("preview") for p in entry["slides"]
+                                if p["slide"] == ref["slide"]), None)
+            pairs.append({"slide": index + 1, "reference_source": path, "reference_page": ref["slide"],
+                          "reference_preview": preview, "actual_render": rendered[index].get("path"),
+                          "borrowed_structure": ref.get("reason"), "verified": False,
+                          "inspect": "对照实际参考图和最终页，检查主体、支撑组、层级、色彩与正文布局；先修重叠。引用登记与技术通过不证明适配完成。"})
+    return pairs
 
 
 def review_actual(spec: dict[str, Any], actual: dict[str, Any], geometry: dict[str, Any]) -> dict[str, Any]:

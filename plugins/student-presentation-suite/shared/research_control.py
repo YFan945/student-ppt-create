@@ -25,6 +25,16 @@ def evidence_key(work: Path) -> str:
     return hashlib.sha256(json.dumps(parts).encode()).hexdigest()
 
 
+def requirements_key(task: dict) -> str:
+    """Retrieval requirements, independent of JSON formatting and budget notes."""
+    claims = [{**{k: c.get(k) for k in ("id", "claim", "acceptance")},
+               "importance": c.get("importance", "core"), "verification": c.get("verification", "source")}
+              for c in task.get("claims", [])]
+    claims.sort(key=lambda c: str(c["id"]))
+    return hashlib.sha256(json.dumps([task.get("scope"), claims], sort_keys=True,
+                                    ensure_ascii=False).encode()).hexdigest()
+
+
 def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> dict:
     now = time.time() if now is None else now
     task_path = work / "research-task.json"
@@ -35,6 +45,7 @@ def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> 
     with file_lock(work / ".research-control.lock"):
         state = read(path)
         task_sha = hashlib.sha256(task_path.read_bytes()).hexdigest()
+        requirements = requirements_key(task)
         if not state:
             state = {"started_at": now, "last_progress_at": now, "task_sha256": task_sha, "seen": []}
         if retrieval and "retrieval_started_at" not in state:
@@ -47,9 +58,9 @@ def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> 
         current = pack.is_file() and (pack_identity == content_digest(pack) if pack_identity else
             report.get("research_pack_sha256") == hashlib.sha256(pack.read_bytes()).hexdigest())
         current = current and (task_identity == content_digest(task_path) if task_identity else
-            report.get("task", {}).get("sha256") == task_sha) and report.get("ok") is True
+            report.get("task", {}).get("sha256") == task_sha)
         useful = set()
-        if current:
+        if current and report.get("ok") is True:
             content = read(pack)
             entities = {e.get("id"): e for k in ("findings", "data_points", "quotes") for e in content.get(k, [])}
             task_ids = {c.get("id") for c in task.get("claims", [])}
@@ -73,19 +84,27 @@ def status(work: Path, *, now: float | None = None, retrieval: bool = False) -> 
         reason = state.get("reason", "")
         if reason in {"time_budget_exhausted", "no_useful_progress"}:
             reason = ""  # old timer decisions do not prevent continuing the task
+        # A stale report calls for local validation, not fresh retrieval. Keep
+        # sufficiency closed until changed requirements or a current core gap
+        # actually establish that the earlier answer no longer suffices.
         if reason == "task_changed" or (reason == "sufficient_evidence" and (
-                state.get("task_sha256") != task_sha or not current
-                or report.get("delivery_status") not in {"ready", "partial"})):
+                state.get("requirements_key", requirements) != requirements
+                or (current and (report.get("core_gaps") or (
+                    report.get("ok") is True and report.get("delivery_status") == "insufficient"))))):
             reason = ""
         state["task_sha256"] = task_sha
+        state["requirements_key"] = requirements
         validation_path = work / "research-pack-validation.json"
         report_version = hashlib.sha256(validation_path.read_bytes()).hexdigest() if validation_path.is_file() else None
         explicitly_continuing = (bool(state.get("resume_evidence_key")) and state["resume_evidence_key"] == evidence_key(work)) or (
             not state.get("resume_evidence_key") and bool(state.get("resume_validation_sha256"))
             and state["resume_validation_sha256"] == report_version)
-        if not reason and current and not explicitly_continuing and report.get("delivery_status") in {"ready", "partial"}:
+        if not reason and current and not explicitly_continuing and report.get("ok") is True and report.get("delivery_status") in {"ready", "partial"}:
             reason = "sufficient_evidence"
+        next_action = ("refresh_validation" if not current else
+                       "repair_pack" if not report.get("ok") else "handoff") if reason == "sufficient_evidence" else "resolve_claims"
         state.update(state="stop_requested" if reason else "active", reason=reason,
+                     validation_pending=not current, next_action=next_action,
                      elapsed_seconds=round(now - state["started_at"], 3),
                      idle_seconds=round(now - state["last_progress_at"], 3))
         atomic_json(path, state)

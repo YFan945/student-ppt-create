@@ -84,6 +84,39 @@ class HandoffTests(unittest.TestCase):
         self.assertNotIn("evidence", report)
         self.assertEqual("sufficient_evidence", status(self.work, now=10)["reason"])
 
+    def test_sufficient_task_does_not_reopen_for_notes_or_json_formatting(self):
+        self.assertEqual("sufficient_evidence", status(self.work)["reason"])
+        task_path = self.work / "research-task.json"
+        task_path.write_text(json.dumps(json.loads(task_path.read_text()), indent=2), encoding="utf-8")
+        pack = json.loads(self.pack.read_text())
+        pack["findings"][0]["notes"] = "补充阅读说明"
+        self.pack.write_text(json.dumps(pack), encoding="utf-8")
+        decision = status(self.work)
+        self.assertEqual("stop_requested", decision["state"])
+        self.assertEqual("refresh_validation", decision["next_action"])
+        self.assertTrue(handoff.inspect(self.work)["ok"])
+        self.assertEqual("handoff", status(self.work)["next_action"])
+
+    def test_stale_report_cannot_hide_a_new_required_claim(self):
+        status(self.work)
+        path = self.work / "research-task.json"
+        task = json.loads(path.read_text())
+        task["claims"].append({"id": "C02", "claim": "新增核心问题", "acceptance": "有支持"})
+        path.write_text(json.dumps(task), encoding="utf-8")
+        self.assertEqual("active", status(self.work)["state"])
+
+    def test_local_validation_failure_does_not_authorize_new_search(self):
+        status(self.work)
+        pack = json.loads(self.pack.read_text())
+        pack["findings"][0]["confidence"] = "low"
+        pack["findings"][0].pop("notes", None)
+        self.pack.write_text(json.dumps(pack), encoding="utf-8")
+        report = handoff.inspect(self.work)
+        self.assertFalse(report["ok"])
+        self.assertEqual("insufficient", report["delivery_status"])
+        self.assertEqual("repair_pack", status(self.work)["next_action"])
+        self.assertEqual("stop_requested", status(self.work)["state"])
+
     def test_only_validated_task_support_refreshes_not_pack_rewrites(self):
         task_path = self.work / "research-task.json"
         task = json.loads(task_path.read_text())

@@ -84,5 +84,15 @@ def apply_task(report: dict, pack: dict, work_dir: Path, explicit: Path | None =
     if binding:
         report["task"] = binding
     report.update(delivery(pack, task))
+    report["content_status"] = report["delivery_status"]
     if errors:
         report["delivery_status"] = "insufficient"
+    finalize(report)
+
+
+def finalize(report: dict) -> None:
+    """Keep delivery and validation consistent without calling paperwork a gap."""
+    content = report.get("content_status", report.get("delivery_status", "insufficient"))
+    report["delivery_status"] = content if report.get("ok") else "insufficient"
+    report["next_action"] = ("resolve_core_gaps" if report.get("core_gaps") else
+                             "repair_pack" if not report.get("ok") else "handoff")

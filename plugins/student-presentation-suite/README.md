@@ -15,6 +15,8 @@ Automatic monetary, token, request-count, research-time and repair-round budgets
 
 Research accepts browser reading, PDF/OCR and table extraction without mandatory text hashes, fetch receipts or repeated review forms. Tools refresh validation on handoff, preserve source support and allow sequential gap recovery. Strict text-bound auditing is opt-in; see [research workflow](references/research-workflow.md).
 
+Repair an existing Pack by ID with the validator's local `--patch` option; unchanged facts are preserved. A stale report or metadata repair does not reopen completed research. Template planning now offers cover/body candidates per page and passes chosen layout recipes into author inputs; the existing review report pairs references with final renders. See [research workflow](references/research-workflow.md) and [template workflow](references/template-workflow.md).
+
 Confidence is not a source-count quota, and ordinary source references need no duplicate evidence-binding table. Pending research permits formal planning and previews; adopted evidence is refreshed before delivery. Measured and rendered text collisions take priority over aesthetic advice, remain visible in the existing report and must be repaired. See [validation policy](references/validation-policy.md).
 
 ## Four skills

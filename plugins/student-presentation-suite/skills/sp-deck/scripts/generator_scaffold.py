@@ -514,12 +514,15 @@ def scaffold_generator(
         from shared.design_policy import model_led
 
         if model_led(spec):
+            from shared.bundled_templates import authoring_references
+
             source_input = {"requirements": actual_check.planned_requirements(slide),
                             "material": {key: slide[key] for key in
                                           ("title", "claim", "slide_copy", "content", "speaker_notes", "evidence_refs",
                                            "kind", "role", "visual", "template_refs", "timing_sec", "owner", "transition", "note_goal",
                                            "supporting_points", "key_line")
                                          if key in slide}}
+            source_input["design_references"] = authoring_references(spec, slide, work_dir)
             exact = json.dumps(source_input, ensure_ascii=False)
             stub = (f"'use strict';\n/* {SCAFFOLD_MARKER} */\n"
                     f"const INPUT = {exact};\n"
@@ -527,6 +530,7 @@ def scaffold_generator(
                     "  // Author rich visible content from INPUT.material; preserve INPUT.requirements.\n"
                     "  // Highlight the selective speaking path; notes need not narrate every visible detail.\n"
                     "  // Visual purpose is planning input, not display copy. No visuals are prepainted.\n"
+                    "  // Read INPUT.design_references recipes and view their previews before authoring; preserve the selected structure while replacing example content.\n"
                     "};\nmodule.exports.presentation_copy = { headline: '', visual_labels: [] };\n"
                     "module.exports.notes = '';\n")
         target = pages_dir / name

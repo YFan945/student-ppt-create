@@ -1104,6 +1104,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("pack", type=Path, help="research-pack.json (or .yaml)")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--patch", type=Path, help="Apply an ID-based local update JSON, preserving all unspecified facts; then validate once")
     parser.add_argument("--verbose", action="store_true", help="also list minor findings")
     parser.add_argument("--audit", action="store_true", help="include optional retrieval diagnostics; never requires warning cleanup")
     parser.add_argument("--max-items", type=int, default=12)
@@ -1124,6 +1125,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"validate_research_pack: Research Pack does not exist: {args.pack}", file=sys.stderr)
         return 2
 
+    update_result = None
+    if args.patch:
+        from types import SimpleNamespace
+
+        from shared.research_updates import update_current
+
+        try:
+            update_result = update_current(args.pack, args.patch, SimpleNamespace(
+                load=load, normalize=normalize, schema_issues=schema_issues,
+                id_issues=id_issues, reference_issues=reference_issues, must_verify_issues=must_verify_issues))
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            print(f"validate_research_pack: {exc}", file=sys.stderr)
+            return 2
+
     # Direct fetch is valid without an invented search query. Consumers and the
     # smoke harness can omit audit flags; use this pack's existing receipts.
     if args.search_log is None:
@@ -1141,6 +1156,8 @@ def main(argv: list[str] | None = None) -> int:
     backend = SimpleNamespace(validate=validate, load=load, normalize=normalize, _coerce_trail=_coerce_trail)
     pack, report = validate_current(args.pack, validator=backend, task_path=args.task,
         search_log=args.search_log, fetch_report=args.fetch_report, audit=args.audit)
+    if update_result:
+        report["local_update"] = update_result
     from shared.research_io import atomic_json
     atomic_json(args.pack.parent / "research-progress.json", {
         "updated_at": datetime.datetime.now(datetime.UTC).isoformat(),

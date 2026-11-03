@@ -14,7 +14,7 @@ from pptx.util import Inches
 
 from shared.deck_expression_review import review_expression
 from shared.hashing import file_sha256
-from shared.student_design_review import planning_review, review_actual
+from shared.student_design_review import planning_review, reference_comparisons, review_actual
 from shared.template_library import assemble, build_catalog, inspect_template, search_catalog
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -99,6 +99,17 @@ class TemplateWorkflowTests(unittest.TestCase):
         self.assertIn("topic_title_review", [f["code"] for f in review["findings"]])
         self.assertNotIn("score", review)
         self.assertTrue(planning_review(spec)["pages"][0]["questions"])
+
+    def test_reference_check_pairs_real_reference_and_final_page_without_approval_score(self):
+        spec = {"template_sources": [{"id": "blue", "path": "builtin:award-blue"}], "slides": [
+            {"template_refs": [{"source_id": "blue", "slide": 7, "reason": "指标和表格"}]},
+            {"title": "未选择参考的正文"}]}
+        pairs = reference_comparisons(spec, [{"path": "final-1.png"}, {"path": "final-2.png"}])
+        self.assertEqual(pairs[0]["actual_render"], "final-1.png")
+        self.assertTrue(Path(pairs[0]["reference_preview"]).is_file())
+        self.assertEqual(pairs[0]["reference_page"], 7)
+        self.assertFalse(pairs[0]["verified"])
+        self.assertIn("template_adaptation_unmapped", [p["code"] for p in planning_review(spec)["findings"]])
 
     def test_planned_production_caveats_remain_actionable_but_quotes_are_preserved(self):
         spec = {"slides": [{"content": ["缺出处的数字就不写"]}]}

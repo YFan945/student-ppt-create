@@ -55,6 +55,35 @@ class BalancedEvidenceTests(unittest.TestCase):
         self.assertTrue(report["ok"], report["problems"])
         self.assertEqual("ready", report["delivery_status"])
 
+    def test_unused_candidate_metadata_does_not_block_task_handoff(self):
+        from shared.research_validation import validate_current
+
+        self.task()
+        extra = dict(self.pack["findings"][0], id="F99", confidence="low")
+        for key in ("notes", "limitations", "claim_id"):
+            extra.pop(key, None)
+        self.pack["findings"].append(extra)
+        path = self.fixture.work / "research-pack.json"
+        path.write_text(json.dumps(self.pack), encoding="utf-8")
+        _, report = validate_current(path)
+        self.assertTrue(report["ok"], report["problems"])
+        self.assertEqual("ready", report["delivery_status"])
+        _, adopted = validate_current(path, used_entities={"F99"})
+        self.assertFalse(adopted["ok"])
+        self.assertEqual("insufficient", adopted["delivery_status"])
+        self.assertEqual("repair_pack", adopted["next_action"])
+
+    def test_unused_candidate_cannot_hide_duplicate_ids_or_core_errors(self):
+        from shared.research_validation import validate_current
+
+        self.task()
+        self.pack["findings"].append(dict(self.pack["findings"][0]))
+        path = self.fixture.work / "research-pack.json"
+        path.write_text(json.dumps(self.pack), encoding="utf-8")
+        _, report = validate_current(path, used_entities=set())
+        self.assertFalse(report["ok"])
+        self.assertIn("duplicate_id", [p["code"] for p in report["problems"]])
+
     def enable_review(self):
         path = self.task()
         task = json.loads(path.read_text())

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import gzip
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -77,34 +78,67 @@ def reference(source: str, slide: int | None = None) -> dict[str, Any]:
     return result
 
 
+def authoring_references(spec: dict[str, Any], page: dict[str, Any], work: Path) -> list[dict[str, Any]]:
+    """Resolve chosen recipes into author inputs, not just catalog hints."""
+    sources = {s["id"]: s for s in spec.get("template_sources", [])}
+    selected = []
+    for ref in page.get("template_refs", []):
+        source = sources.get(ref["source_id"], {})
+        if not source.get("path", "").startswith("builtin:"):
+            continue
+        recipe = reference(source["path"], ref["slide"])
+        destination = work / "inputs" / "template-references" / f"{recipe['id']}-{ref['slide']}.json"
+        data = {"scope": recipe["scope"], "size_emu": recipe.get("size_emu"),
+                "slides": recipe["slides"], "inherited_components": recipe.get("inherited_components", {})}
+        text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if not destination.is_file() or destination.read_text(encoding="utf-8") != text:
+            destination.write_text(text, encoding="utf-8")
+        selected.append({**ref, "path": source["path"], "preview": recipe["slides"][0].get("preview"),
+                         "recipe_path": str(destination),
+                         "instruction": "Read this selected page's geometry, groups, type and inherited components; adapt them to task content. Example facts/identities are not task facts. Compare the actual reference and final render."})
+    return selected
+
+
 def suggestions(spec: dict[str, Any], limit: int = 6) -> dict[str, Any]:
-    from shared.template_library import search_catalog
+    from shared.template_library import ROLES, search_catalog
 
     catalog = load_catalog()
     topic = (spec.get("meta") or {}).get("topic", "")
     if not any(term in topic for term in ("党", "政治", "红色")):
         catalog["templates"] = [entry for entry in catalog["templates"] if entry.get("category") != "party"]
-    # The model selects after inspecting these; no layout is silently imposed.
-    wanted = set()
     mapping = {"chart": "data", "table": "comparison", "comparison": "comparison",
                "timeline": "timeline", "process": "process", "architecture": "process",
                "image": "photo", "photo": "photo", "screenshot": "evidence"}
-    for page in spec.get("slides", []):
+    by_slide = []
+    for index, page in enumerate(spec.get("slides", []), 1):
+        text = " ".join(str(page.get(k, "")) for k in ("title", "claim", "content", "visual", "semantic_requirements"))
         role = mapping.get((page.get("visual") or {}).get("type"))
-        if role:
-            wanted.add(role)
-    matches = []
-    for role in sorted(wanted) or [None]:
-        matches.extend(search_catalog(catalog, "", role, max(24, limit * 4)))
+        kind = str(page.get("kind") or page.get("role") or "").lower()
+        if kind == "cover" or (index == 1 and not kind):
+            role = "cover"
+        elif not role:
+            roles = ("process", "comparison", "timeline", "data", "photo", "evidence")
+            title = str(page.get("title", ""))
+            role = next((r for r in roles if re.search(ROLES[r], title, re.I)), None)
+            role = role or next((r for r in roles if re.search(ROLES[r], text, re.I)), "evidence")
+        # Topic terms improve relevance where they exist; role-only fallback is
+        # deliberate: a finance layout can support energy data after adaptation.
+        query = " ".join([topic, str(page.get("title", "")),
+                          *re.findall(ROLES.get(role, ""), text, re.I)])
+        matches = search_catalog(catalog, query, role, 3) or search_catalog(catalog, "", role, 3)
+        by_slide.append({"slide": page.get("id", index), "role": role, "query": query,
+                         "candidates": matches})
+    # Round-robin page needs before limiting. Do not collapse all body layouts
+    # from one useful source to its first page, or truncate the whole catalog.
     unique = {}
-    for item in matches:
-        unique.setdefault((item["source_id"], item["slide"]), item)
-    first_per_source = {}
-    for item in unique.values():
-        first_per_source.setdefault(item["source_id"], item)
+    for rank in range(3):
+        for page in by_slide:
+            for item in page["candidates"][rank:rank + 1]:
+                unique.setdefault((item["source_id"], item["slide"]), item)
     return {"catalog": str(catalog_path()), "source_count": len(load_catalog()["templates"]),
-            "candidates": list(first_per_source.values())[:limit],
-            "next": "Inspect a candidate preview, then template_library.py recipe <id> --slide <n>; adapt its layout to actual content."}
+            "candidates": list(unique.values())[:limit], "by_slide": by_slide,
+            "next": "Choose cover and body references before authoring. View real previews (a text description is not a viewed image), read selected recipes, record template_sources/template_refs and adapt editable objects. Return to a reference when the result loses its structure."}
 
 
 def validate_bundle(root: Path | None = None) -> dict[str, Any]:

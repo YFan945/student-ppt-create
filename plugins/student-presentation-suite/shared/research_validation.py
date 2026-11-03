@@ -13,11 +13,33 @@ from shared.research_io import atomic_json
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def scope_candidates(report: dict, pack: dict, used: set[str]) -> None:
+    """Candidate observations do not block adopted facts; broken IDs still do."""
+    entities = {str(e.get("id")): e for kind in ("findings", "data_points", "quotes")
+                for e in pack.get(kind, []) if isinstance(e, dict)}
+    # Explicitly requested claims stay in scope even when not yet on a page.
+    required = {eid for claim in pack.get("must_verify", []) for eid in claim.get("entity_ids", [])}
+    used = used | required
+    optional = set(entities) - used
+    candidate_codes = {"low_confidence_without_reason", "high_confidence_needs_cross_check",
+                       "sources_are_not_independent", "conflict_must_downgrade_confidence", "conflict_not_recorded"}
+    for problem in report.get("problems", []):
+        code = str(problem.get("code", ""))
+        if ((problem.get("entry") in optional and (code.startswith("evidence_") or code in candidate_codes))
+                or code == "unknown_visual_ref"):
+            problem.update(severity="minor", outside_slide_scope=True)
+    counts = {level: sum(p.get("severity") == level for p in report["problems"])
+              for level in ("critical", "major", "minor")}
+    counts["blockers"] = counts["critical"] + counts["major"]
+    report.update(counts=counts, ok=counts["blockers"] == 0,
+                  validation_scope={"used_entities": sorted(used)})
+
+
 def validate_current(pack_path: Path, *, validator=None, task_path: Path | None = None,
                      search_log: Path | None = None, fetch_report: Path | None = None,
                      audit: bool = False, used_entities: set[str] | None = None) -> tuple[dict, dict]:
     validator = validator or importlib.import_module("validate_research_pack")
-    from research_task_binding import apply_task
+    from research_task_binding import apply_task, finalize
 
     pack_path = pack_path.resolve()
     work = pack_path.parent
@@ -48,7 +70,7 @@ def validate_current(pack_path: Path, *, validator=None, task_path: Path | None 
     documents(fetched)
     binding = work / "research-task-binding.json"
     permission = json.loads(binding.read_text(encoding="utf-8")).get("scope") if binding.is_file() else None
-    key = hashlib.sha256(json.dumps(["research-validation-v2", audit, permission, sorted(used_entities) if used_entities is not None else None, explicit_task and not task_path.is_file(),
+    key = hashlib.sha256(json.dumps(["research-validation-v3", audit, permission, sorted(used_entities) if used_entities is not None else None, explicit_task and not task_path.is_file(),
         [(str(path.resolve()), content_digest(path) if path.is_file() else "missing") for path in sorted(paths)]],
         ensure_ascii=False).encode()).hexdigest()
     cache = work / "_tmp/research-validation.json"
@@ -66,20 +88,12 @@ def validate_current(pack_path: Path, *, validator=None, task_path: Path | None 
         report = validator.validate(pack, search_log=search_log if audit and search_log.is_file() else None,
             fetch_report=fetched, search_payloads=payload, work_dir=work, audit=audit)
         apply_task(report, pack, work, task_path if explicit_task else None)
-        if used_entities is not None:
-            # Structural errors and requested core gaps remain global. An unused
-            # candidate's evidence paperwork must not block the adopted facts.
-            entities = {str(e.get("id")) for kind in ("findings", "data_points", "quotes")
-                        for e in pack.get(kind, []) if isinstance(e, dict)}
-            for problem in report.get("problems", []):
-                if (problem.get("entry") in entities - used_entities
-                        and str(problem.get("code", "")).startswith("evidence_")):
-                    problem.update(severity="minor", outside_slide_scope=True)
-            counts = {level: sum(p.get("severity") == level for p in report["problems"])
-                      for level in ("critical", "major", "minor")}
-            counts["blockers"] = counts["critical"] + counts["major"]
-            report.update(counts=counts, ok=counts["blockers"] == 0,
-                          validation_scope={"used_entities": sorted(used_entities)})
+        scope = used_entities
+        if scope is None and task_path.is_file() and pack.get("evidence_contract") == "source-backed-v1" and not audit:
+            scope = set()  # task-linked entities, not every accumulated candidate
+        if scope is not None:
+            scope_candidates(report, pack, scope)
+        finalize(report)
         report["validation_reused"] = False
         atomic_json(cache, {"key": key, "report": report})
     report["research_pack"] = str(pack_path)

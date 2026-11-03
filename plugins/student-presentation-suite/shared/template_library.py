@@ -29,11 +29,12 @@ R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 REL = "http://schemas.openxmlformats.org/package/2006/relationships"
 CT = "http://schemas.openxmlformats.org/package/2006/content-types"
 ROLES = {
+    "cover": r"封面|cover",
     "evidence": r"证书|荣誉|奖项|成果|实验|证据|结果|evidence|result",
     "comparison": r"比较|对比|方案|维度|comparison",
-    "process": r"流程|原理|机制|步骤|架构|process|mechanism",
+    "process": r"流程|原理|机制|步骤|架构|转换|路径|环节|process|mechanism",
     "timeline": r"历程|阶段|时间|成长|经历|计划|timeline",
-    "data": r"成绩|数据|排名|统计|指标|比例|data",
+    "data": r"成绩|数据|排名|统计|指标|比例|规模|增速|成本|容量|data|LCOE",
     "photo": r"实践|活动|照片|调研|志愿|photo",
 }
 
@@ -99,9 +100,10 @@ def search_catalog(catalog: dict[str, Any], query: str, role: str | None, limit:
     matches = []
     for entry in catalog.get("templates", []):
         for page in entry["slides"]:
-            if not terms and entry.get("recommended_pages") and page["slide"] not in entry["recommended_pages"]:
+            cover = (page["slide"] == 1 and entry.get("slide_count", len(entry["slides"])) > 1) or "cover" in page["roles"]
+            if role == "cover" and not cover:
                 continue
-            if role and role not in page["roles"]:
+            if role and role != "cover" and (cover or role not in page["roles"]):
                 continue
             haystack = (entry["name"] + " " + page["text"]).casefold()
             score = sum(haystack.count(term) for term in terms)
@@ -110,10 +112,12 @@ def search_catalog(catalog: dict[str, Any], query: str, role: str | None, limit:
             matches.append({"source_id": entry["id"], "path": entry["path"], "name": entry["name"],
                             "preview": page.get("preview") or entry.get("preview"), "slide": page["slide"], "score": score,
                             "availability": entry.get("availability", "original-pptx"),
+                            "recommended": page["slide"] in entry.get("recommended_pages", []),
+                            "page_kind": "cover" if cover else "body",
                             "recipe_command": f"template_library.py recipe {entry['id']} --slide {page['slide']}" if entry["path"].startswith("builtin:") else None,
                             "roles": page["roles"], "text": page["text"][:500],
                             "pictures": page["pictures"], "tables": page["tables"]})
-    return sorted(matches, key=lambda item: (-item["score"], item["source_id"] != "award-blue", item["name"], item["slide"]))[:limit]
+    return sorted(matches, key=lambda item: (-item["score"], not item["recommended"], item["name"], item["slide"]))[:limit]
 
 
 def assemble(selection: list[dict[str, Any]], output: Path) -> dict[str, Any]:

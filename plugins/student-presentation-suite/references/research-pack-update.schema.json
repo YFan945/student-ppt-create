@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Local Research Pack update",
+  "description": "Merge fields into records identified by ID. Unspecified fields and records are preserved; null removes a field. Arrays replace the specified field only. Never a full Pack rebuild.",
+  "type": "object",
+  "additionalProperties": false,
+  "minProperties": 1,
+  "properties": {
+    "upsert": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "findings": {"$ref": "#/$defs/records"},
+        "data_points": {"$ref": "#/$defs/records"},
+        "quotes": {"$ref": "#/$defs/records"},
+        "sources": {"$ref": "#/$defs/records"},
+        "conflicts": {"$ref": "#/$defs/records"},
+        "visual_candidates": {"$ref": "#/$defs/records"},
+        "must_verify": {"$ref": "#/$defs/records"},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/binding"}}
+      }
+    },
+    "remove": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "findings": {"$ref": "#/$defs/ids"},
+        "data_points": {"$ref": "#/$defs/ids"},
+        "quotes": {"$ref": "#/$defs/ids"},
+        "sources": {"$ref": "#/$defs/ids"},
+        "conflicts": {"$ref": "#/$defs/ids"},
+        "visual_candidates": {"$ref": "#/$defs/ids"},
+        "must_verify": {"$ref": "#/$defs/ids"},
+        "evidence": {"type": "array", "items": {"$ref": "#/$defs/binding"}}
+      }
+    }
+  },
+  "$defs": {
+    "ids": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+    "records": {"type": "array", "items": {"type": "object", "required": ["id"], "properties": {"id": {"type": "string", "minLength": 1}}}},
+    "binding": {"type": "object", "required": ["entity_id", "source_id"], "properties": {"entity_id": {"type": "string", "minLength": 1}, "source_id": {"type": "string", "minLength": 1}}}
+  }
+}
