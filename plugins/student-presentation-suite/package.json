@@ -7,14 +7,14 @@
     "smoke": "node scripts/run_with_pptxgenjs.js --probe"
   },
   "dependencies": {
-    "fontkit": "2.0.4",
-    "image-size": "^2.0.4",
+    "fontkit": "3.0.0",
+    "image-size": "^2.1.0",
     "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
-    "eslint": "^10.11.0",
-    "globals": "^17.12.0",
-    "prettier": "3.9.9"
+    "eslint": "^10.15.0",
+    "globals": "^17.14.0",
+    "prettier": "3.10.1"
   },
   "overrides": {
     "brace-expansion": "^2.0.1",
